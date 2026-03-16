@@ -1,0 +1,149 @@
+{% extends 'admin/base.html' %}
+{% block title %}Orden #{{ order.order_number }}{% endblock %}
+{% block page_title %}Orden #{{ order.order_number }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:14px">
+    <a href="{{ url_for('admin_bp.orders') }}" class="btn-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:13px">
+        ← Volver a Órdenes
+    </a>
+</div>
+
+<div class="detail-grid">
+    <!-- Order Info -->
+    <div class="detail-section">
+        <h3>Información de Orden</h3>
+        <div class="detail-row">
+            <span class="detail-label">Nro. Orden</span>
+            <span class="detail-value order-num">#{{ order.order_number }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Estado</span>
+            <span class="detail-value">
+                <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
+            </span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Juego</span>
+            <span class="detail-value">{{ order.game.name }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Paquete</span>
+            <span class="detail-value">{{ order.package.name }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Monto</span>
+            <span class="detail-value">${{ "%.2f"|format(order.amount) }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Fecha</span>
+            <span class="detail-value">{{ order.created_at.strftime('%d/%m/%Y %H:%M:%S') }}</span>
+        </div>
+        {% if order.notes %}
+        <div class="detail-row">
+            <span class="detail-label">Notas</span>
+            <span class="detail-value">{{ order.notes }}</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Player Info -->
+    <div class="detail-section">
+        <h3>Datos del Cliente</h3>
+        {% if order.player_id %}
+        <div class="detail-row">
+            <span class="detail-label">{{ order.game.player_id_label }}</span>
+            <span class="detail-value">{{ order.player_id }}</span>
+        </div>
+        {% endif %}
+        {% if order.zone_id %}
+        <div class="detail-row">
+            <span class="detail-label">{{ order.game.zone_id_label }}</span>
+            <span class="detail-value">{{ order.zone_id }}</span>
+        </div>
+        {% endif %}
+        {% if order.email %}
+        <div class="detail-row">
+            <span class="detail-label">Email</span>
+            <span class="detail-value">{{ order.email }}</span>
+        </div>
+        {% endif %}
+        {% if order.phone %}
+        <div class="detail-row">
+            <span class="detail-label">Teléfono</span>
+            <span class="detail-value">{{ order.phone }}</span>
+        </div>
+        {% endif %}
+
+        <h3 style="margin-top:18px">Pago</h3>
+        <div class="detail-row">
+            <span class="detail-label">Método</span>
+            <span class="detail-value">{{ order.payment_method | title }}</span>
+        </div>
+        <div class="detail-row">
+            <span class="detail-label">Referencia</span>
+            <span class="detail-value"><code class="ref-code">{{ order.payment_reference }}</code></span>
+        </div>
+        {% if order.payment_capture %}
+        <div class="detail-row">
+            <span class="detail-label">Comprobante</span>
+            <span class="detail-value">
+                <a class="btn-secondary" style="padding:6px 10px;font-size:12px" target="_blank"
+                   href="{{ url_for('static', filename='uploads/' + order.payment_capture) }}">Ver comprobante</a>
+                <a class="btn-secondary" style="padding:6px 10px;font-size:12px;margin-left:6px" download
+                   href="{{ url_for('static', filename='uploads/' + order.payment_capture) }}">Descargar</a>
+            </span>
+        </div>
+        {% endif %}
+        {% if order.affiliate %}
+        <div class="detail-row">
+            <span class="detail-label">Afiliado</span>
+            <span class="detail-value"><span class="aff-badge">{{ order.affiliate.code }}</span></span>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if order.pin_delivered %}
+    <div class="detail-section" style="grid-column:1/-1">
+        <h3>PIN Entregado</h3>
+        <div class="pin-code-display">{{ order.pin_delivered }}</div>
+        {% if order.automation_response %}
+        <details style="margin-top:12px">
+            <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Ver respuesta del servicio de automatización</summary>
+            <pre style="margin-top:8px;padding:10px;background:var(--bg-secondary);border-radius:6px;font-size:11px;overflow-x:auto">{{ order.automation_response }}</pre>
+        </details>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+{% if order.status == 'pending' %}
+<div class="admin-card" style="margin-top:20px;padding:20px">
+    <h3 style="margin-bottom:16px">Acciones</h3>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}">
+            <button type="submit" class="btn-primary">✓ Aprobar Orden</button>
+        </form>
+        <button class="btn-danger-solid" onclick="document.getElementById('rejectModal').style.display='flex'">
+            ✗ Rechazar Orden
+        </button>
+    </div>
+</div>
+
+<div class="modal-overlay" id="rejectModal" style="display:none">
+    <div class="modal-box">
+        <h3>Rechazar Orden</h3>
+        <form method="POST" action="{{ url_for('admin_bp.order_reject', order_id=order.id) }}">
+            <div class="form-group" style="margin-top:16px">
+                <label>Motivo (opcional)</label>
+                <textarea name="notes" rows="3" placeholder="Ej: Pago no verificado..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="document.getElementById('rejectModal').style.display='none'" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-danger-solid">Rechazar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

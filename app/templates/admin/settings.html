@@ -1,0 +1,47 @@
+{% extends 'admin/base.html' %}
+{% block title %}Configuración{% endblock %}
+{% block page_title %}Configuración General{% endblock %}
+
+{% block content %}
+<div class="admin-card">
+    <h2 style="margin-bottom:16px;">Tasa y Preferencias</h2>
+    <form method="POST" action="{{ url_for('admin_bp.settings') }}" enctype="multipart/form-data">
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="usd_rate_bs">Tasa USD → Bs (Venezuela)</label>
+                <input type="number" step="0.01" min="0" id="usd_rate_bs" name="usd_rate_bs"
+                       value="{{ usd_rate }}" placeholder="Ej: 40.50">
+                <p class="form-hint">
+                    Se usa para mostrar el monto aproximado en bolívares en el checkout cuando el método de pago lo requiera.
+                </p>
+            </div>
+            <div class="form-group">
+                <label for="default_auto_package_id">ID del primer paquete automático</label>
+                <input type="number" min="1" id="default_auto_package_id" name="default_auto_package_id"
+                       value="{{ default_package_id or '' }}" placeholder="Ej: 1">
+                <p class="form-hint">
+                    Opcional. Si lo estableces y el paquete pertenece al primer juego, se seleccionará automáticamente al entrar a la web.
+                </p>
+            </div>
+            <div class="form-group">
+                <label for="site_logo">Logo del encabezado</label>
+                <input type="file" id="site_logo" name="site_logo" accept="image/png,image/jpeg,image/webp,image/gif">
+                <p class="form-hint">Sube una imagen (PNG recomendado) para reemplazar el logo estándar del header.</p>
+                {% if site_logo %}
+                <div class="logo-preview">
+                    <img src="{{ url_for('static', filename='uploads/' + site_logo) }}" alt="Logo actual">
+                    <label class="remove-logo">
+                        <input type="checkbox" name="remove_logo" value="1">
+                        Quitar logo personalizado
+                    </label>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="modal-actions" style="margin-top:18px;">
+            <button type="submit" class="btn-primary">Guardar configuración</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+

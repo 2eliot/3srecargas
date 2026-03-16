@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+
+{% block title %}Orden #{{ order.order_number }} — 3S Recargas{% endblock %}
+
+{% block content %}
+<div class="order-status-wrap">
+    <div class="order-status-card">
+
+        <div class="status-icon status-icon-{{ order.status }}">
+            {% if order.status == 'pending' %}
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            {% elif order.status in ['approved', 'completed'] %}
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            {% else %}
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            {% endif %}
+        </div>
+
+        <h1 class="status-title">
+            {% if order.status == 'pending' %}¡Orden Recibida!
+            {% elif order.status == 'approved' %}¡Orden Aprobada!
+            {% elif order.status == 'completed' %}¡Recarga Completada!
+            {% else %}Orden Rechazada{% endif %}
+        </h1>
+
+        <p class="status-subtitle">
+            {% if order.status == 'pending' %}
+            Tu orden está siendo procesada. Te notificaremos pronto.
+            {% elif order.status == 'approved' %}
+            Tu pago fue verificado. La recarga será procesada en breve.
+            {% elif order.status == 'completed' %}
+            Tu recarga fue procesada exitosamente.
+            {% else %}
+            Tu orden fue rechazada. {{ order.notes or '' }}
+            {% endif %}
+        </p>
+
+        <div class="order-info-grid">
+            <div class="order-info-item">
+                <span class="info-label">Nro. de Orden</span>
+                <span class="info-value order-number">#{{ order.order_number }}</span>
+            </div>
+            <div class="order-info-item">
+                <span class="info-label">Estado</span>
+                <span class="info-value">
+                    <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
+                </span>
+            </div>
+            <div class="order-info-item">
+                <span class="info-label">Juego</span>
+                <span class="info-value">{{ order.game.name }}</span>
+            </div>
+            <div class="order-info-item">
+                <span class="info-label">Paquete</span>
+                <span class="info-value">{{ order.package.name }}</span>
+            </div>
+            <div class="order-info-item">
+                <span class="info-label">Monto</span>
+                <span class="info-value">
+                    {% if display_currency == 'usd' %}
+                    ${{ "%.2f"|format(display_amount) }}
+                    {% else %}
+                    Bs {{ "%.2f"|format(display_amount) }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="order-info-item">
+                <span class="info-label">Pago</span>
+                <span class="info-value">{{ order.payment_method | title }}</span>
+            </div>
+            {% if order.player_id %}
+            <div class="order-info-item">
+                <span class="info-label">{{ order.game.player_id_label }}</span>
+                <span class="info-value">{{ order.player_id }}</span>
+            </div>
+            {% endif %}
+            {% if order.zone_id %}
+            <div class="order-info-item">
+                <span class="info-label">{{ order.game.zone_id_label }}</span>
+                <span class="info-value">{{ order.zone_id }}</span>
+            </div>
+            {% endif %}
+            {% if order.email %}
+            <div class="order-info-item">
+                <span class="info-label">Email</span>
+                <span class="info-value">{{ order.email }}</span>
+            </div>
+            {% endif %}
+            <div class="order-info-item">
+                <span class="info-label">Fecha</span>
+                <span class="info-value">{{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+            </div>
+        </div>
+
+        {% if order.pin_delivered %}
+        <div class="pin-reveal">
+            <p class="pin-label">Tu PIN / Código</p>
+            <div class="pin-code">{{ order.pin_delivered }}</div>
+            <p class="pin-hint">Guarda este código en un lugar seguro.</p>
+        </div>
+        {% endif %}
+
+        <a href="{{ url_for('main_bp.index') }}" class="back-store-btn">
+            ← Volver a la tienda
+        </a>
+
+        {% if order.status == 'pending' %}
+        <p class="refresh-hint">
+            <button onclick="location.reload()" class="btn-link">Actualizar estado</button>
+        </p>
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}

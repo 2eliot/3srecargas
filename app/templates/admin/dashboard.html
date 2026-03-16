@@ -1,0 +1,161 @@
+{% extends 'admin/base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card stat-pending">
+        <div class="stat-icon">⏳</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ pending }}</span>
+            <span class="stat-label">Pendientes</span>
+        </div>
+    </div>
+    <div class="stat-card stat-approved">
+        <div class="stat-icon">✅</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ approved }}</span>
+            <span class="stat-label">Aprobadas</span>
+        </div>
+    </div>
+    <div class="stat-card stat-completed">
+        <div class="stat-icon">🚀</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ completed }}</span>
+            <span class="stat-label">Completadas</span>
+        </div>
+    </div>
+    <div class="stat-card stat-revenue">
+        <div class="stat-icon">💰</div>
+        <div class="stat-info">
+            <span class="stat-value">${{ "%.2f"|format(revenue) }}</span>
+            <span class="stat-label">Ingresos</span>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Orders -->
+<div class="admin-card">
+    <div class="card-header">
+        <h2>Órdenes Recientes</h2>
+        <a href="{{ url_for('admin_bp.orders') }}" class="btn-link">Ver todas →</a>
+    </div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Juego / Paquete</th>
+                    <th>Player ID</th>
+                    <th>Referencia</th>
+                    <th>Monto</th>
+                    <th>Estado</th>
+                    <th>Fecha</th>
+                    <th>Comprobante</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in recent_orders %}
+                <tr>
+                    <td><span class="order-num">#{{ order.order_number }}</span></td>
+                    <td>
+                        <div class="cell-stack">
+                            <span>{{ order.game.name }}</span>
+                            <small>{{ order.package.name }}</small>
+                        </div>
+                    </td>
+                    <td>{{ order.player_id or order.email or order.phone or '—' }}</td>
+                    <td><code>{{ order.payment_reference }}</code></td>
+                    <td>${{ "%.2f"|format(order.amount) }}</td>
+                    <td><span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span></td>
+                    <td>{{ order.created_at.strftime('%d/%m %H:%M') }}</td>
+                    <td>
+                        {% if order.payment_capture %}
+                        <button class="btn-sm btn-secondary" type="button"
+                                onclick="openCaptureModal('{{ url_for('static', filename='uploads/' + order.payment_capture) }}', '{{ order.order_number }}')">
+                            Ver
+                        </button>
+                        {% else %}
+                        <span class="text-muted" style="font-size:12px">No adjunto</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if order.status == 'pending' %}
+                        <div class="action-btns">
+                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline">
+                                <button class="btn-sm btn-success" type="submit">✓</button>
+                            </form>
+                            <button class="btn-sm btn-danger" onclick="openRejectModal({{ order.id }})">✗</button>
+                        </div>
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="empty-row">No hay órdenes aún.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal-overlay" id="rejectModal" style="display:none">
+    <div class="modal-box">
+        <h3>Rechazar Orden</h3>
+        <form method="POST" id="rejectForm">
+            <div class="form-group">
+                <label>Motivo (opcional)</label>
+                <textarea name="notes" rows="3" placeholder="Motivo del rechazo..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeRejectModal()" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-danger-solid">Rechazar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Capture Preview Modal -->
+<div class="modal-overlay" id="captureModal" style="display:none">
+    <div class="modal-box" style="max-width:520px;width:90%;padding:0;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08)">
+            <h3 style="margin:0;font-size:16px">Comprobante</h3>
+            <button type="button" class="btn-secondary" style="padding:4px 10px" onclick="closeCaptureModal()">✕</button>
+        </div>
+        <div style="max-height:80vh;overflow:auto;background:#0f1625">
+            <img id="capturePreviewImage" src="" alt="Comprobante" style="display:block;width:100%;height:auto">
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openRejectModal(orderId) {
+    document.getElementById('rejectForm').action = '/admin/orders/' + orderId + '/reject';
+    document.getElementById('rejectModal').style.display = 'flex';
+}
+function closeRejectModal() {
+    document.getElementById('rejectModal').style.display = 'none';
+}
+
+function openCaptureModal(src, orderNumber) {
+    var modal = document.getElementById('captureModal');
+    var img = document.getElementById('capturePreviewImage');
+    if (!modal || !img) return;
+    img.src = src;
+    img.alt = 'Comprobante de la orden #' + (orderNumber || '');
+    modal.style.display = 'flex';
+}
+function closeCaptureModal() {
+    var modal = document.getElementById('captureModal');
+    var img = document.getElementById('capturePreviewImage');
+    if (img) img.src = '';
+    if (modal) modal.style.display = 'none';
+}
+</script>
+{% endblock %}

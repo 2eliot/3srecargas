@@ -1,0 +1,131 @@
+{% extends 'admin/base.html' %}
+{% block title %}Órdenes{% endblock %}
+{% block page_title %}Órdenes{% endblock %}
+
+{% block content %}
+<!-- Filters -->
+<div class="filters-bar">
+    <div class="filter-tabs">
+        <a href="{{ url_for('admin_bp.orders') }}"
+           class="filter-tab {% if not status_filter %}active{% endif %}">Todas</a>
+        <a href="{{ url_for('admin_bp.orders', status='pending') }}"
+           class="filter-tab {% if status_filter == 'pending' %}active{% endif %}">Pendientes</a>
+        <a href="{{ url_for('admin_bp.orders', status='approved') }}"
+           class="filter-tab {% if status_filter == 'approved' %}active{% endif %}">Aprobadas</a>
+        <a href="{{ url_for('admin_bp.orders', status='completed') }}"
+           class="filter-tab {% if status_filter == 'completed' %}active{% endif %}">Completadas</a>
+        <a href="{{ url_for('admin_bp.orders', status='rejected') }}"
+           class="filter-tab {% if status_filter == 'rejected' %}active{% endif %}">Rechazadas</a>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>#Orden</th>
+                    <th>Juego / Paquete</th>
+                    <th>Jugador</th>
+                    <th>Pago</th>
+                    <th>Referencia</th>
+                    <th>Monto</th>
+                    <th>Afiliado</th>
+                    <th>Estado</th>
+                    <th>Fecha</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td><span class="order-num">#{{ order.order_number }}</span></td>
+                    <td>
+                        <div class="cell-stack">
+                            <span>{{ order.game.name }}</span>
+                            <small>{{ order.package.name }}</small>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="cell-stack">
+                            {% if order.player_id %}<span>{{ order.player_id }}</span>{% endif %}
+                            {% if order.zone_id %}<small>Zone: {{ order.zone_id }}</small>{% endif %}
+                            {% if order.email %}<span>{{ order.email }}</span>{% endif %}
+                            {% if order.phone %}<small>{{ order.phone }}</small>{% endif %}
+                        </div>
+                    </td>
+                    <td>{{ order.payment_method | title }}</td>
+                    <td><code class="ref-code">{{ order.payment_reference }}</code></td>
+                    <td><strong>${{ "%.2f"|format(order.amount) }}</strong></td>
+                    <td>
+                        {% if order.affiliate %}
+                        <span class="aff-badge">{{ order.affiliate.code }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td><span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span></td>
+                    <td>{{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td>
+                        {% if order.status == 'pending' %}
+                        <div class="action-btns">
+                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline">
+                                <button class="btn-sm btn-success" type="submit" title="Aprobar">✓ Aprobar</button>
+                            </form>
+                            <button class="btn-sm btn-danger" onclick="openRejectModal({{ order.id }})" title="Rechazar">✗</button>
+                        </div>
+                        {% elif order.status == 'completed' and order.pin_delivered %}
+                        <button class="btn-sm btn-outline" onclick="showPin('{{ order.pin_delivered }}')">Ver PIN</button>
+                        {% else %}
+                        <span class="no-action">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="10" class="empty-row">No hay órdenes.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal-overlay" id="rejectModal" style="display:none">
+    <div class="modal-box">
+        <h3>Rechazar Orden</h3>
+        <form method="POST" id="rejectForm">
+            <div class="form-group">
+                <label>Motivo (opcional)</label>
+                <textarea name="notes" rows="3" placeholder="Ej: Pago no verificado, referencia incorrecta..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeRejectModal()" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-danger-solid">Rechazar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- PIN Modal -->
+<div class="modal-overlay" id="pinModal" style="display:none">
+    <div class="modal-box">
+        <h3>PIN Entregado</h3>
+        <div class="pin-code-display" id="pinCodeDisplay"></div>
+        <button onclick="document.getElementById('pinModal').style.display='none'" class="btn-secondary" style="margin-top:16px">Cerrar</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openRejectModal(orderId) {
+    document.getElementById('rejectForm').action = '/admin/orders/' + orderId + '/reject';
+    document.getElementById('rejectModal').style.display = 'flex';
+}
+function closeRejectModal() {
+    document.getElementById('rejectModal').style.display = 'none';
+}
+function showPin(pin) {
+    document.getElementById('pinCodeDisplay').textContent = pin;
+    document.getElementById('pinModal').style.display = 'flex';
+}
+</script>
+{% endblock %}

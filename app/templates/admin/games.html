@@ -1,0 +1,212 @@
+{% extends 'admin/base.html' %}
+{% block title %}Juegos{% endblock %}
+{% block page_title %}Gestión de Juegos{% endblock %}
+
+{% block content %}
+<div class="page-actions">
+    <button class="btn-primary" onclick="openModal('addGameModal')">+ Agregar Juego</button>
+</div>
+
+<div class="admin-card">
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Imagen</th>
+                    <th>Nombre</th>
+                    <th>Categoría</th>
+                    <th>Pos.</th>
+                    <th>IDs</th>
+                    <th>Auto</th>
+                    <th>Estado</th>
+                    <th>Paquetes</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for game in games %}
+                <tr>
+                    <td>
+                        {% if game.image %}
+                        <img src="{{ url_for('static', filename='uploads/' + game.image) }}"
+                             alt="{{ game.name }}" class="table-thumb">
+                        {% else %}
+                        <div class="table-thumb-placeholder">{{ game.name[0] | upper }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="cell-stack">
+                            <strong>{{ game.name }}</strong>
+                            <small>{{ game.slug }}</small>
+                        </div>
+                    </td>
+                    <td>{{ game.category.icon }} {{ game.category.name }}</td>
+                    <td>{{ game.position }}</td>
+                    <td>
+                        <small>{{ game.player_id_label }}{% if game.requires_zone_id %} + {{ game.zone_id_label }}{% endif %}</small>
+                    </td>
+                    <td>{% if game.is_automated %}<span class="badge badge-auto">⚡ Sí</span>{% else %}—{% endif %}</td>
+                    <td>
+                        <span class="badge {% if game.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                            {{ 'Activo' if game.is_active else 'Inactivo' }}
+                        </span>
+                    </td>
+                    <td>{{ game.packages.filter_by(is_active=True).count() }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-outline" onclick="openEditGame({{ game.id }}, {{ game.to_dict() | tojson }})">Editar</button>
+                            <form method="POST" action="{{ url_for('admin_bp.game_delete', game_id=game.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit"
+                                        onclick="return confirm('¿Desactivar este juego?')">Off</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="9" class="empty-row">No hay juegos. Agrega el primero.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Game Modal -->
+<div class="modal-overlay" id="addGameModal" style="display:none">
+    <div class="modal-box modal-lg">
+        <div class="modal-header">
+            <h3>Agregar Juego</h3>
+            <button onclick="closeModal('addGameModal')">✕</button>
+        </div>
+        <form method="POST" action="{{ url_for('admin_bp.game_add') }}" enctype="multipart/form-data">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label>Nombre *</label>
+                    <input type="text" name="name" required placeholder="Free Fire">
+                </div>
+                <div class="form-group">
+                    <label>Categoría *</label>
+                    <select name="category_id" required>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}">{{ cat.icon }} {{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Posición (orden en el mosaico)</label>
+                    <input type="number" name="position" value="100" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Imagen de Portada</label>
+                    <input type="file" name="image" accept="image/*">
+                </div>
+                <div class="form-group">
+                    <label>Label Player ID</label>
+                    <input type="text" name="player_id_label" value="Player ID" placeholder="Player ID, UID, Nick...">
+                </div>
+                <div class="form-group">
+                    <label>Label Zone ID</label>
+                    <input type="text" name="zone_id_label" value="Zone ID" placeholder="Zone ID, Server...">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Descripción</label>
+                <textarea name="description" rows="2" placeholder="Descripción del juego..."></textarea>
+            </div>
+            <div class="form-checks">
+                <label class="check-label">
+                    <input type="checkbox" name="requires_zone_id"> Requiere Zone ID
+                </label>
+                <label class="check-label">
+                    <input type="checkbox" name="is_automated"> Es el juego con recarga automática ⚡
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('addGameModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar Juego</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Game Modal -->
+<div class="modal-overlay" id="editGameModal" style="display:none">
+    <div class="modal-box modal-lg">
+        <div class="modal-header">
+            <h3>Editar Juego</h3>
+            <button onclick="closeModal('editGameModal')">✕</button>
+        </div>
+        <form method="POST" id="editGameForm" enctype="multipart/form-data">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label>Nombre *</label>
+                    <input type="text" name="name" id="editGameName" required>
+                </div>
+                <div class="form-group">
+                    <label>Categoría *</label>
+                    <select name="category_id" id="editGameCategory">
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}">{{ cat.icon }} {{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Posición</label>
+                    <input type="number" name="position" id="editGamePosition" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Nueva Imagen (opcional)</label>
+                    <input type="file" name="image" accept="image/*">
+                </div>
+                <div class="form-group">
+                    <label>Label Player ID</label>
+                    <input type="text" name="player_id_label" id="editPlayerLabel">
+                </div>
+                <div class="form-group">
+                    <label>Label Zone ID</label>
+                    <input type="text" name="zone_id_label" id="editZoneLabel">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Descripción</label>
+                <textarea name="description" id="editGameDesc" rows="2"></textarea>
+            </div>
+            <div class="form-checks">
+                <label class="check-label">
+                    <input type="checkbox" name="requires_zone_id" id="editRequiresZone"> Requiere Zone ID
+                </label>
+                <label class="check-label">
+                    <input type="checkbox" name="is_automated" id="editIsAutomated"> Recarga automática ⚡
+                </label>
+                <label class="check-label">
+                    <input type="checkbox" name="is_active" id="editIsActive"> Activo
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('editGameModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Actualizar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function openEditGame(id, game) {
+    document.getElementById('editGameForm').action = '/admin/games/' + id + '/edit';
+    document.getElementById('editGameName').value = game.name;
+    document.getElementById('editGameCategory').value = game.category_id || '';
+    document.getElementById('editGamePosition').value = game.position;
+    document.getElementById('editPlayerLabel').value = game.player_id_label;
+    document.getElementById('editZoneLabel').value = game.zone_id_label;
+    document.getElementById('editGameDesc').value = game.description || '';
+    document.getElementById('editRequiresZone').checked = game.requires_zone_id;
+    document.getElementById('editIsAutomated').checked = game.is_automated;
+    document.getElementById('editIsActive').checked = game.is_active !== false;
+    openModal('editGameModal');
+}
+</script>
+{% endblock %}

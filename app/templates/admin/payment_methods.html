@@ -1,0 +1,236 @@
+{% extends 'admin/base.html' %}
+{% block title %}Métodos de Pago{% endblock %}
+{% block page_title %}Métodos de Pago{% endblock %}
+
+{% block content %}
+<div class="page-actions">
+    <button class="btn-primary" onclick="openPmModal()">+ Agregar Método</button>
+</div>
+
+<div class="admin-card">
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr>
+                <th>Logo</th>
+                <th>Nombre</th>
+                <th>Código</th>
+                <th>Orden</th>
+                <th>Usa tasa Bs</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for m in methods %}
+                <tr>
+                    <td>
+                        {% if m.logo %}
+                        <img src="{{ url_for('static', filename='uploads/' + m.logo) }}" alt="{{ m.name }}" class="table-thumb">
+                        {% else %}
+                        <div class="table-thumb-placeholder">{{ m.name[0] | upper }}</div>
+                        {% endif %}
+                    </td>
+                    <td>{{ m.name }}</td>
+                    <td><code>{{ m.code }}</code></td>
+                    <td>{{ m.sort_order }}</td>
+                    <td>
+                        <span class="badge {{ 'badge-active' if m.uses_rate else 'badge-inactive' }}">
+                            {{ 'Sí' if m.uses_rate else 'No' }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge {{ 'badge-active' if m.is_active else 'badge-inactive' }}">
+                            {{ 'Activo' if m.is_active else 'Inactivo' }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-outline edit-pm-btn"
+                                    data-id="{{ m.id }}"
+                                    data-name="{{ m.name }}"
+                                    data-code="{{ m.code }}"
+                                    data-order="{{ m.sort_order }}"
+                                    data-active="{{ 1 if m.is_active else 0 }}"
+                                    data-contact-email="{{ m.contact_email or '' }}"
+                                    data-pay-id="{{ m.pay_id or '' }}"
+                                    data-contact-phone="{{ m.contact_phone or '' }}"
+                                    data-bank-name="{{ m.bank_name or '' }}"
+                                    data-id-number="{{ m.id_number or '' }}"
+                                    data-account-currency="{{ m.account_currency or 'bs' }}"
+                                    data-show-contact-email="{{ 1 if m.show_contact_email else 0 }}"
+                                    data-show-pay-id="{{ 1 if m.show_pay_id else 0 }}"
+                                    data-show-contact-phone="{{ 1 if m.show_contact_phone else 0 }}"
+                                    data-uses-rate="{{ 1 if m.uses_rate else 0 }}">
+                                Editar
+                            </button>
+                            <form method="POST" action="{{ url_for('admin_bp.payment_method_delete', method_id=m.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit"
+                                        onclick="return confirm('¿Desactivar método de pago?')">Off</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6" class="empty-row">No hay métodos de pago configurados.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add / Edit Modal -->
+<div class="modal-overlay" id="pmModal" style="display:none">
+    <div class="modal-box modal-lg">
+        <div class="modal-header">
+            <h3 id="pmModalTitle">Agregar Método</h3>
+            <button onclick="closePmModal()">✕</button>
+        </div>
+        <form method="POST" id="pmForm" enctype="multipart/form-data">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label>Nombre visible *</label>
+                    <input type="text" name="name" id="pmName" required placeholder="Banco de Venezuela">
+                </div>
+                <div class="form-group">
+                    <label>Código interno *</label>
+                    <input type="text" name="code" id="pmCode" required placeholder="bdv">
+                    <p class="form-hint">Se usa en el checkout (ej: <code>bdv</code>, <code>binance</code>).</p>
+                </div>
+                <div class="form-group">
+                    <label>Correo (opcional)</label>
+                    <input type="text" name="contact_email" id="pmContactEmail" placeholder="correo@ejemplo.com">
+                </div>
+                <div class="form-group">
+                    <label>Pay ID (opcional)</label>
+                    <input type="text" name="pay_id" id="pmPayId" placeholder="Pay ID / Binance Pay">
+                </div>
+                <div class="form-group">
+                    <label>Teléfono (opcional)</label>
+                    <input type="text" name="contact_phone" id="pmContactPhone" placeholder="+58...">
+                </div>
+                <div class="form-group">
+                    <label>Banco (opcional)</label>
+                    <input type="text" name="bank_name" id="pmBankName" placeholder="Banco de Venezuela">
+                </div>
+                <div class="form-group">
+                    <label>Cédula / ID (opcional)</label>
+                    <input type="text" name="id_number" id="pmIdNumber" placeholder="V-12345678">
+                </div>
+                <div class="form-group">
+                    <label>Moneda de la cuenta</label>
+                    <select name="account_currency" id="pmAccountCurrency">
+                        <option value="bs">Bs</option>
+                        <option value="usd">USD</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Orden</label>
+                    <input type="number" name="sort_order" id="pmOrder" value="100" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Logo</label>
+                    <input type="file" name="logo" accept="image/*">
+                    <p class="form-hint">Recomendado: imagen horizontal tipo banner.</p>
+                </div>
+            </div>
+            <div class="form-checks">
+                <label class="check-label">
+                    <input type="checkbox" name="is_active" id="pmActive" checked> Activo
+                </label>
+                <label class="check-label">
+                    <input type="checkbox" name="uses_rate" id="pmUsesRate" checked> Usar tasa en Bs
+                </label>
+            </div>
+            <div class="form-checks" style="margin-top:10px;">
+                <label class="check-label">
+                    <input type="checkbox" name="show_contact_email" id="pmShowContactEmail"> Mostrar correo al cliente
+                </label>
+                <label class="check-label">
+                    <input type="checkbox" name="show_pay_id" id="pmShowPayId"> Mostrar Pay ID al cliente
+                </label>
+                <label class="check-label">
+                    <input type="checkbox" name="show_contact_phone" id="pmShowContactPhone"> Mostrar teléfono al cliente
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closePmModal()" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openPmModal() {
+    const form = document.getElementById('pmForm');
+    form.action = "{{ url_for('admin_bp.payment_method_add') }}";
+    document.getElementById('pmModalTitle').textContent = 'Agregar Método';
+    document.getElementById('pmName').value = '';
+    document.getElementById('pmCode').value = '';
+    document.getElementById('pmContactEmail').value = '';
+    document.getElementById('pmPayId').value = '';
+    document.getElementById('pmContactPhone').value = '';
+    document.getElementById('pmBankName').value = '';
+    document.getElementById('pmIdNumber').value = '';
+    document.getElementById('pmAccountCurrency').value = 'bs';
+    document.getElementById('pmOrder').value = 100;
+    document.getElementById('pmActive').checked = true;
+    document.getElementById('pmUsesRate').checked = true;
+    document.getElementById('pmShowContactEmail').checked = false;
+    document.getElementById('pmShowPayId').checked = false;
+    document.getElementById('pmShowContactPhone').checked = false;
+    document.getElementById('pmModal').style.display = 'flex';
+}
+
+function openEditPm(id, name, code, order, isActive, contactEmail, payId, contactPhone, bankName, idNumber, accountCurrency, showContactEmail, showPayId, showContactPhone, usesRate) {
+    const form = document.getElementById('pmForm');
+    form.action = '/admin/payment-methods/' + id + '/edit';
+    document.getElementById('pmModalTitle').textContent = 'Editar Método';
+    document.getElementById('pmName').value = name;
+    document.getElementById('pmCode').value = code;
+    document.getElementById('pmContactEmail').value = contactEmail || '';
+    document.getElementById('pmPayId').value = payId || '';
+    document.getElementById('pmContactPhone').value = contactPhone || '';
+    document.getElementById('pmBankName').value = bankName || '';
+    document.getElementById('pmIdNumber').value = idNumber || '';
+    document.getElementById('pmAccountCurrency').value = (accountCurrency || 'bs');
+    document.getElementById('pmOrder').value = order;
+    document.getElementById('pmActive').checked = isActive;
+    document.getElementById('pmUsesRate').checked = usesRate === 1;
+    document.getElementById('pmShowContactEmail').checked = showContactEmail === 1;
+    document.getElementById('pmShowPayId').checked = showPayId === 1;
+    document.getElementById('pmShowContactPhone').checked = showContactPhone === 1;
+    document.getElementById('pmModal').style.display = 'flex';
+}
+
+document.querySelectorAll('.edit-pm-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        openEditPm(
+            parseInt(this.dataset.id, 10),
+            this.dataset.name || '',
+            this.dataset.code || '',
+            parseInt(this.dataset.order || '100', 10),
+            (this.dataset.active === '1'),
+            this.dataset.contactEmail || '',
+            this.dataset.payId || '',
+            this.dataset.contactPhone || '',
+            this.dataset.bankName || '',
+            this.dataset.idNumber || '',
+            this.dataset.accountCurrency || 'bs',
+            parseInt(this.dataset.showContactEmail || '0', 10),
+            parseInt(this.dataset.showPayId || '0', 10),
+            parseInt(this.dataset.showContactPhone || '0', 10),
+            parseInt(this.dataset.usesRate || '1', 10)
+        );
+    });
+});
+
+function closePmModal() {
+    document.getElementById('pmModal').style.display = 'none';
+}
+</script>
+{% endblock %}
+

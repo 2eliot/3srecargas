@@ -1,0 +1,158 @@
+{% extends 'admin/base.html' %}
+{% block title %}Afiliados{% endblock %}
+{% block page_title %}Sistema de Afiliados{% endblock %}
+
+{% block content %}
+<div class="page-actions">
+    <button class="btn-primary" onclick="openModal('addAffModal')">+ Nuevo Afiliado</button>
+</div>
+
+<div class="admin-card">
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Código</th>
+                    <th>Email</th>
+                    <th>Comisión</th>
+                    <th>Balance</th>
+                    <th>Total Ganado</th>
+                    <th>Órdenes</th>
+                    <th>Estado</th>
+                    <th>Link</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for aff in affiliates %}
+                <tr>
+                    <td><strong>{{ aff.name }}</strong></td>
+                    <td><code class="ref-code">{{ aff.code }}</code></td>
+                    <td>{{ aff.email or '—' }}</td>
+                    <td>{{ aff.commission_rate }}%</td>
+                    <td class="{{ 'text-success' if aff.balance > 0 }}">${{ "%.2f"|format(aff.balance) }}</td>
+                    <td>${{ "%.2f"|format(aff.total_earned) }}</td>
+                    <td>{{ aff.orders | length }}</td>
+                    <td>
+                        <span class="badge {% if aff.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                            {{ 'Activo' if aff.is_active else 'Inactivo' }}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn-sm btn-outline" onclick="copyLink('{{ request.host_url }}r/{{ aff.code }}')">
+                            Copiar Link
+                        </button>
+                    </td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-outline"
+                                    onclick="openEditAff({{ aff.id }}, '{{ aff.name }}', '{{ aff.email or '' }}', {{ aff.commission_rate }}, {{ aff.is_active | lower }})">
+                                Editar
+                            </button>
+                            {% if aff.balance > 0 %}
+                            <form method="POST" action="{{ url_for('admin_bp.affiliate_pay', aff_id=aff.id) }}" style="display:inline">
+                                <button class="btn-sm btn-success" type="submit"
+                                        onclick="return confirm('Marcar comisiones como pagadas?')">Pagar</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="10" class="empty-row">No hay afiliados registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Affiliate Modal -->
+<div class="modal-overlay" id="addAffModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>Nuevo Afiliado</h3>
+            <button onclick="closeModal('addAffModal')">✕</button>
+        </div>
+        <form method="POST" action="{{ url_for('admin_bp.affiliate_add') }}">
+            <div class="form-group">
+                <label>Nombre *</label>
+                <input type="text" name="name" required placeholder="Juan Pérez">
+            </div>
+            <div class="form-group">
+                <label>Código único *</label>
+                <input type="text" name="code" required placeholder="JUAN10"
+                       style="text-transform:uppercase" maxlength="20">
+                <p class="form-hint">El afiliado compartirá: tudominio.com/r/CÓDIGO</p>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" name="email" placeholder="juan@email.com">
+            </div>
+            <div class="form-group">
+                <label>Comisión (%)</label>
+                <input type="number" name="commission_rate" value="5" step="0.5" min="0" max="100">
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('addAffModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Crear Afiliado</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Affiliate Modal -->
+<div class="modal-overlay" id="editAffModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>Editar Afiliado</h3>
+            <button onclick="closeModal('editAffModal')">✕</button>
+        </div>
+        <form method="POST" id="editAffForm">
+            <div class="form-group">
+                <label>Nombre *</label>
+                <input type="text" name="name" id="editAffName" required>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" name="email" id="editAffEmail">
+            </div>
+            <div class="form-group">
+                <label>Comisión (%)</label>
+                <input type="number" name="commission_rate" id="editAffRate" step="0.5" min="0" max="100">
+            </div>
+            <div class="form-checks">
+                <label class="check-label">
+                    <input type="checkbox" name="is_active" id="editAffActive"> Activo
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('editAffModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Actualizar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function openEditAff(id, name, email, rate, isActive) {
+    document.getElementById('editAffForm').action = '/admin/affiliates/' + id + '/edit';
+    document.getElementById('editAffName').value = name;
+    document.getElementById('editAffEmail').value = email;
+    document.getElementById('editAffRate').value = rate;
+    document.getElementById('editAffActive').checked = isActive;
+    openModal('editAffModal');
+}
+
+function copyLink(url) {
+    navigator.clipboard.writeText(url).then(function() {
+        alert('Link copiado: ' + url);
+    });
+}
+</script>
+{% endblock %}

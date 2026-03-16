@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Perfil — 3S Recargas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <style>
+        .profile-container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .profile-header {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .profile-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .profile-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: 700;
+        }
+        .profile-details h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .profile-details p {
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+        .orders-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 24px;
+        }
+        .orders-section h2 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .order-item {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: all var(--transition);
+        }
+        .order-item:hover {
+            border-color: var(--accent);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .order-number {
+            font-weight: 600;
+            color: var(--accent);
+        }
+        .order-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-pending {
+            background: rgba(245,158,11,0.1);
+            color: var(--warning);
+        }
+        .status-approved {
+            background: rgba(34,197,94,0.1);
+            color: var(--success);
+        }
+        .status-completed {
+            background: rgba(244,63,94,0.1);
+            color: var(--accent);
+        }
+        .status-rejected {
+            background: rgba(239,68,68,0.1);
+            color: var(--danger);
+        }
+        .order-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            font-size: 14px;
+        }
+        .order-detail {
+            display: flex;
+            flex-direction: column;
+        }
+        .order-detail-label {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-bottom: 2px;
+        }
+        .order-detail-value {
+            font-weight: 500;
+        }
+        .empty-orders {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+        .btn-logout {
+            background: var(--danger);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+        .btn-logout:hover {
+            background: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="{{ url_for('main_bp.index') }}" class="logo-link">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="3S Recargas" class="logo-img"
+                     onerror="this.style.display='none';document.getElementById('logo-text').style.display='flex'">
+                <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
+            </a>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <span style="color: var(--text-muted);">Hola, {{ current_user.username }}</span>
+                <a href="{{ url_for('main_bp.index') }}" class="btn-admin">← Tienda</a>
+                <form method="POST" action="{{ url_for('auth_bp.logout') }}" style="display: inline;">
+                    <button type="submit" class="btn-logout">Cerrar Sesión</button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <main class="profile-container">
+        <div class="profile-header">
+            <div class="profile-info">
+                <div class="profile-avatar">
+                    {{ current_user.username[0].upper() }}
+                </div>
+                <div class="profile-details">
+                    <h1>{{ current_user.username }}</h1>
+                    <p>📧 {{ current_user.email }}</p>
+                    {% if current_user.phone %}
+                    <p>📱 {{ current_user.phone }}</p>
+                    {% endif %}
+                    <p>📅 Miembro desde {{ current_user.created_at.strftime('%d/%m/%Y') }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="orders-section">
+            <h2>Mis Órdenes</h2>
+            {% if orders %}
+                {% for order in orders %}
+                <div class="order-item">
+                    <div class="order-header">
+                        <span class="order-number">#{{ order.order_number }}</span>
+                        <span class="order-status status-{{ order.status }}">{{ order.status_label }}</span>
+                    </div>
+                    <div class="order-details">
+                        <div class="order-detail">
+                            <span class="order-detail-label">Juego</span>
+                            <span class="order-detail-value">{{ order.game.name }}</span>
+                        </div>
+                        <div class="order-detail">
+                            <span class="order-detail-label">Paquete</span>
+                            <span class="order-detail-value">{{ order.package.name }}</span>
+                        </div>
+                        <div class="order-detail">
+                            <span class="order-detail-label">Monto</span>
+                            <span class="order-detail-value">${{ order.amount }}</span>
+                        </div>
+                        <div class="order-detail">
+                            <span class="order-detail-label">Fecha</span>
+                            <span class="order-detail-value">{{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-orders">
+                    <p>📦 No tienes órdenes aún</p>
+                    <p><a href="{{ url_for('main_bp.index') }}" style="color: var(--accent);">Ir a la tienda</a></p>
+                </div>
+            {% endif %}
+        </div>
+    </main>
+</body>
+</html>

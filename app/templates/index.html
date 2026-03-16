@@ -1,0 +1,213 @@
+{% extends 'base.html' %}
+
+{% block title %}3S Recargas — Recarga Fácil y Rápida{% endblock %}
+
+{% block content %}
+<div class="store-wrap">
+
+    <!-- Category Selector -->
+    <section class="categories-bar">
+        <div class="categories-inner">
+            {% for cat in categories %}
+            <button
+                class="cat-btn {% if active_category.slug == cat.slug %}active{% endif %}"
+                data-category="{{ cat.slug }}"
+                data-label="{{ cat.name }}"
+            >
+                <span>{{ cat.name }}</span>
+            </button>
+            {% endfor %}
+        </div>
+    </section>
+
+    <div class="store-main">
+        <!-- Game Section -->
+        <section class="games-section" id="gamesSection">
+            <div class="games-carousel">
+                <button class="carousel-nav prev" id="gamesPrev" aria-label="Anterior">
+                    <span>‹</span>
+                </button>
+
+                <div class="games-grid" id="gamesGrid">
+
+                    {% for game in games %}
+                    <div class="game-card {% if game.is_automated %}is-automated{% endif %}"
+                         data-game-id="{{ game.id }}"
+                         data-game-name="{{ game.name }}">
+                        <div class="game-img-wrapper">
+                            {% if game.image %}
+                            <img src="{{ url_for('static', filename='uploads/' + game.image) }}"
+                                 alt="{{ game.name }}" loading="lazy">
+                            {% else %}
+                            <div class="game-img-placeholder">
+                                <span>{{ game.name[0] | upper }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="game-title">{{ game.name }}</div>
+                    </div>
+                    {% else %}
+                    <div class="empty-state">
+                        <p>No hay productos en esta categoría aún.</p>
+                    </div>
+                    {% endfor %}
+
+                </div>
+
+                <button class="carousel-nav next" id="gamesNext" aria-label="Siguiente">
+                    <span>›</span>
+                </button>
+            </div>
+
+            <!-- Packages Panel – inserted into grid via JS -->
+            <div class="packages-panel" id="packagesPanel" style="display:none">
+                <div class="packages-panel-header">
+                    <div class="panel-title-row">
+                        <span class="panel-game-icon" id="panelGameIcon"></span>
+                        <h3 id="packagesPanelTitle"></h3>
+                    </div>
+                    <button class="close-packages-btn" onclick="closePackages()" aria-label="Cerrar">✕</button>
+                </div>
+                <p class="panel-hint">Selecciona un paquete para continuar</p>
+                <div class="packages-grid" id="packagesGrid">
+                    <div class="pkg-loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Quick Checkout Sidebar -->
+        <aside class="order-sidebar">
+
+            <form method="POST" id="quickCheckoutForm">
+                <input type="hidden" name="stage" value="init">
+                <!-- Paso 1: ID del jugador -->
+                <div class="step-card" id="playerSection">
+                    <div class="step-card-header">
+                        <div class="step-badge">1</div>
+                        <div>
+                            <h3 class="step-title" id="playerIdLabel">Ingresa tu ID</h3>
+                        </div>
+                    </div>
+                    <div class="step-body">
+                        <div class="player-input-row" id="playerRow">
+                            <input type="text" id="playerId" name="player_id"
+                                   placeholder="Ingresa tu ID" />
+                            <button type="button" class="verify-btn">Verificar</button>
+                        </div>
+                        <div class="form-row" id="zoneIdGroup">
+                            <div class="form-group">
+                                <label for="zoneId" id="zoneIdLabel">Zona / Región</label>
+                                <input type="text" id="zoneId" name="zone_id" placeholder="Zona / Región">
+                            </div>
+                        </div>
+                        <p class="form-hint" id="playerHint">
+                            Verifica que tu ID sea correcto antes de pagar.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Paso 3: Método de pago -->
+                <div class="step-card">
+                    <div class="step-card-header">
+                        <div class="step-badge">3</div>
+                        <div>
+                            <h3 class="step-title">Seleccione un método de pago</h3>
+                        </div>
+                    </div>
+                    <div class="step-body">
+                        <div class="payment-card-list">
+                            {% for m in payment_methods %}
+                            <label class="payment-card">
+                                <input type="radio" name="payment_method"
+                                       value="{{ m.code }}"
+                                       data-uses-rate="{{ 1 if m.uses_rate else 0 }}"
+                                       data-account-currency="{{ m.account_currency or 'bs' }}"
+                                       data-contact-email="{{ m.contact_email or '' }}"
+                                       data-pay-id="{{ m.pay_id or '' }}"
+                                       data-contact-phone="{{ m.contact_phone or '' }}"
+                                       data-bank-name="{{ m.bank_name or '' }}"
+                                       data-id-number="{{ m.id_number or '' }}"
+                                       data-show-contact-email="{{ 1 if m.show_contact_email else 0 }}"
+                                       data-show-pay-id="{{ 1 if m.show_pay_id else 0 }}"
+                                       data-show-contact-phone="{{ 1 if m.show_contact_phone else 0 }}"
+                                       {% if loop.first %}checked{% endif %}>
+                                <div class="payment-card-inner">
+                                    {% if m.logo %}
+                                    <img src="{{ url_for('static', filename='uploads/' + m.logo) }}"
+                                         alt="{{ m.name }}" class="payment-logo">
+                                    {% else %}
+                                    <span class="payment-text">{{ m.name }}</span>
+                                    {% endif %}
+                                </div>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <div class="total-row">
+                            <span>Total</span>
+                            <div class="total-values">
+                                <span id="sidebarTotal">-</span>
+                                <span id="sidebarTotalBs" class="total-bs d-none">≈ Bs 0,00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Paso 4: Datos de contacto -->
+                <div class="step-card">
+                    <div class="step-card-header">
+                        <div class="step-badge">4</div>
+                        <div>
+                            <h3 class="step-title">Ingresa tus datos</h3>
+                        </div>
+                    </div>
+                    <div class="step-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="email">Correo de contacto</label>
+                                <input type="email" id="email" name="email" placeholder="Correo de contacto">
+                            </div>
+                            <div class="form-group">
+                                <label for="phone">Número de teléfono</label>
+                                <input type="tel" id="phone" name="phone" placeholder="Número de teléfono">
+                            </div>
+                        </div>
+                        <div class="discount-box">
+                            <label for="affiliate_code">CÓDIGO DE DESCUENTO (opcional)</label>
+                            <input type="text" id="affiliate_code" name="affiliate_code"
+                                   placeholder="CÓDIGO" style="text-transform:uppercase">
+                        </div>
+                        <label class="checkbox-row">
+                            <input type="checkbox" name="remember_data">
+                            <span>Guardar datos para futuras compras</span>
+                        </label>
+                    </div>
+                </div>
+
+                <input type="hidden" name="selected_package_id" id="selectedPackageId">
+
+                <button type="submit" class="submit-btn submit-btn-green" id="sidebarSubmitBtn" disabled>
+                    <span id="sidebarSubmitLabel">Selecciona un paquete para continuar</span>
+                </button>
+            </form>
+        </aside>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    window.ACTIVE_CATEGORY = "{{ active_category.slug }}";
+    window.USD_RATE_BS = {{ usd_rate|default(0)|safe }};
+    window.DEFAULT_PACKAGE_ID = {{ default_package_id if default_package_id is not none else 'null'|safe }};
+    
+    // Cargar descuentos válidos
+    fetch('/api/discounts')
+        .then(r => r.json())
+        .then(data => {
+            window.validDiscounts = data.discounts;
+        });
+</script>
+{% endblock %}

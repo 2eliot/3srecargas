@@ -1,0 +1,204 @@
+{% extends 'admin/base.html' %}
+{% block title %}Paquetes{% endblock %}
+{% block page_title %}Gestión de Paquetes{% endblock %}
+
+{% block content %}
+<div class="page-actions">
+    <div class="filter-select-wrap">
+        <select onchange="window.location.href='/admin/packages?game_id='+this.value">
+            <option value="">— Todos los juegos —</option>
+            {% for g in games %}
+            <option value="{{ g.id }}" {{ 'selected' if selected_game_id == g.id }}>{{ g.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button class="btn-primary" onclick="openModal('addPkgModal')">+ Agregar Paquete</button>
+</div>
+
+<div class="admin-card">
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Imagen</th>
+                    <th>Nombre</th>
+                    <th>Juego</th>
+                    <th>Precio</th>
+                    <th>Orden</th>
+                    <th>Auto</th>
+                    <th>PINs</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pkg in packages %}
+                <tr>
+                    <td>
+                        {% if pkg.image %}
+                        <img src="{{ url_for('static', filename='uploads/' + pkg.image) }}"
+                             alt="{{ pkg.name }}" class="table-thumb">
+                        {% else %}
+                        <div class="table-thumb-placeholder">{{ pkg.name[0] | upper }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="cell-stack">
+                            <strong>{{ pkg.name }}</strong>
+                            {% if pkg.description %}<small>{{ pkg.description[:50] }}</small>{% endif %}
+                        </div>
+                    </td>
+                    <td>{{ pkg.game.name }}</td>
+                    <td><strong>${{ "%.2f"|format(pkg.price) }}</strong></td>
+                    <td>{{ pkg.sort_order }}</td>
+                    <td>{% if pkg.is_automated %}<span class="badge badge-auto">⚡ Sí</span>{% else %}—{% endif %}</td>
+                    <td>
+                        {% if pkg.is_automated %}
+                        <a href="{{ url_for('admin_bp.pins', package_id=pkg.id) }}"
+                           class="badge {% if pkg.pin_count < 5 %}badge-danger{% else %}badge-active{% endif %}">
+                            {{ pkg.pin_count }} PINs
+                        </a>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        <span class="badge {% if pkg.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                            {{ 'Activo' if pkg.is_active else 'Inactivo' }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-outline"
+                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name }}', '{{ pkg.price }}', '{{ pkg.description or '' }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }})">
+                                Editar
+                            </button>
+                            <form method="POST" action="{{ url_for('admin_bp.package_delete', pkg_id=pkg.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit"
+                                        onclick="return confirm('¿Desactivar paquete?')">Off</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="9" class="empty-row">No hay paquetes. Agrega el primero.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Package Modal -->
+<div class="modal-overlay" id="addPkgModal" style="display:none">
+    <div class="modal-box modal-lg">
+        <div class="modal-header">
+            <h3>Agregar Paquete</h3>
+            <button onclick="closeModal('addPkgModal')">✕</button>
+        </div>
+        <form method="POST" action="{{ url_for('admin_bp.package_add') }}" enctype="multipart/form-data">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label>Juego *</label>
+                    <select name="game_id" required>
+                        <option value="">Selecciona un juego</option>
+                        {% for g in games %}
+                        <option value="{{ g.id }}" {{ 'selected' if selected_game_id == g.id }}>{{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Nombre *</label>
+                    <input type="text" name="name" required placeholder="100 Diamantes">
+                </div>
+                <div class="form-group">
+                    <label>Precio (USD) *</label>
+                    <input type="number" name="price" step="0.01" min="0.01" required placeholder="9.99">
+                </div>
+                <div class="form-group">
+                    <label>Orden</label>
+                    <input type="number" name="sort_order" value="100" min="1">
+                </div>
+                <div class="form-group form-span-2">
+                    <label>Descripción</label>
+                    <input type="text" name="description" placeholder="Descripción corta del paquete">
+                </div>
+                <div class="form-group">
+                    <label>Imagen del Ítem (mini)</label>
+                    <input type="file" name="image" accept="image/*">
+                </div>
+            </div>
+            <div class="form-checks">
+                <label class="check-label">
+                    <input type="checkbox" name="is_automated"> Paquete automatizado ⚡ (usa stock de PINs)
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('addPkgModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Package Modal -->
+<div class="modal-overlay" id="editPkgModal" style="display:none">
+    <div class="modal-box modal-lg">
+        <div class="modal-header">
+            <h3>Editar Paquete</h3>
+            <button onclick="closeModal('editPkgModal')">✕</button>
+        </div>
+        <form method="POST" id="editPkgForm" enctype="multipart/form-data">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label>Nombre *</label>
+                    <input type="text" name="name" id="editPkgName" required>
+                </div>
+                <div class="form-group">
+                    <label>Precio (USD) *</label>
+                    <input type="number" name="price" id="editPkgPrice" step="0.01" min="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Orden</label>
+                    <input type="number" name="sort_order" id="editPkgOrder" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Nueva Imagen (opcional)</label>
+                    <input type="file" name="image" accept="image/*">
+                </div>
+                <div class="form-group form-span-2">
+                    <label>Descripción</label>
+                    <input type="text" name="description" id="editPkgDesc">
+                </div>
+            </div>
+            <div class="form-checks">
+                <label class="check-label">
+                    <input type="checkbox" name="is_automated" id="editPkgAuto"> Automatizado ⚡
+                </label>
+                <label class="check-label">
+                    <input type="checkbox" name="is_active" id="editPkgActive"> Activo
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('editPkgModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Actualizar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function openEditPkg(id, name, price, desc, order, isAuto, isActive) {
+    document.getElementById('editPkgForm').action = '/admin/packages/' + id + '/edit';
+    document.getElementById('editPkgName').value = name;
+    document.getElementById('editPkgPrice').value = price;
+    document.getElementById('editPkgDesc').value = desc;
+    document.getElementById('editPkgOrder').value = order;
+    document.getElementById('editPkgAuto').checked = isAuto;
+    document.getElementById('editPkgActive').checked = isActive;
+    openModal('editPkgModal');
+}
+</script>
+{% endblock %}

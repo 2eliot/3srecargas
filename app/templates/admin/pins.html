@@ -1,0 +1,100 @@
+{% extends 'admin/base.html' %}
+{% block title %}Stock PINs{% endblock %}
+{% block page_title %}Gestión de Stock PINs{% endblock %}
+
+{% block content %}
+<!-- Package Selector -->
+<div class="admin-card" style="margin-bottom:16px">
+    <h3 style="margin-bottom:12px">Selecciona un paquete automatizado</h3>
+    <div class="pkg-selector-grid">
+        {% for pkg in automated_packages %}
+        <a href="{{ url_for('admin_bp.pins', package_id=pkg.id) }}"
+           class="pkg-selector-card {% if selected_package and selected_package.id == pkg.id %}active{% endif %}">
+            <div class="pkg-sel-name">{{ pkg.game.name }}</div>
+            <div class="pkg-sel-pkg">{{ pkg.name }}</div>
+            <div class="pkg-sel-count {% if pkg.pin_count < 5 %}low{% endif %}">
+                {{ pkg.pin_count }} disponibles
+            </div>
+        </a>
+        {% else %}
+        <p class="empty-state">No hay paquetes automatizados. Crea un paquete y marca la opción "Automatizado".</p>
+        {% endfor %}
+    </div>
+</div>
+
+{% if selected_package %}
+<!-- Upload PINs -->
+<div class="admin-card" style="margin-bottom:16px">
+    <div class="card-header">
+        <h3>Cargar PINs — {{ selected_package.game.name }} / {{ selected_package.name }}</h3>
+        <span class="badge {% if selected_package.pin_count < 5 %}badge-danger{% else %}badge-active{% endif %}">
+            {{ selected_package.pin_count }} disponibles
+        </span>
+    </div>
+    <form method="POST" action="{{ url_for('admin_bp.pins_upload', package_id=selected_package.id) }}">
+        <div class="form-group">
+            <label>PINs / Códigos (uno por línea)</label>
+            <textarea name="pins_text" rows="8"
+                      placeholder="PIN001&#10;PIN002&#10;ABC-XYZ-123&#10;..."></textarea>
+            <p class="form-hint">Pega los códigos, uno por línea. Se agregarán al stock existente.</p>
+        </div>
+        <button type="submit" class="btn-primary">Cargar PINs</button>
+    </form>
+</div>
+
+<!-- PIN List -->
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Inventario de PINs</h3>
+        <span>{{ pins_list | length }} total</span>
+    </div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Código PIN</th>
+                    <th>Estado</th>
+                    <th>Cargado</th>
+                    <th>Usado</th>
+                    <th>Orden</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pin in pins_list %}
+                <tr class="{{ 'row-used' if pin.is_used }}">
+                    <td>{{ pin.id }}</td>
+                    <td><code class="pin-code-cell">{{ pin.code }}</code></td>
+                    <td>
+                        {% if pin.is_used %}
+                        <span class="badge badge-inactive">Usado</span>
+                        {% else %}
+                        <span class="badge badge-active">Disponible</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ pin.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ pin.used_at.strftime('%d/%m/%Y %H:%M') if pin.used_at else '—' }}</td>
+                    <td>
+                        {% if pin.order_id %}
+                        <a href="{{ url_for('admin_bp.orders') }}" class="link-sm">#{{ pin.order_id }}</a>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        {% if not pin.is_used %}
+                        <form method="POST" action="{{ url_for('admin_bp.pin_delete', pin_id=pin.id) }}" style="display:inline">
+                            <button class="btn-sm btn-danger" type="submit"
+                                    onclick="return confirm('¿Eliminar PIN?')">Eliminar</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="empty-row">No hay PINs cargados para este paquete.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

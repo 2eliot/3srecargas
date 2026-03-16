@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Configuration
+.env
+.env.*
+*.log
+
+# Databases & uploads
+dev.db
+*.sqlite3
+app/static/uploads/**
+!app/static/uploads/.gitkeep
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.egg-info/
+.Python
+pip-wheel-metadata/
+
+# Node/cache
+node_modules/
