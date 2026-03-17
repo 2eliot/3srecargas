@@ -1,0 +1,198 @@
+{% extends "admin/base.html" %}
+{% block title %}Mapeo Revendedores{% endblock %}
+{% block page_title %}Mapeo Revendedores{% endblock %}
+
+{% block content %}
+<div style="max-width:900px;">
+  <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center;">
+    <select id="rev-game-filter" class="form-control" style="max-width:250px; padding:8px 12px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0;">
+      <option value="">Todos los juegos</option>
+    </select>
+    <button id="btn-rev-sync" class="btn btn-primary" style="padding:8px 18px; border-radius:8px; background:#6366f1; color:#fff; border:none; cursor:pointer; font-weight:500;">
+      Sincronizar Catálogo
+    </button>
+    <button id="btn-rev-save" class="btn btn-success" style="padding:8px 18px; border-radius:8px; background:#22c55e; color:#fff; border:none; cursor:pointer; font-weight:500;">
+      Guardar Mapeo
+    </button>
+    <button id="btn-rev-refresh" style="padding:8px 18px; border-radius:8px; background:#334155; color:#e2e8f0; border:none; cursor:pointer; font-weight:500;">
+      Refrescar
+    </button>
+  </div>
+
+  <div id="rev-map-list" style="display:flex; flex-direction:column; gap:12px;">
+    <p style="color:#94a3b8;">Cargando datos de mapeo...</p>
+  </div>
+</div>
+
+<div id="toast-container" style="position:fixed; top:20px; right:20px; z-index:9999;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+  const gameFilter = document.getElementById('rev-game-filter');
+  const mapList = document.getElementById('rev-map-list');
+  const btnSync = document.getElementById('btn-rev-sync');
+  const btnSave = document.getElementById('btn-rev-save');
+  const btnRefresh = document.getElementById('btn-rev-refresh');
+
+  let mappingData = null;
+
+  function toast(msg) {
+    const d = document.createElement('div');
+    d.style.cssText = 'background:#1e293b; color:#e2e8f0; padding:12px 20px; border-radius:10px; margin-bottom:8px; box-shadow:0 4px 12px rgba(0,0,0,.4); max-width:420px; white-space:pre-wrap; font-size:13px; border:1px solid #334155;';
+    d.textContent = msg;
+    document.getElementById('toast-container').appendChild(d);
+    setTimeout(() => d.remove(), 8000);
+  }
+
+  async function fetchMappingData(gameId) {
+    const url = gameId ? `/admin/revendedores/mapping-data?game_id=${gameId}` : '/admin/revendedores/mapping-data';
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Error cargando datos');
+    mappingData = data;
+    renderGames(data.games);
+    renderMapping(data);
+  }
+
+  function renderGames(games) {
+    const current = gameFilter.value;
+    gameFilter.innerHTML = '<option value="">Todos los juegos</option>';
+    (games || []).forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = g.name;
+      if (String(g.id) === String(current)) opt.selected = true;
+      gameFilter.appendChild(opt);
+    });
+  }
+
+  function renderMapping(data) {
+    const packages = data.store_packages || [];
+    const remoteCatalog = data.remote_catalog || [];
+    const mappings = data.mappings || [];
+    const mappingMap = {};
+    mappings.forEach(m => { mappingMap[m.store_package_id] = m; });
+
+    if (!packages.length) {
+      mapList.innerHTML = '<p style="color:#94a3b8;">No hay paquetes para este juego.</p>';
+      return;
+    }
+
+    let html = '';
+    packages.forEach(pkg => {
+      const mapping = mappingMap[pkg.id];
+      const mappedCatalogId = mapping ? mapping.catalog_id : null;
+      const autoEnabled = mapping ? mapping.auto_enabled : false;
+
+      // Build optgroup-based dropdown
+      const groups = {};
+      remoteCatalog.forEach(rc => {
+        const gName = (rc.remote_product_name || '').trim() || 'Otro';
+        if (!groups[gName]) groups[gName] = [];
+        groups[gName].push(rc);
+      });
+      let optionsHtml = '<option value="">Manual (sin mapeo)</option>';
+      Object.keys(groups).sort().forEach(gName => {
+        optionsHtml += `<optgroup label="${gName}">`;
+        groups[gName].forEach(rc => {
+          const selected = mappedCatalogId && parseInt(mappedCatalogId, 10) === parseInt(rc.catalog_id, 10) ? 'selected' : '';
+          const pkgName = (rc.remote_package_name || '').trim() || ('Paquete ' + rc.remote_package_id);
+          const priceTag = rc.price != null ? ` ($${Number(rc.price).toFixed(2)})` : '';
+          optionsHtml += `<option value="${rc.catalog_id}" ${selected}>${pkgName}${priceTag}</option>`;
+        });
+        optionsHtml += '</optgroup>';
+      });
+
+      html += `
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:14px; background:#1e293b; border-radius:10px; border:1px solid #334155; align-items:center;">
+          <div>
+            <div style="font-weight:600; color:#e2e8f0;">${pkg.game_name} — ${pkg.name}</div>
+            <div style="font-size:12px; color:#94a3b8;">ID ${pkg.id} · USD ${Number(pkg.price).toFixed(2)}</div>
+          </div>
+          <div style="display:grid; gap:8px;">
+            <select class="rev-catalog-select" data-pkg-id="${pkg.id}" style="padding:6px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;">
+              ${optionsHtml}
+            </select>
+            <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd5e1;">
+              <input type="checkbox" class="rev-auto-chk" data-pkg-id="${pkg.id}" ${autoEnabled ? 'checked' : ''}>
+              Recarga automática
+            </label>
+          </div>
+        </div>
+      `;
+    });
+    mapList.innerHTML = html;
+  }
+
+  async function syncCatalog() {
+    const res = await fetch('/admin/revendedores/sync', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo sincronizar');
+    return data;
+  }
+
+  async function saveMappings() {
+    const rows = mapList.querySelectorAll('.rev-catalog-select');
+    const entries = [];
+    rows.forEach(sel => {
+      const pkgId = parseInt(sel.getAttribute('data-pkg-id'), 10);
+      const chk = mapList.querySelector(`.rev-auto-chk[data-pkg-id="${pkgId}"]`);
+      entries.push({
+        store_package_id: pkgId,
+        catalog_id: sel.value || '',
+        auto_enabled: !!(chk && chk.checked),
+      });
+    });
+    const res = await fetch('/admin/revendedores/mappings/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar');
+    return data;
+  }
+
+  // Events
+  gameFilter.addEventListener('change', () => {
+    fetchMappingData(gameFilter.value).catch(e => toast(e.message));
+  });
+
+  btnRefresh.addEventListener('click', () => {
+    fetchMappingData(gameFilter.value).catch(e => toast(e.message));
+  });
+
+  btnSync.addEventListener('click', async () => {
+    try {
+      btnSync.disabled = true;
+      const data = await syncCatalog();
+      const gamesInfo = data.games ? Object.entries(data.games).map(([g, c]) => `${g}: ${c}`).join('\n') : '';
+      toast(`Sincronizado: ${data.created || 0} nuevos, ${data.updated || 0} actualizados, ${data.active_in_db || 0} activos en DB\n${gamesInfo}`);
+      await fetchMappingData(gameFilter.value);
+    } catch (e) {
+      toast(e.message || 'Error al sincronizar');
+    } finally {
+      btnSync.disabled = false;
+    }
+  });
+
+  btnSave.addEventListener('click', async () => {
+    try {
+      btnSave.disabled = true;
+      await saveMappings();
+      toast('Mapeo guardado');
+      await fetchMappingData(gameFilter.value);
+    } catch (e) {
+      toast(e.message || 'Error al guardar');
+    } finally {
+      btnSave.disabled = false;
+    }
+  });
+
+  // Init
+  fetchMappingData('').catch(e => toast(e.message));
+})();
+</script>
+{% endblock %}

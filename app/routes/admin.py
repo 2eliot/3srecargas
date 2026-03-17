@@ -12,7 +12,8 @@ from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 from ..models import (
     db, AdminUser, Game, Package, Category, Order,
-    Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting
+    Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting,
+    RevendedoresCatalogItem, RevendedoresItemMapping,
 )
 
 admin_bp = Blueprint('admin_bp', __name__)
@@ -359,6 +360,58 @@ def order_approve(order_id):
     if order.status != 'pending':
         flash('Solo se pueden aprobar órdenes pendientes.', 'warning')
         return redirect(url_for('admin_bp.orders'))
+
+    # ── Revendedores API auto-recharge ──
+    rev_mapping = _get_order_auto_mapping(order)
+    if rev_mapping:
+        try:
+            base_url, api_key, _, recharge_path = _revendedores_env()
+            catalog_item = rev_mapping.catalog_item
+            if base_url and api_key and catalog_item:
+                rev_payload = {
+                    'product_id': catalog_item.remote_product_id,
+                    'package_id': catalog_item.remote_package_id,
+                    'player_id': str(order.player_id or '').strip(),
+                    'external_order_id': order.order_number,
+                }
+                if order.zone_id:
+                    rev_payload['player_id2'] = str(order.zone_id).strip()
+
+                resp = requests.post(
+                    f'{base_url}{recharge_path}',
+                    json=rev_payload,
+                    headers={'X-API-Key': api_key, 'Content-Type': 'application/json'},
+                    timeout=120,
+                )
+                rev_data = resp.json() if resp.ok else {}
+                rev_ok = rev_data.get('ok', False)
+
+                if rev_ok:
+                    player_name = rev_data.get('player_name', '')
+                    ref_no = rev_data.get('reference_no', '')
+                    order.status = 'completed'
+                    order.automation_response = json.dumps({
+                        'source': 'revendedores_api',
+                        'success': True,
+                        'player_name': player_name,
+                        'reference_no': ref_no,
+                        'order_id': rev_data.get('order_id'),
+                    })
+                    order.notes = (order.notes or '') + f'\n[Revendedores API] Ref: {ref_no}, Player: {player_name}'
+                    order.updated_at = datetime.utcnow()
+                    process_affiliate_commission(order)
+                    db.session.commit()
+                    extra = f' (Jugador: {player_name})' if player_name else ''
+                    flash(f'Orden #{order.order_number} completada vía Revendedores API.{extra}', 'success')
+                    return redirect(url_for('admin_bp.orders'))
+                else:
+                    rev_error = rev_data.get('error', resp.text[:200] if not resp.ok else 'Error desconocido')
+                    flash(
+                        f'Revendedores API falló: {rev_error}. Intentando método alternativo...',
+                        'warning',
+                    )
+        except Exception as e:
+            flash(f'Error contactando Revendedores API: {e}. Intentando método alternativo...', 'warning')
 
     package = order.package
     category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
@@ -790,3 +843,263 @@ def settings():
         default_package_id=default_auto_package_id,
         site_logo=site_logo_value,
     )
+
+
+# ─── Revendedores Whitelabel API ─────────────────────────────────────────────
+
+def _revendedores_env():
+    base_url = current_app.config.get('REVENDEDORES_BASE_URL', '').rstrip('/')
+    api_key = current_app.config.get('REVENDEDORES_API_KEY', '')
+    catalog_path = '/api/v1/products'
+    recharge_path = '/api/v1/recharge'
+    return base_url, api_key, catalog_path, recharge_path
+
+
+def _normalize_rev_catalog_payload(payload):
+    items = []
+    games = payload.get('games') or payload.get('products') or []
+    if isinstance(payload, list):
+        games = payload
+    for game in games:
+        game_id = game.get('game_id') or game.get('id')
+        game_name = game.get('name') or game.get('nombre') or ''
+        packages = game.get('packages') or game.get('paquetes') or []
+        for pkg in packages:
+            pkg_id = pkg.get('package_id') or pkg.get('id')
+            pkg_name = pkg.get('name') or pkg.get('nombre') or ''
+            price = pkg.get('price') or pkg.get('precio') or 0
+            items.append({
+                'remote_product_id': int(game_id) if game_id is not None else None,
+                'remote_product_name': str(game_name).strip(),
+                'remote_package_id': int(pkg_id) if pkg_id is not None else None,
+                'remote_package_name': str(pkg_name).strip(),
+                'active': True,
+                'raw_json': json.dumps(pkg, ensure_ascii=False),
+            })
+    return items
+
+
+def _get_order_auto_mapping(order_obj):
+    try:
+        if not order_obj or not order_obj.package_id:
+            return None
+        return RevendedoresItemMapping.query.filter_by(
+            store_package_id=int(order_obj.package_id),
+            active=True,
+            auto_enabled=True,
+        ).first()
+    except Exception:
+        return None
+
+
+@admin_bp.route('/revendedores/mapping')
+@login_required
+def revendedores_mapping():
+    return render_template('admin/revendedores_mapping.html')
+
+
+@admin_bp.route('/revendedores/sync', methods=['POST'])
+@login_required
+def revendedores_sync_catalog():
+    base_url, api_key, catalog_path, _ = _revendedores_env()
+    if not base_url or not api_key:
+        return jsonify({'ok': False, 'error': 'REVENDEDORES_BASE_URL o REVENDEDORES_API_KEY no configurados'}), 400
+
+    normalized = []
+    remote_error = ''
+    try:
+        resp = requests.get(
+            f'{base_url}{catalog_path}',
+            headers={'X-API-Key': api_key},
+            timeout=30,
+        )
+        if not resp.ok:
+            key_preview = (api_key[:12] + '...') if len(api_key) > 12 else '(vacía)'
+            remote_error = f'HTTP {resp.status_code} en {catalog_path} (url={base_url}, key={key_preview})'
+        else:
+            payload = resp.json()
+            normalized = _normalize_rev_catalog_payload(payload)
+            if not normalized:
+                remote_error = 'Catálogo API sin paquetes válidos'
+    except Exception as exc:
+        remote_error = f'No se pudo consultar catálogo API: {str(exc)}'
+
+    if not normalized:
+        return jsonify({'ok': False, 'error': f'No se pudo sincronizar catálogo: {remote_error}'}), 502
+
+    games_summary = {}
+    for ent in normalized:
+        gname = ent.get('remote_product_name') or '?'
+        pid = ent.get('remote_product_id')
+        k = f'{gname} (pid={pid})'
+        games_summary[k] = games_summary.get(k, 0) + 1
+
+    created = 0
+    updated = 0
+    seen_keys = set()
+
+    try:
+        for ent in normalized:
+            key = (ent.get('remote_product_id'), ent.get('remote_package_id'))
+            seen_keys.add(key)
+            row = RevendedoresCatalogItem.query.filter_by(
+                remote_product_id=ent.get('remote_product_id'),
+                remote_package_id=ent.get('remote_package_id'),
+            ).first()
+            if not row:
+                row = RevendedoresCatalogItem(**ent)
+                db.session.add(row)
+                created += 1
+            else:
+                row.remote_product_name = ent.get('remote_product_name', '')
+                row.remote_package_name = ent.get('remote_package_name', '')
+                row.active = bool(ent.get('active'))
+                row.raw_json = ent.get('raw_json', '')
+                updated += 1
+
+        deactivated = 0
+        for row in RevendedoresCatalogItem.query.all():
+            key = (row.remote_product_id, row.remote_package_id)
+            if key not in seen_keys:
+                if row.active:
+                    deactivated += 1
+                row.active = False
+
+        db.session.commit()
+    except Exception as exc:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return jsonify({'ok': False, 'error': f'Error guardando catálogo: {str(exc)}'}), 500
+
+    active_count = RevendedoresCatalogItem.query.filter_by(active=True).count()
+
+    return jsonify({
+        'ok': True,
+        'source': 'api',
+        'created': created,
+        'updated': updated,
+        'deactivated': deactivated,
+        'total_normalized': len(normalized),
+        'active_in_db': active_count,
+        'games': games_summary,
+    })
+
+
+@admin_bp.route('/revendedores/mapping-data', methods=['GET'])
+@login_required
+def revendedores_mapping_data():
+    game_id = request.args.get('game_id', type=int)
+
+    games = Game.query.filter_by(is_active=True).order_by(Game.name).all()
+    packages_query = Package.query.filter_by(is_active=True)
+    if game_id:
+        packages_query = packages_query.filter_by(game_id=game_id)
+    store_packages = packages_query.order_by(Package.sort_order.asc(), Package.id.asc()).all()
+
+    mappings = RevendedoresItemMapping.query.filter(
+        RevendedoresItemMapping.store_package_id.in_([p.id for p in store_packages])
+    ).all() if store_packages else []
+    mapping_map = {m.store_package_id: m for m in mappings}
+
+    catalog_rows = RevendedoresCatalogItem.query.filter_by(active=True).order_by(
+        RevendedoresCatalogItem.remote_product_name.asc(),
+        RevendedoresCatalogItem.remote_package_name.asc(),
+        RevendedoresCatalogItem.id.asc(),
+    ).all()
+
+    def _extract_price(raw_json_str):
+        try:
+            obj = json.loads(raw_json_str or '{}')
+            p = obj.get('price') or obj.get('precio') or obj.get('cost')
+            if p is not None:
+                return round(float(p), 2)
+        except Exception:
+            pass
+        return None
+
+    return jsonify({
+        'ok': True,
+        'games': [{'id': g.id, 'name': g.name} for g in games],
+        'store_packages': [
+            {
+                'id': p.id,
+                'game_id': p.game_id,
+                'name': p.name,
+                'price': str(p.price),
+                'game_name': p.game.name if p.game else '',
+            }
+            for p in store_packages
+        ],
+        'remote_catalog': [
+            {
+                'catalog_id': r.id,
+                'remote_product_id': r.remote_product_id,
+                'remote_product_name': r.remote_product_name or '',
+                'remote_package_id': r.remote_package_id,
+                'remote_package_name': r.remote_package_name or '',
+                'price': _extract_price(r.raw_json),
+            }
+            for r in catalog_rows
+        ],
+        'mappings': [
+            {
+                'store_package_id': m.store_package_id,
+                'catalog_id': m.catalog_item_id,
+                'auto_enabled': m.auto_enabled,
+            }
+            for m in mappings
+        ],
+    })
+
+
+@admin_bp.route('/revendedores/mappings/bulk', methods=['POST'])
+@login_required
+def revendedores_mappings_bulk():
+    data = request.get_json(silent=True) or {}
+    entries = data.get('entries', [])
+    saved = 0
+    removed = 0
+
+    try:
+        for entry in entries:
+            store_pkg_id = int(entry.get('store_package_id', 0))
+            catalog_id_str = str(entry.get('catalog_id', '')).strip()
+            auto_enabled = bool(entry.get('auto_enabled'))
+
+            if not store_pkg_id:
+                continue
+
+            existing = RevendedoresItemMapping.query.filter_by(store_package_id=store_pkg_id).first()
+
+            if not catalog_id_str:
+                if existing:
+                    db.session.delete(existing)
+                    removed += 1
+                continue
+
+            catalog_id = int(catalog_id_str)
+            if existing:
+                existing.catalog_item_id = catalog_id
+                existing.auto_enabled = auto_enabled
+                existing.active = True
+            else:
+                new_map = RevendedoresItemMapping(
+                    store_package_id=store_pkg_id,
+                    catalog_item_id=catalog_id,
+                    active=True,
+                    auto_enabled=auto_enabled,
+                )
+                db.session.add(new_map)
+            saved += 1
+
+        db.session.commit()
+    except Exception as exc:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+    return jsonify({'ok': True, 'saved': saved, 'removed': removed})

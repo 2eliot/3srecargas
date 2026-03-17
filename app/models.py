@@ -293,6 +293,39 @@ class User(db.Model, UserMixin):
         return check_password_hash(self.password_hash, password)
 
 
+class RevendedoresCatalogItem(db.Model):
+    __tablename__ = 'revendedores_catalog'
+    id = db.Column(db.Integer, primary_key=True)
+    remote_product_id = db.Column(db.Integer, nullable=True)
+    remote_product_name = db.Column(db.String(200), default='')
+    remote_package_id = db.Column(db.Integer, nullable=True)
+    remote_package_name = db.Column(db.String(200), default='')
+    active = db.Column(db.Boolean, default=True)
+    raw_json = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('remote_product_id', 'remote_package_id', name='uq_rev_product_package'),
+    )
+
+
+class RevendedoresItemMapping(db.Model):
+    __tablename__ = 'revendedores_item_mappings'
+    id = db.Column(db.Integer, primary_key=True)
+    store_package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    catalog_item_id = db.Column(db.Integer, db.ForeignKey('revendedores_catalog.id'), nullable=False)
+    active = db.Column(db.Boolean, default=True)
+    auto_enabled = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    catalog_item = db.relationship('RevendedoresCatalogItem')
+    package = db.relationship('Package')
+
+    __table_args__ = (
+        db.UniqueConstraint('store_package_id', name='uq_rev_mapping_package'),
+    )
+
+
 class AdminUser(db.Model, UserMixin):
     __tablename__ = 'admin_users'
     id = db.Column(db.Integer, primary_key=True)

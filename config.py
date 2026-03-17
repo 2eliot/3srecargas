@@ -24,3 +24,5 @@ class Config:
     UPLOAD_FOLDER = os.path.join(BASE_DIR, 'app', 'static', 'uploads')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
     ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    REVENDEDORES_BASE_URL = os.environ.get('REVENDEDORES_BASE_URL', '')
+    REVENDEDORES_API_KEY = os.environ.get('REVENDEDORES_API_KEY', '')
