@@ -407,11 +407,13 @@ def order_approve(order_id):
                 else:
                     rev_error = rev_data.get('error', resp.text[:200] if not resp.ok else 'Error desconocido')
                     flash(
-                        f'Revendedores API falló: {rev_error}. Intentando método alternativo...',
-                        'warning',
+                        f'Revendedores API falló: {rev_error}. La orden sigue pendiente, puedes reintentar.',
+                        'danger',
                     )
+                    return redirect(url_for('admin_bp.orders'))
         except Exception as e:
-            flash(f'Error contactando Revendedores API: {e}. Intentando método alternativo...', 'warning')
+            flash(f'Error contactando Revendedores API: {e}. La orden sigue pendiente.', 'danger')
+            return redirect(url_for('admin_bp.orders'))
 
     package = order.package
     category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
