@@ -93,22 +93,45 @@ Abre `http://localhost:5000`
 | Stock PINs | Cargar PINs (uno por línea), FIFO automático |
 | Afiliados | Crear afiliados, ver comisiones, marcar como pagadas |
 
-## Servicio de Automatización
+## Servicio de Recarga Automática (Bot VPS)
 
-El paquete marcado como **Automatizado ⚡** llama a `http://localhost:8000` con:
+Cuando se aprueba una orden de un paquete **Automatizado ⚡**, la web envía el PIN del stock + el Player ID al bot de scraping que corre en el VPS. El bot ejecuta Playwright + captcha y redime el PIN en la cuenta del jugador.
+
+### Payload enviado al bot (`POST /redeem`)
 
 ```json
 {
-  "order_number": "ABC12345",
+  "pin_key": "ABCD-EFGH-IJKL-MNOP",
   "player_id": "123456789",
-  "zone_id": "2001",
-  "pin": "PIN-CODE-HERE",
-  "package": "100 Diamantes",
-  "game": "Free Fire"
+  "full_name": "Usuario Recarga",
+  "birth_date": "01/01/1995",
+  "country": "Venezuela",
+  "request_id": "ORD-ABC12345"
 }
 ```
 
-Configura la URL en `.env`: `AUTOMATION_SERVICE_URL=http://localhost:8000`
+### Respuesta esperada del bot
+
+```json
+{
+  "success": true,
+  "message": "Recarga completada",
+  "player_name": "NombreJugador"
+}
+```
+
+Si `success` es `false`, el PIN **no** se marca como usado y la orden permanece pendiente para reintentar.
+
+### Variables de entorno
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `AUTOMATION_SERVICE_URL` | `http://localhost:8000` | URL base del bot de scraping |
+| `VPS_REDEEM_URL` | `{AUTOMATION_SERVICE_URL}/redeem` | Endpoint completo de redención |
+| `VPS_TIMEOUT` | `120` | Segundos de espera máxima por respuesta |
+| `VPS_COUNTRY` | `Venezuela` | País para el formulario de redención |
+| `VPS_FULL_NAME` | `Usuario Recarga` | Nombre completo para el formulario |
+| `VPS_BIRTH_DATE` | `01/01/1995` | Fecha de nacimiento para el formulario |
 
 ## Links de Afiliado
 

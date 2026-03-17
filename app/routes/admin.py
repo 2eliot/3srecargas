@@ -312,35 +312,78 @@ def order_approve(order_id):
             return redirect(url_for('admin_bp.orders'))
 
     if package.is_automated:
+        vps_url = current_app.config.get('VPS_REDEEM_URL')
+        vps_timeout = current_app.config.get('VPS_TIMEOUT', 120)
+
+        payload = {
+            'pin_key': str(pin.code).strip(),
+            'player_id': str(order.player_id).strip(),
+            'full_name': current_app.config.get('VPS_FULL_NAME', 'Usuario Recarga'),
+            'birth_date': current_app.config.get('VPS_BIRTH_DATE', '01/01/1995'),
+            'country': current_app.config.get('VPS_COUNTRY', 'Venezuela'),
+            'request_id': order.order_number,
+        }
+
         try:
             resp = requests.post(
-                current_app.config['AUTOMATION_SERVICE_URL'],
-                json={
-                    'order_number': order.order_number,
-                    'player_id': order.player_id,
-                    'zone_id': order.zone_id,
-                    'pin': pin.code if pin else None,
-                    'package': package.name,
-                    'game': order.game.name,
-                },
-                timeout=30,
+                vps_url,
+                json=payload,
+                timeout=vps_timeout,
+                headers={'Content-Type': 'application/json'},
             )
-            if resp.status_code == 200:
+
+            try:
+                data = resp.json()
+            except Exception:
+                data = {}
+
+            exito = data.get('success') or data.get('exito') or data.get('status') == 'ok'
+            mensaje = data.get('message') or data.get('mensaje') or data.get('error') or ''
+            player_name = data.get('player_name') or data.get('nombre_jugador') or ''
+
+            if not exito and resp.status_code != 200:
+                exito = False
+            elif resp.status_code == 200 and not data:
+                exito = True
+                mensaje = 'Recarga procesada (VPS)'
+
+            if exito:
                 pin.is_used = True
                 pin.used_at = datetime.utcnow()
                 pin.order_id = order.id
                 order.status = 'completed'
                 order.pin_id = pin.id
                 order.pin_delivered = pin.code
-                order.automation_response = resp.text
+                order.automation_response = json.dumps({
+                    'success': True,
+                    'message': mensaje,
+                    'player_name': player_name,
+                })
                 order.updated_at = datetime.utcnow()
                 process_affiliate_commission(order)
                 db.session.commit()
-                flash(f'Orden #{order.order_number} completada vía automatización.', 'success')
+                extra = f' (Jugador: {player_name})' if player_name else ''
+                flash(f'Orden #{order.order_number} completada vía automatización.{extra}', 'success')
             else:
-                flash(f'Error en automatización ({resp.status_code}): {resp.text}', 'danger')
-        except requests.exceptions.RequestException as e:
-            flash(f'Error de conexión con el servicio de automatización: {e}', 'danger')
+                flash(
+                    f'Redención fallida: {mensaje or "Error desconocido del VPS"}. '
+                    f'El PIN se mantiene en stock. La orden sigue pendiente.',
+                    'danger',
+                )
+        except requests.exceptions.Timeout:
+            flash(
+                f'El VPS no respondió en {vps_timeout}s. Reintenta más tarde. '
+                f'El PIN no fue consumido.',
+                'danger',
+            )
+        except requests.exceptions.ConnectionError:
+            flash(
+                'No se pudo conectar al bot de recarga. '
+                'Verifica que el servicio esté activo en el VPS.',
+                'danger',
+            )
+        except Exception as e:
+            flash(f'Error inesperado al contactar el VPS: {e}', 'danger')
     elif needs_pin_delivery:
         pin.is_used = True
         pin.used_at = datetime.utcnow()
