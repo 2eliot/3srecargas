@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from flask import (
     Blueprint, render_template, request, redirect,
@@ -17,11 +17,28 @@ from ..models import (
 
 admin_bp = Blueprint('admin_bp', __name__)
 
+HOUSEKEEPING_ORDER_RETENTION_DAYS = 60  # ~2 months
+HOUSEKEEPING_PIN_RETENTION_DAYS = 30
+HOUSEKEEPING_INTERVAL_HOURS = 6
+_last_housekeeping_run = None
+
 ALLOWED_EXT = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXT
+
+
+def delete_uploaded_file(relative_path):
+    if not relative_path:
+        return
+    upload_root = current_app.config['UPLOAD_FOLDER']
+    file_path = os.path.join(upload_root, relative_path)
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
 
 
 def save_image(file, subfolder=''):
@@ -36,6 +53,52 @@ def save_image(file, subfolder=''):
     os.makedirs(folder, exist_ok=True)
     file.save(os.path.join(folder, filename))
     return (subfolder + '/' + filename) if subfolder else filename
+
+
+def cleanup_old_orders():
+    threshold = datetime.utcnow() - timedelta(days=HOUSEKEEPING_ORDER_RETENTION_DAYS)
+    old_orders = Order.query.filter(Order.created_at < threshold).all()
+    removed = 0
+    for order in old_orders:
+        if order.payment_capture:
+            delete_uploaded_file(order.payment_capture)
+        db.session.delete(order)
+        removed += 1
+    if removed:
+        db.session.commit()
+
+
+def cleanup_used_pins():
+    threshold = datetime.utcnow() - timedelta(days=HOUSEKEEPING_PIN_RETENTION_DAYS)
+    old_pins = (
+        Pin.query
+        .filter(Pin.is_used.is_(True))
+        .filter(Pin.used_at.isnot(None))
+        .filter(Pin.used_at < threshold)
+        .all()
+    )
+    if not old_pins:
+        return
+    for pin in old_pins:
+        db.session.delete(pin)
+    db.session.commit()
+
+
+def run_housekeeping_if_needed():
+    global _last_housekeeping_run
+    now = datetime.utcnow()
+    if _last_housekeeping_run and (now - _last_housekeeping_run) < timedelta(hours=HOUSEKEEPING_INTERVAL_HOURS):
+        return
+    cleanup_old_orders()
+    cleanup_used_pins()
+    _last_housekeeping_run = now
+
+
+@admin_bp.before_app_request
+def admin_housekeeping_hook():
+    if not request.path.startswith('/admin'):
+        return
+    run_housekeeping_if_needed()
 
 
 def process_affiliate_commission(order):
@@ -175,6 +238,7 @@ def game_edit(game_id):
 
     new_image = save_image(request.files.get('image'), 'games')
     if new_image:
+        delete_uploaded_file(game.image)
         game.image = new_image
 
     db.session.commit()
@@ -250,6 +314,7 @@ def package_edit(pkg_id):
 
     new_image = save_image(request.files.get('image'), 'packages')
     if new_image:
+        delete_uploaded_file(pkg.image)
         pkg.image = new_image
 
     db.session.commit()
@@ -632,6 +697,7 @@ def payment_method_edit(method_id):
 
     new_logo = save_image(request.files.get('logo'), 'payments')
     if new_logo:
+        delete_uploaded_file(method.logo)
         method.logo = new_logo
 
     db.session.commit()
@@ -696,11 +762,14 @@ def settings():
                 default_pkg_setting.value = default_pkg
 
         if remove_logo and site_logo_setting:
+            delete_uploaded_file(site_logo_setting.value)
             site_logo_setting.value = ''
 
         if logo_file and logo_file.filename:
             saved_logo = save_image(logo_file, 'branding')
             if saved_logo:
+                if site_logo_setting and site_logo_setting.value:
+                    delete_uploaded_file(site_logo_setting.value)
                 if not site_logo_setting:
                     site_logo_setting = Setting(
                         key='site_logo',

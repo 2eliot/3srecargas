@@ -1,17 +1,17 @@
 /* ── Variables ──────────────────────────────────────────── */
 :root {
-    --bg-primary:   #0d0d1a;
-    --bg-secondary: #141428;
-    --bg-card:      #1a1a30;
-    --bg-card-hover:#1e1e38;
-    --accent:       #f43f5e;
-    --accent-dark:  #be123c;
-    --accent-glow:  rgba(244,63,94,.25);
-    --accent2:      #fb7185;
-    --text-primary: #f1f5f9;
-    --text-muted:   #94a3b8;
-    --border:       #2a2a45;
-    --border-hover: #4a4a70;
+    --bg-primary:   #000000;
+    --bg-secondary: #050505;
+    --bg-card:      #0d0d0d;
+    --bg-card-hover:#151515;
+    --accent:       #ff1a3c;
+    --accent-dark:  #d40028;
+    --accent-glow:  rgba(255,26,60,.25);
+    --accent2:      #ff4d6d;
+    --text-primary: #f8fafc;
+    --text-muted:   #babec9;
+    --border:       #1a1a1a;
+    --border-hover: #2f2f2f;
     --success:      #22c55e;
     --danger:       #ef4444;
     --warning:      #f59e0b;
