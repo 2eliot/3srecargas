@@ -799,11 +799,23 @@ def settings():
     site_logo_setting = Setting.query.filter_by(key='site_logo').first()
     site_logo_value = site_logo_setting.value if site_logo_setting else ''
 
+    social_keys = {
+        'social_facebook': 'URL de Facebook',
+        'social_instagram': 'URL o usuario de Instagram',
+        'social_tiktok': 'URL o usuario de TikTok',
+        'social_whatsapp': 'Link directo de WhatsApp',
+    }
+    social_settings = {}
+    for key in social_keys:
+        setting = Setting.query.filter_by(key=key).first()
+        social_settings[key] = setting.value if setting else ''
+
     if request.method == 'POST':
         new_rate = request.form.get('usd_rate_bs', '').strip()
         default_pkg = request.form.get('default_auto_package_id', '').strip()
         remove_logo = request.form.get('remove_logo')
         logo_file = request.files.get('site_logo')
+        social_payload = {k: (request.form.get(k, '') or '').strip() for k in social_keys}
 
         if new_rate:
             try:
@@ -852,6 +864,19 @@ def settings():
                 else:
                     site_logo_setting.value = saved_logo
 
+        for key, desc in social_keys.items():
+            val = social_payload.get(key, '')
+            current_setting = Setting.query.filter_by(key=key).first()
+            if val:
+                if not current_setting:
+                    current_setting = Setting(key=key, value=val, description=desc)
+                    db.session.add(current_setting)
+                else:
+                    current_setting.value = val
+            else:
+                if current_setting:
+                    current_setting.value = ''
+
         db.session.commit()
         flash('Configuración actualizada.', 'success')
         return redirect(url_for('admin_bp.settings'))
@@ -861,6 +886,7 @@ def settings():
         usd_rate=usd_rate,
         default_package_id=default_auto_package_id,
         site_logo=site_logo_value,
+        social_settings=social_settings,
     )
 
 

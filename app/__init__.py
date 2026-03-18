@@ -46,7 +46,17 @@ def create_app(config_class=Config):
         setting = Setting.query.filter_by(key='site_logo').first()
         if setting and setting.value:
             site_logo = setting.value
-        return {'SITE_LOGO': site_logo}
+
+        social_keys = ['social_facebook', 'social_instagram', 'social_tiktok', 'social_whatsapp']
+        social_links = {}
+        for key in social_keys:
+            val_setting = Setting.query.filter_by(key=key).first()
+            social_links[key.upper()] = val_setting.value if val_setting and val_setting.value else ''
+
+        return {
+            'SITE_LOGO': site_logo,
+            'SOCIAL_LINKS': social_links,
+        }
 
     with app.app_context():
         os.makedirs(app.config.get('DATA_DIR', ''), exist_ok=True)
