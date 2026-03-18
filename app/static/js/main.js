@@ -291,6 +291,8 @@
         verifyState.verifiedNick = nick || '';
         var el = document.getElementById('playerNickname');
         var btn = document.getElementById('btnVerifyPlayer');
+        var hidden = document.getElementById('playerNicknameHidden');
+        if (hidden) hidden.value = nick || '';
         if (!el) return;
         if (!nick) return;
         el.style.color = '#22c55e';
@@ -333,6 +335,8 @@
         verifyState.lastUidVerified = '';
         var el = document.getElementById('playerNickname');
         var btn = document.getElementById('btnVerifyPlayer');
+        var hidden = document.getElementById('playerNicknameHidden');
+        if (hidden) hidden.value = '';
         if (el) { el.textContent = ''; el.style.display = 'none'; }
         if (btn) { btn.textContent = 'Verificar'; btn.disabled = false; }
     }

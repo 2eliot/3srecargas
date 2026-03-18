@@ -54,6 +54,7 @@ def create_app(config_class=Config):
         _ensure_payment_method_columns()
         _ensure_user_columns()
         _ensure_discount_columns()
+        _ensure_order_nickname_column()
         _init_default_data(app)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -123,6 +124,19 @@ def _ensure_discount_columns():
             db.session.execute(text('ALTER TABLE orders ADD COLUMN discount_amount NUMERIC(10, 2) DEFAULT 0'))
         
         db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_nickname_column():
+    try:
+        if db.engine.dialect.name != 'sqlite':
+            return
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'player_nickname' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN player_nickname VARCHAR(200)'))
+            db.session.commit()
     except Exception:
         db.session.rollback()
 

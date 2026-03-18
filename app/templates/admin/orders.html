@@ -49,6 +49,7 @@
                     <td>
                         <div class="cell-stack">
                             {% if order.player_id %}<span>{{ order.player_id }}</span>{% endif %}
+                            {% if order.player_nickname %}<small style="color:#22c55e;font-weight:600">{{ order.player_nickname }}</small>{% endif %}
                             {% if order.zone_id %}<small>Zone: {{ order.zone_id }}</small>{% endif %}
                             {% if order.email %}<span>{{ order.email }}</span>{% endif %}
                             {% if order.phone %}<small>{{ order.phone }}</small>{% endif %}

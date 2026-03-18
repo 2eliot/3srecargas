@@ -111,6 +111,7 @@ class Order(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     discount_id = db.Column(db.Integer, db.ForeignKey('discounts.id'), nullable=True)
     player_id = db.Column(db.String(100))
+    player_nickname = db.Column(db.String(200))
     zone_id = db.Column(db.String(100))
     email = db.Column(db.String(255))
     phone = db.Column(db.String(50))

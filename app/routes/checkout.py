@@ -55,6 +55,7 @@ def checkout(package_id):
         # Paso 1: viene desde index y solo guarda datos en sesión
         if stage != 'confirm':
             player_id = request.form.get('player_id', '').strip()
+            player_nickname = request.form.get('player_nickname', '').strip()
             zone_id = request.form.get('zone_id', '').strip()
             email = request.form.get('email', '').strip()
             phone = request.form.get('phone', '').strip()
@@ -79,6 +80,7 @@ def checkout(package_id):
 
             checkout_data[pkg_key] = {
                 'player_id': player_id,
+                'player_nickname': player_nickname,
                 'zone_id': zone_id,
                 'email': email,
                 'phone': phone,
@@ -154,6 +156,7 @@ def checkout(package_id):
             user_id=user_id,
             discount_id=discount.id if discount else None,
             player_id=(data.get('player_id') or '').strip() if not is_wallet else None,
+            player_nickname=(data.get('player_nickname') or '').strip() or None,
             zone_id=(data.get('zone_id') or '').strip() if (not is_wallet and game.requires_zone_id) else None,
             email=(data.get('player_id') or '').strip() if is_wallet else (data.get('email') or '').strip(),
             phone=(data.get('phone') or '').strip() if is_wallet else None,
