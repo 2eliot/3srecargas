@@ -1,6 +1,6 @@
 """
-High-level notification dispatcher.
-Call these functions after order lifecycle events.
+Dispatcher de notificaciones de alto nivel.
+Llamar estas funciones después de eventos del ciclo de vida de la orden.
 """
 
 import logging
@@ -20,20 +20,20 @@ logger = logging.getLogger(__name__)
 
 
 def _app():
-    """Get real app object for async threads."""
+    """Obtiene el objeto app real de Flask para hilos asíncronos."""
     return current_app._get_current_object()
 
 
 def notify_order_created(order, package, game):
-    """Send email to customer + admin when a new order is placed."""
+    """Envía correo al cliente + admin cuando se crea una nueva orden."""
     app = _app()
 
-    # Customer email
+    # Correo al cliente
     if order.email:
         subject, html, text = build_order_created_email(order, package, game)
         send_email_async(app, order.email, subject, html, text)
 
-    # Admin email
+    # Correo al admin
     admin_email = get_setting('admin_notify_email', '') or app.config.get('ADMIN_NOTIFY_EMAIL', '')
     if admin_email:
         subject, html, text = build_admin_new_order_email(order, package, game)
@@ -41,7 +41,7 @@ def notify_order_created(order, package, game):
 
 
 def notify_order_approved(order, package, game):
-    """Send email to customer when order is approved (non-PIN)."""
+    """Envía correo al cliente cuando la orden es aprobada (sin PIN)."""
     if not order.email:
         return
     app = _app()
@@ -50,7 +50,7 @@ def notify_order_approved(order, package, game):
 
 
 def notify_order_completed(order, package, game, pin_code=None):
-    """Send email to customer when order is completed (with optional PIN/code)."""
+    """Envía correo al cliente cuando la orden se completa (con PIN/código opcional)."""
     if not order.email:
         return
     app = _app()
@@ -59,7 +59,7 @@ def notify_order_completed(order, package, game, pin_code=None):
 
 
 def notify_order_rejected(order, package, game, reason=''):
-    """Send email to customer when order is rejected."""
+    """Envía correo al cliente cuando la orden es rechazada."""
     if not order.email:
         return
     app = _app()

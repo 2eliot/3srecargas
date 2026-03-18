@@ -1,13 +1,13 @@
 """
-HTML email template builders for 3S Recargas.
-Templates: order_created, order_approved, order_completed (with PIN/code), order_rejected, admin_new_order.
+Constructores de plantillas HTML de correo para 3S Recargas.
+Plantillas: orden_creada, orden_aprobada, orden_completada (con PIN/código), orden_rechazada, nueva_orden_admin.
 """
 
 from app.utils.email import get_setting
 
 
 def _base_style():
-    """Shared inline CSS constants."""
+    """Constantes CSS inline compartidas."""
     return {
         'bg': '#0f0f0f',
         'card_bg': '#1a1a1a',
@@ -38,7 +38,7 @@ def _support_links():
 
 
 def _wrap_html(title, body_content):
-    """Wrap body content in a full HTML email shell."""
+    """Envuelve el contenido del cuerpo en la estructura HTML completa del correo."""
     s = _base_style()
     brand = _brand_name()
     support = _support_links()
@@ -94,7 +94,7 @@ def _wrap_html(title, body_content):
 
 
 def _detail_row(label, value, value_color=None):
-    """Single detail row for order info tables."""
+    """Fila de detalle individual para tablas de información de orden."""
     s = _base_style()
     vc = value_color or s['white']
     return f"""<tr>
@@ -104,16 +104,16 @@ def _detail_row(label, value, value_color=None):
 
 
 def _status_badge(label, color):
-    """Inline status badge."""
+    """Insignia de estado inline."""
     return f'<span style="display:inline-block; padding:4px 14px; background-color:{color}; color:#fff; border-radius:20px; font-size:13px; font-weight:600; letter-spacing:0.3px;">{label}</span>'
 
 
 # ──────────────────────────────────────────────────────────────────────
-# ORDER CREATED — sent to customer
+# ORDEN CREADA — se envía al cliente
 # ──────────────────────────────────────────────────────────────────────
 
 def build_order_created_email(order, package, game):
-    """Build HTML + text for 'order created' customer notification."""
+    """Construye HTML + texto para notificación de 'orden creada' al cliente."""
     s = _base_style()
     brand = _brand_name()
     amount_str = f"${float(order.amount):.2f} USD"
@@ -163,11 +163,11 @@ Estamos verificando tu pago. Te notificaremos cuando sea procesada.
 
 
 # ──────────────────────────────────────────────────────────────────────
-# ORDER APPROVED — sent to customer (no PIN)
+# ORDEN APROBADA — se envía al cliente (sin PIN)
 # ──────────────────────────────────────────────────────────────────────
 
 def build_order_approved_email(order, package, game):
-    """Build HTML + text for 'order approved' customer notification (non-PIN orders)."""
+    """Construye HTML + texto para notificación de 'orden aprobada' al cliente (sin PIN)."""
     s = _base_style()
     brand = _brand_name()
     amount_str = f"${float(order.amount):.2f} USD"
@@ -212,11 +212,11 @@ Monto: {amount_str}
 
 
 # ──────────────────────────────────────────────────────────────────────
-# ORDER COMPLETED WITH PIN/CODE — sent to customer
+# ORDEN COMPLETADA CON PIN/CÓDIGO — se envía al cliente
 # ──────────────────────────────────────────────────────────────────────
 
 def build_order_completed_pin_email(order, package, game, pin_code=None):
-    """Build HTML + text for 'order completed' with PIN/code delivery."""
+    """Construye HTML + texto para 'orden completada' con entrega de PIN/código."""
     s = _base_style()
     brand = _brand_name()
     amount_str = f"${float(order.amount):.2f} USD"
@@ -275,11 +275,11 @@ Monto: {amount_str}
 
 
 # ──────────────────────────────────────────────────────────────────────
-# ORDER REJECTED — sent to customer
+# ORDEN RECHAZADA — se envía al cliente
 # ──────────────────────────────────────────────────────────────────────
 
 def build_order_rejected_email(order, package, game, reason=''):
-    """Build HTML + text for 'order rejected' customer notification."""
+    """Construye HTML + texto para notificación de 'orden rechazada' al cliente."""
     s = _base_style()
     brand = _brand_name()
     amount_str = f"${float(order.amount):.2f} USD"
@@ -338,11 +338,11 @@ Si crees que es un error, contáctanos con tu número de orden.
 
 
 # ──────────────────────────────────────────────────────────────────────
-# ADMIN — new order notification
+# ADMIN — notificación de nueva orden
 # ──────────────────────────────────────────────────────────────────────
 
 def build_admin_new_order_email(order, package, game):
-    """Build HTML + text for admin notification of a new order."""
+    """Construye HTML + texto para notificación al admin de nueva orden."""
     s = _base_style()
     brand = _brand_name()
     amount_str = f"${float(order.amount):.2f} USD"

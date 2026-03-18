@@ -1,6 +1,6 @@
 """
-Email sending utilities for 3S Recargas.
-Supports STARTTLS, SSL fallback, sync and async sending.
+Utilidades de envío de correo para 3S Recargas.
+Soporta STARTTLS, fallback SSL, envío síncrono y asíncrono.
 """
 
 import smtplib
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_mail_config():
-    """Read SMTP config from Flask app config."""
+    """Lee la configuración SMTP desde la config de Flask."""
     app = current_app._get_current_object()
     return {
         'server': app.config.get('MAIL_SERVER', 'smtp.gmail.com'),
@@ -31,7 +31,7 @@ def _get_mail_config():
 
 
 def get_setting(key, default=''):
-    """Get a Setting value from DB, with fallback."""
+    """Obtiene un valor de Setting desde la BD, con fallback."""
     try:
         s = Setting.query.filter_by(key=key).first()
         return (s.value or '').strip() if s else default
@@ -40,7 +40,7 @@ def get_setting(key, default=''):
 
 
 def _smtp_send_starttls(cfg, msg, to_email):
-    """Send via STARTTLS."""
+    """Envía vía STARTTLS."""
     with smtplib.SMTP(cfg['server'], cfg['port'], timeout=30) as smtp:
         smtp.ehlo()
         smtp.starttls()
@@ -50,7 +50,7 @@ def _smtp_send_starttls(cfg, msg, to_email):
 
 
 def _smtp_send_ssl(cfg, msg, to_email):
-    """Send via SSL (fallback)."""
+    """Envía vía SSL (fallback)."""
     port = 465 if cfg['port'] in (587, 25) else cfg['port']
     with smtplib.SMTP_SSL(cfg['server'], port, timeout=30) as smtp:
         smtp.login(cfg['username'], cfg['password'])
@@ -59,12 +59,12 @@ def _smtp_send_ssl(cfg, msg, to_email):
 
 def send_email_html(to_email, subject, html_body, text_body=''):
     """
-    Send an HTML email with plain-text fallback.
-    Returns True on success, False on failure.
+    Envía un correo HTML con fallback a texto plano.
+    Retorna True si se envió, False si falló.
     """
     cfg = _get_mail_config()
     if not cfg['username'] or not cfg['password'] or not to_email:
-        logger.warning('Email not sent: missing credentials or recipient.')
+        logger.warning('Correo no enviado: faltan credenciales o destinatario.')
         return False
 
     try:
@@ -81,21 +81,21 @@ def send_email_html(to_email, subject, html_body, text_body=''):
 
         try:
             _smtp_send_starttls(cfg, msg, to_email)
-            logger.info(f'Email sent (STARTTLS) to {to_email}: {subject}')
+            logger.info(f'Correo enviado (STARTTLS) a {to_email}: {subject}')
             return True
         except Exception:
             _smtp_send_ssl(cfg, msg, to_email)
-            logger.info(f'Email sent (SSL fallback) to {to_email}: {subject}')
+            logger.info(f'Correo enviado (SSL fallback) a {to_email}: {subject}')
             return True
     except Exception as e:
-        logger.error(f'Failed to send email to {to_email}: {e}')
+        logger.error(f'Error al enviar correo a {to_email}: {e}')
         return False
 
 
 def send_email_async(app, to_email, subject, html_body, text_body=''):
     """
-    Send email in a background thread so the request isn't blocked.
-    `app` must be the real Flask app object (not the proxy).
+    Envía el correo en un hilo de fondo para no bloquear la petición.
+    `app` debe ser el objeto Flask real (no el proxy).
     """
     def _send():
         with app.app_context():

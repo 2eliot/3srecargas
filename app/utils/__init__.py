@@ -1,1 +1,1 @@
-"""Utility helpers for the 3S Recargas application."""
+"""Utilidades auxiliares para la aplicación 3S Recargas."""
