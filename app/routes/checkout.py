@@ -225,6 +225,10 @@ def checkout(package_id):
         original_display = original_amount * (usd_rate or 0.0)
         discount_display = discount_amount * (usd_rate or 0.0)
 
+    pkg_data = checkout_data.get(pkg_key) or {}
+    player_nickname = (pkg_data.get('player_nickname') or '').strip()
+    player_id_val = (pkg_data.get('player_id') or '').strip()
+
     return render_template(
         'checkout.html',
         package=package,
@@ -239,6 +243,8 @@ def checkout(package_id):
         original_amount=original_display,
         discount_amount=discount_display,
         has_discount=discount_amount > 0,
+        player_nickname=player_nickname,
+        player_id_val=player_id_val,
     )
 
 

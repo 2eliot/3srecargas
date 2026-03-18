@@ -1358,23 +1358,42 @@ select option { background: var(--bg-secondary); }
 
 /* ── Footer ────────────────────────────────────────────── */
 .main-footer {
-    background: #0a0a0a;
+    background: #000;
     color: #e2e8f0;
-    text-align: center;
-    padding: 48px 16px 0;
+    padding: 48px 24px 0;
     margin-top: 40px;
     font-family: 'Inter', system-ui, sans-serif;
+    border-top: 1px solid #1a1a1a;
 }
-.footer-inner {
-    max-width: 480px;
+.footer-grid {
+    max-width: 1200px;
     margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 40px;
+}
+@media (max-width: 768px) {
+    .footer-grid {
+        grid-template-columns: 1fr;
+        gap: 32px;
+        text-align: center;
+    }
+    .footer-col { align-items: center; }
+    .footer-contact-list li { justify-content: center; }
+    .footer-social-list { align-items: center; }
+}
+.footer-col {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 20px;
+    gap: 14px;
+}
+.footer-col-center { align-items: flex-start; }
+.footer-col-right  { align-items: flex-start; }
+@media (max-width: 768px) {
+    .footer-col-center, .footer-col-right { align-items: center; }
 }
 .footer-logo {
-    height: 38px;
+    height: 36px;
     width: auto;
     object-fit: contain;
 }
@@ -1385,93 +1404,97 @@ select option { background: var(--bg-secondary); }
 }
 .footer-logo-text span { color: var(--accent); }
 .footer-description {
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: 13px;
+    line-height: 1.65;
     color: #94a3b8;
-    max-width: 380px;
 }
 .footer-rif {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    font-size: 14px;
+    font-size: 13px;
     color: #cbd5e1;
     font-weight: 500;
 }
 .footer-rif svg {
-    width: 20px;
-    height: 20px;
-    color: #94a3b8;
+    width: 18px;
+    height: 18px;
+    color: #64748b;
     flex-shrink: 0;
 }
-.btn-whatsapp-channel {
+.footer-heading {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--accent);
+    margin-bottom: 4px;
+}
+.footer-social-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.footer-social-link {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    background: var(--accent);
-    color: #fff;
-    padding: 10px 22px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
+    gap: 10px;
+    font-size: 13px;
+    color: #94a3b8;
+    transition: color .2s;
     text-decoration: none;
-    transition: filter .2s, transform .2s;
 }
-.btn-whatsapp-channel:hover {
-    filter: brightness(1.1);
-    transform: translateY(-1px);
-}
-.btn-whatsapp-channel svg {
-    width: 20px;
-    height: 20px;
+.footer-social-link:hover { color: #fff; }
+.footer-social-link svg {
+    width: 18px;
+    height: 18px;
     flex-shrink: 0;
 }
-.social-icons {
+.footer-social-wa {
+    margin-top: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: filter .2s;
+}
+.footer-social-wa:hover { color: #fff; filter: brightness(1.15); }
+.footer-contact-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
     display: flex;
-    gap: 20px;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
 }
-.social-icons a {
-    color: #e2e8f0;
-    transition: color .2s, transform .2s;
+.footer-contact-list li {
     display: flex;
     align-items: center;
-    justify-content: center;
-}
-.social-icons a:hover {
-    color: var(--accent);
-    transform: scale(1.15);
-}
-.social-icons svg {
-    width: 26px;
-    height: 26px;
-}
-.support-hours {
-    font-size: 15px;
-    font-weight: 700;
-    color: #f1f5f9;
-    line-height: 1.5;
-}
-.support-hours span {
-    display: block;
-    font-size: 14px;
-    font-weight: 400;
+    gap: 10px;
+    font-size: 13px;
     color: #94a3b8;
+    line-height: 1.4;
+}
+.footer-contact-list svg {
+    width: 18px;
+    height: 18px;
+    color: var(--accent);
+    flex-shrink: 0;
 }
 .copyright-bar {
-    background: #000;
-    margin-top: 32px;
-    padding: 16px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
+    background: #0a0a0a;
+    margin-top: 40px;
+    padding: 18px 24px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 500;
     color: #64748b;
     border-top: 1px solid #1a1a1a;
-    width: 100vw;
-    margin-left: calc(-50vw + 50%);
+    margin-left: -24px;
+    margin-right: -24px;
 }
 .copyright-bar .brand-name {
     color: var(--accent);
+    font-weight: 700;
 }
