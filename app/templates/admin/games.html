@@ -54,7 +54,10 @@
                     <td>{{ game.packages.filter_by(is_active=True).count() }}</td>
                     <td>
                         <div class="action-btns">
-                            <button class="btn-sm btn-outline" onclick="openEditGame({{ game.id }}, {{ game.to_dict() | tojson }})">Editar</button>
+                            <button class="btn-sm btn-outline"
+                                    data-game='{{ game.to_dict() | tojson | forceescape }}'
+                                    data-game-id="{{ game.id }}"
+                                    onclick="openEditGame(this)">Editar</button>
                             <form method="POST" action="{{ url_for('admin_bp.game_delete', game_id=game.id) }}" style="display:inline">
                                 <button class="btn-sm btn-danger" type="submit"
                                         onclick="return confirm('¿Desactivar este juego?')">Off</button>
@@ -195,7 +198,16 @@
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function openEditGame(id, game) {
+function openEditGame(btn) {
+    var id = btn.getAttribute('data-game-id');
+    var game = {};
+    try {
+        game = JSON.parse(btn.getAttribute('data-game'));
+    } catch (e) {
+        console.error('No se pudo parsear el juego', e);
+        return;
+    }
+
     document.getElementById('editGameForm').action = '/admin/games/' + id + '/edit';
     document.getElementById('editGameName').value = game.name;
     document.getElementById('editGameCategory').value = game.category_id || '';
