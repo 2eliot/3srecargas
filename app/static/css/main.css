@@ -85,7 +85,7 @@ select option { background: var(--bg-secondary); }
     padding: 0 16px;
 }
 .logo-link { display: flex; align-items: center; gap: 8px; }
-.logo-img  { height: 34px; width: auto; object-fit: contain; }
+.logo-img  { height: 34px; width: auto; object-fit: contain; background: transparent; }
 .logo-text {
     display: flex;
     align-items: baseline;
@@ -702,15 +702,15 @@ select option { background: var(--bg-secondary); }
     box-shadow: 0 4px 12px rgba(0,0,0,.3);
 }
 .package-item img {
-    width: 44px;
-    height: 44px;
-    object-fit: cover;
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
     border-radius: 6px;
     flex-shrink: 0;
 }
 .pkg-img-placeholder {
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     border-radius: 6px;
     background: var(--bg-secondary);
     display: flex;
@@ -1289,13 +1289,8 @@ select option { background: var(--bg-secondary); }
         aspect-ratio: 1 / 1.2;
     }
     .carousel-nav {
-        display: flex;
-        width: 28px;
-        height: 28px;
-        font-size: 18px;
+        display: none !important;
     }
-    .carousel-nav.prev { left: 2px; }
-    .carousel-nav.next { right: 2px; }
     .game-title {
         height: 28px;
         font-size: 10px;
@@ -1323,7 +1318,7 @@ select option { background: var(--bg-secondary); }
         gap: 8px;
         overflow: hidden;
     }
-    .package-item img, .pkg-img-placeholder { width: 32px; height: 32px; }
+    .package-item img, .pkg-img-placeholder { width: 28px; height: 28px; }
     .pkg-info h4 { font-size: 11px; }
     .pkg-info .price { font-size: 11px; }
 
@@ -1396,6 +1391,7 @@ select option { background: var(--bg-secondary); }
     height: 36px;
     width: auto;
     object-fit: contain;
+    background: transparent;
 }
 .footer-logo-text {
     font-size: 22px;
