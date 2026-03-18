@@ -31,12 +31,14 @@ def create_app(config_class=Config):
     from .routes.admin import admin_bp
     from .routes.affiliates import affiliates_bp
     from .routes.auth import auth_bp
+    from .routes.verify import verify_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(affiliates_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(verify_bp)
 
     @app.context_processor
     def inject_settings():

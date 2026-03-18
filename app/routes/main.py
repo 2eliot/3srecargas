@@ -1,7 +1,12 @@
-from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for
+from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, current_app
 from ..models import db, Game, Package, Category, PaymentMethod, Setting
 
 main_bp = Blueprint('main_bp', __name__)
+
+
+def _get_setting_val(key, default=''):
+    row = Setting.query.filter_by(key=key).first()
+    return row.value if row else default
 
 
 @main_bp.route('/')
@@ -48,8 +53,19 @@ def api_games():
 def api_packages(game_id):
     game = Game.query.filter_by(id=game_id, is_active=True).first_or_404()
     packages = game.packages.filter_by(is_active=True).all()
+
+    # Include verification config for this game
+    active_login_game_id = _get_setting_val('active_login_game_id', '')
+    bs_package_id = _get_setting_val('bs_package_id', '')
+    scrape_enabled = current_app.config.get('SCRAPE_ENABLED', True)
+
+    game_dict = game.to_dict()
+    game_dict['scrape_enabled'] = scrape_enabled
+    game_dict['is_ff_verify'] = (active_login_game_id and str(game.id) == str(active_login_game_id))
+    game_dict['is_bs_verify'] = (bs_package_id and str(game.id) == str(bs_package_id))
+
     return jsonify({
-        'game': game.to_dict(),
+        'game': game_dict,
         'packages': [p.to_dict() for p in packages],
     })
 

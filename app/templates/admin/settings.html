@@ -43,5 +43,118 @@
         </div>
     </form>
 </div>
+
+<!-- Verificación de ID por Scraping -->
+<div class="admin-card" style="margin-top:24px;">
+    <h2 style="margin-bottom:16px;">Verificación de ID (Scraping)</h2>
+    <p class="form-hint" style="margin-bottom:16px;">
+        Configura qué juegos activan la verificación automática de ID del jugador antes de comprar.
+    </p>
+
+    <div class="form-grid-2">
+        <div class="form-group">
+            <label for="active_login_game_id">ID del juego Free Fire (verificación FFMania)</label>
+            <input type="number" id="active_login_game_id" placeholder="Ej: 1">
+            <p class="form-hint">
+                Coloca el ID del juego de Free Fire en tu tienda. Al ingresar un ID de jugador en ese juego,
+                se validará automáticamente contra FFMania.
+            </p>
+        </div>
+        <div class="form-group">
+            <label for="bs_package_id">ID del juego Blood Strike (verificación Smile.One)</label>
+            <input type="number" id="bs_package_id" placeholder="Ej: 2">
+            <p class="form-hint">
+                Coloca el ID del juego de Blood Strike en tu tienda. Se validará contra Smile.One Brasil.
+            </p>
+        </div>
+        <div class="form-group">
+            <label for="bs_server_id">ID del servidor Blood Strike</label>
+            <input type="number" id="bs_server_id" placeholder="Ej: -1" value="-1">
+            <p class="form-hint">
+                Usa -1 para juegos que no requieren servidor.
+            </p>
+        </div>
+    </div>
+    <div class="modal-actions" style="margin-top:18px;">
+        <button type="button" class="btn-primary" id="btnSaveVerifyConfig">Guardar configuración de verificación</button>
+    </div>
+    <p id="verifyConfigStatus" style="margin-top:8px; color: var(--accent); display:none;"></p>
+</div>
+
+<script>
+(function() {
+    // Load current values on page load
+    function loadVerifyConfig() {
+        fetch('/admin/config/active_login_game', {credentials: 'same-origin'})
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.ok && d.active_login_game_id) {
+                    document.getElementById('active_login_game_id').value = d.active_login_game_id;
+                }
+            }).catch(function() {});
+
+        fetch('/admin/config/bs_package_id', {credentials: 'same-origin'})
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.ok && d.bs_package_id) {
+                    document.getElementById('bs_package_id').value = d.bs_package_id;
+                }
+            }).catch(function() {});
+
+        fetch('/admin/config/bs_server_id', {credentials: 'same-origin'})
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.ok && d.bs_server_id) {
+                    document.getElementById('bs_server_id').value = d.bs_server_id;
+                }
+            }).catch(function() {});
+    }
+
+    // Save all three values
+    document.getElementById('btnSaveVerifyConfig').addEventListener('click', function() {
+        var btn = this;
+        var status = document.getElementById('verifyConfigStatus');
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+
+        var promises = [
+            fetch('/admin/config/active_login_game', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({active_login_game_id: document.getElementById('active_login_game_id').value.trim()})
+            }),
+            fetch('/admin/config/bs_package_id', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({bs_package_id: document.getElementById('bs_package_id').value.trim()})
+            }),
+            fetch('/admin/config/bs_server_id', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({bs_server_id: document.getElementById('bs_server_id').value.trim()})
+            })
+        ];
+
+        Promise.all(promises).then(function() {
+            status.textContent = 'Configuración de verificación guardada.';
+            status.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Guardar configuración de verificación';
+            setTimeout(function() { status.style.display = 'none'; }, 3000);
+        }).catch(function() {
+            status.textContent = 'Error al guardar.';
+            status.style.color = '#ef4444';
+            status.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Guardar configuración de verificación';
+        });
+    });
+
+    loadVerifyConfig();
+})();
+</script>
 {% endblock %}
 

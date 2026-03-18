@@ -263,6 +263,186 @@
         }
     }
 
+    /* ── Player ID Verification (replicated from Inefablestore) ── */
+    var verifyState = {
+        verifying: false,
+        verifiedNick: '',
+        lastUidRequested: '',
+        lastUidVerified: '',
+        inflightController: null,
+        verifyTimer: null,
+        scrapeEnabled: false,
+        isFFVerify: false,
+        isBSVerify: false,
+        gameId: null
+    };
+
+    function verifyCacheKey(uid) {
+        return 'ffnick:' + String(uid || '').trim();
+    }
+    function getVerifyCachedNick(uid) {
+        try { return (localStorage.getItem(verifyCacheKey(uid)) || '').toString().trim(); } catch (_) { return ''; }
+    }
+    function setVerifyCachedNick(uid, nick) {
+        try { localStorage.setItem(verifyCacheKey(uid), (nick || '').toString()); } catch (_) {}
+    }
+
+    function setNickUIOk(nick) {
+        verifyState.verifiedNick = nick || '';
+        var el = document.getElementById('playerNickname');
+        var btn = document.getElementById('btnVerifyPlayer');
+        if (!el) return;
+        if (!nick) return;
+        el.style.color = '#22c55e';
+        el.textContent = 'Nick: ' + nick;
+        el.style.display = 'block';
+        if (btn) {
+            btn.textContent = 'Verificado';
+            btn.disabled = false;
+        }
+    }
+    function setNickUILoading() {
+        var el = document.getElementById('playerNickname');
+        var btn = document.getElementById('btnVerifyPlayer');
+        if (el) {
+            el.style.color = '#94a3b8';
+            el.textContent = 'Verificando...';
+            el.style.display = 'block';
+        }
+        if (btn) {
+            btn.textContent = 'Verificando...';
+            btn.disabled = true;
+        }
+    }
+    function setNickUIErr(msg) {
+        verifyState.verifiedNick = '';
+        var el = document.getElementById('playerNickname');
+        var btn = document.getElementById('btnVerifyPlayer');
+        if (el) {
+            el.style.color = '#fca5a5';
+            el.textContent = msg || 'No se pudo verificar';
+            el.style.display = 'block';
+        }
+        if (btn) {
+            btn.textContent = 'Verificar';
+            btn.disabled = false;
+        }
+    }
+    function resetNickUI() {
+        verifyState.verifiedNick = '';
+        verifyState.lastUidVerified = '';
+        var el = document.getElementById('playerNickname');
+        var btn = document.getElementById('btnVerifyPlayer');
+        if (el) { el.textContent = ''; el.style.display = 'none'; }
+        if (btn) { btn.textContent = 'Verificar'; btn.disabled = false; }
+    }
+
+    function doVerifyPlayer(opts) {
+        var silent = !!(opts && opts.silent);
+        if (verifyState.verifying) return;
+        var input = document.getElementById('playerId');
+        if (!input) return;
+        var uid = (input.value || '').trim();
+        if (!uid) { if (!silent) setNickUIErr('Ingresa tu ID'); return; }
+        if (!/^\d+$/.test(uid)) { if (!silent) setNickUIErr('El ID debe ser numérico'); return; }
+
+        if (uid === verifyState.lastUidVerified) {
+            var n0 = getVerifyCachedNick(uid);
+            if (n0) { setNickUIOk(n0); return; }
+        }
+        var cached = getVerifyCachedNick(uid);
+        if (cached) {
+            verifyState.lastUidVerified = uid;
+            setNickUIOk(cached);
+            return;
+        }
+
+        if (verifyState.inflightController) {
+            try { verifyState.inflightController.abort(); } catch (_) {}
+            verifyState.inflightController = null;
+        }
+        verifyState.inflightController = new AbortController();
+        verifyState.lastUidRequested = uid;
+        verifyState.verifying = true;
+
+        if (!silent) { setNickUILoading(); }
+        else { var btn = document.getElementById('btnVerifyPlayer'); if (btn) btn.disabled = true; }
+
+        var verifyPath = verifyState.isBSVerify
+            ? '/store/player/verify/bloodstrike'
+            : '/store/player/verify';
+        var url = verifyPath + '?gid=' + encodeURIComponent(verifyState.gameId || '') + '&uid=' + encodeURIComponent(uid);
+
+        fetch(url, { signal: verifyState.inflightController.signal })
+            .then(function(res) {
+                return res.json().then(function(data) {
+                    if (uid !== verifyState.lastUidRequested) return;
+                    if (!res.ok || !data || !data.ok) throw new Error((data && data.error) || 'No se pudo verificar');
+                    var nick = (data.nick || '').toString().trim();
+                    if (!nick) throw new Error('ID no encontrado');
+                    setVerifyCachedNick(uid, nick);
+                    verifyState.lastUidVerified = uid;
+                    setNickUIOk(nick);
+                });
+            })
+            .catch(function(e) {
+                if (e && e.name === 'AbortError') return;
+                if (!silent) setNickUIErr((e && e.message) ? e.message : 'No se pudo verificar');
+                setVerifyCachedNick(uid, '');
+            })
+            .finally(function() {
+                verifyState.verifying = false;
+                var btn = document.getElementById('btnVerifyPlayer');
+                if (btn) {
+                    if (String(btn.textContent || '').trim() === 'Verificando...') {
+                        btn.textContent = 'Verificar';
+                    }
+                    btn.disabled = false;
+                }
+            });
+    }
+
+    function setupVerifyListeners() {
+        var btn = document.getElementById('btnVerifyPlayer');
+        var input = document.getElementById('playerId');
+        if (btn) {
+            btn.onclick = function() { doVerifyPlayer({ silent: false }); };
+        }
+        if (input) {
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); doVerifyPlayer({ silent: false }); }
+            });
+            input.addEventListener('input', function() {
+                var uid = (input.value || '').trim();
+                if (!uid) { resetNickUI(); return; }
+                if (verifyState.verifyTimer) clearTimeout(verifyState.verifyTimer);
+                verifyState.verifyTimer = setTimeout(function() {
+                    doVerifyPlayer({ silent: true });
+                }, 500);
+            });
+        }
+    }
+
+    function updateVerifyUI(game) {
+        var btn = document.getElementById('btnVerifyPlayer');
+        var nicknameEl = document.getElementById('playerNickname');
+        var hasVerify = game && game.scrape_enabled && (game.is_ff_verify || game.is_bs_verify);
+
+        verifyState.scrapeEnabled = !!(game && game.scrape_enabled);
+        verifyState.isFFVerify = !!(game && game.is_ff_verify);
+        verifyState.isBSVerify = !!(game && game.is_bs_verify);
+        verifyState.gameId = game ? String(game.id) : null;
+
+        if (hasVerify) {
+            if (btn) btn.style.display = '';
+            resetNickUI();
+            setupVerifyListeners();
+        } else {
+            if (btn) btn.style.display = 'none';
+            if (nicknameEl) { nicknameEl.textContent = ''; nicknameEl.style.display = 'none'; }
+        }
+    }
+
     /* ── Update Sidebar with Game Info ───────────────────── */
     function applyGameToSidebar(game) {
         currentGame = game;
@@ -288,7 +468,6 @@
         if (!playerSection) return;
 
         if (isWallet) {
-            // En modo "wallet" mostramos campo de correo/teléfono
             playerSection.style.display = 'block';
             if (playerIdLabel) playerIdLabel.textContent = 'Correo electrónico';
             if (playerInput) {
@@ -296,13 +475,10 @@
                 playerInput.placeholder = 'correo@ejemplo.com';
             }
             if (playerHint) playerHint.textContent = 'Ingresa tu correo electrónico para recibir la recarga.';
-            // Ocultar campo de zona si existe
             if (zoneGroup) zoneGroup.style.display = 'none';
         } else if (isTarjetas) {
-            // En modo "tarjetas" ocultamos completamente
             playerSection.style.display = 'none';
         } else {
-            // En modo "juegos" mostramos ID normal
             playerSection.style.display = 'block';
             if (playerIdLabel) playerIdLabel.textContent = game.player_id_label || 'ID del jugador';
             if (playerInput) {
@@ -320,6 +496,8 @@
                 if (zoneGroup) zoneGroup.style.display = 'none';
             }
         }
+
+        updateVerifyUI(game);
     }
 
     /* ── Select Package & bind form ───────────────────────── */

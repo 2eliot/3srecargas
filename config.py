@@ -26,3 +26,4 @@ class Config:
     ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     REVENDEDORES_BASE_URL = os.environ.get('REVENDEDORES_BASE_URL', '')
     REVENDEDORES_API_KEY = os.environ.get('REVENDEDORES_API_KEY', '')
+    SCRAPE_ENABLED = os.environ.get('SCRAPE_ENABLED', 'true').strip().lower() == 'true'
