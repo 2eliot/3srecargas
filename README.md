@@ -12,6 +12,8 @@ Plataforma web de recargas móviles y de juegos construida con **Flask + Postgre
 - **Sistema de Afiliados**: links únicos, comisiones automáticas, panel de gestión
 - **Panel Admin**: gestión completa de juegos, paquetes, órdenes y afiliados
 - **Mobile-First**: diseño oscuro, sticky header, CSS Grid
+- **Notificaciones por correo**: emails automáticos al crear, aprobar, completar o rechazar órdenes (incluye entrega de códigos/PINs por email)
+- **Redes sociales configurables**: links del footer editables desde el panel admin
 
 ## Instalación
 
@@ -133,6 +135,37 @@ Si `success` es `false`, el PIN **no** se marca como usado y la orden permanece 
 | `VPS_FULL_NAME` | `Usuario Recarga` | Nombre completo para el formulario |
 | `VPS_BIRTH_DATE` | `01/01/1995` | Fecha de nacimiento para el formulario |
 
+### Correo electrónico (SMTP)
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `MAIL_SERVER` | `smtp.gmail.com` | Servidor SMTP |
+| `MAIL_PORT` | `587` | Puerto SMTP |
+| `MAIL_USERNAME` | *(vacío)* | Usuario SMTP (correo) |
+| `MAIL_PASSWORD` | *(vacío)* | Contraseña de aplicación SMTP |
+| `MAIL_USE_TLS` | `true` | Usar STARTTLS |
+| `MAIL_USE_SSL` | `false` | Usar SSL (fallback) |
+| `MAIL_DEFAULT_SENDER` | `MAIL_USERNAME` | Remitente por defecto |
+| `MAIL_BRAND_NAME` | `3S Recargas` | Nombre de marca en correos |
+| `SUPPORT_EMAIL` | `soporte@3srecargas.com` | Correo de soporte |
+| `SUPPORT_WHATSAPP` | *(vacío)* | Link WhatsApp soporte |
+| `ADMIN_NOTIFY_EMAIL` | *(vacío)* | Correo para alertas de nuevas órdenes |
+
+> **Gmail:** usa una [contraseña de aplicación](https://myaccount.google.com/apppasswords), no tu contraseña normal.
+
+## Notificaciones por Correo
+
+El sistema envía emails automáticos en los siguientes eventos:
+
+| Evento | Destinatario | Contenido |
+|--------|-------------|------------|
+| Orden creada | Cliente + Admin | Resumen de la orden, estado pendiente |
+| Orden aprobada | Cliente | Confirmación de aprobación |
+| Orden completada | Cliente | Confirmación + código/PIN si aplica |
+| Orden rechazada | Cliente | Notificación con motivo del rechazo |
+
+Los valores de marca, soporte y contacto se configuran tanto en `.env` como en **Admin → Configuración** (los valores del admin tienen prioridad).
+
 ## Links de Afiliado
 
 `https://tudominio.com/r/CÓDIGO` → almacena el código en sesión y redirige a la tienda.
@@ -149,6 +182,10 @@ windsurf-project/
 │   │   ├── checkout.py      # Flujo de compra
 │   │   ├── admin.py         # Panel administración
 │   │   └── affiliates.py    # Redirección de afiliados
+│   ├── utils/
+│   │   ├── email.py         # SMTP send (TLS/SSL, async)
+│   │   ├── email_templates.py # HTML email builders
+│   │   └── notifications.py # High-level notification dispatcher
 │   ├── static/
 │   │   ├── css/main.css     # Estilos tienda (dark theme)
 │   │   ├── css/admin.css    # Estilos panel admin

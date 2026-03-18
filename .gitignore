@@ -11,10 +11,11 @@ ENV/
 
 # Configuration
 .env
-.env.*
+!.env.example
 *.log
 
 # Databases & uploads
+data/
 dev.db
 *.sqlite3
 app/static/uploads/**
