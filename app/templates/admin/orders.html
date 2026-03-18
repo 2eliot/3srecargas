@@ -66,9 +66,11 @@
                     <td>{{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
                     <td>
                         {% if order.status == 'pending' %}
-                        <div class="action-btns">
-                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline">
-                                <button class="btn-sm btn-success" type="submit" title="Aprobar">✓ Aprobar</button>
+                        <div class="action-btns" id="actions-{{ order.id }}"
+                             data-order-id="{{ order.id }}"
+                             data-auto-resp="{{ order.automation_response|default('',true)|e }}">
+                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline" class="approve-form">
+                                <button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>
                             </form>
                             <button class="btn-sm btn-danger" onclick="openRejectModal({{ order.id }})" title="Rechazar">✗</button>
                         </div>
@@ -127,5 +129,56 @@ function showPin(pin) {
     document.getElementById('pinCodeDisplay').textContent = pin;
     document.getElementById('pinModal').style.display = 'flex';
 }
+
+(function() {
+    document.querySelectorAll('.action-btns[data-auto-resp]').forEach(function(el) {
+        var raw = el.getAttribute('data-auto-resp');
+        if (!raw) return;
+        var resp;
+        try { resp = JSON.parse(raw); } catch(e) { return; }
+        if (!resp.pending_verification) return;
+
+        var orderId = el.getAttribute('data-order-id');
+        var btn = el.querySelector('.approve-btn');
+        var form = el.querySelector('.approve-form');
+        if (btn) { btn.disabled = true; btn.textContent = 'Verificando...'; btn.style.opacity = '0.6'; }
+
+        var attempts = 0;
+        var maxAttempts = 12;
+        function poll() {
+            attempts++;
+            fetch('/admin/orders/' + orderId + '/verify-recharge', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.result === 'completed') {
+                        if (btn) { btn.textContent = 'Completada'; btn.style.background = '#22c55e'; }
+                        setTimeout(function() { location.reload(); }, 1500);
+                    } else if (data.result === 'processing') {
+                        if (btn) btn.textContent = 'Procesando... (' + attempts + ')';
+                        if (attempts < maxAttempts) setTimeout(poll, 5000);
+                        else {
+                            if (btn) { btn.textContent = 'Reintentar verificar'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'button'; }
+                            btn.onclick = function(e) { e.preventDefault(); attempts = 0; btn.disabled = true; btn.textContent = 'Verificando...'; btn.style.opacity = '0.6'; poll(); };
+                        }
+                    } else if (data.can_approve) {
+                        if (btn) { btn.disabled = false; btn.textContent = '✓ Aprobar'; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
+                        var msg = data.message || 'Recarga no se completó. Puedes reintentar.';
+                        var tip = document.createElement('div');
+                        tip.style.cssText = 'font-size:11px;color:#f59e0b;margin-top:4px;';
+                        tip.textContent = msg;
+                        el.appendChild(tip);
+                    } else {
+                        if (btn) btn.textContent = 'Error verificando';
+                        if (attempts < maxAttempts) setTimeout(poll, 5000);
+                    }
+                })
+                .catch(function() {
+                    if (attempts < maxAttempts) setTimeout(poll, 5000);
+                    else if (btn) { btn.textContent = '✓ Aprobar'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
+                });
+        }
+        setTimeout(poll, 1000);
+    });
+})();
 </script>
 {% endblock %}

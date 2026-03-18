@@ -406,13 +406,30 @@ def order_approve(order_id):
                     return redirect(url_for('admin_bp.orders'))
                 else:
                     rev_error = rev_data.get('error', resp.text[:200] if not resp.ok else 'Error desconocido')
+                    order.automation_response = json.dumps({
+                        'source': 'revendedores_api',
+                        'pending_verification': True,
+                        'external_order_id': order.order_number,
+                        'error': rev_error,
+                    })
+                    db.session.commit()
                     flash(
-                        f'Revendedores API falló: {rev_error}. La orden sigue pendiente, puedes reintentar.',
-                        'danger',
+                        f'Revendedores reportó error: {rev_error}. Verificando si la recarga se procesó...',
+                        'warning',
                     )
                     return redirect(url_for('admin_bp.orders'))
         except Exception as e:
-            flash(f'Error contactando Revendedores API: {e}. La orden sigue pendiente.', 'danger')
+            order.automation_response = json.dumps({
+                'source': 'revendedores_api',
+                'pending_verification': True,
+                'external_order_id': order.order_number,
+                'error': str(e),
+            })
+            try:
+                db.session.commit()
+            except Exception:
+                pass
+            flash(f'Error contactando Revendedores API: {e}. Verificando si se procesó...', 'warning')
             return redirect(url_for('admin_bp.orders'))
 
     package = order.package
@@ -1105,3 +1122,104 @@ def revendedores_mappings_bulk():
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
     return jsonify({'ok': True, 'saved': saved, 'removed': removed})
+
+
+@admin_bp.route('/orders/<int:order_id>/verify-recharge', methods=['POST'])
+@login_required
+def order_verify_recharge(order_id):
+    """Verifica en Revendedores51 si la recarga realmente se completó."""
+    order = Order.query.get_or_404(order_id)
+    if order.status != 'pending':
+        return jsonify({'ok': True, 'result': 'already_processed', 'order_status': order.status})
+
+    auto_resp = {}
+    try:
+        auto_resp = json.loads(order.automation_response or '{}')
+    except Exception:
+        pass
+
+    if not auto_resp.get('pending_verification'):
+        return jsonify({'ok': True, 'result': 'no_verification_needed', 'can_approve': True})
+
+    ext_order_id = auto_resp.get('external_order_id') or order.order_number
+    base_url, api_key, _, _ = _revendedores_env()
+
+    if not base_url or not api_key:
+        return jsonify({'ok': False, 'error': 'Revendedores API no configurada'})
+
+    try:
+        resp = requests.get(
+            f'{base_url}/api/v1/order-status',
+            params={'external_order_id': ext_order_id},
+            headers={'X-API-Key': api_key},
+            timeout=15,
+        )
+        data = resp.json() if resp.ok else {}
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'No se pudo verificar: {e}', 'can_approve': False})
+
+    if not data.get('ok'):
+        return jsonify({'ok': False, 'error': data.get('error', 'Error consultando Revendedores'), 'can_approve': False})
+
+    found = data.get('found', False)
+    rev_status = data.get('status', '')
+    rev_order = data.get('order', {})
+
+    if found and rev_status == 'completada':
+        player_name = rev_order.get('player_name', '')
+        ref_no = rev_order.get('reference_no', '')
+        order.status = 'completed'
+        order.automation_response = json.dumps({
+            'source': 'revendedores_api',
+            'success': True,
+            'verified': True,
+            'player_name': player_name,
+            'reference_no': ref_no,
+        })
+        order.notes = (order.notes or '') + f'\n[Verificado] Recarga confirmada en Revendedores. Ref: {ref_no}, Player: {player_name}'
+        order.updated_at = datetime.utcnow()
+        process_affiliate_commission(order)
+        db.session.commit()
+        return jsonify({
+            'ok': True,
+            'result': 'completed',
+            'order_status': 'completed',
+            'player_name': player_name,
+            'reference_no': ref_no,
+        })
+    elif found and rev_status == 'fallida':
+        order.automation_response = json.dumps({
+            'source': 'revendedores_api',
+            'pending_verification': False,
+            'verified_failed': True,
+            'error': rev_order.get('error', ''),
+        })
+        db.session.commit()
+        return jsonify({
+            'ok': True,
+            'result': 'failed',
+            'order_status': 'pending',
+            'can_approve': True,
+            'message': 'Recarga falló en Revendedores. Puedes reintentar.',
+        })
+    elif found and rev_status == 'procesando':
+        return jsonify({
+            'ok': True,
+            'result': 'processing',
+            'order_status': 'pending',
+            'can_approve': False,
+            'message': 'La recarga aún se está procesando en Revendedores...',
+        })
+    else:
+        order.automation_response = json.dumps({
+            'source': 'revendedores_api',
+            'pending_verification': False,
+        })
+        db.session.commit()
+        return jsonify({
+            'ok': True,
+            'result': 'not_found',
+            'order_status': 'pending',
+            'can_approve': True,
+            'message': 'No se encontró la recarga en Revendedores. Puedes reintentar.',
+        })
