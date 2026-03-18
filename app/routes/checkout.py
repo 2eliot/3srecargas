@@ -9,6 +9,7 @@ from flask_login import current_user
 from werkzeug.utils import secure_filename
 from ..models import db, Game, Package, Order, Affiliate, AffiliateCommission, Pin, PaymentMethod, User, Discount
 from ..models import Setting
+from ..utils.notifications import notify_order_created
 
 checkout_bp = Blueprint('checkout_bp', __name__)
 
@@ -172,6 +173,11 @@ def checkout(package_id):
         )
         db.session.add(order)
         db.session.commit()
+
+        try:
+            notify_order_created(order, package, game)
+        except Exception:
+            pass
 
         checkout_data.pop(pkg_key, None)
         session['checkout_data'] = checkout_data

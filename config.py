@@ -27,3 +27,14 @@ class Config:
     REVENDEDORES_BASE_URL = os.environ.get('REVENDEDORES_BASE_URL', '')
     REVENDEDORES_API_KEY = os.environ.get('REVENDEDORES_API_KEY', '')
     SCRAPE_ENABLED = os.environ.get('SCRAPE_ENABLED', 'true').strip().lower() == 'true'
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT', 587))
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', '')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')
+    MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').strip().lower() == 'true'
+    MAIL_USE_SSL = os.environ.get('MAIL_USE_SSL', 'false').strip().lower() == 'true'
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', MAIL_USERNAME)
+    MAIL_BRAND_NAME = os.environ.get('MAIL_BRAND_NAME', '3S Recargas')
+    SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'soporte@3srecargas.com')
+    SUPPORT_WHATSAPP = os.environ.get('SUPPORT_WHATSAPP', 'https://wa.me/584120000000')
+    ADMIN_NOTIFY_EMAIL = os.environ.get('ADMIN_NOTIFY_EMAIL', '')

@@ -38,6 +38,76 @@
                 {% endif %}
             </div>
         </div>
+        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
+        <h3 style="margin-bottom:16px;">Redes Sociales (Footer)</h3>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="social_facebook">Facebook URL</label>
+                <input type="url" id="social_facebook" name="social_facebook" placeholder="https://facebook.com/3srecargas"
+                       value="{{ social_settings.social_facebook }}">
+                <p class="form-hint">Enlace a tu fanpage principal.</p>
+            </div>
+            <div class="form-group">
+                <label for="social_instagram">Instagram URL/usuario</label>
+                <input type="text" id="social_instagram" name="social_instagram" placeholder="https://instagram.com/3srecargas"
+                       value="{{ social_settings.social_instagram }}">
+                <p class="form-hint">Coloca la URL completa o el usuario.</p>
+            </div>
+            <div class="form-group">
+                <label for="social_tiktok">TikTok URL/usuario</label>
+                <input type="text" id="social_tiktok" name="social_tiktok" placeholder="https://www.tiktok.com/@3srecargas"
+                       value="{{ social_settings.social_tiktok }}">
+            </div>
+            <div class="form-group">
+                <label for="social_whatsapp">Link directo de WhatsApp</label>
+                <input type="url" id="social_whatsapp" name="social_whatsapp" placeholder="https://wa.me/58412XXXXXXX"
+                       value="{{ social_settings.social_whatsapp }}">
+                <p class="form-hint">Formato recomendado: wa.me con número o enlace a canal.</p>
+            </div>
+        </div>
+
+        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
+        <h3 style="margin-bottom:16px;">Notificaciones por Correo</h3>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="email_brand_name">Nombre de marca (correos)</label>
+                <input type="text" id="email_brand_name" name="email_brand_name" placeholder="3sRecargas"
+                       value="{{ email_settings.email_brand_name }}">
+                <p class="form-hint">Aparece como remitente y en el encabezado de los correos.</p>
+            </div>
+            <div class="form-group">
+                <label for="admin_notify_email">Correo para alertas de nuevas órdenes</label>
+                <input type="email" id="admin_notify_email" name="admin_notify_email" placeholder="admin@3srecargas.com"
+                       value="{{ email_settings.admin_notify_email }}">
+                <p class="form-hint">Recibirá un aviso cada vez que se cree una orden.</p>
+            </div>
+            <div class="form-group">
+                <label for="support_email">Correo de soporte</label>
+                <input type="email" id="support_email" name="support_email" placeholder="soporte@3srecargas.com"
+                       value="{{ email_settings.support_email }}">
+            </div>
+            <div class="form-group">
+                <label for="support_whatsapp">WhatsApp de soporte</label>
+                <input type="url" id="support_whatsapp" name="support_whatsapp" placeholder="https://wa.me/58412XXXXXXX"
+                       value="{{ email_settings.support_whatsapp }}">
+            </div>
+            <div class="form-group">
+                <label for="support_site_url">URL del sitio / centro de ayuda</label>
+                <input type="url" id="support_site_url" name="support_site_url" placeholder="https://3srecargas.com"
+                       value="{{ email_settings.support_site_url }}">
+            </div>
+            <div class="form-group">
+                <label for="privacy_url">URL política de privacidad</label>
+                <input type="url" id="privacy_url" name="privacy_url" placeholder="https://3srecargas.com/privacidad"
+                       value="{{ email_settings.privacy_url }}">
+            </div>
+            <div class="form-group">
+                <label for="unsubscribe_url">URL para darse de baja</label>
+                <input type="url" id="unsubscribe_url" name="unsubscribe_url" placeholder="https://3srecargas.com/unsub"
+                       value="{{ email_settings.unsubscribe_url }}">
+            </div>
+        </div>
+
         <div class="modal-actions" style="margin-top:18px;">
             <button type="submit" class="btn-primary">Guardar configuración</button>
         </div>
@@ -73,34 +143,6 @@
             <p class="form-hint">
                 Usa -1 para juegos que no requieren servidor.
             </p>
-        </div>
-    </div>
-
-    <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
-    <h3 style="margin-bottom:16px;">Redes Sociales (Footer)</h3>
-    <div class="form-grid-2">
-        <div class="form-group">
-            <label for="social_facebook">Facebook URL</label>
-            <input type="url" id="social_facebook" name="social_facebook" placeholder="https://facebook.com/3srecargas"
-                   value="{{ social_settings.social_facebook }}">
-            <p class="form-hint">Enlace a tu fanpage principal.</p>
-        </div>
-        <div class="form-group">
-            <label for="social_instagram">Instagram URL/usuario</label>
-            <input type="text" id="social_instagram" name="social_instagram" placeholder="https://instagram.com/3srecargas"
-                   value="{{ social_settings.social_instagram }}">
-            <p class="form-hint">Coloca la URL completa o el usuario.</p>
-        </div>
-        <div class="form-group">
-            <label for="social_tiktok">TikTok URL/usuario</label>
-            <input type="text" id="social_tiktok" name="social_tiktok" placeholder="https://www.tiktok.com/@3srecargas"
-                   value="{{ social_settings.social_tiktok }}">
-        </div>
-        <div class="form-group">
-            <label for="social_whatsapp">Link directo de WhatsApp</label>
-            <input type="url" id="social_whatsapp" name="social_whatsapp" placeholder="https://wa.me/58412XXXXXXX"
-                   value="{{ social_settings.social_whatsapp }}">
-            <p class="form-hint">Formato recomendado: wa.me con número o enlace a canal.</p>
         </div>
     </div>
     <div class="modal-actions" style="margin-top:18px;">

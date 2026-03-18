@@ -15,6 +15,9 @@ from ..models import (
     Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting,
     RevendedoresCatalogItem, RevendedoresItemMapping,
 )
+from ..utils.notifications import (
+    notify_order_approved, notify_order_completed, notify_order_rejected,
+)
 
 admin_bp = Blueprint('admin_bp', __name__)
 
@@ -401,6 +404,10 @@ def order_approve(order_id):
                     order.updated_at = datetime.utcnow()
                     process_affiliate_commission(order)
                     db.session.commit()
+                    try:
+                        notify_order_completed(order, order.package, order.game)
+                    except Exception:
+                        pass
                     extra = f' (Jugador: {player_name})' if player_name else ''
                     flash(f'Orden #{order.order_number} completada vía Revendedores API.{extra}', 'success')
                     return redirect(url_for('admin_bp.orders'))
@@ -499,6 +506,10 @@ def order_approve(order_id):
                 order.updated_at = datetime.utcnow()
                 process_affiliate_commission(order)
                 db.session.commit()
+                try:
+                    notify_order_completed(order, order.package, order.game)
+                except Exception:
+                    pass
                 extra = f' (Jugador: {player_name})' if player_name else ''
                 flash(f'Orden #{order.order_number} completada vía automatización.{extra}', 'success')
             else:
@@ -531,12 +542,20 @@ def order_approve(order_id):
         order.updated_at = datetime.utcnow()
         process_affiliate_commission(order)
         db.session.commit()
+        try:
+            notify_order_completed(order, order.package, order.game, pin_code=pin.code)
+        except Exception:
+            pass
         flash(f'Orden #{order.order_number} completada y PIN entregado.', 'success')
     else:
         order.status = 'approved'
         order.updated_at = datetime.utcnow()
         process_affiliate_commission(order)
         db.session.commit()
+        try:
+            notify_order_approved(order, order.package, order.game)
+        except Exception:
+            pass
         flash(f'Orden #{order.order_number} aprobada.', 'success')
 
     return redirect(url_for('admin_bp.orders'))
@@ -551,6 +570,10 @@ def order_reject(order_id):
     order.notes = notes
     order.updated_at = datetime.utcnow()
     db.session.commit()
+    try:
+        notify_order_rejected(order, order.package, order.game, reason=notes)
+    except Exception:
+        pass
     flash(f'Orden #{order.order_number} rechazada.', 'warning')
     return redirect(url_for('admin_bp.orders'))
 
@@ -810,12 +833,27 @@ def settings():
         setting = Setting.query.filter_by(key=key).first()
         social_settings[key] = setting.value if setting else ''
 
+    email_keys = {
+        'email_brand_name': 'Nombre de la marca para correos',
+        'support_email': 'Correo de soporte',
+        'support_whatsapp': 'Link directo a WhatsApp soporte',
+        'support_site_url': 'URL del sitio o centro de ayuda',
+        'privacy_url': 'URL de política de privacidad',
+        'unsubscribe_url': 'URL para darse de baja',
+        'admin_notify_email': 'Correo para alertas de nuevas órdenes',
+    }
+    email_settings = {}
+    for key in email_keys:
+        setting = Setting.query.filter_by(key=key).first()
+        email_settings[key] = setting.value if setting else ''
+
     if request.method == 'POST':
         new_rate = request.form.get('usd_rate_bs', '').strip()
         default_pkg = request.form.get('default_auto_package_id', '').strip()
         remove_logo = request.form.get('remove_logo')
         logo_file = request.files.get('site_logo')
         social_payload = {k: (request.form.get(k, '') or '').strip() for k in social_keys}
+        email_payload = {k: (request.form.get(k, '') or '').strip() for k in email_keys}
 
         if new_rate:
             try:
@@ -877,6 +915,19 @@ def settings():
                 if current_setting:
                     current_setting.value = ''
 
+        for key, desc in email_keys.items():
+            val = email_payload.get(key, '')
+            current_setting = Setting.query.filter_by(key=key).first()
+            if val:
+                if not current_setting:
+                    current_setting = Setting(key=key, value=val, description=desc)
+                    db.session.add(current_setting)
+                else:
+                    current_setting.value = val
+            else:
+                if current_setting:
+                    current_setting.value = ''
+
         db.session.commit()
         flash('Configuración actualizada.', 'success')
         return redirect(url_for('admin_bp.settings'))
@@ -887,6 +938,7 @@ def settings():
         default_package_id=default_auto_package_id,
         site_logo=site_logo_value,
         social_settings=social_settings,
+        email_settings=email_settings,
     )
 
 
@@ -1206,6 +1258,10 @@ def order_verify_recharge(order_id):
         order.updated_at = datetime.utcnow()
         process_affiliate_commission(order)
         db.session.commit()
+        try:
+            notify_order_completed(order, order.package, order.game)
+        except Exception:
+            pass
         return jsonify({
             'ok': True,
             'result': 'completed',
