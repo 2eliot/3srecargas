@@ -163,13 +163,15 @@
             if (!btn || btn.dataset.counting) return;
             btn.dataset.counting = '1';
             btn.disabled = true;
-            btn.style.opacity = '0.7';
-            btn.style.pointerEvents = 'none';
+            btn.style.background = '#6b7280';
+            btn.style.borderColor = '#6b7280';
+            btn.style.color = '#fff';
+            btn.style.cursor = 'not-allowed';
             var seconds = 0;
-            btn.textContent = 'Procesando... 0s';
+            btn.textContent = 'Procesando 0s';
             setInterval(function() {
                 seconds++;
-                btn.textContent = 'Procesando... ' + seconds + 's';
+                btn.textContent = 'Procesando ' + seconds + 's';
             }, 1000);
         });
     });

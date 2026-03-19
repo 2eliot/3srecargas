@@ -84,8 +84,8 @@
                     <td>
                         {% if order.status == 'pending' %}
                         <div class="action-btns">
-                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline">
-                                <button class="btn-sm btn-success" type="submit">✓</button>
+                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline" class="approve-form">
+                                <button class="btn-sm btn-success approve-btn" type="submit">✓</button>
                             </form>
                             <button class="btn-sm btn-danger" onclick="openRejectModal({{ order.id }})">✗</button>
                         </div>
@@ -157,5 +157,31 @@ function closeCaptureModal() {
     if (img) img.src = '';
     if (modal) modal.style.display = 'none';
 }
+
+/* ── Contador de segundos al aprobar ── */
+(function() {
+    document.querySelectorAll('.approve-form').forEach(function(form) {
+        form.addEventListener('submit', function() {
+            var btn = form.querySelector('.approve-btn');
+            if (!btn || btn.dataset.counting) return;
+            btn.dataset.counting = '1';
+            btn.disabled = true;
+            btn.style.background = '#6b7280';
+            btn.style.borderColor = '#6b7280';
+            btn.style.color = '#fff';
+            btn.style.cursor = 'not-allowed';
+            btn.style.minWidth = '120px';
+            btn.style.fontSize = '12px';
+            var seconds = 0;
+            btn.textContent = 'Procesando 0s';
+            setInterval(function() {
+                seconds++;
+                btn.textContent = 'Procesando ' + seconds + 's';
+            }, 1000);
+            var rejectBtn = form.parentElement.querySelector('.btn-danger');
+            if (rejectBtn) { rejectBtn.disabled = true; rejectBtn.style.opacity = '0.4'; rejectBtn.style.pointerEvents = 'none'; }
+        });
+    });
+})();
 </script>
 {% endblock %}
