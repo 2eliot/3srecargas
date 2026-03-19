@@ -131,6 +131,26 @@ function showPin(pin) {
     document.getElementById('pinModal').style.display = 'flex';
 }
 
+/* ── Contador de segundos al aprobar ── */
+(function() {
+    document.querySelectorAll('.approve-form').forEach(function(form) {
+        form.addEventListener('submit', function() {
+            var btn = form.querySelector('.approve-btn');
+            if (!btn || btn.dataset.counting) return;
+            btn.dataset.counting = '1';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            btn.style.pointerEvents = 'none';
+            var seconds = 0;
+            btn.textContent = 'Procesando... 0s';
+            var timer = setInterval(function() {
+                seconds++;
+                btn.textContent = 'Procesando... ' + seconds + 's';
+            }, 1000);
+        });
+    });
+})();
+
 (function() {
     document.querySelectorAll('.action-btns[data-auto-resp]').forEach(function(el) {
         var raw = el.getAttribute('data-auto-resp');

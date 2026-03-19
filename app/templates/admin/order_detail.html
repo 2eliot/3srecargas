@@ -127,8 +127,8 @@
 <div class="admin-card" style="margin-top:20px;padding:20px">
     <h3 style="margin-bottom:16px">Acciones</h3>
     <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}">
-            <button type="submit" class="btn-primary">✓ Aprobar Orden</button>
+        <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" class="approve-form">
+            <button type="submit" class="btn-primary approve-btn">✓ Aprobar Orden</button>
         </form>
         <button class="btn-danger-solid" onclick="document.getElementById('rejectModal').style.display='flex'">
             ✗ Rechazar Orden
@@ -152,4 +152,27 @@
     </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    document.querySelectorAll('.approve-form').forEach(function(form) {
+        form.addEventListener('submit', function() {
+            var btn = form.querySelector('.approve-btn');
+            if (!btn || btn.dataset.counting) return;
+            btn.dataset.counting = '1';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            btn.style.pointerEvents = 'none';
+            var seconds = 0;
+            btn.textContent = 'Procesando... 0s';
+            setInterval(function() {
+                seconds++;
+                btn.textContent = 'Procesando... ' + seconds + 's';
+            }, 1000);
+        });
+    });
+})();
+</script>
 {% endblock %}

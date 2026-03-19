@@ -220,7 +220,7 @@ def build_order_completed_pin_email(order, package, game, pin_code=None):
     s = _base_style()
     brand = _brand_name()
     amount_str = f"${float(order.amount):.2f} USD"
-    code = pin_code or order.pin_delivered or ''
+    code = pin_code or ''
 
     code_html = ''
     if code:

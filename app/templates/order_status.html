@@ -100,7 +100,7 @@
             </div>
         </div>
 
-        {% if order.pin_delivered %}
+        {% if order.pin_delivered and order.game.category and order.game.category.slug == 'tarjetas' %}
         <div class="pin-reveal">
             <p class="pin-label">Tu PIN / Código</p>
             <div class="pin-code">{{ order.pin_delivered }}</div>
