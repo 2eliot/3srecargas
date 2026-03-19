@@ -39,6 +39,12 @@ def checkout(package_id):
     game = package.game
     is_wallet = game.category.slug == 'wallet'
 
+    aff_from_query = (request.args.get('aff') or request.args.get('affiliate_code') or '').strip()
+    if aff_from_query:
+        aff_match = Affiliate.query.filter_by(code=aff_from_query, is_active=True).first()
+        if aff_match:
+            session['affiliate_code'] = aff_match.code
+
     usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
     usd_rate = float(usd_rate_setting.value) if usd_rate_setting else 0.0
 
@@ -62,6 +68,8 @@ def checkout(package_id):
             phone = request.form.get('phone', '').strip()
             payment_method = request.form.get('payment_method', '').strip()
             aff_code = request.form.get('affiliate_code', '').strip()
+            if not aff_code:
+                aff_code = (session.get('affiliate_code', '') or '').strip()
 
             if not payment_method:
                 flash('Debes seleccionar un método de pago.', 'danger')
@@ -120,6 +128,8 @@ def checkout(package_id):
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
         aff_code = (data.get('affiliate_code') or '').strip()
+        if not aff_code:
+            aff_code = (session.get('affiliate_code', '') or '').strip()
         affiliate = None
         if aff_code:
             affiliate = Affiliate.query.filter_by(code=aff_code, is_active=True).first()
@@ -132,7 +142,7 @@ def checkout(package_id):
             user_id = current_user.id
 
         # Procesar descuento si hay código (descuento explícito o código de afiliado)
-        discount_code = (data.get('affiliate_code') or '').strip().upper()
+        discount_code = ((data.get('affiliate_code') or aff_code or '').strip()).upper()
         discount = None
         discount_amount = 0.0
         original_amount = float(package.price)
@@ -144,10 +154,17 @@ def checkout(package_id):
                 # Incrementar contador de uso
                 discount.used_count += 1
             elif affiliate:
-                # Fallback: usar porcentaje de comisión del afiliado como descuento al cliente
-                rate = float(affiliate.commission_rate or 0)
+                # Usar % de descuento al cliente; fallback para afiliados antiguos
+                rate = float(affiliate.client_discount_rate or 0)
+                if rate <= 0:
+                    rate = float(affiliate.commission_rate or 0)
                 if rate > 0:
-                    discount_amount = round(original_amount * rate / 100.0, 2)
+                    raw_discount = original_amount * rate / 100.0
+                    discount_amount = round(raw_discount, 2)
+                    if raw_discount > 0 and discount_amount <= 0:
+                        discount_amount = 0.01
+                    if discount_amount > original_amount:
+                        discount_amount = round(original_amount, 2)
         
         final_amount = max(original_amount - discount_amount, 0.0)
 
@@ -205,7 +222,7 @@ def checkout(package_id):
     original_amount = usd_amount
     
     # Calcular descuento si hay código (descuento explícito o afiliado)
-    discount_code = affiliate_code.strip().upper() if affiliate_code else ''
+    discount_code = ((affiliate_code or session.get('affiliate_code', '') or '').strip()).upper()
     discount = None
     discount_amount = 0.0
     
@@ -216,9 +233,16 @@ def checkout(package_id):
         else:
             affiliate = Affiliate.query.filter_by(code=discount_code, is_active=True).first()
             if affiliate:
-                rate = float(affiliate.commission_rate or 0)
+                rate = float(affiliate.client_discount_rate or 0)
+                if rate <= 0:
+                    rate = float(affiliate.commission_rate or 0)
                 if rate > 0:
-                    discount_amount = round(original_amount * rate / 100.0, 2)
+                    raw_discount = original_amount * rate / 100.0
+                    discount_amount = round(raw_discount, 2)
+                    if raw_discount > 0 and discount_amount <= 0:
+                        discount_amount = 0.01
+                    if discount_amount > original_amount:
+                        discount_amount = round(original_amount, 2)
     
     final_amount = max(original_amount - discount_amount, 0.0)
     

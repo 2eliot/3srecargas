@@ -15,7 +15,8 @@
                     <th>Nombre</th>
                     <th>Código</th>
                     <th>Email</th>
-                    <th>Comisión</th>
+                    <th>Desc. Cliente</th>
+                    <th>Comisión Afil.</th>
                     <th>Balance</th>
                     <th>Total Ganado</th>
                     <th>Órdenes</th>
@@ -30,6 +31,7 @@
                     <td><strong>{{ aff.name }}</strong></td>
                     <td><code class="ref-code">{{ aff.code }}</code></td>
                     <td>{{ aff.email or '—' }}</td>
+                    <td>{{ aff.client_discount_rate or 0 }}%</td>
                     <td>{{ aff.commission_rate }}%</td>
                     <td class="{{ 'text-success' if aff.balance > 0 }}">${{ "%.2f"|format(aff.balance) }}</td>
                     <td>${{ "%.2f"|format(aff.total_earned) }}</td>
@@ -47,8 +49,12 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-outline"
-                                    onclick="openEditAff({{ aff.id }}, '{{ aff.name }}', '{{ aff.email or '' }}', {{ aff.commission_rate }}, {{ aff.is_active | lower }})">
+                                    onclick="openEditAff({{ aff.id }}, '{{ aff.name }}', '{{ aff.email or '' }}', {{ aff.client_discount_rate or 0 }}, {{ aff.commission_rate }}, {{ aff.is_active | lower }})">
                                 Editar
+                            </button>
+                            <button class="btn-sm btn-outline"
+                                    onclick="openBalanceModal({{ aff.id }}, '{{ aff.name }}', {{ aff.balance or 0 }})">
+                                Editar monto
                             </button>
                             {% if aff.balance > 0 %}
                             <form method="POST" action="{{ url_for('admin_bp.affiliate_pay', aff_id=aff.id) }}" style="display:inline">
@@ -60,7 +66,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="10" class="empty-row">No hay afiliados registrados.</td></tr>
+                <tr><td colspan="11" class="empty-row">No hay afiliados registrados.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -90,8 +96,14 @@
                 <input type="email" name="email" placeholder="juan@email.com">
             </div>
             <div class="form-group">
-                <label>Comisión (%)</label>
-                <input type="number" name="commission_rate" value="5" step="0.5" min="0" max="100">
+                <label>Descuento al cliente (%)</label>
+                <input type="number" name="client_discount_rate" value="2" step="0.5" min="0" max="100">
+                <p class="form-hint">Porcentaje que se descuenta del monto que paga el cliente</p>
+            </div>
+            <div class="form-group">
+                <label>Comisión del afiliado (%)</label>
+                <input type="number" name="commission_rate" value="1" step="0.5" min="0" max="100">
+                <p class="form-hint">Porcentaje que gana el afiliado sobre el monto de la orden</p>
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('addAffModal')" class="btn-secondary">Cancelar</button>
@@ -118,8 +130,14 @@
                 <input type="email" name="email" id="editAffEmail">
             </div>
             <div class="form-group">
-                <label>Comisión (%)</label>
+                <label>Descuento al cliente (%)</label>
+                <input type="number" name="client_discount_rate" id="editAffDiscount" step="0.5" min="0" max="100">
+                <p class="form-hint">Porcentaje que se descuenta del monto que paga el cliente</p>
+            </div>
+            <div class="form-group">
+                <label>Comisión del afiliado (%)</label>
                 <input type="number" name="commission_rate" id="editAffRate" step="0.5" min="0" max="100">
+                <p class="form-hint">Porcentaje que gana el afiliado sobre el monto de la orden</p>
             </div>
             <div class="form-checks">
                 <label class="check-label">
@@ -133,6 +151,31 @@
         </form>
     </div>
 </div>
+
+<!-- Edit Balance Modal -->
+<div class="modal-overlay" id="editBalanceModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>Editar monto del afiliado</h3>
+            <button onclick="closeModal('editBalanceModal')">✕</button>
+        </div>
+        <form method="POST" id="editBalanceForm">
+            <div class="form-group">
+                <label>Afiliado</label>
+                <input type="text" id="editBalanceName" readonly>
+            </div>
+            <div class="form-group">
+                <label>Nuevo monto/saldo ($)</label>
+                <input type="number" name="balance" id="editBalanceAmount" step="0.01" min="0" required>
+                <p class="form-hint">Usa este valor para corregir manualmente el monto pendiente del afiliado.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('editBalanceModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar monto</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -140,13 +183,21 @@
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function openEditAff(id, name, email, rate, isActive) {
+function openEditAff(id, name, email, discountRate, commRate, isActive) {
     document.getElementById('editAffForm').action = '/admin/affiliates/' + id + '/edit';
     document.getElementById('editAffName').value = name;
     document.getElementById('editAffEmail').value = email;
-    document.getElementById('editAffRate').value = rate;
+    document.getElementById('editAffDiscount').value = discountRate;
+    document.getElementById('editAffRate').value = commRate;
     document.getElementById('editAffActive').checked = isActive;
     openModal('editAffModal');
+}
+
+function openBalanceModal(id, name, balance) {
+    document.getElementById('editBalanceForm').action = '/admin/affiliates/' + id + '/balance';
+    document.getElementById('editBalanceName').value = name;
+    document.getElementById('editBalanceAmount').value = balance;
+    openModal('editBalanceModal');
 }
 
 function copyLink(url) {

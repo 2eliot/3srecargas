@@ -212,6 +212,7 @@ class Affiliate(db.Model):
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(255))
     commission_rate = db.Column(db.Numeric(5, 2), default=5.0)
+    client_discount_rate = db.Column(db.Numeric(5, 2), default=0.0)  # % descuento al cliente
     balance = db.Column(db.Numeric(10, 2), default=0.0)
     total_earned = db.Column(db.Numeric(10, 2), default=0.0)
     is_active = db.Column(db.Boolean, default=True)

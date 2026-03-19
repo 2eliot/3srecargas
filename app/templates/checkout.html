@@ -176,7 +176,6 @@
                                    maxlength="30"
                                    autocomplete="off"
                                    required>
-                            <button type="button" class="paste-btn" id="pasteReferenceBtn">Pegar</button>
                         </div>
                         <div class="reference-dots" id="referenceDots" aria-hidden="true"></div>
                         <p class="ref-hint">Debes ingresar la referencia completa y adjuntar el comprobante para habilitar el botón de confirmación.</p>
@@ -191,7 +190,7 @@
                     {% if display_currency == 'usd' %}
                     ${{ "%.2f"|format(display_amount) }}
                     {% else %}
-                    Bs {{ "%.2f"|format(display_amount) }}
+                    Bs {{ "%.0f"|format(display_amount) }}
                     {% endif %}
                 </button>
             </form>
@@ -212,7 +211,6 @@
     var proofDropzone = document.getElementById('proofDropzone');
     var proofFileName = document.getElementById('proofFileName');
     var referenceInput = document.getElementById('payment_reference');
-    var pasteBtn = document.getElementById('pasteReferenceBtn');
     var referenceDots = document.getElementById('referenceDots');
     var paymentTimerEl = document.getElementById('paymentTimer');
     var copyBtn = document.getElementById('checkoutCopyPaymentBtn');
@@ -286,15 +284,6 @@
             updateSubmitState();
         });
         renderDots(referenceInput.value.trim().length);
-    }
-
-    if (pasteBtn && navigator.clipboard && navigator.clipboard.readText) {
-        pasteBtn.addEventListener('click', function () {
-            navigator.clipboard.readText().then(function (text) {
-                referenceInput.value = (text || '').trim();
-                referenceInput.dispatchEvent(new Event('input'));
-            }).catch(function () {});
-        });
     }
 
     var countdownMinutes = 30;

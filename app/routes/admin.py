@@ -671,7 +671,8 @@ def affiliate_add():
     name = request.form.get('name', '').strip()
     code = request.form.get('code', '').strip().upper()
     email = request.form.get('email', '').strip()
-    commission_rate = float(request.form.get('commission_rate', 5.0))
+    commission_rate = float(request.form.get('commission_rate', 1.0))
+    client_discount_rate = float(request.form.get('client_discount_rate', 2.0))
 
     if not name or not code:
         flash('Nombre y código son obligatorios.', 'danger')
@@ -681,7 +682,7 @@ def affiliate_add():
         flash('Ese código ya existe.', 'danger')
         return redirect(url_for('admin_bp.affiliates'))
 
-    aff = Affiliate(name=name, code=code, email=email, commission_rate=commission_rate)
+    aff = Affiliate(name=name, code=code, email=email, commission_rate=commission_rate, client_discount_rate=client_discount_rate)
     db.session.add(aff)
     db.session.commit()
     flash(f'Afiliado "{name}" creado con código {code}.', 'success')
@@ -695,6 +696,7 @@ def affiliate_edit(aff_id):
     aff.name = request.form.get('name', aff.name).strip()
     aff.email = request.form.get('email', aff.email or '').strip()
     aff.commission_rate = float(request.form.get('commission_rate', aff.commission_rate))
+    aff.client_discount_rate = float(request.form.get('client_discount_rate', aff.client_discount_rate or 0))
     aff.is_active = bool(request.form.get('is_active'))
     db.session.commit()
     flash('Afiliado actualizado.', 'success')
@@ -711,6 +713,28 @@ def affiliate_pay(aff_id):
     aff.balance = 0
     db.session.commit()
     flash(f'Comisiones de {aff.name} marcadas como pagadas.', 'success')
+    return redirect(url_for('admin_bp.affiliates'))
+
+
+@admin_bp.route('/affiliates/<int:aff_id>/balance', methods=['POST'])
+@login_required
+def affiliate_update_balance(aff_id):
+    aff = Affiliate.query.get_or_404(aff_id)
+    raw_balance = (request.form.get('balance') or '').strip()
+
+    try:
+        new_balance = round(float(raw_balance), 2)
+    except Exception:
+        flash('Monto inválido. Debe ser un número.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if new_balance < 0:
+        flash('El monto no puede ser negativo.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    aff.balance = new_balance
+    db.session.commit()
+    flash(f'Monto actualizado para {aff.name}: ${new_balance:.2f}', 'success')
     return redirect(url_for('admin_bp.affiliates'))
 
 
