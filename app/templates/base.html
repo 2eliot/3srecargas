@@ -8,6 +8,23 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ range(100000)|random }}">
+    {% if request.endpoint == 'main_bp.index' %}
+    <script>
+      window.WTT_API = {
+        config: {
+          token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb21wYW55SWQiOiJhMTcxMjA5OC04ODkyLTRiMDMtOTMxOS1iMTBmOTc4Yzg1MWMiLCJjb25uZWN0aW9uSWQiOiIyMzJjNjFmNy1lODRhLTRjZGUtYjE4OS1mOWUxNzk2NzU5MWIiLCJpYXQiOjE3NzE3OTY0MjN9.Znyom1uTuYyibP0RD1TorPDUrIa-8zp0V4gaWBrHhiI",
+          title: "3SRECARGAS☑️",
+          subtitle: "➡️ Soporte solo de la pagina Web",
+          position: "left",
+          initialMessages: ["Hola, Bienvenido al Soporte de 3SRECARGAS☑️"],
+          toggleButtonEnabled: true,
+          toggleButtonBgColor: "#ff0000",
+          isAudioEnabled: false
+        }
+      };
+    </script>
+    <script async crossorigin="*" src="https://public.whaticket.com/widget/production/wtt-widget-default.js"></script>
+    {% endif %}
     {% block extra_css %}{% endblock %}
 </head>
 <body>
