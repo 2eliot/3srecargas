@@ -22,8 +22,183 @@
           isAudioEnabled: false
         }
       };
+
+      window.WTT_WIDGET_APP_JS_URL = "https://public.whaticket.com/widget/production/wtt-widget-main.js";
+      (async function () {
+        while (!document.body) {
+          await new Promise(function (r) { setTimeout(r, 500); });
+        }
+
+        var widgetMaxWidth = 380;
+        var widgetMaxHeight = 565;
+        var widgetToggleButtonSize = 70;
+        var widgetMargin = 20;
+
+        var frameMaxWidth = widgetMaxWidth + widgetMargin * 2;
+        var frameMaxHeight = widgetMaxHeight + widgetToggleButtonSize + widgetMargin * 2;
+        var isWidgetOpen = false;
+
+        var isMobile = function () {
+          return window.matchMedia("(max-width: 600px)").matches;
+        };
+
+        var isIOS = function () {
+          return (
+            /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.maxTouchPoints > 1 && /MacIntel/.test(navigator.userAgent))
+          );
+        };
+
+        var frameId = "wtt-widget-iframe";
+        var foundExistentFrame = document.getElementById(frameId);
+        if (foundExistentFrame) foundExistentFrame.remove();
+
+        var frame = document.createElement("iframe");
+        frame.id = frameId;
+        frame.src = "about:blank";
+        frame.frameBorder = 0;
+        frame.style.cssText =
+          "display:none !important;" +
+          "background:none !important;" +
+          "background-color:transparent !important;" +
+          "padding:0 !important;" +
+          "width:100% !important;" +
+          "height:100% !important;" +
+          "top:auto !important;" +
+          "right:auto !important;" +
+          "bottom:0 !important;" +
+          "left:0 !important;" +
+          "outline:none !important;" +
+          "visibility:visible !important;" +
+          "resize:none !important;" +
+          "box-shadow:none !important;" +
+          "overflow:visible !important;" +
+          "opacity:1 !important;" +
+          "position:fixed !important;" +
+          "border:0 !important;" +
+          "margin:0 !important;" +
+          "transform:none !important;" +
+          "z-index:999999 !important;" +
+          "float:none !important;" +
+          "pointer-events:auto !important;" +
+          "clip:auto !important;" +
+          "color-scheme:light !important;";
+
+        var setFrameSize = function () {
+          var viewportWidth = (window.visualViewport && window.visualViewport.width) || window.innerWidth;
+          var viewportHeight = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+
+          if (isMobile()) {
+            frameMaxHeight = viewportHeight + "px";
+            frameMaxWidth = viewportWidth + "px";
+
+            if (isIOS() && isWidgetOpen) {
+              frame.style.height = viewportHeight + "px";
+              frame.style.top = "0";
+              window.scrollTo(0, 0);
+            }
+          }
+        };
+
+        var handleScroll = function () {
+          if (isIOS() && isWidgetOpen) window.scrollTo(0, 0);
+        };
+
+        window.addEventListener("scroll", handleScroll);
+        setFrameSize();
+        window.addEventListener("resize", setFrameSize);
+        if (isIOS() && window.visualViewport) {
+          window.visualViewport.addEventListener("resize", setFrameSize);
+        }
+
+        document.body.appendChild(frame);
+        frame.contentDocument.open();
+        frame.contentDocument.write("<html><body></body></html>");
+        frame.contentDocument.close();
+
+        frame.contentWindow.document.body.style.backgroundColor = "transparent";
+        frame.contentWindow.document.body.style.overflow = "hidden";
+
+        var chatDiv = document.createElement("div");
+        chatDiv.id = "wtt-widget";
+        frame.contentWindow.document.body.appendChild(chatDiv);
+
+        var chatScriptEl = document.createElement("script");
+        chatScriptEl.id = "wtt-widget-script";
+        chatScriptEl.async = true;
+        chatScriptEl.src = window.WTT_WIDGET_APP_JS_URL || "./wtt-widget-main.js";
+        chatScriptEl.setAttribute("crossorigin", "anonymous");
+        frame.contentWindow.document.body.appendChild(chatScriptEl);
+
+        var config = window.WTT_API && window.WTT_API.config;
+        if (!config) return;
+
+        if (config.position === "right") {
+          frame.style.left = "auto";
+          frame.style.right = "0";
+        }
+
+        if (config.toggleButtonEnabled) {
+          frame.style.display = "block";
+          frame.style.width = (widgetToggleButtonSize + widgetMargin) + "px";
+          frame.style.height = (widgetToggleButtonSize + widgetMargin) + "px";
+        }
+
+        var timeBetweenRetries = 500;
+        var maxTimeout = 20000;
+        var wttInit = frame.contentWindow && frame.contentWindow.WTT_API && frame.contentWindow.WTT_API.init;
+        var timeWaitingInit = 0;
+
+        while (!wttInit && timeWaitingInit < maxTimeout) {
+          await new Promise(function (r) { setTimeout(r, timeBetweenRetries); });
+          timeWaitingInit += timeBetweenRetries;
+          wttInit = frame.contentWindow && frame.contentWindow.WTT_API && frame.contentWindow.WTT_API.init;
+        }
+
+        if (!wttInit) {
+          console.error("Whaticket widget not initialized.");
+          return;
+        }
+
+        if (config.userData && config.userData.externalId) {
+          wttInit(config);
+        }
+
+        var widgetWrapper = frame.contentWindow.document.getElementById("wtt-widget-wrapper");
+        if (!widgetWrapper) {
+          wttInit(config);
+          widgetWrapper = frame.contentWindow.document.getElementById("wtt-widget-wrapper");
+        }
+        if (!widgetWrapper) return;
+
+        var observer = new MutationObserver(function (mutations) {
+          mutations.forEach(function (mutation) {
+            if (mutation.attributeName === "data-open") {
+              var isOpen = mutation.target.dataset.open === "true";
+              isWidgetOpen = isOpen;
+
+              if (!isOpen) frame.style.top = "auto";
+
+              if (!config.toggleButtonEnabled) {
+                frame.style.display = isOpen ? "block" : "none";
+                return;
+              }
+
+              frame.style.width = isOpen ? "100%" : (widgetToggleButtonSize + widgetMargin) + "px";
+              frame.style.height = isOpen ? "100%" : (widgetToggleButtonSize + widgetMargin) + "px";
+            }
+          });
+        });
+
+        observer.observe(widgetWrapper, { attributes: true });
+
+        window.WTT_API.toggle = function () {
+          if (frame.contentWindow && frame.contentWindow.WTT_API) {
+            frame.contentWindow.WTT_API.toggle();
+          }
+        };
+      })();
     </script>
-    <script async src="https://public.whaticket.com/widget/production/wtt-widget-default.js"></script>
     {% endif %}
     {% block extra_css %}{% endblock %}
 </head>
