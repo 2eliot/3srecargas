@@ -21,10 +21,15 @@ def create_app(config_class=Config):
     @login_manager.user_loader
     def load_user(user_id):
         # Intentar cargar como User primero, luego como AdminUser
-        user = User.query.get(int(user_id))
+        try:
+            user_id_int = int(user_id)
+        except (TypeError, ValueError):
+            return None
+
+        user = User.query.get(user_id_int)
         if user:
             return user
-        return AdminUser.query.get(int(user_id))
+        return AdminUser.query.get(user_id_int)
 
     from .routes.main import main_bp
     from .routes.checkout import checkout_bp

@@ -94,25 +94,30 @@ def login():
             and username == env_admin_username
             and password == env_admin_password
         ):
-            admin = AdminUser.query.filter_by(username=env_admin_username).first()
-            if not admin:
-                admin = AdminUser(
-                    username=env_admin_username,
-                    email=env_admin_email or f'{env_admin_username}@localhost',
-                )
-                admin.set_password(env_admin_password)
-                db.session.add(admin)
-                db.session.commit()
-            else:
-                needs_commit = False
-                if env_admin_email and admin.email != env_admin_email:
-                    admin.email = env_admin_email
-                    needs_commit = True
-                if not admin.check_password(env_admin_password):
+            try:
+                admin = AdminUser.query.filter_by(username=env_admin_username).first()
+                if not admin:
+                    admin = AdminUser(
+                        username=env_admin_username,
+                        email=env_admin_email or f'{env_admin_username}@localhost',
+                    )
                     admin.set_password(env_admin_password)
-                    needs_commit = True
-                if needs_commit:
+                    db.session.add(admin)
                     db.session.commit()
+                else:
+                    needs_commit = False
+                    if env_admin_email and admin.email != env_admin_email:
+                        admin.email = env_admin_email
+                        needs_commit = True
+                    if not admin.check_password(env_admin_password):
+                        admin.set_password(env_admin_password)
+                        needs_commit = True
+                    if needs_commit:
+                        db.session.commit()
+            except Exception:
+                db.session.rollback()
+                flash('No se pudo sincronizar la cuenta de administrador. Revisa ADMIN_USERNAME/ADMIN_EMAIL.', 'danger')
+                return render_template('auth/login.html')
 
             login_user(admin)
             flash('¡Bienvenido administrador!', 'success')

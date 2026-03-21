@@ -145,25 +145,30 @@ def login():
             flash('Usuario o contraseña incorrectos.', 'danger')
             return render_template('admin/login.html')
 
-        user = AdminUser.query.filter_by(username=env_admin_username).first()
-        if not user:
-            user = AdminUser(
-                username=env_admin_username,
-                email=env_admin_email or f'{env_admin_username}@localhost',
-            )
-            user.set_password(env_admin_password)
-            db.session.add(user)
-            db.session.commit()
-        else:
-            needs_commit = False
-            if env_admin_email and user.email != env_admin_email:
-                user.email = env_admin_email
-                needs_commit = True
-            if not user.check_password(env_admin_password):
+        try:
+            user = AdminUser.query.filter_by(username=env_admin_username).first()
+            if not user:
+                user = AdminUser(
+                    username=env_admin_username,
+                    email=env_admin_email or f'{env_admin_username}@localhost',
+                )
                 user.set_password(env_admin_password)
-                needs_commit = True
-            if needs_commit:
+                db.session.add(user)
                 db.session.commit()
+            else:
+                needs_commit = False
+                if env_admin_email and user.email != env_admin_email:
+                    user.email = env_admin_email
+                    needs_commit = True
+                if not user.check_password(env_admin_password):
+                    user.set_password(env_admin_password)
+                    needs_commit = True
+                if needs_commit:
+                    db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash('No se pudo sincronizar la cuenta de administrador. Revisa ADMIN_USERNAME/ADMIN_EMAIL.', 'danger')
+            return render_template('admin/login.html')
 
         if user:
             login_user(user)
