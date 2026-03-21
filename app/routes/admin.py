@@ -349,6 +349,52 @@ def orders():
     return render_template('admin/orders.html', orders=all_orders, status_filter=status_filter)
 
 
+@admin_bp.route('/orders/latest')
+@login_required
+def orders_latest():
+    status_filter = (request.args.get('status') or '').strip()
+    since_id_raw = (request.args.get('since_id') or '').strip()
+    try:
+        since_id = int(since_id_raw) if since_id_raw else 0
+    except Exception:
+        since_id = 0
+
+    query = Order.query
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    if since_id:
+        query = query.filter(Order.id > since_id)
+
+    newest = query.order_by(Order.id.desc()).limit(20).all()
+    newest.reverse()
+
+    payload = []
+    for o in newest:
+        payload.append({
+            'id': o.id,
+            'order_number': o.order_number,
+            'game': o.game.name if o.game else '',
+            'package': o.package.name if o.package else '',
+            'player_id': o.player_id or '',
+            'player_nickname': o.player_nickname or '',
+            'zone_id': o.zone_id or '',
+            'email': o.email or '',
+            'phone': o.phone or '',
+            'payment_method': (o.payment_method or '').title(),
+            'payment_reference': o.payment_reference or '',
+            'amount': float(o.amount or 0),
+            'affiliate_code': (o.affiliate.code if o.affiliate else ''),
+            'status': o.status,
+            'status_label': o.status_label,
+            'status_class': o.status_class,
+            'created_at': o.created_at.strftime('%d/%m/%Y %H:%M') if o.created_at else '',
+            'automation_response': o.automation_response or '',
+            'pin_delivered': o.pin_delivered or '',
+        })
+
+    return jsonify({'ok': True, 'orders': payload})
+
+
 @admin_bp.route('/orders/<int:order_id>')
 @login_required
 def order_detail(order_id):
@@ -371,11 +417,27 @@ def order_approve(order_id):
             base_url, api_key, _, recharge_path = _revendedores_env()
             catalog_item = rev_mapping.catalog_item
             if base_url and api_key and catalog_item:
+                auto_resp = {}
+                try:
+                    auto_resp = json.loads(order.automation_response or '{}')
+                except Exception:
+                    auto_resp = {}
+
+                prev_attempt = 0
+                try:
+                    if (auto_resp.get('source') or '') == 'revendedores_api':
+                        prev_attempt = int(auto_resp.get('rev_attempt') or 0)
+                except Exception:
+                    prev_attempt = 0
+
+                rev_attempt = prev_attempt + 1
+                ext_order_id = f"{order.order_number}-{rev_attempt}"
+
                 rev_payload = {
                     'product_id': catalog_item.remote_product_id,
                     'package_id': catalog_item.remote_package_id,
                     'player_id': str(order.player_id or '').strip(),
-                    'external_order_id': order.order_number,
+                    'external_order_id': ext_order_id,
                 }
                 if order.zone_id:
                     rev_payload['player_id2'] = str(order.zone_id).strip()
@@ -396,6 +458,8 @@ def order_approve(order_id):
                     order.automation_response = json.dumps({
                         'source': 'revendedores_api',
                         'success': True,
+                        'rev_attempt': rev_attempt,
+                        'external_order_id': ext_order_id,
                         'player_name': player_name,
                         'reference_no': ref_no,
                         'order_id': rev_data.get('order_id'),
@@ -416,7 +480,8 @@ def order_approve(order_id):
                     order.automation_response = json.dumps({
                         'source': 'revendedores_api',
                         'pending_verification': True,
-                        'external_order_id': order.order_number,
+                        'rev_attempt': rev_attempt,
+                        'external_order_id': ext_order_id,
                         'error': rev_error,
                     })
                     db.session.commit()
@@ -429,7 +494,7 @@ def order_approve(order_id):
             order.automation_response = json.dumps({
                 'source': 'revendedores_api',
                 'pending_verification': True,
-                'external_order_id': order.order_number,
+                'external_order_id': f"{order.order_number}-1",
                 'error': str(e),
             })
             try:

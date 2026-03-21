@@ -36,9 +36,9 @@
                     <th>Acciones</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}">
                 {% for order in orders %}
-                <tr>
+                <tr data-order-id="{{ order.id }}">
                     <td><span class="order-num">#{{ order.order_number }}</span></td>
                     <td>
                         <div class="cell-stack">
@@ -130,6 +130,174 @@ function showPin(pin) {
     document.getElementById('pinCodeDisplay').textContent = pin;
     document.getElementById('pinModal').style.display = 'flex';
 }
+
+function _escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function _renderOrderRow(o) {
+    var playerBits = '';
+    if (o.player_id) playerBits += '<span>' + _escapeHtml(o.player_id) + '</span>';
+    if (o.player_nickname) playerBits += '<small style="color:#22c55e;font-weight:600">' + _escapeHtml(o.player_nickname) + '</small>';
+    if (o.zone_id) playerBits += '<small>Zone: ' + _escapeHtml(o.zone_id) + '</small>';
+    if (o.email) playerBits += '<span>' + _escapeHtml(o.email) + '</span>';
+    if (o.phone) playerBits += '<small>' + _escapeHtml(o.phone) + '</small>';
+
+    var aff = o.affiliate_code ? '<span class="aff-badge">' + _escapeHtml(o.affiliate_code) + '</span>' : '—';
+    var actions = '—';
+    if (o.status === 'pending') {
+        actions = '<div class="action-btns" id="actions-' + o.id + '" data-order-id="' + o.id + '" data-auto-resp="' + _escapeHtml(o.automation_response || '') + '">' +
+            '<form method="POST" action="/admin/orders/' + o.id + '/approve" style="display:inline" class="approve-form">' +
+                '<button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>' +
+            '</form>' +
+            '<button class="btn-sm btn-danger" onclick="openRejectModal(' + o.id + ')" title="Rechazar">✗</button>' +
+        '</div>';
+    } else if (o.status === 'completed' && o.pin_delivered) {
+        actions = '<button class="btn-sm btn-outline" onclick="showPin(\'' + _escapeHtml(o.pin_delivered) + '\')">Ver PIN</button>';
+    }
+
+    var html = '';
+    html += '<tr data-order-id="' + o.id + '">';
+    html += '<td><span class="order-num">#' + _escapeHtml(o.order_number) + '</span></td>';
+    html += '<td><div class="cell-stack"><span>' + _escapeHtml(o.game) + '</span><small>' + _escapeHtml(o.package) + '</small></div></td>';
+    html += '<td><div class="cell-stack">' + playerBits + '</div></td>';
+    html += '<td>' + _escapeHtml(o.payment_method) + '</td>';
+    html += '<td><code class="ref-code">' + _escapeHtml(o.payment_reference) + '</code></td>';
+    html += '<td><strong>$' + (Number(o.amount || 0).toFixed(2)) + '</strong></td>';
+    html += '<td>' + aff + '</td>';
+    html += '<td><span class="status-badge ' + _escapeHtml(o.status_class) + '">' + _escapeHtml(o.status_label) + '</span></td>';
+    html += '<td>' + _escapeHtml(o.created_at) + '</td>';
+    html += '<td>' + actions + '</td>';
+    html += '</tr>';
+    return html;
+}
+
+function _rebindApproveSubmitHandlers(scopeEl) {
+    (scopeEl || document).querySelectorAll('.approve-form').forEach(function(form) {
+        if (form.dataset.boundSubmit) return;
+        form.dataset.boundSubmit = '1';
+        form.addEventListener('submit', function() {
+            var btn = form.querySelector('.approve-btn');
+            if (!btn || btn.dataset.counting) return;
+            btn.dataset.counting = '1';
+            btn.disabled = true;
+            btn.style.background = '#6b7280';
+            btn.style.borderColor = '#6b7280';
+            btn.style.color = '#fff';
+            btn.style.cursor = 'not-allowed';
+            btn.style.minWidth = '140px';
+            btn.style.fontSize = '12px';
+            var seconds = 0;
+            btn.textContent = 'Procesando 0s';
+            setInterval(function() {
+                seconds++;
+                btn.textContent = 'Procesando ' + seconds + 's';
+            }, 1000);
+            var rejectBtn = form.closest('.action-btns') ? form.closest('.action-btns').querySelector('.btn-danger') : null;
+            if (rejectBtn) { rejectBtn.disabled = true; rejectBtn.style.opacity = '0.4'; rejectBtn.style.pointerEvents = 'none'; }
+        });
+    });
+}
+
+function _kickAutoVerification(scopeEl) {
+    (scopeEl || document).querySelectorAll('.action-btns[data-auto-resp]').forEach(function(el) {
+        if (el.dataset.verificationBound) return;
+        el.dataset.verificationBound = '1';
+
+        var raw = el.getAttribute('data-auto-resp');
+        if (!raw) return;
+        var resp;
+        try { resp = JSON.parse(raw); } catch(e) { return; }
+        if (!resp.pending_verification) return;
+
+        var orderId = el.getAttribute('data-order-id');
+        var btn = el.querySelector('.approve-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Verificando...'; btn.style.opacity = '0.6'; }
+
+        var attempts = 0;
+        var maxAttempts = 12;
+        function poll() {
+            attempts++;
+            fetch('/admin/orders/' + orderId + '/verify-recharge', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.result === 'completed') {
+                        if (btn) { btn.textContent = 'Completada'; btn.style.background = '#22c55e'; }
+                        setTimeout(function() { location.reload(); }, 1500);
+                    } else if (data.result === 'processing') {
+                        if (btn) btn.textContent = 'Procesando... (' + attempts + ')';
+                        if (attempts < maxAttempts) setTimeout(poll, 5000);
+                        else {
+                            if (btn) { btn.textContent = 'Reintentar verificar'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'button'; }
+                            btn.onclick = function(e) { e.preventDefault(); attempts = 0; btn.disabled = true; btn.textContent = 'Verificando...'; btn.style.opacity = '0.6'; poll(); };
+                        }
+                    } else if (data.can_approve) {
+                        if (btn) { btn.disabled = false; btn.textContent = '✓ Aprobar'; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
+                        var msg = data.message || 'Recarga no se completó. Puedes reintentar.';
+                        var tip = document.createElement('div');
+                        tip.style.cssText = 'font-size:11px;color:#f59e0b;margin-top:4px;';
+                        tip.textContent = msg;
+                        el.appendChild(tip);
+                    } else {
+                        if (btn) btn.textContent = 'Error verificando';
+                        if (attempts < maxAttempts) setTimeout(poll, 5000);
+                    }
+                })
+                .catch(function() {
+                    if (attempts < maxAttempts) setTimeout(poll, 5000);
+                    else if (btn) { btn.textContent = '✓ Aprobar'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
+                });
+        }
+        setTimeout(poll, 1000);
+    });
+}
+
+/* ── Polling de nuevas órdenes (sin refrescar) ── */
+(function() {
+    var tbody = document.getElementById('ordersTbody');
+    if (!tbody) return;
+    var statusFilter = tbody.getAttribute('data-status-filter') || '';
+
+    function getMaxId() {
+        var max = 0;
+        tbody.querySelectorAll('tr[data-order-id]').forEach(function(tr) {
+            var v = parseInt(tr.getAttribute('data-order-id') || '0', 10);
+            if (v > max) max = v;
+        });
+        return max;
+    }
+
+    function tick() {
+        var sinceId = getMaxId();
+        var url = '/admin/orders/latest?since_id=' + encodeURIComponent(String(sinceId));
+        if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || !data.ok || !Array.isArray(data.orders) || data.orders.length === 0) return;
+
+                var html = '';
+                data.orders.forEach(function(o) {
+                    if (tbody.querySelector('tr[data-order-id="' + o.id + '"]')) return;
+                    html += _renderOrderRow(o);
+                });
+                if (!html) return;
+
+                tbody.insertAdjacentHTML('afterbegin', html);
+                _rebindApproveSubmitHandlers(tbody);
+                _kickAutoVerification(tbody);
+            })
+            .catch(function() {});
+    }
+
+    setInterval(tick, 15000);
+})();
 
 /* ── Contador de segundos al aprobar ── */
 (function() {

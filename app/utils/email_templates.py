@@ -4,6 +4,31 @@ Plantillas: orden_creada, orden_aprobada, orden_completada (con PIN/código), or
 """
 
 from app.utils.email import get_setting
+from decimal import Decimal, ROUND_HALF_UP
+
+
+def _format_order_amount(order):
+    method_code = (getattr(order, 'payment_method', None) or '').strip().lower()
+    try:
+        from app.models import Setting, PaymentMethod
+        usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
+        usd_rate = Decimal(str(usd_rate_setting.value)) if usd_rate_setting and usd_rate_setting.value else Decimal('0')
+        method = PaymentMethod.query.filter_by(code=method_code).first() if method_code else None
+        currency = (method.account_currency or '').lower() if method and method.account_currency else 'bs'
+    except Exception:
+        usd_rate = Decimal('0')
+        currency = 'bs'
+
+    amt_usd = Decimal(str(float(getattr(order, 'amount', 0) or 0)))
+    if currency == 'usd':
+        return f"${float(amt_usd):.2f} USD"
+
+    amt_bs = (amt_usd * (usd_rate or Decimal('0'))).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    try:
+        amt_bs_int = int(amt_bs)
+    except Exception:
+        amt_bs_int = int(float(amt_bs or 0))
+    return f"Bs {amt_bs_int}"
 
 
 def _base_style():
@@ -116,7 +141,7 @@ def build_order_created_email(order, package, game):
     """Construye HTML + texto para notificación de 'orden creada' al cliente."""
     s = _base_style()
     brand = _brand_name()
-    amount_str = f"${float(order.amount):.2f} USD"
+    amount_str = _format_order_amount(order)
 
     body = f"""
 <h2 style="margin:0 0 8px 0; font-size:20px; color:{s['white']};">¡Orden recibida!</h2>
@@ -170,7 +195,7 @@ def build_order_approved_email(order, package, game):
     """Construye HTML + texto para notificación de 'orden aprobada' al cliente (sin PIN)."""
     s = _base_style()
     brand = _brand_name()
-    amount_str = f"${float(order.amount):.2f} USD"
+    amount_str = _format_order_amount(order)
 
     body = f"""
 <h2 style="margin:0 0 8px 0; font-size:20px; color:{s['white']};">¡Tu orden fue aprobada! ✅</h2>
@@ -219,7 +244,7 @@ def build_order_completed_pin_email(order, package, game, pin_code=None):
     """Construye HTML + texto para 'orden completada' con entrega de PIN/código."""
     s = _base_style()
     brand = _brand_name()
-    amount_str = f"${float(order.amount):.2f} USD"
+    amount_str = _format_order_amount(order)
     code = pin_code or ''
 
     code_html = ''
@@ -278,11 +303,11 @@ Monto: {amount_str}
 # ORDEN RECHAZADA — se envía al cliente
 # ──────────────────────────────────────────────────────────────────────
 
-def build_order_rejected_email(order, package, game, reason=''):
+def build_order_rejected_email(order, package, game, reason=None):
     """Construye HTML + texto para notificación de 'orden rechazada' al cliente."""
     s = _base_style()
     brand = _brand_name()
-    amount_str = f"${float(order.amount):.2f} USD"
+    amount_str = _format_order_amount(order)
     reason_text = reason or order.notes or ''
 
     reason_html = ''
@@ -345,7 +370,7 @@ def build_admin_new_order_email(order, package, game):
     """Construye HTML + texto para notificación al admin de nueva orden."""
     s = _base_style()
     brand = _brand_name()
-    amount_str = f"${float(order.amount):.2f} USD"
+    amount_str = _format_order_amount(order)
 
     body = f"""
 <h2 style="margin:0 0 8px 0; font-size:20px; color:{s['white']};">Nueva orden recibida 🔔</h2>

@@ -68,7 +68,7 @@
                     {% if display_currency == 'usd' %}
                     ${{ "%.2f"|format(display_amount) }}
                     {% else %}
-                    Bs {{ "%.2f"|format(display_amount) }}
+                    Bs {{ "%.0f"|format(display_amount) }}
                     {% endif %}
                 </span>
             </div>

@@ -15,7 +15,7 @@
     --success:      #22c55e;
     --danger:       #ef4444;
     --warning:      #f59e0b;
-    --header-h:     58px;
+    --header-h:     48px;
     --radius-sm:    8px;
     --radius-md:    12px;
     --radius-lg:    16px;
@@ -36,7 +36,6 @@ body {
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
     max-width: 100vw;
-    padding-top: var(--header-h);
 }
 
 a { color: inherit; text-decoration: none; }
@@ -68,10 +67,8 @@ select option { background: var(--bg-secondary); }
 
 /* ── Header ─────────────────────────────────────────────── */
 .site-header {
-    position: fixed;
+    position: sticky;
     top: 0;
-    left: 0;
-    right: 0;
     z-index: 100;
     height: var(--header-h);
     background: rgba(18,18,18,.95);
@@ -182,12 +179,12 @@ select option { background: var(--bg-secondary); }
     z-index: 90;
     background: rgba(18,18,18,.98);
     backdrop-filter: blur(8px);
-    padding: 4px 0;
+    padding: 0;
     border-bottom: 1px solid var(--border);
-    margin: 0 -8px;
+    margin: -1px -8px 0;
 }
 @media (min-width: 1025px) {
-    .categories-bar { margin: 0 -12px; }
+    .categories-bar { margin: -1px -12px 0; }
 }
 .categories-inner {
     display: flex;
@@ -520,7 +517,25 @@ select option { background: var(--bg-secondary); }
     border: 1px solid var(--border);
     background: var(--bg-primary);
     border-radius: var(--radius-sm);
-    padding: 10px 12px;
+}
+
+.copy-payment-btn {
+    background: var(--danger);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    border: 1px solid rgba(239,68,68,.6);
+    transition: transform var(--transition), filter var(--transition), box-shadow var(--transition);
+}
+.copy-payment-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+    box-shadow: 0 10px 26px rgba(239,68,68,.18);
+}
+.copy-payment-btn:active {
+    transform: translateY(0);
 }
 
 .payment-detail-row {
@@ -1255,7 +1270,7 @@ select option { background: var(--bg-secondary); }
         max-width: 100%;
     }
     .categories-bar {
-        margin: 0 -8px;
+        margin: -1px -8px 0;
     }
     .categories-inner {
         padding: 0 8px;
