@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
@@ -65,6 +66,10 @@ def login():
         return redirect(url_for('main_bp.index'))
     
     if request.method == 'POST':
+        env_admin_username = (os.environ.get('ADMIN_USERNAME') or '').strip()
+        env_admin_password = (os.environ.get('ADMIN_PASSWORD') or '').strip()
+        env_admin_email = (os.environ.get('ADMIN_EMAIL') or '').strip()
+
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         
@@ -83,9 +88,32 @@ def login():
             next_page = request.args.get('next')
             return redirect(next_page or url_for('main_bp.index'))
         
-        # Si no es usuario normal, buscar en admin
-        admin = AdminUser.query.filter_by(username=username).first()
-        if admin and admin.check_password(password):
+        # Admin: autenticación estricta por variables de entorno.
+        if (
+            env_admin_username and env_admin_password
+            and username == env_admin_username
+            and password == env_admin_password
+        ):
+            admin = AdminUser.query.filter_by(username=env_admin_username).first()
+            if not admin:
+                admin = AdminUser(
+                    username=env_admin_username,
+                    email=env_admin_email or f'{env_admin_username}@localhost',
+                )
+                admin.set_password(env_admin_password)
+                db.session.add(admin)
+                db.session.commit()
+            else:
+                needs_commit = False
+                if env_admin_email and admin.email != env_admin_email:
+                    admin.email = env_admin_email
+                    needs_commit = True
+                if not admin.check_password(env_admin_password):
+                    admin.set_password(env_admin_password)
+                    needs_commit = True
+                if needs_commit:
+                    db.session.commit()
+
             login_user(admin)
             flash('¡Bienvenido administrador!', 'success')
             return redirect(url_for('admin_bp.dashboard'))

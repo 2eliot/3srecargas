@@ -128,14 +128,48 @@ def process_affiliate_commission(order):
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('admin_bp.dashboard'))
+
+    env_admin_username = (os.environ.get('ADMIN_USERNAME') or '').strip()
+    env_admin_password = (os.environ.get('ADMIN_PASSWORD') or '').strip()
+    env_admin_email = (os.environ.get('ADMIN_EMAIL') or '').strip()
+
     if request.method == 'POST':
+        if not env_admin_username or not env_admin_password:
+            flash('Acceso admin no disponible: faltan ADMIN_USERNAME/ADMIN_PASSWORD en entorno.', 'danger')
+            return render_template('admin/login.html')
+
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
-        user = AdminUser.query.filter_by(username=username).first()
-        if user and user.check_password(password):
+
+        if username != env_admin_username or password != env_admin_password:
+            flash('Usuario o contraseña incorrectos.', 'danger')
+            return render_template('admin/login.html')
+
+        user = AdminUser.query.filter_by(username=env_admin_username).first()
+        if not user:
+            user = AdminUser(
+                username=env_admin_username,
+                email=env_admin_email or f'{env_admin_username}@localhost',
+            )
+            user.set_password(env_admin_password)
+            db.session.add(user)
+            db.session.commit()
+        else:
+            needs_commit = False
+            if env_admin_email and user.email != env_admin_email:
+                user.email = env_admin_email
+                needs_commit = True
+            if not user.check_password(env_admin_password):
+                user.set_password(env_admin_password)
+                needs_commit = True
+            if needs_commit:
+                db.session.commit()
+
+        if user:
             login_user(user)
             return redirect(url_for('admin_bp.dashboard'))
-        flash('Usuario o contraseña incorrectos.', 'danger')
+
+        flash('No se pudo iniciar sesión de administrador.', 'danger')
     return render_template('admin/login.html')
 
 
