@@ -1394,3 +1394,71 @@ def order_verify_recharge(order_id):
             'can_approve': True,
             'message': 'No se encontró la recarga en Revendedores. Puedes reintentar.',
         })
+
+
+# ─── Statistics ──────────────────────────────────────────────────────────────
+
+@admin_bp.route('/stats')
+@login_required
+def stats():
+    today = datetime.utcnow().date()
+
+    days = [today, today - timedelta(days=1), today - timedelta(days=2)]
+
+    day_keys = [d.isoformat() for d in days]
+
+    # Keep the same order used in admin lists: game.position then package.sort_order
+    games = Game.query.filter_by(is_active=True).order_by(Game.position.asc(), Game.id.asc()).all()
+
+    ordered_rows = []
+    row_map = {}
+    for game in games:
+        packages = game.packages.filter_by(is_active=True).order_by(Package.sort_order.asc(), Package.id.asc()).all()
+        for pkg in packages:
+            cells = {k: {'total': 0, 'completed': 0, 'pending': 0} for k in day_keys}
+            row = {
+                'game_name': game.name,
+                'pkg_name': pkg.name,
+                'cells': cells,
+            }
+            ordered_rows.append(row)
+            row_map[(game.id, pkg.id)] = row
+
+    # Collect ALL orders for the 3-day window in one query
+    window_start = datetime(days[2].year, days[2].month, days[2].day)
+    window_end   = datetime(today.year, today.month, today.day) + timedelta(days=1)
+
+    rows = db.session.query(
+        db.func.date(Order.created_at).label('day'),
+        Order.game_id.label('game_id'),
+        Order.package_id.label('package_id'),
+        Order.status,
+        db.func.count(Order.id).label('cnt'),
+    ).filter(
+        Order.created_at >= window_start,
+        Order.created_at < window_end,
+        Order.status.in_(['pending', 'approved', 'completed']),
+    ).group_by(
+        db.func.date(Order.created_at),
+        Order.game_id,
+        Order.package_id,
+        Order.status,
+    ).all()
+
+    for row in rows:
+        day_iso = str(row.day)
+        data_row = row_map.get((row.game_id, row.package_id))
+        if not data_row or day_iso not in data_row['cells']:
+            continue
+        cell = data_row['cells'][day_iso]
+        cell['total'] += row.cnt
+        if row.status in ('completed', 'approved'):
+            cell['completed'] += row.cnt
+        elif row.status == 'pending':
+            cell['pending'] += row.cnt
+
+    return render_template(
+        'admin/stats.html',
+        days=days,
+        ordered_rows=ordered_rows,
+    )

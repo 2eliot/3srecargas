@@ -1,0 +1,119 @@
+{% extends 'admin/base.html' %}
+{% block title %}Estadísticas{% endblock %}
+{% block page_title %}Estadísticas de ventas{% endblock %}
+
+{% block extra_css %}
+<style>
+.day-label { font-size: 13px; font-weight: 600; color: #8896a6; text-transform: uppercase; letter-spacing: 0.5px; }
+.day-date  { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+.sales-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sales-table th {
+    padding: 10px 14px;
+    text-align: left;
+    color: #8896a6;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.02);
+}
+.sales-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: #e0e0e0;
+    vertical-align: middle;
+}
+.sales-table tr:last-child td { border-bottom: none; }
+.sales-table tr:hover td { background: rgba(255,255,255,0.04); }
+
+.pkg-game  { font-weight: 600; color: #fff; }
+.pkg-name  { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+
+.cell-count { text-align: center; min-width: 90px; }
+.count-total { font-size: 22px; font-weight: 700; color: #fff; line-height: 1; }
+.count-breakdown { font-size: 11px; margin-top: 4px; display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.tag-done    { color: #4ade80; }
+.tag-pending { color: #fbbf24; }
+.count-zero  { color: rgba(255,255,255,0.15); font-size: 18px; font-weight: 600; text-align: center; }
+.empty-row td { text-align: center; color: #64748b; padding: 36px 0; font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set day_names = ['Hoy', 'Ayer', 'Antes de ayer'] %}
+
+<div class="admin-card">
+    <div class="card-header" style="margin-bottom:0">
+        <h2>Ventas por paquete &mdash; últimos 3 días</h2>
+        <span style="font-size:12px; color:#8896a6">completadas/aprobadas &nbsp;&nbsp; pendientes</span>
+    </div>
+
+    <div class="table-wrap">
+        <table class="sales-table">
+            <thead>
+                <tr>
+                    <th style="min-width:200px">Juego / Paquete</th>
+                    {% for i in range(3) %}
+                    <th class="cell-count">
+                        <div class="day-label">{{ day_names[i] }}</div>
+                        <div class="day-date">{{ days[i].strftime('%d/%m/%Y') }}</div>
+                    </th>
+                    {% endfor %}
+                    <th class="cell-count">
+                        <div class="day-label">Total</div>
+                        <div class="day-date">3 dias</div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if ordered_rows %}
+                    {% for row in ordered_rows %}
+                        {% set grand = namespace(v=0, done=0, pend=0) %}
+                        {% for d in days %}
+                            {% set cell = row.cells[d.isoformat()] %}
+                            {% set grand.v    = grand.v    + cell.total     %}
+                            {% set grand.done = grand.done + cell.completed %}
+                            {% set grand.pend = grand.pend + cell.pending   %}
+                        {% endfor %}
+                        <tr>
+                            <td>
+                                <div class="pkg-game">{{ row.game_name }}</div>
+                                <div class="pkg-name">{{ row.pkg_name }}</div>
+                            </td>
+                            {% for d in days %}
+                                {% set cell = row.cells[d.isoformat()] %}
+                                <td class="cell-count">
+                                    {% if cell.total > 0 %}
+                                        <div class="count-total">{{ cell.total }}</div>
+                                        <div class="count-breakdown">
+                                            {% if cell.completed > 0 %}<span class="tag-done">OK {{ cell.completed }}</span>{% endif %}
+                                            {% if cell.pending   > 0 %}<span class="tag-pending">Pen {{ cell.pending }}</span>{% endif %}
+                                        </div>
+                                    {% else %}
+                                        <div class="count-zero">-</div>
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                            <td class="cell-count">
+                                {% if grand.v > 0 %}
+                                    <div class="count-total" style="color:#a78bfa">{{ grand.v }}</div>
+                                    <div class="count-breakdown">
+                                        {% if grand.done > 0 %}<span class="tag-done">OK {{ grand.done }}</span>{% endif %}
+                                        {% if grand.pend > 0 %}<span class="tag-pending">Pen {{ grand.pend }}</span>{% endif %}
+                                    </div>
+                                {% else %}
+                                    <div class="count-zero">-</div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                <tr class="empty-row"><td colspan="5">Sin ordenes en los ultimos 3 dias</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
