@@ -30,8 +30,7 @@ echo   http://localhost:5000
 echo   http://127.0.0.1:5000
 echo.
 echo Base de datos: SQLite (dev.db)
-echo Usuario admin: admin
-echo Password: admin123
+echo Admin inicial: definido por ADMIN_USERNAME y ADMIN_PASSWORD en .env
 echo.
 echo Presiona Ctrl+C para detener el servidor
 echo ============================================
