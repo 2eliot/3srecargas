@@ -40,8 +40,9 @@ copy .env.example .env
 # Editar .env con tus valores:
 # DATABASE_URL=postgresql://user:password@localhost/3srecargas_db
 # SECRET_KEY=tu-clave-secreta
-# ADMIN_USERNAME=admin
-# ADMIN_PASSWORD=tu-password
+# ADMIN_USERNAME=tu-admin
+# ADMIN_PASSWORD=tu-clave-segura
+# ADMIN_EMAIL=admin@tudominio.com
 ```
 
 ### 4. Ejecutar
@@ -83,7 +84,7 @@ Abre `http://localhost:5000`
 ## Panel Admin
 
 - URL: `http://localhost:5000/admin`
-- Credenciales iniciales: `admin` / `admin123` *(cambiar en `.env`)*
+- Credenciales iniciales: las definidas por `ADMIN_USERNAME` y `ADMIN_PASSWORD` en `.env`
 
 ### Secciones
 | Sección | Descripción |

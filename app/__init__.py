@@ -170,11 +170,21 @@ def _init_default_data(app):
     import os
 
     if AdminUser.query.count() == 0:
+        admin_username = (os.environ.get('ADMIN_USERNAME') or '').strip()
+        admin_password = (os.environ.get('ADMIN_PASSWORD') or '').strip()
+        admin_email = (os.environ.get('ADMIN_EMAIL') or '').strip()
+
+        if not admin_username or not admin_password:
+            raise RuntimeError(
+                'No existe usuario admin en base de datos y faltan variables de entorno '
+                'ADMIN_USERNAME/ADMIN_PASSWORD para crearlo de forma segura.'
+            )
+
         admin = AdminUser(
-            username=os.environ.get('ADMIN_USERNAME', 'admin'),
-            email=os.environ.get('ADMIN_EMAIL', 'admin@3srecargas.com'),
+            username=admin_username,
+            email=admin_email or f'{admin_username}@localhost',
         )
-        admin.set_password(os.environ.get('ADMIN_PASSWORD', 'admin123'))
+        admin.set_password(admin_password)
         db.session.add(admin)
 
     if Category.query.count() == 0:
