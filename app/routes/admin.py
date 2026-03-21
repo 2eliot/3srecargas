@@ -147,6 +147,12 @@ def login():
 
         try:
             user = AdminUser.query.filter_by(username=env_admin_username).first()
+            if not user and env_admin_email:
+                user = AdminUser.query.filter_by(email=env_admin_email).first()
+
+            if not user and AdminUser.query.count() == 1:
+                user = AdminUser.query.first()
+
             if not user:
                 user = AdminUser(
                     username=env_admin_username,
@@ -157,7 +163,26 @@ def login():
                 db.session.commit()
             else:
                 needs_commit = False
+                if user.username != env_admin_username:
+                    username_taken = (
+                        AdminUser.query
+                        .filter(AdminUser.username == env_admin_username, AdminUser.id != user.id)
+                        .first()
+                    )
+                    if username_taken:
+                        flash('ADMIN_USERNAME ya existe en otro registro admin.', 'danger')
+                        return render_template('admin/login.html')
+                    user.username = env_admin_username
+                    needs_commit = True
                 if env_admin_email and user.email != env_admin_email:
+                    email_taken = (
+                        AdminUser.query
+                        .filter(AdminUser.email == env_admin_email, AdminUser.id != user.id)
+                        .first()
+                    )
+                    if email_taken:
+                        flash('ADMIN_EMAIL ya existe en otro registro admin.', 'danger')
+                        return render_template('admin/login.html')
                     user.email = env_admin_email
                     needs_commit = True
                 if not user.check_password(env_admin_password):
