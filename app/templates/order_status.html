@@ -58,6 +58,12 @@
                 <span class="info-label">Juego</span>
                 <span class="info-value">{{ order.game.name }}</span>
             </div>
+            {% if order.game and order.game.description %}
+            <div class="order-info-item">
+                <span class="info-label">Descripción</span>
+                <span class="info-value">{{ order.game.description }}</span>
+            </div>
+            {% endif %}
             <div class="order-info-item">
                 <span class="info-label">Paquete</span>
                 <span class="info-value">{{ order.package.name }}</span>

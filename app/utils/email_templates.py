@@ -133,6 +133,13 @@ def _status_badge(label, color):
     return f'<span style="display:inline-block; padding:4px 14px; background-color:{color}; color:#fff; border-radius:20px; font-size:13px; font-weight:600; letter-spacing:0.3px;">{label}</span>'
 
 
+def _game_description(game):
+    """Devuelve la descripción del juego limpia o cadena vacía si no existe."""
+    if not game:
+        return ''
+    return (getattr(game, 'description', '') or '').strip()
+
+
 # ──────────────────────────────────────────────────────────────────────
 # ORDEN CREADA — se envía al cliente
 # ──────────────────────────────────────────────────────────────────────
@@ -142,6 +149,7 @@ def build_order_created_email(order, package, game):
     s = _base_style()
     brand = _brand_name()
     amount_str = _format_order_amount(order)
+    game_description = _game_description(game)
 
     body = f"""
 <h2 style="margin:0 0 8px 0; font-size:20px; color:{s['white']};">¡Orden recibida!</h2>
@@ -155,6 +163,7 @@ def build_order_created_email(order, package, game):
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
 {_detail_row('Orden', f'#{order.order_number}')}
 {_detail_row('Juego', game.name if game else 'N/A')}
+{f'{_detail_row("Descripción", game_description)}' if game_description else ''}
 {_detail_row('Paquete', package.name if package else 'N/A')}
 {_detail_row('Monto', amount_str, s['accent_light'])}
 {_detail_row('Método de pago', (order.payment_method or '').upper())}
@@ -174,6 +183,7 @@ def build_order_created_email(order, package, game):
 
 Tu orden #{order.order_number} ha sido registrada.
 Juego: {game.name if game else 'N/A'}
+{f'Descripción: {game_description}' if game_description else ''}
 Paquete: {package.name if package else 'N/A'}
 Monto: {amount_str}
 Método: {(order.payment_method or '').upper()}
@@ -196,6 +206,7 @@ def build_order_approved_email(order, package, game):
     s = _base_style()
     brand = _brand_name()
     amount_str = _format_order_amount(order)
+    game_description = _game_description(game)
 
     body = f"""
 <h2 style="margin:0 0 8px 0; font-size:20px; color:{s['white']};">¡Tu orden fue aprobada! ✅</h2>
@@ -209,6 +220,7 @@ def build_order_approved_email(order, package, game):
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
 {_detail_row('Orden', f'#{order.order_number}')}
 {_detail_row('Juego', game.name if game else 'N/A')}
+{f'{_detail_row("Descripción", game_description)}' if game_description else ''}
 {_detail_row('Paquete', package.name if package else 'N/A')}
 {_detail_row('Monto', amount_str, s['accent_light'])}
 {f'{_detail_row("Jugador", order.player_nickname or order.player_id or "N/A")}' if order.player_id else ''}
@@ -225,6 +237,7 @@ def build_order_approved_email(order, package, game):
 
 Tu orden #{order.order_number} ha sido verificada y aprobada.
 Juego: {game.name if game else 'N/A'}
+{f'Descripción: {game_description}' if game_description else ''}
 Paquete: {package.name if package else 'N/A'}
 Monto: {amount_str}
 
@@ -246,6 +259,7 @@ def build_order_completed_pin_email(order, package, game, pin_code=None):
     brand = _brand_name()
     amount_str = _format_order_amount(order)
     code = pin_code or ''
+    game_description = _game_description(game)
 
     code_html = ''
     if code:
@@ -271,6 +285,7 @@ def build_order_completed_pin_email(order, package, game, pin_code=None):
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
 {_detail_row('Orden', f'#{order.order_number}')}
 {_detail_row('Juego', game.name if game else 'N/A')}
+{f'{_detail_row("Descripción", game_description)}' if game_description else ''}
 {_detail_row('Paquete', package.name if package else 'N/A')}
 {_detail_row('Monto', amount_str, s['accent_light'])}
 {f'{_detail_row("Jugador", order.player_nickname or order.player_id or "N/A")}' if order.player_id else ''}
@@ -287,6 +302,7 @@ def build_order_completed_pin_email(order, package, game, pin_code=None):
 
 Tu orden #{order.order_number} ha sido procesada exitosamente.
 Juego: {game.name if game else 'N/A'}
+{f'Descripción: {game_description}' if game_description else ''}
 Paquete: {package.name if package else 'N/A'}
 Monto: {amount_str}
 {f'Código: {code}' if code else ''}
@@ -309,6 +325,7 @@ def build_order_rejected_email(order, package, game, reason=None):
     brand = _brand_name()
     amount_str = _format_order_amount(order)
     reason_text = reason or order.notes or ''
+    game_description = _game_description(game)
 
     reason_html = ''
     if reason_text:
@@ -333,6 +350,7 @@ def build_order_rejected_email(order, package, game, reason=None):
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
 {_detail_row('Orden', f'#{order.order_number}')}
 {_detail_row('Juego', game.name if game else 'N/A')}
+{f'{_detail_row("Descripción", game_description)}' if game_description else ''}
 {_detail_row('Paquete', package.name if package else 'N/A')}
 {_detail_row('Monto', amount_str, s['accent_light'])}
 {_detail_row('Referencia', order.payment_reference or 'N/A')}
@@ -350,6 +368,7 @@ def build_order_rejected_email(order, package, game, reason=None):
 Tu orden #{order.order_number} no pudo ser procesada.
 {f'Motivo: {reason_text}' if reason_text else ''}
 Juego: {game.name if game else 'N/A'}
+{f'Descripción: {game_description}' if game_description else ''}
 Paquete: {package.name if package else 'N/A'}
 Monto: {amount_str}
 Referencia: {order.payment_reference or 'N/A'}
