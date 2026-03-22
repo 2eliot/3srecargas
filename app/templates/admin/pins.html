@@ -73,8 +73,8 @@
                         <span class="badge badge-active">Disponible</span>
                         {% endif %}
                     </td>
-                    <td>{{ pin.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
-                    <td>{{ pin.used_at.strftime('%d/%m/%Y %H:%M') if pin.used_at else '—' }}</td>
+                    <td>{{ pin.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ pin.used_at|datetime_ve('%d/%m/%Y %H:%M') if pin.used_at else '—' }}</td>
                     <td>
                         {% if pin.order_id %}
                         <a href="{{ url_for('admin_bp.orders') }}" class="link-sm">#{{ pin.order_id }}</a>

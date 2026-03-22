@@ -3,6 +3,7 @@ from flask import Flask
 from flask_login import LoginManager
 from sqlalchemy import text
 from .models import db, AdminUser, User, Category, Discount, Setting
+from .utils.timezone import VENEZUELA_TIMEZONE, format_ve
 from config import Config
 
 login_manager = LoginManager()
@@ -45,6 +46,10 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp)
     app.register_blueprint(verify_bp)
 
+    @app.template_filter('datetime_ve')
+    def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):
+        return format_ve(value, fmt)
+
     @app.context_processor
     def inject_settings():
         site_logo = None
@@ -61,6 +66,9 @@ def create_app(config_class=Config):
         return {
             'SITE_LOGO': site_logo,
             'SOCIAL_LINKS': social_links,
+            'APP_TIMEZONE': 'GMT-4',
+            'APP_TIMEZONE_NAME': 'Venezuela',
+            'APP_TIMEZONE_OFFSET': VENEZUELA_TIMEZONE.utcoffset(None),
         }
 
     with app.app_context():

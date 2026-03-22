@@ -37,7 +37,7 @@
         </div>
         <div class="detail-row">
             <span class="detail-label">Fecha</span>
-            <span class="detail-value">{{ order.created_at.strftime('%d/%m/%Y %H:%M:%S') }}</span>
+            <span class="detail-value">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M:%S') }}</span>
         </div>
         {% if order.notes %}
         <div class="detail-row">

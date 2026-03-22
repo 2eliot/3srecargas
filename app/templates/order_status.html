@@ -102,7 +102,7 @@
             {% endif %}
             <div class="order-info-item">
                 <span class="info-label">Fecha</span>
-                <span class="info-value">{{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+                <span class="info-value">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
             </div>
         </div>
 

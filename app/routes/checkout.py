@@ -1,4 +1,3 @@
-from datetime import datetime
 from decimal import Decimal
 import os
 from flask import (
@@ -9,6 +8,7 @@ from flask_login import current_user
 from werkzeug.utils import secure_filename
 from ..models import db, Game, Package, Order, Affiliate, AffiliateCommission, Pin, PaymentMethod, User, Discount
 from ..models import Setting
+from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
 
 checkout_bp = Blueprint('checkout_bp', __name__)
@@ -25,7 +25,7 @@ def save_capture(file):
     if not file or file.filename == '':
         return None
     filename = secure_filename(file.filename)
-    ts = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+    ts = now_ve_naive().strftime('%Y%m%d%H%M%S%f')
     filename = f"{ts}_{filename}"
     folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'captures')
     os.makedirs(folder, exist_ok=True)

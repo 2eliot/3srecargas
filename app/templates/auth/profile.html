@@ -168,7 +168,7 @@
                     {% if current_user.phone %}
                     <p>📱 {{ current_user.phone }}</p>
                     {% endif %}
-                    <p>📅 Miembro desde {{ current_user.created_at.strftime('%d/%m/%Y') }}</p>
+                    <p>📅 Miembro desde {{ current_user.created_at|datetime_ve('%d/%m/%Y') }}</p>
                 </div>
             </div>
         </div>
@@ -197,7 +197,7 @@
                         </div>
                         <div class="order-detail">
                             <span class="order-detail-label">Fecha</span>
-                            <span class="order-detail-value">{{ order.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+                            <span class="order-detail-value">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
                         </div>
                     </div>
                 </div>

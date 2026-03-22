@@ -15,6 +15,7 @@ from ..models import (
     Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting,
     RevendedoresCatalogItem, RevendedoresItemMapping,
 )
+from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
 from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
@@ -49,7 +50,7 @@ def save_image(file, subfolder=''):
     if not file or not allowed_file(file.filename):
         return None
     filename = secure_filename(file.filename)
-    ts = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+    ts = now_ve_naive().strftime('%Y%m%d%H%M%S%f')
     filename = f"{ts}_{filename}"
     folder = current_app.config['UPLOAD_FOLDER']
     if subfolder:
@@ -451,7 +452,7 @@ def orders_latest():
             'status': o.status,
             'status_label': o.status_label,
             'status_class': o.status_class,
-            'created_at': o.created_at.strftime('%d/%m/%Y %H:%M') if o.created_at else '',
+            'created_at': format_ve(o.created_at, '%d/%m/%Y %H:%M'),
             'automation_response': o.automation_response or '',
             'pin_delivered': o.pin_delivered or '',
         })
@@ -1465,7 +1466,7 @@ def order_verify_recharge(order_id):
 @admin_bp.route('/stats')
 @login_required
 def stats():
-    today = datetime.utcnow().date()
+    today = now_ve().date()
 
     days = [today, today - timedelta(days=1), today - timedelta(days=2)]
 
@@ -1488,38 +1489,32 @@ def stats():
             ordered_rows.append(row)
             row_map[(game.id, pkg.id)] = row
 
-    # Collect ALL orders for the 3-day window in one query
-    window_start = datetime(days[2].year, days[2].month, days[2].day)
-    window_end   = datetime(today.year, today.month, today.day) + timedelta(days=1)
+    # Convert Venezuela day window to UTC for querying stored timestamps.
+    window_start = ve_day_start_utc_naive(days[2])
+    window_end = ve_day_start_utc_naive(today + timedelta(days=1))
 
-    rows = db.session.query(
-        db.func.date(Order.created_at).label('day'),
-        Order.game_id.label('game_id'),
-        Order.package_id.label('package_id'),
-        Order.status,
-        db.func.count(Order.id).label('cnt'),
-    ).filter(
+    rows = Order.query.filter(
         Order.created_at >= window_start,
         Order.created_at < window_end,
         Order.status.in_(['pending', 'approved', 'completed']),
-    ).group_by(
-        db.func.date(Order.created_at),
-        Order.game_id,
-        Order.package_id,
-        Order.status,
     ).all()
 
-    for row in rows:
-        day_iso = str(row.day)
-        data_row = row_map.get((row.game_id, row.package_id))
+    for order in rows:
+        created_at_ve = to_ve(order.created_at)
+        if created_at_ve is None:
+            continue
+
+        day_iso = created_at_ve.date().isoformat()
+        data_row = row_map.get((order.game_id, order.package_id))
         if not data_row or day_iso not in data_row['cells']:
             continue
+
         cell = data_row['cells'][day_iso]
-        cell['total'] += row.cnt
-        if row.status in ('completed', 'approved'):
-            cell['completed'] += row.cnt
-        elif row.status == 'pending':
-            cell['pending'] += row.cnt
+        cell['total'] += 1
+        if order.status in ('completed', 'approved'):
+            cell['completed'] += 1
+        elif order.status == 'pending':
+            cell['pending'] += 1
 
     return render_template(
         'admin/stats.html',
