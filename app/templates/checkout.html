@@ -151,6 +151,7 @@
                             </div>
                             <p class="proof-dropzone-title">Toca para subir tu comprobante</p>
                             <p class="proof-dropzone-subtitle">Foto o screenshot del pago</p>
+                            <label for="payment_capture" class="proof-upload-btn">Seleccionar imagen</label>
                             <span class="proof-file-name" id="proofFileName">Ningún archivo seleccionado</span>
                         </div>
                         <p class="proof-warning">
@@ -209,6 +210,7 @@
     var submitBtn = document.getElementById('submitBtn');
     var proofInput = document.getElementById('payment_capture');
     var proofDropzone = document.getElementById('proofDropzone');
+    var proofUploadBtn = document.querySelector('.proof-upload-btn');
     var proofFileName = document.getElementById('proofFileName');
     var referenceInput = document.getElementById('payment_reference');
     var referenceDots = document.getElementById('referenceDots');
@@ -254,8 +256,17 @@
         });
     }
 
+    if (proofUploadBtn) {
+        proofUploadBtn.addEventListener('click', function (evt) {
+            evt.stopPropagation();
+        });
+    }
+
     if (proofDropzone) {
-        proofDropzone.addEventListener('click', function () {
+        proofDropzone.addEventListener('click', function (evt) {
+            if (evt.target && evt.target.closest('.proof-upload-btn')) {
+                return;
+            }
             proofInput && proofInput.click();
         });
         proofDropzone.addEventListener('keypress', function (evt) {

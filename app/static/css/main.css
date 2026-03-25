@@ -505,7 +505,13 @@ select option { background: var(--bg-secondary); }
     transition: background .15s, opacity .15s;
 }
 .verify-btn:hover { background: #0f172a; }
-.verify-btn:disabled { opacity: .5; cursor: not-allowed; }
+.verify-btn:disabled {
+    opacity: 1;
+    cursor: default;
+    background: #111827;
+    color: #cbd5e1;
+    border-color: #1f2937;
+}
 
 .payment-card-list {
     display: flex;
@@ -901,6 +907,7 @@ select option { background: var(--bg-secondary); }
     letter-spacing: .6px;
 }
 .proof-dropzone {
+    position: relative;
     border: 2px dashed rgba(244,63,94,.4);
     border-radius: 14px;
     padding: 28px 16px;
@@ -919,7 +926,12 @@ select option { background: var(--bg-secondary); }
 }
 .proof-dropzone input {
     position: absolute;
-    inset: 0;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
     opacity: 0;
     pointer-events: none;
 }
@@ -936,6 +948,31 @@ select option { background: var(--bg-secondary); }
 .proof-file-name {
     font-size: 12px;
     color: var(--text-muted);
+}
+.proof-upload-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    margin-top: 14px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(244,63,94,.45);
+    background: linear-gradient(135deg, rgba(255,26,60,.18), rgba(255,77,109,.28));
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .2px;
+    cursor: pointer;
+    transition: transform var(--transition), border-color var(--transition), background var(--transition);
+    -webkit-tap-highlight-color: transparent;
+}
+.proof-upload-btn:hover,
+.proof-upload-btn:focus-visible {
+    border-color: var(--accent);
+    background: linear-gradient(135deg, rgba(255,26,60,.28), rgba(255,77,109,.38));
+    transform: translateY(-1px);
+    outline: none;
 }
 .proof-file-name {
     display: block;

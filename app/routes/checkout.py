@@ -141,6 +141,10 @@ def checkout(package_id):
         if current_user.is_authenticated and current_user.__class__.__name__ == 'User':
             user_id = current_user.id
 
+        customer_phone = (data.get('phone') or '').strip()
+        if not customer_phone and user_id:
+            customer_phone = (current_user.phone or '').strip()
+
         # Procesar descuento si hay código (descuento explícito o código de afiliado)
         discount_code = ((data.get('affiliate_code') or aff_code or '').strip()).upper()
         discount = None
@@ -177,7 +181,7 @@ def checkout(package_id):
             player_nickname=(data.get('player_nickname') or '').strip() or None,
             zone_id=(data.get('zone_id') or '').strip() if (not is_wallet and game.requires_zone_id) else None,
             email=(data.get('player_id') or '').strip() if is_wallet else (data.get('email') or '').strip(),
-            phone=(data.get('phone') or '').strip() if is_wallet else None,
+            phone=customer_phone or None,
             payment_method=payment_method,
             payment_reference=payment_reference,
             amount=final_amount,

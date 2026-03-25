@@ -406,6 +406,7 @@ def build_admin_new_order_email(order, package, game):
 {_detail_row('Método', (order.payment_method or '').upper())}
 {_detail_row('Referencia', order.payment_reference or 'N/A')}
 {_detail_row('Email cliente', order.email or 'N/A')}
+{f'{_detail_row("Teléfono cliente", order.phone)}' if order.phone else ''}
 {f'{_detail_row("ID Jugador", order.player_id or "N/A")}' if order.player_id else ''}
 {f'{_detail_row("Nickname", order.player_nickname or "N/A")}' if order.player_nickname else ''}
 {f'{_detail_row("Código afiliado", order.affiliate_code)}' if order.affiliate_code else ''}
@@ -427,6 +428,7 @@ Monto: {amount_str}
 Método: {(order.payment_method or '').upper()}
 Referencia: {order.payment_reference or 'N/A'}
 Email cliente: {order.email or 'N/A'}
+{f'Teléfono cliente: {order.phone}\n' if order.phone else ''}
 
 Ingresa al panel de administración para procesar esta orden.
 
