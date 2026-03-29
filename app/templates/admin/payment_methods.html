@@ -58,6 +58,7 @@
                                     data-bank-name="{{ m.bank_name or '' }}"
                                     data-id-number="{{ m.id_number or '' }}"
                                     data-account-currency="{{ m.account_currency or 'bs' }}"
+                                    data-pabilo-user-bank-id="{{ m.pabilo_user_bank_id or '' }}"
                                     data-show-contact-email="{{ 1 if m.show_contact_email else 0 }}"
                                     data-show-pay-id="{{ 1 if m.show_pay_id else 0 }}"
                                     data-show-contact-phone="{{ 1 if m.show_contact_phone else 0 }}"
@@ -125,6 +126,11 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label>UserBankId de Pabilo</label>
+                    <input type="text" name="pabilo_user_bank_id" id="pmPabiloUserBankId" placeholder="ub_...">
+                    <p class="form-hint">Cuenta bancaria de Pabilo asociada a este método para validación automática.</p>
+                </div>
+                <div class="form-group">
                     <label>Orden</label>
                     <input type="number" name="sort_order" id="pmOrder" value="100" min="1">
                 </div>
@@ -176,6 +182,7 @@ function openPmModal() {
     document.getElementById('pmBankName').value = '';
     document.getElementById('pmIdNumber').value = '';
     document.getElementById('pmAccountCurrency').value = 'bs';
+    document.getElementById('pmPabiloUserBankId').value = '';
     document.getElementById('pmOrder').value = 100;
     document.getElementById('pmActive').checked = true;
     document.getElementById('pmUsesRate').checked = true;
@@ -185,7 +192,7 @@ function openPmModal() {
     document.getElementById('pmModal').style.display = 'flex';
 }
 
-function openEditPm(id, name, code, order, isActive, contactEmail, payId, contactPhone, bankName, idNumber, accountCurrency, showContactEmail, showPayId, showContactPhone, usesRate) {
+function openEditPm(id, name, code, order, isActive, contactEmail, payId, contactPhone, bankName, idNumber, accountCurrency, pabiloUserBankId, showContactEmail, showPayId, showContactPhone, usesRate) {
     const form = document.getElementById('pmForm');
     form.action = '/admin/payment-methods/' + id + '/edit';
     document.getElementById('pmModalTitle').textContent = 'Editar Método';
@@ -197,6 +204,7 @@ function openEditPm(id, name, code, order, isActive, contactEmail, payId, contac
     document.getElementById('pmBankName').value = bankName || '';
     document.getElementById('pmIdNumber').value = idNumber || '';
     document.getElementById('pmAccountCurrency').value = (accountCurrency || 'bs');
+    document.getElementById('pmPabiloUserBankId').value = pabiloUserBankId || '';
     document.getElementById('pmOrder').value = order;
     document.getElementById('pmActive').checked = isActive;
     document.getElementById('pmUsesRate').checked = usesRate === 1;
@@ -220,6 +228,7 @@ document.querySelectorAll('.edit-pm-btn').forEach(function (btn) {
             this.dataset.bankName || '',
             this.dataset.idNumber || '',
             this.dataset.accountCurrency || 'bs',
+            this.dataset.pabiloUserBankId || '',
             parseInt(this.dataset.showContactEmail || '0', 10),
             parseInt(this.dataset.showPayId || '0', 10),
             parseInt(this.dataset.showContactPhone || '0', 10),

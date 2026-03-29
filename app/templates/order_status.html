@@ -106,6 +106,36 @@
             </div>
         </div>
 
+        {% if auto_verify_allowed and order.status in ['pending', 'approved', 'completed'] %}
+        <div class="processing-flow" id="processingFlow" data-status="{{ order.status }}">
+            <h3 class="processing-title">Estado de procesamiento</h3>
+            <div class="processing-step" data-step="search">
+                <span class="step-icon">✕</span>
+                <span class="step-text">Buscando pago en el sistema</span>
+            </div>
+            <div class="processing-step" data-step="confirm">
+                <span class="step-icon">✕</span>
+                <span class="step-text">Pago confirmado</span>
+            </div>
+            <div class="processing-step" data-step="validate">
+                <span class="step-icon">✕</span>
+                <span class="step-text">Validando la orden</span>
+            </div>
+            <div class="processing-step" data-step="connect">
+                <span class="step-icon">✕</span>
+                <span class="step-text">Conectando con servidor de recargas</span>
+            </div>
+            <div class="processing-step" data-step="deliver">
+                <span class="step-icon">✕</span>
+                <span class="step-text">Recarga procesada correctamente</span>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if is_manual_order and order.status == 'pending' %}
+        <p class="refresh-hint">Esta orden será revisada manualmente por nuestro equipo.</p>
+        {% endif %}
+
         {% if order.pin_delivered and order.game.category and order.game.category.slug == 'tarjetas' %}
         <div class="pin-reveal">
             <p class="pin-label">Tu PIN / Código</p>
@@ -122,8 +152,108 @@
         <p class="refresh-hint">
             <button onclick="location.reload()" class="btn-link">Actualizar estado</button>
         </p>
+        {% if auto_verify_allowed %}
+        <p class="refresh-hint" id="autoVerifyHint">Verificando tu pago automáticamente...</p>
+        {% endif %}
         {% endif %}
 
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if order.status == 'pending' and auto_verify_allowed %}
+<script>
+(function () {
+    var hint = document.getElementById('autoVerifyHint');
+    var orderNumber = '{{ order.order_number }}';
+    var currentDelayMs = 30000;
+    var flow = document.getElementById('processingFlow');
+
+    function getStepEl(step) {
+        return flow ? flow.querySelector('[data-step="' + step + '"]') : null;
+    }
+
+    function setStepState(step, state) {
+        var el = getStepEl(step);
+        if (!el) return;
+        el.classList.remove('is-pending', 'is-active', 'is-done', 'is-error');
+        el.classList.add('is-' + state);
+        var icon = el.querySelector('.step-icon');
+        if (!icon) return;
+        if (state === 'done') icon.textContent = '✓';
+        else if (state === 'active') icon.textContent = '…';
+        else icon.textContent = '✕';
+    }
+
+    function paintFlowByStatus(status, verified) {
+        if (!flow) return;
+        var s = String(status || '').toLowerCase();
+        if (s === 'completed') {
+            ['search', 'confirm', 'validate', 'connect', 'deliver'].forEach(function (k) { setStepState(k, 'done'); });
+            return;
+        }
+        if (s === 'approved') {
+            setStepState('search', 'done');
+            setStepState('confirm', 'done');
+            setStepState('validate', 'done');
+            setStepState('connect', 'active');
+            setStepState('deliver', 'pending');
+            return;
+        }
+        setStepState('search', 'active');
+        setStepState('confirm', verified ? 'done' : 'pending');
+        setStepState('validate', verified ? 'active' : 'pending');
+        setStepState('connect', 'pending');
+        setStepState('deliver', 'pending');
+    }
+
+    function nextDelayFromMessage(message) {
+        var text = String(message || '').toLowerCase();
+        if (text.indexOf('429') !== -1 || text.indexOf('demasiadas solicitudes') !== -1 || text.indexOf('too many requests') !== -1) {
+            return 60000;
+        }
+        return 30000;
+    }
+
+    function pollAutoVerify() {
+        fetch('/order/' + orderNumber + '/auto-verify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                if (hint && data.message) {
+                    hint.textContent = data.message;
+                }
+                paintFlowByStatus(data.status, data.verified);
+                if (data.status && data.status !== 'pending') {
+                    if (data.status === 'completed') {
+                        window.setTimeout(function () { window.location.reload(); }, 1200);
+                    } else {
+                        window.location.reload();
+                    }
+                    return;
+                }
+                if (data.stop_polling) {
+                    return;
+                }
+                if (data.next_retry_in_seconds && Number(data.next_retry_in_seconds) > 0) {
+                    currentDelayMs = Number(data.next_retry_in_seconds) * 1000;
+                } else {
+                    currentDelayMs = nextDelayFromMessage(data.message);
+                }
+                window.setTimeout(pollAutoVerify, currentDelayMs);
+            })
+            .catch(function () {
+                paintFlowByStatus('pending', false);
+                window.setTimeout(pollAutoVerify, 45000);
+            });
+    }
+
+    paintFlowByStatus('{{ order.status }}', false);
+    window.setTimeout(pollAutoVerify, 6000);
+})();
+</script>
+{% endif %}
 {% endblock %}

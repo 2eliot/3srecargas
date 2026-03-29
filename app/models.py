@@ -117,7 +117,16 @@ class Order(db.Model):
     phone = db.Column(db.String(50))
     payment_method = db.Column(db.String(50), nullable=False)
     payment_reference = db.Column(db.String(255), nullable=False)
+    payment_reference_last5 = db.Column(db.String(5))
     payment_capture = db.Column(db.String(255))
+    payment_amount = db.Column(db.Numeric(10, 2))
+    payment_currency = db.Column(db.String(3))
+    payer_dni_type = db.Column(db.String(2))
+    payer_dni_number = db.Column(db.String(20))
+    payer_bank_origin = db.Column(db.String(20))
+    payer_phone = db.Column(db.String(20))
+    payer_payment_date = db.Column(db.Date)
+    payer_movement_type = db.Column(db.String(20))
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     original_amount = db.Column(db.Numeric(10, 2))  # precio antes del descuento
     discount_amount = db.Column(db.Numeric(10, 2), default=0)  # monto del descuento aplicado
@@ -127,6 +136,10 @@ class Order(db.Model):
     pin_id = db.Column(db.Integer, db.ForeignKey('pins.id'), nullable=True)
     pin_delivered = db.Column(db.String(255))
     automation_response = db.Column(db.Text)
+    payment_verification_id = db.Column(db.String(100))
+    payment_verified_at = db.Column(db.DateTime)
+    payment_verification_attempts = db.Column(db.Integer, default=0)
+    payment_last_verification_at = db.Column(db.DateTime)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -250,6 +263,7 @@ class PaymentMethod(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     uses_rate = db.Column(db.Boolean, default=True)
+    pabilo_user_bank_id = db.Column(db.String(100))
 
     def to_dict(self):
         return {
@@ -266,6 +280,7 @@ class PaymentMethod(db.Model):
             'show_contact_email': self.show_contact_email,
             'show_pay_id': self.show_pay_id,
             'show_contact_phone': self.show_contact_phone,
+            'pabilo_user_bank_id': self.pabilo_user_bank_id,
         }
 
 

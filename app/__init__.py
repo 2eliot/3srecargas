@@ -79,6 +79,7 @@ def create_app(config_class=Config):
         _ensure_discount_columns()
         _ensure_order_nickname_column()
         _ensure_affiliate_columns()
+        _ensure_payment_verification_columns()
         _init_default_data(app)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -111,6 +112,10 @@ def _ensure_payment_method_columns():
             db.session.execute(text('ALTER TABLE payment_methods ADD COLUMN show_pay_id BOOLEAN DEFAULT 0'))
         if 'show_contact_phone' not in existing:
             db.session.execute(text('ALTER TABLE payment_methods ADD COLUMN show_contact_phone BOOLEAN DEFAULT 0'))
+        if 'uses_rate' not in existing:
+            db.session.execute(text('ALTER TABLE payment_methods ADD COLUMN uses_rate BOOLEAN DEFAULT 1'))
+        if 'pabilo_user_bank_id' not in existing:
+            db.session.execute(text('ALTER TABLE payment_methods ADD COLUMN pabilo_user_bank_id VARCHAR(100)'))
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -174,6 +179,45 @@ def _ensure_affiliate_columns():
         if 'client_discount_rate' not in existing:
             db.session.execute(text('ALTER TABLE affiliates ADD COLUMN client_discount_rate NUMERIC(5, 2) DEFAULT 0'))
             db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_payment_verification_columns():
+    try:
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'payment_reference_last5' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_reference_last5 VARCHAR(5)'))
+        if 'payment_amount' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_amount NUMERIC(10, 2)'))
+        if 'payment_currency' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_currency VARCHAR(3)'))
+        if 'payer_dni_type' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payer_dni_type VARCHAR(2)'))
+        if 'payer_dni_number' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payer_dni_number VARCHAR(20)'))
+        if 'payer_bank_origin' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payer_bank_origin VARCHAR(20)'))
+        if 'payer_phone' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payer_phone VARCHAR(20)'))
+        if 'payer_payment_date' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payer_payment_date DATE'))
+        if 'payer_movement_type' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payer_movement_type VARCHAR(20)'))
+        if 'payment_verification_id' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_verification_id VARCHAR(100)'))
+        if 'payment_verified_at' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_verified_at DATETIME'))
+        if 'payment_verification_attempts' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_verification_attempts INTEGER DEFAULT 0'))
+        if 'payment_last_verification_at' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_last_verification_at DATETIME'))
+
+        db.session.commit()
     except Exception:
         db.session.rollback()
 

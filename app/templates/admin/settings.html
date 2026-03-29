@@ -39,6 +39,30 @@
             </div>
         </div>
         <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
+        <h3 style="margin-bottom:16px;">Verificación Automática de Pagos</h3>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label class="check-label" style="margin-top:30px;">
+                    <input type="checkbox" name="auto_verify_payments" value="1"
+                           {% if payment_verify_settings.auto_verify_payments == 'true' %}checked{% endif %}>
+                    Activar aprobación automática con Pabilo
+                </label>
+                <p class="form-hint">
+                    Si está encendido, las órdenes pendientes intentarán verificarse automáticamente y se aprobarán solas cuando el pago exista en Pabilo.
+                    La aprobación manual seguirá disponible en el panel.
+                </p>
+            </div>
+            <div class="form-group">
+                <label for="pabilo_api_key">API Key de Pabilo</label>
+                <input type="text" id="pabilo_api_key" name="pabilo_api_key" placeholder="pk_..."
+                       value="{{ payment_verify_settings.pabilo_api_key }}">
+                <p class="form-hint">
+                    Se envía en el header appKey. Asigna también el UserBankId correcto en cada método de pago.
+                </p>
+            </div>
+        </div>
+
+        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
         <h3 style="margin-bottom:16px;">Redes Sociales (Footer)</h3>
         <div class="form-grid-2">
             <div class="form-group">

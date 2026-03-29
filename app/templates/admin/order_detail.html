@@ -90,6 +90,24 @@
             <span class="detail-label">Referencia</span>
             <span class="detail-value"><code class="ref-code">{{ order.payment_reference }}</code></span>
         </div>
+        {% if order.payment_reference_last5 %}
+        <div class="detail-row">
+            <span class="detail-label">Últimos 5 de ref.</span>
+            <span class="detail-value">{{ order.payment_reference_last5 }}</span>
+        </div>
+        {% endif %}
+        {% if order.payer_dni_number %}
+        <div class="detail-row">
+            <span class="detail-label">Cédula pagador</span>
+            <span class="detail-value">{{ order.payer_dni_type or 'V' }}-{{ order.payer_dni_number }}</span>
+        </div>
+        {% endif %}
+        {% if order.payment_verification_id %}
+        <div class="detail-row">
+            <span class="detail-label">Verificación Pabilo</span>
+            <span class="detail-value">{{ order.payment_verification_id }}</span>
+        </div>
+        {% endif %}
         {% if order.payment_capture %}
         <div class="detail-row">
             <span class="detail-label">Comprobante</span>

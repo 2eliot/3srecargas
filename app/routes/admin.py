@@ -19,6 +19,7 @@ from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_star
 from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
+from ..utils.order_processing import approve_order, get_revendedores_env, process_affiliate_commission
 
 admin_bp = Blueprint('admin_bp', __name__)
 
@@ -104,23 +105,6 @@ def admin_housekeeping_hook():
     if not request.path.startswith('/admin'):
         return
     run_housekeeping_if_needed()
-
-
-def process_affiliate_commission(order):
-    if not order.affiliate_id:
-        return
-    affiliate = Affiliate.query.get(order.affiliate_id)
-    if not affiliate or not affiliate.is_active:
-        return
-    commission_amount = round(float(order.amount) * float(affiliate.commission_rate) / 100, 2)
-    commission = AffiliateCommission(
-        affiliate_id=affiliate.id,
-        order_id=order.id,
-        amount=commission_amount,
-    )
-    affiliate.balance = float(affiliate.balance) + commission_amount
-    affiliate.total_earned = float(affiliate.total_earned) + commission_amount
-    db.session.add(commission)
 
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -471,222 +455,8 @@ def order_detail(order_id):
 @login_required
 def order_approve(order_id):
     order = Order.query.get_or_404(order_id)
-    if order.status != 'pending':
-        flash('Solo se pueden aprobar órdenes pendientes.', 'warning')
-        return redirect(url_for('admin_bp.orders'))
-
-    # ── Revendedores API auto-recharge ──
-    rev_mapping = _get_order_auto_mapping(order)
-    if rev_mapping:
-        try:
-            base_url, api_key, _, recharge_path = _revendedores_env()
-            catalog_item = rev_mapping.catalog_item
-            if base_url and api_key and catalog_item:
-                auto_resp = {}
-                try:
-                    auto_resp = json.loads(order.automation_response or '{}')
-                except Exception:
-                    auto_resp = {}
-
-                prev_attempt = 0
-                try:
-                    if (auto_resp.get('source') or '') == 'revendedores_api':
-                        prev_attempt = int(auto_resp.get('rev_attempt') or 0)
-                except Exception:
-                    prev_attempt = 0
-
-                rev_attempt = prev_attempt + 1
-                ext_order_id = f"{order.order_number}-{rev_attempt}"
-
-                rev_payload = {
-                    'product_id': catalog_item.remote_product_id,
-                    'package_id': catalog_item.remote_package_id,
-                    'player_id': str(order.player_id or '').strip(),
-                    'external_order_id': ext_order_id,
-                }
-                if order.zone_id:
-                    rev_payload['player_id2'] = str(order.zone_id).strip()
-
-                resp = requests.post(
-                    f'{base_url}{recharge_path}',
-                    json=rev_payload,
-                    headers={'X-API-Key': api_key, 'Content-Type': 'application/json'},
-                    timeout=120,
-                )
-                rev_data = resp.json() if resp.ok else {}
-                rev_ok = rev_data.get('ok', False)
-
-                if rev_ok:
-                    player_name = rev_data.get('player_name', '')
-                    ref_no = rev_data.get('reference_no', '')
-                    order.status = 'completed'
-                    order.automation_response = json.dumps({
-                        'source': 'revendedores_api',
-                        'success': True,
-                        'rev_attempt': rev_attempt,
-                        'external_order_id': ext_order_id,
-                        'player_name': player_name,
-                        'reference_no': ref_no,
-                        'order_id': rev_data.get('order_id'),
-                    })
-                    order.notes = (order.notes or '') + f'\n[Revendedores API] Ref: {ref_no}, Player: {player_name}'
-                    order.updated_at = datetime.utcnow()
-                    process_affiliate_commission(order)
-                    db.session.commit()
-                    try:
-                        notify_order_completed(order, order.package, order.game)
-                    except Exception:
-                        pass
-                    extra = f' (Jugador: {player_name})' if player_name else ''
-                    flash(f'Orden #{order.order_number} completada vía Revendedores API.{extra}', 'success')
-                    return redirect(url_for('admin_bp.orders'))
-                else:
-                    rev_error = rev_data.get('error', resp.text[:200] if not resp.ok else 'Error desconocido')
-                    order.automation_response = json.dumps({
-                        'source': 'revendedores_api',
-                        'pending_verification': True,
-                        'rev_attempt': rev_attempt,
-                        'external_order_id': ext_order_id,
-                        'error': rev_error,
-                    })
-                    db.session.commit()
-                    flash(
-                        f'Revendedores reportó error: {rev_error}. Verificando si la recarga se procesó...',
-                        'warning',
-                    )
-                    return redirect(url_for('admin_bp.orders'))
-        except Exception as e:
-            order.automation_response = json.dumps({
-                'source': 'revendedores_api',
-                'pending_verification': True,
-                'external_order_id': f"{order.order_number}-1",
-                'error': str(e),
-            })
-            try:
-                db.session.commit()
-            except Exception:
-                pass
-            flash(f'Error contactando Revendedores API: {e}. Verificando si se procesó...', 'warning')
-            return redirect(url_for('admin_bp.orders'))
-
-    package = order.package
-    category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
-    needs_pin_delivery = package.is_automated or category_slug == 'tarjetas'
-
-    pin = None
-    if needs_pin_delivery:
-        pin = (
-            Pin.query
-            .filter_by(package_id=package.id, is_used=False)
-            .order_by(Pin.created_at.asc())
-            .first()
-        )
-        if not pin:
-            flash('Sin stock de códigos para este paquete. Carga PINs primero.', 'danger')
-            return redirect(url_for('admin_bp.orders'))
-
-    if package.is_automated:
-        vps_url = current_app.config.get('VPS_REDEEM_URL')
-        vps_timeout = current_app.config.get('VPS_TIMEOUT', 120)
-
-        payload = {
-            'pin_key': str(pin.code).strip(),
-            'player_id': str(order.player_id).strip(),
-            'full_name': current_app.config.get('VPS_FULL_NAME', 'Usuario Recarga'),
-            'birth_date': current_app.config.get('VPS_BIRTH_DATE', '01/01/1995'),
-            'country': current_app.config.get('VPS_COUNTRY', 'Venezuela'),
-            'request_id': order.order_number,
-        }
-
-        try:
-            resp = requests.post(
-                vps_url,
-                json=payload,
-                timeout=vps_timeout,
-                headers={'Content-Type': 'application/json'},
-            )
-
-            try:
-                data = resp.json()
-            except Exception:
-                data = {}
-
-            exito = data.get('success') or data.get('exito') or data.get('status') == 'ok'
-            mensaje = data.get('message') or data.get('mensaje') or data.get('error') or ''
-            player_name = data.get('player_name') or data.get('nombre_jugador') or ''
-
-            if not exito and resp.status_code != 200:
-                exito = False
-            elif resp.status_code == 200 and not data:
-                exito = True
-                mensaje = 'Recarga procesada (VPS)'
-
-            if exito:
-                pin.is_used = True
-                pin.used_at = datetime.utcnow()
-                pin.order_id = order.id
-                order.status = 'completed'
-                order.pin_id = pin.id
-                order.pin_delivered = pin.code
-                order.automation_response = json.dumps({
-                    'success': True,
-                    'message': mensaje,
-                    'player_name': player_name,
-                })
-                order.updated_at = datetime.utcnow()
-                process_affiliate_commission(order)
-                db.session.commit()
-                try:
-                    notify_order_completed(order, order.package, order.game)
-                except Exception:
-                    pass
-                extra = f' (Jugador: {player_name})' if player_name else ''
-                flash(f'Orden #{order.order_number} completada vía automatización.{extra}', 'success')
-            else:
-                flash(
-                    f'Redención fallida: {mensaje or "Error desconocido del VPS"}. '
-                    f'El PIN se mantiene en stock. La orden sigue pendiente.',
-                    'danger',
-                )
-        except requests.exceptions.Timeout:
-            flash(
-                f'El VPS no respondió en {vps_timeout}s. Reintenta más tarde. '
-                f'El PIN no fue consumido.',
-                'danger',
-            )
-        except requests.exceptions.ConnectionError:
-            flash(
-                'No se pudo conectar al bot de recarga. '
-                'Verifica que el servicio esté activo en el VPS.',
-                'danger',
-            )
-        except Exception as e:
-            flash(f'Error inesperado al contactar el VPS: {e}', 'danger')
-    elif needs_pin_delivery:
-        pin.is_used = True
-        pin.used_at = datetime.utcnow()
-        pin.order_id = order.id
-        order.status = 'completed'
-        order.pin_id = pin.id
-        order.pin_delivered = pin.code
-        order.updated_at = datetime.utcnow()
-        process_affiliate_commission(order)
-        db.session.commit()
-        try:
-            notify_order_completed(order, order.package, order.game, pin_code=pin.code)
-        except Exception:
-            pass
-        flash(f'Orden #{order.order_number} completada y PIN entregado.', 'success')
-    else:
-        order.status = 'approved'
-        order.updated_at = datetime.utcnow()
-        process_affiliate_commission(order)
-        db.session.commit()
-        try:
-            notify_order_approved(order, order.package, order.game)
-        except Exception:
-            pass
-        flash(f'Orden #{order.order_number} aprobada.', 'success')
+    result = approve_order(order)
+    flash(result['message'], result['category'])
 
     return redirect(url_for('admin_bp.orders'))
 
@@ -889,6 +659,7 @@ def payment_method_add():
     bank_name = request.form.get('bank_name', '').strip() or None
     id_number = request.form.get('id_number', '').strip() or None
     account_currency = (request.form.get('account_currency', 'bs') or 'bs').strip().lower()
+    pabilo_user_bank_id = request.form.get('pabilo_user_bank_id', '').strip() or None
     show_contact_email = bool(request.form.get('show_contact_email'))
     show_pay_id = bool(request.form.get('show_pay_id'))
     show_contact_phone = bool(request.form.get('show_contact_phone'))
@@ -915,6 +686,7 @@ def payment_method_add():
         bank_name=bank_name,
         id_number=id_number,
         account_currency=account_currency,
+        pabilo_user_bank_id=pabilo_user_bank_id,
         show_contact_email=show_contact_email,
         show_pay_id=show_pay_id,
         show_contact_phone=show_contact_phone,
@@ -940,6 +712,7 @@ def payment_method_edit(method_id):
     method.bank_name = request.form.get('bank_name', '').strip() or None
     method.id_number = request.form.get('id_number', '').strip() or None
     method.account_currency = (request.form.get('account_currency', method.account_currency or 'bs') or 'bs').strip().lower()
+    method.pabilo_user_bank_id = request.form.get('pabilo_user_bank_id', '').strip() or None
     method.show_contact_email = bool(request.form.get('show_contact_email'))
     method.show_pay_id = bool(request.form.get('show_pay_id'))
     method.show_contact_phone = bool(request.form.get('show_contact_phone'))
@@ -996,10 +769,19 @@ def settings():
         'unsubscribe_url': 'URL para darse de baja',
         'admin_notify_email': 'Correo para alertas de nuevas órdenes',
     }
+    payment_verify_keys = {
+        'auto_verify_payments': 'Habilita la verificación automática de pagos con Pabilo',
+        'pabilo_api_key': 'API key privada de Pabilo para validar pagos',
+    }
     email_settings = {}
     for key in email_keys:
         setting = Setting.query.filter_by(key=key).first()
         email_settings[key] = setting.value if setting else ''
+
+    payment_verify_settings = {}
+    for key in payment_verify_keys:
+        setting = Setting.query.filter_by(key=key).first()
+        payment_verify_settings[key] = setting.value if setting else ''
 
     if request.method == 'POST':
         new_rate = request.form.get('usd_rate_bs', '').strip()
@@ -1008,6 +790,10 @@ def settings():
         logo_file = request.files.get('site_logo')
         social_payload = {k: (request.form.get(k, '') or '').strip() for k in social_keys}
         email_payload = {k: (request.form.get(k, '') or '').strip() for k in email_keys}
+        payment_verify_payload = {
+            'auto_verify_payments': 'true' if request.form.get('auto_verify_payments') else 'false',
+            'pabilo_api_key': (request.form.get('pabilo_api_key', '') or '').strip(),
+        }
 
         if new_rate:
             try:
@@ -1082,6 +868,15 @@ def settings():
                 if current_setting:
                     current_setting.value = ''
 
+        for key, desc in payment_verify_keys.items():
+            val = payment_verify_payload.get(key, '')
+            current_setting = Setting.query.filter_by(key=key).first()
+            if not current_setting:
+                current_setting = Setting(key=key, value=val, description=desc)
+                db.session.add(current_setting)
+            else:
+                current_setting.value = val
+
         db.session.commit()
         flash('Configuración actualizada.', 'success')
         return redirect(url_for('admin_bp.settings'))
@@ -1093,18 +888,11 @@ def settings():
         site_logo=site_logo_value,
         social_settings=social_settings,
         email_settings=email_settings,
+        payment_verify_settings=payment_verify_settings,
     )
 
 
 # ─── Revendedores Whitelabel API ─────────────────────────────────────────────
-
-def _revendedores_env():
-    base_url = current_app.config.get('REVENDEDORES_BASE_URL', '').rstrip('/')
-    api_key = current_app.config.get('REVENDEDORES_API_KEY', '')
-    catalog_path = '/api/v1/products'
-    recharge_path = '/api/v1/recharge'
-    return base_url, api_key, catalog_path, recharge_path
-
 
 def _normalize_rev_catalog_payload(payload):
     items = []
@@ -1130,19 +918,6 @@ def _normalize_rev_catalog_payload(payload):
     return items
 
 
-def _get_order_auto_mapping(order_obj):
-    try:
-        if not order_obj or not order_obj.package_id:
-            return None
-        return RevendedoresItemMapping.query.filter_by(
-            store_package_id=int(order_obj.package_id),
-            active=True,
-            auto_enabled=True,
-        ).first()
-    except Exception:
-        return None
-
-
 @admin_bp.route('/revendedores/mapping')
 @login_required
 def revendedores_mapping():
@@ -1152,7 +927,7 @@ def revendedores_mapping():
 @admin_bp.route('/revendedores/sync', methods=['POST'])
 @login_required
 def revendedores_sync_catalog():
-    base_url, api_key, catalog_path, _ = _revendedores_env()
+    base_url, api_key, catalog_path, _ = get_revendedores_env()
     if not base_url or not api_key:
         return jsonify({'ok': False, 'error': 'REVENDEDORES_BASE_URL o REVENDEDORES_API_KEY no configurados'}), 400
 
@@ -1374,7 +1149,7 @@ def order_verify_recharge(order_id):
         return jsonify({'ok': True, 'result': 'no_verification_needed', 'can_approve': True})
 
     ext_order_id = auto_resp.get('external_order_id') or order.order_number
-    base_url, api_key, _, _ = _revendedores_env()
+    base_url, api_key, _, _ = get_revendedores_env()
 
     if not base_url or not api_key:
         return jsonify({'ok': False, 'error': 'Revendedores API no configurada'})
