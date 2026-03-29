@@ -212,10 +212,13 @@
             return;
         }
 
-        var firstButton = null;
+        var autoPkgs   = packages.filter(function (p) { return p.is_auto; });
+        var manualPkgs = packages.filter(function (p) { return !p.is_auto; });
+
+        var firstButton        = null;
         var firstPkgForDefault = null;
 
-        packages.forEach(function (pkg) {
+        function buildItem(pkg) {
             var item = document.createElement('button');
             item.type      = 'button';
             item.className = 'package-item';
@@ -239,18 +242,38 @@
                 selectPackage(pkg, item);
             });
 
-            grid.appendChild(item);
-
             if (!firstButton) {
                 firstButton = item;
                 firstPkgForDefault = pkg;
             }
-
             if (defaultPackageId && pkg.id === defaultPackageId) {
                 firstButton = item;
                 firstPkgForDefault = pkg;
             }
-        });
+            return item;
+        }
+
+        function addSectionLabel(text) {
+            var lbl = document.createElement('div');
+            lbl.className = 'pkg-section-label';
+            lbl.textContent = text;
+            grid.appendChild(lbl);
+        }
+
+        if (autoPkgs.length > 0) {
+            addSectionLabel('⚡ Automático 24/7');
+            autoPkgs.forEach(function (pkg) { grid.appendChild(buildItem(pkg)); });
+        }
+
+        if (manualPkgs.length > 0) {
+            if (autoPkgs.length > 0) {
+                var sep = document.createElement('div');
+                sep.className = 'pkg-section-sep';
+                grid.appendChild(sep);
+            }
+            addSectionLabel('Recarga manual');
+            manualPkgs.forEach(function (pkg) { grid.appendChild(buildItem(pkg)); });
+        }
 
         // Reset any previous selection when loading new packages
         selectedPackage = null;

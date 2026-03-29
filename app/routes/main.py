@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, current_app
-from ..models import db, Game, Package, Category, PaymentMethod, Setting
+from ..models import db, Game, Package, Category, PaymentMethod, Setting, RevendedoresItemMapping
 
 main_bp = Blueprint('main_bp', __name__)
 
@@ -64,9 +64,26 @@ def api_packages(game_id):
     game_dict['is_ff_verify'] = (active_login_game_id and str(game.id) == str(active_login_game_id))
     game_dict['is_bs_verify'] = (bs_package_id and str(game.id) == str(bs_package_id))
 
+    # Determine which packages have an active auto-mapping (revendedores)
+    pkg_ids = [p.id for p in packages]
+    auto_mapped_ids = set(
+        m.store_package_id for m in
+        RevendedoresItemMapping.query.filter(
+            RevendedoresItemMapping.store_package_id.in_(pkg_ids),
+            RevendedoresItemMapping.active == True,
+            RevendedoresItemMapping.auto_enabled == True,
+        ).all()
+    ) if pkg_ids else set()
+
+    pkg_list = []
+    for p in packages:
+        d = p.to_dict()
+        d['is_auto'] = bool(p.is_automated or (p.id in auto_mapped_ids))
+        pkg_list.append(d)
+
     return jsonify({
         'game': game_dict,
-        'packages': [p.to_dict() for p in packages],
+        'packages': pkg_list,
     })
 
 
