@@ -43,6 +43,7 @@
             {% endif %}
         </p>
 
+        {% if is_manual_order %}
         <div class="order-info-grid">
             <div class="order-info-item">
                 <span class="info-label">Nro. de Orden</span>
@@ -105,6 +106,7 @@
                 <span class="info-value">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
             </div>
         </div>
+        {% endif %}
 
         {% if auto_verify_allowed and order.status in ['pending', 'approved', 'completed'] %}
         <div class="processing-flow" id="processingFlow" data-status="{{ order.status }}">
@@ -162,11 +164,12 @@
 {% endblock %}
 
 {% block extra_js %}
-{% if order.status == 'pending' and auto_verify_allowed %}
+{% if auto_verify_allowed %}
 <script>
 (function () {
     var hint = document.getElementById('autoVerifyHint');
     var orderNumber = '{{ order.order_number }}';
+    var initialStatus = '{{ order.status }}';
     var currentDelayMs = 30000;
     var flow = document.getElementById('processingFlow');
 
@@ -251,7 +254,10 @@
             });
     }
 
-    paintFlowByStatus('{{ order.status }}', false);
+    paintFlowByStatus(initialStatus, false);
+    if (initialStatus !== 'pending') {
+        return;
+    }
     window.setTimeout(pollAutoVerify, 6000);
 })();
 </script>

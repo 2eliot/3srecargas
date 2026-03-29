@@ -211,6 +211,7 @@ def verify_order_payment(order):
     accepted_statuses = {
         'verified', 'approve', 'approved', 'aprobado',
         'success', 'successful', 'completed', 'completada',
+        'paid', 'pagado',
     }
     root_status = str(data.get('status') or '').strip().lower()
     is_verified_flag = bool(data.get('verified'))
