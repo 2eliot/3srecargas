@@ -118,6 +118,17 @@ def _is_rate_limited_response(status_code, data):
     return False
 
 
+def _extract_pabilo_payload(data):
+    if not isinstance(data, dict):
+        return {}, {}
+
+    inner = data.get('data')
+    if isinstance(inner, dict):
+        return inner, data
+
+    return data, data
+
+
 def verify_order_payment(order):
     if not order:
         return {'ok': False, 'verified': False, 'message': 'Orden inválida.'}
@@ -171,28 +182,30 @@ def verify_order_payment(order):
             response = response_retry
             data = data_retry
 
+    payload_data, full_data = _extract_pabilo_payload(data)
+
     if response.status_code == 404:
-        return {'ok': True, 'verified': False, 'message': 'El pago todavía no aparece verificado en Pabilo.', 'response': data}
+        return {'ok': True, 'verified': False, 'message': 'El pago todavía no aparece verificado en Pabilo.', 'response': full_data}
     if response.status_code == 401:
-        return {'ok': False, 'verified': False, 'message': 'La API key de Pabilo es inválida o está inactiva.', 'response': data}
+        return {'ok': False, 'verified': False, 'message': 'La API key de Pabilo es inválida o está inactiva.', 'response': full_data}
     if response.status_code == 402:
-        return {'ok': False, 'verified': False, 'message': 'La cuenta de Pabilo no tiene créditos suficientes.', 'response': data}
+        return {'ok': False, 'verified': False, 'message': 'La cuenta de Pabilo no tiene créditos suficientes.', 'response': full_data}
     if _is_rate_limited_response(response.status_code, data):
         return {
             'ok': True,
             'verified': False,
             'message': 'Pabilo está recibiendo demasiadas solicitudes (429). Reintentaremos en unos segundos.',
             'rate_limited': True,
-            'response': data,
+            'response': full_data,
         }
     if response.status_code >= 400:
-        message = data.get('message') or data.get('error') or f'Pabilo devolvió HTTP {response.status_code}.'
-        return {'ok': False, 'verified': False, 'message': message, 'response': data}
+        message = full_data.get('message') or full_data.get('error') or f'Pabilo devolvió HTTP {response.status_code}.'
+        return {'ok': False, 'verified': False, 'message': message, 'response': full_data}
 
-    payment_data = data.get('user_bank_payment') or {}
+    payment_data = payload_data.get('user_bank_payment') or {}
     verification_id = str(payment_data.get('id') or '').strip()
     payment_status = str(payment_data.get('status') or '').strip().lower()
-    is_new = bool(data.get('is_new'))
+    is_new = bool(payload_data.get('is_new'))
 
     if verification_id:
         existing_by_verification = Order.query.filter(
@@ -205,7 +218,7 @@ def verify_order_payment(order):
                 'ok': False,
                 'verified': False,
                 'message': 'Ese pago ya fue usado para aprobar otra orden.',
-                'response': data,
+                'response': full_data,
             }
 
     accepted_statuses = {
@@ -214,7 +227,7 @@ def verify_order_payment(order):
         'paid', 'pagado',
     }
     root_status = str(data.get('status') or '').strip().lower()
-    is_verified_flag = bool(data.get('verified'))
+    is_verified_flag = bool(payload_data.get('verified') or full_data.get('verified'))
     status_is_verified = payment_status in accepted_statuses or root_status in accepted_statuses or is_verified_flag
 
     if not status_is_verified:
@@ -222,7 +235,7 @@ def verify_order_payment(order):
             'ok': True,
             'verified': False,
             'message': 'La transacción aún no está marcada como verificada en Pabilo.',
-            'response': data,
+            'response': full_data,
         }
 
     if not verification_id:
@@ -236,7 +249,7 @@ def verify_order_payment(order):
         'message': 'Pago verificado correctamente en Pabilo.',
         'verification_id': verification_id,
         'is_new': is_new,
-        'response': data,
+        'response': full_data,
     }
 
 
