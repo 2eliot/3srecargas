@@ -44,9 +44,19 @@ def save_capture(file):
     return 'captures/' + filename
 
 
+def order_qualifies_for_auto_verify(order):
+    if not order:
+        return False
+
+    has_mapping = bool(get_order_auto_mapping(order))
+    category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
+    uses_pin_stock = bool(order.package and order.package.is_automated) or category_slug == 'tarjetas'
+    return has_mapping or uses_pin_stock
+
+
 def auto_verify_and_process_order(order, force=False):
-    auto_mapped = bool(get_order_auto_mapping(order)) if order else False
-    if not order or order.status != 'pending' or not is_auto_verify_enabled() or not auto_mapped:
+    auto_allowed = order_qualifies_for_auto_verify(order)
+    if not order or order.status != 'pending' or not is_auto_verify_enabled() or not auto_allowed:
         return {'checked': False, 'verified': False, 'message': '', 'stop_polling': True}
 
     attempts = int(order.payment_verification_attempts or 0)
@@ -390,8 +400,7 @@ def order_status(order_number):
         display_amount = usd_amount if display_currency == 'usd' else (usd_amount * (usd_rate or 0.0))
 
     auto_verify_enabled = is_auto_verify_enabled()
-    auto_mapped = bool(get_order_auto_mapping(order))
-    auto_verify_allowed = auto_verify_enabled and auto_mapped
+    auto_verify_allowed = auto_verify_enabled and order_qualifies_for_auto_verify(order)
 
     return render_template(
         'order_status.html',
@@ -408,7 +417,7 @@ def order_status(order_number):
 @checkout_bp.route('/order/<order_number>/auto-verify', methods=['POST'])
 def order_auto_verify(order_number):
     order = Order.query.filter_by(order_number=order_number).first_or_404()
-    auto_verify_allowed = is_auto_verify_enabled() and bool(get_order_auto_mapping(order))
+    auto_verify_allowed = is_auto_verify_enabled() and order_qualifies_for_auto_verify(order)
     if not auto_verify_allowed:
         return jsonify({
             'ok': True,
