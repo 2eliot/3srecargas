@@ -75,10 +75,12 @@ def api_packages(game_id):
         ).all()
     ) if pkg_ids else set()
 
+    is_tarjetas = (game.category and game.category.slug == 'tarjetas')
+
     pkg_list = []
     for p in packages:
         d = p.to_dict()
-        d['is_auto'] = bool(p.is_automated or (p.id in auto_mapped_ids))
+        d['is_auto'] = bool(p.is_automated or is_tarjetas or (p.id in auto_mapped_ids))
         pkg_list.append(d)
 
     return jsonify({
