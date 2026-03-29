@@ -63,6 +63,32 @@
         </div>
 
         <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
+        <h3 style="margin-bottom:16px;">Binance Pay Automático</h3>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label class="check-label" style="margin-top:30px;">
+                    <input type="checkbox" name="binance_auto_enabled" value="1"
+                           {% if binance_auto_settings.binance_auto_enabled == '1' %}checked{% endif %}>
+                    Activar verificación automática con Binance Pay
+                </label>
+                <p class="form-hint">
+                    El sistema escaneará las transacciones de Binance Pay cada 30 segundos.
+                    Las órdenes se aprueban automáticamente cuando se detecta el pago con el código correcto.
+                    Requiere <code>BINANCE_API_KEY</code> y <code>BINANCE_API_SECRET</code> como variables de entorno.
+                </p>
+            </div>
+            <div class="form-group">
+                <label for="binance_wallet_address">Dirección / Email de Binance Pay</label>
+                <input type="text" id="binance_wallet_address" name="binance_wallet_address"
+                       placeholder="usuario@email.com o ID Binance"
+                       value="{{ binance_auto_settings.binance_wallet_address }}">
+                <p class="form-hint">
+                    Esta dirección se mostrará al cliente para que realice la transferencia USDT.
+                </p>
+            </div>
+        </div>
+
+        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
         <h3 style="margin-bottom:16px;">Redes Sociales (Footer)</h3>
         <div class="form-grid-2">
             <div class="form-group">

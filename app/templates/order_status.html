@@ -134,6 +134,27 @@
         </div>
         {% endif %}
 
+        {% if is_binance_auto_order and order.status == 'pending' %}
+        <div id="binanceWaitBlock" style="margin:20px 0;padding:20px 22px;border:2px solid #f0b90b;border-radius:12px;background:rgba(240,185,11,.06);text-align:center;">
+            <div style="font-size:28px;margin-bottom:8px;animation:spin 1.5s linear infinite;display:inline-block;">⏳</div>
+            <h3 style="margin:0 0 6px;color:#f0b90b;">Esperando tu pago en Binance Pay</h3>
+            <p style="margin:0 0 14px;font-size:13px;color:#94a3b8;">
+                El sistema está escaneando tu transacción automáticamente.
+                Una vez que detecte tu pago, la orden se aprobará en segundos.
+            </p>
+            <div style="background:#0f172a;border:1px solid rgba(240,185,11,.3);border-radius:8px;padding:12px 16px;display:inline-block;min-width:180px;">
+                <p style="margin:0 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;">Tu código de pago</p>
+                <p style="margin:0;font-size:20px;font-weight:700;letter-spacing:.2em;color:#f0b90b;font-family:monospace;">{{ order.payment_reference }}</p>
+            </div>
+            <p style="margin:12px 0 0;font-size:11px;color:#64748b;">
+                Asegúrate de haber escrito este código exactamente en el campo <em>Memo / Nota</em> de tu pago.
+            </p>
+        </div>
+        <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+        {% endif %}
+
         {% if is_manual_order and order.status == 'pending' %}
         <p class="refresh-hint">Esta orden será revisada manualmente por nuestro equipo.</p>
         {% endif %}
@@ -164,6 +185,28 @@
 {% endblock %}
 
 {% block extra_js %}
+{% if is_binance_auto_order and order.status == 'pending' %}
+<script>
+(function () {
+    // Poll for status change every 15 seconds; reload when order is no longer pending
+    function pollBinanceStatus() {
+        fetch('/order/{{ order.order_number }}/status-json')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.status && data.status !== 'pending') {
+                    window.location.reload();
+                } else {
+                    window.setTimeout(pollBinanceStatus, 15000);
+                }
+            })
+            .catch(function () {
+                window.setTimeout(pollBinanceStatus, 20000);
+            });
+    }
+    window.setTimeout(pollBinanceStatus, 15000);
+})();
+</script>
+{% endif %}
 {% if auto_verify_allowed %}
 <script>
 (function () {

@@ -16,6 +16,12 @@ from ..utils.payment_verification import (
     stamp_verified_payment,
     verify_order_payment,
 )
+from ..utils.binance_pay import (
+    is_binance_auto_enabled,
+    is_binance_auto_reference,
+    generate_binance_auto_code,
+    start_order_verification,
+)
 from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
 
@@ -196,22 +202,41 @@ def checkout(package_id):
             flash('Tu sesión expiró. Por favor repite el proceso desde la tienda.', 'danger')
             return redirect(url_for('main_bp.index'))
 
-        capture_file = request.files.get('payment_capture')
-        if not capture_file or not capture_file.filename:
-            flash('Debes adjuntar el comprobante de pago antes de confirmar la orden.', 'danger')
-            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+        # ── Detect Binance Pay auto-verification flow ──────────────────────────
+        _binance_auto = (
+            payment_method.lower() == 'binance'
+            and is_binance_auto_enabled(current_app._get_current_object())
+        )
 
-        capture_path = save_capture(capture_file)
-        if not capture_path:
-            flash('Hubo un problema al subir el comprobante. Intenta nuevamente.', 'danger')
-            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+        capture_path = None
+        if _binance_auto:
+            # For Binance auto, capture is not required.
+            # The payment_reference is the 6-char code stored in the session.
+            binance_codes = session.get('binance_codes') or {}
+            payment_reference_input = (
+                binance_codes.get(pkg_key)
+                or (request.form.get('payment_reference') or '').strip().upper()
+            )
+            if not payment_reference_input or not is_binance_auto_reference(payment_reference_input):
+                flash('Código Binance inválido. Por favor recarga la página e intenta de nuevo.', 'danger')
+                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+        else:
+            capture_file = request.files.get('payment_capture')
+            if not capture_file or not capture_file.filename:
+                flash('Debes adjuntar el comprobante de pago antes de confirmar la orden.', 'danger')
+                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
-        payment_reference_input = (request.form.get('payment_reference') or '').strip()
-        if not payment_reference_input:
-            flash('Debes ingresar la referencia del pago.', 'danger')
-            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+            capture_path = save_capture(capture_file)
+            if not capture_path:
+                flash('Hubo un problema al subir el comprobante. Intenta nuevamente.', 'danger')
+                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
-        existing_ref = Order.query.filter_by(payment_reference=payment_reference_input).first()
+            payment_reference_input = (request.form.get('payment_reference') or '').strip()
+            if not payment_reference_input:
+                flash('Debes ingresar la referencia del pago.', 'danger')
+                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+
+        existing_ref = Order.query.filter_by(payment_reference=payment_reference_input, status='pending').first()
         if existing_ref:
             flash('Esta referencia ya fue registrada en otra orden. Verifica tu pago e intenta nuevamente.', 'danger')
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))
@@ -300,7 +325,17 @@ def checkout(package_id):
         except Exception:
             pass
 
-        auto_verify_and_process_order(order)
+        if _binance_auto:
+            # Launch a dedicated per-order verification thread.
+            # The Binance API is only called from THIS point, never at startup.
+            _app = current_app._get_current_object()
+            start_order_verification(order, _app)
+            # Remove the used code from session so a fresh one is generated next time.
+            binance_codes = session.get('binance_codes') or {}
+            binance_codes.pop(pkg_key, None)
+            session['binance_codes'] = binance_codes
+        else:
+            auto_verify_and_process_order(order)
 
         checkout_data.pop(pkg_key, None)
         session['checkout_data'] = checkout_data
@@ -365,6 +400,28 @@ def checkout(package_id):
     player_nickname = (pkg_data.get('player_nickname') or '').strip()
     player_id_val = (pkg_data.get('player_id') or '').strip()
 
+    # ── Binance Pay auto-verification ──────────────────────────────────────────
+    _app = current_app._get_current_object()
+    binance_auto = (
+        selected_method_code == 'binance'
+        and is_binance_auto_enabled(_app)
+    )
+    binance_code = None
+    binance_wallet = ''
+    if binance_auto:
+        # Reuse or generate a code for this package session
+        binance_codes = session.get('binance_codes') or {}
+        existing_code = binance_codes.get(pkg_key)
+        if existing_code and is_binance_auto_reference(existing_code):
+            binance_code = existing_code
+        else:
+            binance_code = generate_binance_auto_code(_app)
+            binance_codes[pkg_key] = binance_code
+            session['binance_codes'] = binance_codes
+        # Wallet address to show to customer
+        wallet_setting = Setting.query.filter_by(key='binance_wallet_address').first()
+        binance_wallet = wallet_setting.value if wallet_setting else ''
+
     return render_template(
         'checkout.html',
         package=package,
@@ -381,6 +438,9 @@ def checkout(package_id):
         has_discount=discount_amount > 0,
         player_nickname=player_nickname,
         player_id_val=player_id_val,
+        binance_auto=binance_auto,
+        binance_code=binance_code,
+        binance_wallet=binance_wallet,
     )
 
 
@@ -399,8 +459,19 @@ def order_status(order_number):
         usd_amount = float(order.amount)
         display_amount = usd_amount if display_currency == 'usd' else (usd_amount * (usd_rate or 0.0))
 
+    # Binance auto order: has a 6-char alphanumeric reference
+    is_binance_auto_order = (
+        (order.payment_method or '').lower() == 'binance'
+        and is_binance_auto_reference(order.payment_reference or '')
+    )
+
     auto_verify_enabled = is_auto_verify_enabled()
-    auto_verify_allowed = auto_verify_enabled and order_qualifies_for_auto_verify(order)
+    # Don't run Pabilo auto-verify on Binance auto orders; the background thread handles them
+    auto_verify_allowed = (
+        auto_verify_enabled
+        and order_qualifies_for_auto_verify(order)
+        and not is_binance_auto_order
+    )
 
     return render_template(
         'order_status.html',
@@ -410,7 +481,8 @@ def order_status(order_number):
         display_amount=display_amount,
         auto_verify_enabled=auto_verify_enabled,
         auto_verify_allowed=auto_verify_allowed,
-        is_manual_order=not auto_verify_allowed,
+        is_manual_order=not auto_verify_allowed and not is_binance_auto_order,
+        is_binance_auto_order=is_binance_auto_order,
     )
 
 
@@ -446,3 +518,10 @@ def order_auto_verify(order_number):
         'auto_verify_enabled': is_auto_verify_enabled(),
         'auto_verify_allowed': auto_verify_allowed,
     })
+
+
+@checkout_bp.route('/order/<order_number>/status-json')
+def order_status_json(order_number):
+    """Lightweight endpoint used by Binance auto-verify polling on the order status page."""
+    order = Order.query.filter_by(order_number=order_number).first_or_404()
+    return jsonify({'status': order.status, 'status_label': order.status_label})

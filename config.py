@@ -26,6 +26,11 @@ class Config:
     ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     REVENDEDORES_BASE_URL = os.environ.get('REVENDEDORES_BASE_URL', '')
     REVENDEDORES_API_KEY = os.environ.get('REVENDEDORES_API_KEY', '')
+    # Binance Pay auto-verification
+    BINANCE_API_KEY = os.environ.get('BINANCE_API_KEY', '').strip()
+    BINANCE_API_SECRET = os.environ.get('BINANCE_API_SECRET', '').strip()
+    BINANCE_PROXY = os.environ.get('BINANCE_PROXY', '').strip()
+    BINANCE_REQUEST_TIMEOUT = float(os.environ.get('BINANCE_REQUEST_TIMEOUT_SECONDS', '4'))
     PABILO_BASE_URL = os.environ.get('PABILO_BASE_URL', 'https://api.pabilo.app')
     PABILO_TIMEOUT = int(os.environ.get('PABILO_TIMEOUT', 30))
     SCRAPE_ENABLED = os.environ.get('SCRAPE_ENABLED', 'true').strip().lower() == 'true'

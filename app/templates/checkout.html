@@ -129,9 +129,53 @@
                 </div>
             </div>
             {% endif %}
-            <form method="POST" action="{{ url_for('checkout_bp.checkout', package_id=package.id) }}" id="checkoutForm" enctype="multipart/form-data" data-package="{{ package.id }}">
+            <form method="POST" action="{{ url_for('checkout_bp.checkout', package_id=package.id) }}" id="checkoutForm" enctype="multipart/form-data" data-package="{{ package.id }}" data-binance-auto="{{ 'true' if binance_auto else 'false' }}">
                 <input type="hidden" name="stage" value="confirm">
 
+                {% if binance_auto %}
+                <!-- ── Binance Pay Auto ─────────────────────────────────────── -->
+                <div class="form-section" style="padding:0;margin-bottom:16px;">
+                    <div class="reference-card" style="border:1px solid rgba(148,163,184,.2);background:linear-gradient(180deg, rgba(2,6,23,.95), rgba(2,6,23,.85));padding:18px;">
+                        <h3 style="margin:0 0 10px;text-align:center;color:#f8fafc;font-size:24px;line-height:1.2;">Verificación Automática Binance</h3>
+                        <hr style="border-color:rgba(148,163,184,.12);margin:10px 0 24px;">
+                        <div style="text-align:center;margin-bottom:12px;">
+                            <p style="margin:0;color:#fbbf24;font-weight:800;font-size:18px;letter-spacing:.03em;">⚠ IMPORTANTE</p>
+                        </div>
+                        <p style="margin:0 0 16px;font-size:16px;color:#e2e8f0;text-align:center;line-height:1.45;">
+                            Al realizar el pago en Binance, escribe este código en el campo
+                            <strong style="color:#f8fafc;">"Nota del beneficiario"</strong> (memo/note)
+                        </p>
+
+                        <div style="margin-bottom:14px;">
+                            <p style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin:0 0 4px;">Dirección Binance Pay</p>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <code id="binanceWalletDisplay" style="flex:1;background:#0f172a;border:1px solid rgba(240,185,11,.3);border-radius:6px;padding:8px 12px;font-size:14px;color:#f1f5f9;word-break:break-all;">{{ binance_wallet or '—' }}</code>
+                                {% if binance_wallet %}
+                                <button type="button" class="copy-payment-btn" id="copyWalletBtn" style="flex-shrink:0;">Copiar</button>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom:16px;">
+                            <div style="display:flex;justify-content:center;align-items:center;gap:12px;">
+                                <code id="binanceCodeDisplay" style="display:inline-block;min-width:220px;background:rgba(16,185,129,.12);border:2px solid #10b981;border-radius:14px;padding:12px 18px;font-size:34px;font-weight:800;letter-spacing:.16em;color:#34d399;text-align:center;">{{ binance_code }}</code>
+                                <button type="button" class="copy-payment-btn" id="copyCodeBtn" style="flex-shrink:0;height:44px;padding:0 16px;font-size:16px;border-radius:10px;">Copiar</button>
+                            </div>
+                        </div>
+
+                        <input type="hidden" id="payment_reference" name="payment_reference" value="{{ binance_code }}">
+
+                        <div style="text-align:center;margin-top:8px;">
+                            <p style="margin:0 0 6px;font-size:15px;color:#93c5fd;line-height:1.55;">
+                                Sin este código en la nota, tu pago <strong style="color:#f8fafc;">NO</strong> podrá ser verificado automáticamente.
+                            </p>
+                            <p style="margin:0;font-size:15px;color:#93c5fd;line-height:1.55;">
+                                Una vez realizado el pago, presiona <strong style="color:#f8fafc;">"Confirmar Pago"</strong> y tu recarga será procesada automáticamente al verificar el pago.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
                 <div class="form-section proof-section">
                     <div class="proof-card">
                         <div class="proof-card-header">
@@ -159,7 +203,9 @@
                         </p>
                     </div>
                 </div>
+                {% endif %}
 
+                {% if not binance_auto %}
                 <div class="form-section reference-section">
                     <div class="reference-card">
                         <div class="reference-header">
@@ -182,16 +228,32 @@
                         <p class="ref-hint">Debes ingresar la referencia completa y adjuntar el comprobante. El sistema validará la operación con Pabilo y bloqueará pagos repetidos.</p>
                     </div>
                 </div>
+                {% else %}
+                <div class="form-section reference-section">
+                    <div class="reference-card" style="padding:14px 18px;">
+                        <div class="reference-header" style="margin-bottom:0;">
+                            <div>
+                                <p class="reference-title">Tiempo restante para completar el pago</p>
+                                <p class="reference-timer" id="paymentTimer">30:00</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
 
                 <button type="submit" class="submit-btn" id="submitBtn" disabled>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                     </svg>
-                    Confirmar Orden —
-                    {% if display_currency == 'usd' %}
-                    ${{ "%.2f"|format(display_amount) }}
+                    {% if binance_auto %}
+                    Confirmar Pago
                     {% else %}
-                    Bs {{ "%.0f"|format(display_amount) }}
+                    Confirmar Orden —
+                        {% if display_currency == 'usd' %}
+                        ${{ "%.2f"|format(display_amount) }}
+                        {% else %}
+                        Bs {{ "%.0f"|format(display_amount) }}
+                        {% endif %}
                     {% endif %}
                 </button>
             </form>
@@ -207,6 +269,7 @@
     var checkoutForm = document.getElementById('checkoutForm');
     if (!checkoutForm) return;
 
+    var binanceAuto = checkoutForm.getAttribute('data-binance-auto') === 'true';
     var submitBtn = document.getElementById('submitBtn');
     var proofInput = document.getElementById('payment_capture');
     var proofDropzone = document.getElementById('proofDropzone');
@@ -217,6 +280,33 @@
     var paymentTimerEl = document.getElementById('paymentTimer');
     var copyBtn = document.getElementById('checkoutCopyPaymentBtn');
     var timerExpired = false;
+
+    // ── Binance copy buttons ─────────────────────────────────────
+    var copyWalletBtn = document.getElementById('copyWalletBtn');
+    var copyCodeBtn = document.getElementById('copyCodeBtn');
+
+    function copyText(text, btn) {
+        if (!text) return;
+        var original = btn ? btn.textContent : '';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () {
+                if (btn) { btn.textContent = '¡Copiado!'; setTimeout(function () { btn.textContent = original; }, 1500); }
+            }).catch(function () {});
+        }
+    }
+
+    if (copyWalletBtn) {
+        var walletEl = document.getElementById('binanceWalletDisplay');
+        copyWalletBtn.addEventListener('click', function () {
+            copyText(walletEl ? walletEl.textContent.trim() : '', copyWalletBtn);
+        });
+    }
+    if (copyCodeBtn) {
+        var codeEl = document.getElementById('binanceCodeDisplay');
+        copyCodeBtn.addEventListener('click', function () {
+            copyText(codeEl ? codeEl.textContent.trim() : '', copyCodeBtn);
+        });
+    }
 
     if (copyBtn) {
         copyBtn.addEventListener('click', function () {
@@ -241,10 +331,15 @@
     }
 
     function updateSubmitState() {
-        var hasFile = proofInput && proofInput.files && proofInput.files.length > 0;
-        var hasReference = referenceInput && referenceInput.value.trim().length >= 4;
+        var hasFile = binanceAuto || (proofInput && proofInput.files && proofInput.files.length > 0);
+        var hasReference = (referenceInput && referenceInput.value.trim().length >= (binanceAuto ? 6 : 4));
         var enabled = hasFile && hasReference && !timerExpired;
         if (submitBtn) submitBtn.disabled = !enabled;
+    }
+
+    // For binance auto the reference is pre-filled – enable submit immediately
+    if (binanceAuto) {
+        updateSubmitState();
     }
 
     if (proofInput) {

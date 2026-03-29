@@ -773,6 +773,10 @@ def settings():
         'auto_verify_payments': 'Habilita la verificación automática de pagos con Pabilo',
         'pabilo_api_key': 'API key privada de Pabilo para validar pagos',
     }
+    binance_auto_keys = {
+        'binance_auto_enabled': 'Activa verificación automática de Binance Pay',
+        'binance_wallet_address': 'Dirección/email de Binance Pay que se muestra al cliente',
+    }
     email_settings = {}
     for key in email_keys:
         setting = Setting.query.filter_by(key=key).first()
@@ -782,6 +786,11 @@ def settings():
     for key in payment_verify_keys:
         setting = Setting.query.filter_by(key=key).first()
         payment_verify_settings[key] = setting.value if setting else ''
+
+    binance_auto_settings = {}
+    for key in binance_auto_keys:
+        setting = Setting.query.filter_by(key=key).first()
+        binance_auto_settings[key] = setting.value if setting else ''
 
     if request.method == 'POST':
         new_rate = request.form.get('usd_rate_bs', '').strip()
@@ -793,6 +802,10 @@ def settings():
         payment_verify_payload = {
             'auto_verify_payments': 'true' if request.form.get('auto_verify_payments') else 'false',
             'pabilo_api_key': (request.form.get('pabilo_api_key', '') or '').strip(),
+        }
+        binance_auto_payload = {
+            'binance_auto_enabled': '1' if request.form.get('binance_auto_enabled') else '0',
+            'binance_wallet_address': (request.form.get('binance_wallet_address', '') or '').strip(),
         }
 
         if new_rate:
@@ -877,6 +890,15 @@ def settings():
             else:
                 current_setting.value = val
 
+        for key, desc in binance_auto_keys.items():
+            val = binance_auto_payload.get(key, '')
+            current_setting = Setting.query.filter_by(key=key).first()
+            if not current_setting:
+                current_setting = Setting(key=key, value=val, description=desc)
+                db.session.add(current_setting)
+            else:
+                current_setting.value = val
+
         db.session.commit()
         flash('Configuración actualizada.', 'success')
         return redirect(url_for('admin_bp.settings'))
@@ -889,6 +911,7 @@ def settings():
         social_settings=social_settings,
         email_settings=email_settings,
         payment_verify_settings=payment_verify_settings,
+        binance_auto_settings=binance_auto_settings,
     )
 
 
