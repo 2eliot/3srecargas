@@ -192,7 +192,7 @@ def _ensure_payment_verification_columns():
         rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
         existing = {r[1] for r in rows}
         if 'payment_reference_last5' not in existing:
-            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_reference_last5 VARCHAR(5)'))
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_reference_last5 VARCHAR(6)'))
         if 'payment_amount' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_amount NUMERIC(10, 2)'))
         if 'payment_currency' not in existing:

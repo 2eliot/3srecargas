@@ -117,7 +117,7 @@ class Order(db.Model):
     phone = db.Column(db.String(50))
     payment_method = db.Column(db.String(50), nullable=False)
     payment_reference = db.Column(db.String(255), nullable=False)
-    payment_reference_last5 = db.Column(db.String(5))
+    payment_reference_last5 = db.Column(db.String(6))
     payment_capture = db.Column(db.String(255))
     payment_amount = db.Column(db.Numeric(10, 2))
     payment_currency = db.Column(db.String(3))

@@ -29,7 +29,7 @@ def normalize_reference_last5(reference):
     raw = ''.join(ch for ch in str(reference or '') if ch.isdigit())
     if not raw:
         raw = str(reference or '').strip()
-    return raw[-5:] if raw else ''
+    return raw[-6:] if raw else ''
 
 
 def has_possible_duplicate_reference(reference_last5, amount, payment_method_code, exclude_order_id=None):
@@ -51,48 +51,39 @@ def has_possible_duplicate_reference(reference_last5, amount, payment_method_cod
     return query.order_by(Order.id.desc()).first()
 
 
-def _get_usd_rate():
-    setting = Setting.query.filter_by(key='usd_rate_bs').first()
-    if not setting or not setting.value:
-        return 0.0
+def _get_bs_amount(order):
+    """Devuelve el monto en Bs para enviar a Pabilo.
+
+    Prioridad:
+    1. Si la orden guardó el monto directamente en Bs (payment_currency == 'bs'
+       y payment_amount > 0), se usa ese valor.
+    2. Caso contrario se calcula: amount_usd × tasa_usd_bs actual.
+    """
+    if (order.payment_currency or '').lower() == 'bs':
+        amt = float(order.payment_amount or 0)
+        if amt > 0:
+            return amt
+
+    # Calcular desde el precio base en USD usando la tasa configurada
     try:
-        return float(setting.value)
+        rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
+        usd_rate = float(rate_setting.value) if rate_setting and rate_setting.value else 0.0
     except Exception:
-        return 0.0
+        usd_rate = 0.0
+
+    if usd_rate > 0 and order.amount:
+        return round(float(order.amount) * usd_rate, 2)
+
+    return None
 
 
-def get_pabilo_amount_bs(order, payment_method=None):
-    """Retorna el monto en Bs que debe enviarse a Pabilo."""
-    payment_currency = (getattr(order, 'payment_currency', '') or '').strip().lower()
-    payment_amount = getattr(order, 'payment_amount', None)
-    method_currency = (getattr(payment_method, 'account_currency', '') or '').strip().lower()
-    method_uses_rate = bool(getattr(payment_method, 'uses_rate', True)) if payment_method else True
-
-    # Priorizar siempre el monto guardado en la orden: representa el monto exacto pagado
-    # por el usuario (incluyendo descuentos) al momento del checkout.
-    if payment_amount is not None and payment_currency in ('bs', 'ves'):
-        try:
-            return round(float(payment_amount), 2)
-        except Exception:
-            pass
-
-    # Fallback para datos legacy: método en Bs con conversión por tasa.
-    if payment_amount is not None and method_currency in ('bs', 'ves') and method_uses_rate:
-        try:
-            return round(float(payment_amount), 2)
-        except Exception:
-            pass
-
-    usd_amount = float(getattr(order, 'amount', 0) or 0)
-    usd_rate = _get_usd_rate()
-    return round(usd_amount * (usd_rate or 0.0), 2)
-
-
-def build_pabilo_payload(order, include_amount=True, amount_bs=None):
+def build_pabilo_payload(order, include_amount=True):
     payload = {'bank_reference': str(order.payment_reference or '').strip()}
 
-    if include_amount and amount_bs is not None:
-        payload['amount'] = float(amount_bs)
+    if include_amount:
+        bs_amount = _get_bs_amount(order)
+        if bs_amount is not None and bs_amount > 0:
+            payload['amount'] = bs_amount
 
     if order.payer_dni_number:
         payload['dni_pagador'] = {
@@ -182,11 +173,9 @@ def verify_order_payment(order):
     if not user_bank_id:
         return {'ok': False, 'verified': False, 'message': 'Este método de pago no tiene userBankId de Pabilo.'}
 
-    pabilo_amount_bs = get_pabilo_amount_bs(order, payment_method)
-
     duplicate = has_possible_duplicate_reference(
         reference_last5=order.payment_reference_last5,
-        amount=pabilo_amount_bs,
+        amount=order.payment_amount,
         payment_method_code=order.payment_method,
         exclude_order_id=order.id,
     )
@@ -202,7 +191,7 @@ def verify_order_payment(order):
         }
 
     url = f"{current_app.config.get('PABILO_BASE_URL', 'https://api.pabilo.app').rstrip('/')}/userbankpayment/{user_bank_id}/betaserio"
-    payload = build_pabilo_payload(order, include_amount=True, amount_bs=pabilo_amount_bs)
+    payload = build_pabilo_payload(order, include_amount=True)
     timeout = current_app.config.get('PABILO_TIMEOUT', 30)
 
     response, data = _request_pabilo_verify(url, api_key, payload, timeout)
