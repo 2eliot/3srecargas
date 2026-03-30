@@ -131,6 +131,7 @@
             {% endif %}
             <form method="POST" action="{{ url_for('checkout_bp.checkout', package_id=package.id) }}" id="checkoutForm" enctype="multipart/form-data" data-package="{{ package.id }}" data-binance-auto="{{ 'true' if binance_auto else 'false' }}">
                 <input type="hidden" name="stage" value="confirm">
+                <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
 
                 {% if binance_auto %}
                 <!-- ── Binance Pay Auto ─────────────────────────────────────── -->

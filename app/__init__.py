@@ -80,6 +80,7 @@ def create_app(config_class=Config):
         _ensure_order_nickname_column()
         _ensure_affiliate_columns()
         _ensure_payment_verification_columns()
+        _ensure_order_idempotency_column()
         _init_default_data(app)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -217,6 +218,24 @@ def _ensure_payment_verification_columns():
         if 'payment_last_verification_at' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_last_verification_at DATETIME'))
 
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_idempotency_column():
+    try:
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'idempotency_key' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN idempotency_key VARCHAR(64)'))
+
+        db.session.execute(
+            text('CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_idempotency_key ON orders(idempotency_key)')
+        )
         db.session.commit()
     except Exception:
         db.session.rollback()

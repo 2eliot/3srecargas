@@ -170,18 +170,6 @@ def verify_order_payment(order):
     if response is None:
         return data
 
-    # Para BDV Personas/Provincial, Pabilo permite verificar solo con referencia.
-    # Si el monto es rechazado, reintenta automáticamente sin amount.
-    if response.status_code == 400:
-        msg_400 = (data.get('message') or data.get('error') or '').strip().lower()
-        if 'amount' in msg_400 and ('invalid' in msg_400 or 'not valid' in msg_400):
-            payload_without_amount = build_pabilo_payload(order, include_amount=False)
-            response_retry, data_retry = _request_pabilo_verify(url, api_key, payload_without_amount, timeout)
-            if response_retry is None:
-                return data_retry
-            response = response_retry
-            data = data_retry
-
     payload_data, full_data = _extract_pabilo_payload(data)
 
     if response.status_code == 404:

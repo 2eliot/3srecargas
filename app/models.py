@@ -140,6 +140,7 @@ class Order(db.Model):
     payment_verified_at = db.Column(db.DateTime)
     payment_verification_attempts = db.Column(db.Integer, default=0)
     payment_last_verification_at = db.Column(db.DateTime)
+    idempotency_key = db.Column(db.String(64), unique=True, index=True)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

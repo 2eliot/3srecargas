@@ -1,11 +1,15 @@
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
+import threading
+from uuid import uuid4
 from flask import (
     Blueprint, render_template, request, redirect,
     url_for, flash, session, abort, current_app, jsonify
 )
 from flask_login import current_user
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 from ..models import db, Game, Package, Order, Affiliate, AffiliateCommission, Pin, PaymentMethod, User, Discount
 from ..models import Setting
@@ -27,8 +31,12 @@ from ..utils.notifications import notify_order_created
 
 checkout_bp = Blueprint('checkout_bp', __name__)
 
-AUTO_VERIFY_MAX_ATTEMPTS = 2
+# Solo un intento automático por orden para evitar duplicar solicitudes a Pabilo.
+AUTO_VERIFY_MAX_ATTEMPTS = 1
 AUTO_VERIFY_COOLDOWN_SECONDS = 300
+
+# Cola simple en memoria: solo 1 solicitud a Pabilo al mismo tiempo.
+_PABILO_VERIFY_LOCK = threading.Lock()
 
 PAYMENT_METHODS = [
     ('pago_movil', 'Pago Móvil'),
@@ -88,44 +96,81 @@ def auto_verify_and_process_order(order, force=False):
                 'next_retry_in_seconds': wait_seconds,
             }
 
-    verification = verify_order_payment(order)
-    order.payment_verification_attempts = attempts + 1
-    order.payment_last_verification_at = datetime.utcnow()
+    # Si otro pedido ya está verificándose, este queda en cola para el siguiente ciclo.
+    if not _PABILO_VERIFY_LOCK.acquire(blocking=False):
+        return {
+            'checked': False,
+            'verified': False,
+            'message': 'Hay otra orden verificándose en este momento. Tu orden quedó en cola.',
+            'stop_polling': False,
+            'next_retry_in_seconds': 10,
+        }
 
-    if verification.get('verified'):
-        stamp_verified_payment(order, verification)
-        pabilo_note = '[Pabilo] Pago verificado automáticamente.'
-        if verification.get('verification_id'):
-            pabilo_note = f"{pabilo_note} ID: {verification['verification_id']}"
-        existing_notes = order.notes or ''
-        if pabilo_note not in existing_notes:
-            order.notes = (existing_notes + '\n' + pabilo_note).strip()
-        db.session.commit()
-        approval = approve_order(order)
-        approval['checked'] = True
-        approval['verified'] = approval.get('ok', False)
-        approval['stop_polling'] = True
-        return approval
+    try:
+        verification = verify_order_payment(order)
+        order.payment_verification_attempts = attempts + 1
+        order.payment_last_verification_at = datetime.utcnow()
 
-    if verification.get('message'):
-        existing_notes = order.notes or ''
-        auto_note = f"[Pabilo] {verification['message']}"
-        if auto_note not in existing_notes:
-            order.notes = (existing_notes + '\n' + auto_note).strip()
+        if verification.get('verified'):
+            stamp_verified_payment(order, verification)
+            pabilo_note = '[Pabilo] Pago verificado automáticamente.'
+            if verification.get('verification_id'):
+                pabilo_note = f"{pabilo_note} ID: {verification['verification_id']}"
+            existing_notes = order.notes or ''
+            if pabilo_note not in existing_notes:
+                order.notes = (existing_notes + '\n' + pabilo_note).strip()
             db.session.commit()
+            approval = approve_order(order)
+            approval['checked'] = True
+            approval['verified'] = approval.get('ok', False)
+            approval['stop_polling'] = True
+            return approval
 
-    verification['checked'] = True
-    verification['stop_polling'] = False
-    if verification.get('rate_limited'):
-        verification['next_retry_in_seconds'] = AUTO_VERIFY_COOLDOWN_SECONDS
-    else:
-        verification['next_retry_in_seconds'] = AUTO_VERIFY_COOLDOWN_SECONDS
+        if verification.get('message'):
+            existing_notes = order.notes or ''
+            auto_note = f"[Pabilo] {verification['message']}"
+            if auto_note not in existing_notes:
+                order.notes = (existing_notes + '\n' + auto_note).strip()
+                db.session.commit()
 
-    if int(order.payment_verification_attempts or 0) >= AUTO_VERIFY_MAX_ATTEMPTS:
-        verification['stop_polling'] = True
+        verification['checked'] = True
+        verification['stop_polling'] = False
+        if verification.get('rate_limited'):
+            verification['next_retry_in_seconds'] = AUTO_VERIFY_COOLDOWN_SECONDS
+        else:
+            verification['next_retry_in_seconds'] = AUTO_VERIFY_COOLDOWN_SECONDS
 
-    db.session.commit()
-    return verification
+        if int(order.payment_verification_attempts or 0) >= AUTO_VERIFY_MAX_ATTEMPTS:
+            verification['stop_polling'] = True
+
+        db.session.commit()
+        return verification
+    finally:
+        _PABILO_VERIFY_LOCK.release()
+
+
+def find_existing_pending_order(package_id, payment_method, user_id=None, player_id=None, email=None):
+    """Return a recent pending order that likely represents the same checkout attempt."""
+    cutoff = datetime.utcnow() - timedelta(hours=2)
+    query = Order.query.filter(
+        Order.package_id == package_id,
+        Order.payment_method == payment_method,
+        Order.status == 'pending',
+        Order.created_at >= cutoff,
+    )
+
+    identity_filters = []
+    if user_id:
+        identity_filters.append(Order.user_id == user_id)
+    if player_id:
+        identity_filters.append(Order.player_id == player_id)
+    if email:
+        identity_filters.append(Order.email == email)
+
+    if not identity_filters:
+        return None
+
+    return query.filter(or_(*identity_filters)).order_by(Order.id.desc()).first()
 
 
 @checkout_bp.route('/checkout/<int:package_id>', methods=['GET', 'POST'])
@@ -144,6 +189,7 @@ def checkout(package_id):
     usd_rate = float(usd_rate_setting.value) if usd_rate_setting else 0.0
 
     checkout_data = session.get('checkout_data') or {}
+    checkout_confirm_tokens = session.get('checkout_confirm_tokens') or {}
     pkg_key = str(package_id)
 
     # El código se guarda por paquete en checkout_data cuando vienes desde index
@@ -196,6 +242,16 @@ def checkout(package_id):
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
         # Paso 2: confirmación (solo capture) -> crea la orden
+        submitted_confirm_token = (request.form.get('confirm_token') or '').strip()
+        expected_confirm_token = (checkout_confirm_tokens.get(pkg_key) or '').strip()
+        if not submitted_confirm_token or not expected_confirm_token or submitted_confirm_token != expected_confirm_token:
+            flash('La confirmación de pago expiró o ya fue usada. Recarga la página e intenta de nuevo.', 'danger')
+            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+
+        existing_by_token = Order.query.filter_by(idempotency_key=submitted_confirm_token).first()
+        if existing_by_token:
+            return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
+
         data = checkout_data.get(pkg_key) or {}
         payment_method = (data.get('payment_method') or '').strip()
         if not payment_method:
@@ -260,6 +316,19 @@ def checkout(package_id):
         if not customer_phone and user_id:
             customer_phone = (current_user.phone or '').strip()
 
+        # Evita múltiples órdenes pendientes del mismo checkout.
+        # Si ya existe una reciente con la misma identidad, se reutiliza.
+        existing_pending = find_existing_pending_order(
+            package_id=package.id,
+            payment_method=payment_method,
+            user_id=user_id,
+            player_id=(data.get('player_id') or '').strip() if not is_wallet else None,
+            email=(data.get('player_id') or '').strip() if is_wallet else (data.get('email') or '').strip(),
+        )
+        if existing_pending:
+            flash('Ya tienes una orden pendiente para esta compra. Te llevamos a su estado.', 'info')
+            return redirect(url_for('checkout_bp.order_status', order_number=existing_pending.order_number))
+
         # Procesar descuento si hay código (descuento explícito o código de afiliado)
         discount_code = ((data.get('affiliate_code') or aff_code or '').strip()).upper()
         discount = None
@@ -315,10 +384,19 @@ def checkout(package_id):
             payment_capture=capture_path,
             affiliate_code=aff_code or None,
             affiliate_id=affiliate.id if affiliate else None,
+            idempotency_key=submitted_confirm_token,
             status='pending',
         )
         db.session.add(order)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            existing_by_token = Order.query.filter_by(idempotency_key=submitted_confirm_token).first()
+            if existing_by_token:
+                return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
+            flash('No se pudo confirmar la orden. Intenta nuevamente.', 'danger')
+            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
         try:
             notify_order_created(order, package, game)
@@ -339,6 +417,8 @@ def checkout(package_id):
 
         checkout_data.pop(pkg_key, None)
         session['checkout_data'] = checkout_data
+        checkout_confirm_tokens.pop(pkg_key, None)
+        session['checkout_confirm_tokens'] = checkout_confirm_tokens
         session.pop('affiliate_code', None)
         return redirect(url_for('checkout_bp.order_status', order_number=order.order_number))
 
@@ -400,6 +480,12 @@ def checkout(package_id):
     player_nickname = (pkg_data.get('player_nickname') or '').strip()
     player_id_val = (pkg_data.get('player_id') or '').strip()
 
+    confirm_token = checkout_confirm_tokens.get(pkg_key)
+    if not confirm_token:
+        confirm_token = uuid4().hex
+        checkout_confirm_tokens[pkg_key] = confirm_token
+        session['checkout_confirm_tokens'] = checkout_confirm_tokens
+
     # ── Binance Pay auto-verification ──────────────────────────────────────────
     _app = current_app._get_current_object()
     binance_auto = (
@@ -438,6 +524,7 @@ def checkout(package_id):
         has_discount=discount_amount > 0,
         player_nickname=player_nickname,
         player_id_val=player_id_val,
+        confirm_token=confirm_token,
         binance_auto=binance_auto,
         binance_code=binance_code,
         binance_wallet=binance_wallet,
