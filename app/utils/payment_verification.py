@@ -78,12 +78,10 @@ def _get_bs_amount(order):
 
 
 def build_pabilo_payload(order, include_amount=True):
+    """Construye el payload para Pabilo. El amount NO se envía: Pabilo busca
+    por bank_reference y el monto solo genera falsos negativos cuando hay
+    descuentos de afiliado o diferencias de redondeo."""
     payload = {'bank_reference': str(order.payment_reference or '').strip()}
-
-    if include_amount:
-        bs_amount = _get_bs_amount(order)
-        if bs_amount is not None and bs_amount > 0:
-            payload['amount'] = bs_amount
 
     if order.payer_dni_number:
         payload['dni_pagador'] = {
