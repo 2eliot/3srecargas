@@ -358,10 +358,14 @@ def checkout(package_id):
 
         method_config = PaymentMethod.query.filter_by(code=payment_method.lower()).first()
         payment_currency = 'usd'
-        payment_amount = final_amount
-        if method_config and (method_config.account_currency or '').lower() == 'bs':
+        payment_amount = round(final_amount, 2)
+        # Binance auto siempre se maneja en USD/USDT.
+        if not _binance_auto and method_config and (method_config.account_currency or '').lower() == 'bs':
             payment_currency = 'bs'
-            payment_amount = round(final_amount * (usd_rate or 0.0), 2)
+            if bool(method_config.uses_rate):
+                payment_amount = round(final_amount * (usd_rate or 0.0), 2)
+            else:
+                payment_amount = round(final_amount, 2)
 
         order = Order(
             game_id=game.id,
@@ -435,8 +439,18 @@ def checkout(package_id):
     if selected_method_code:
         selected_method = PaymentMethod.query.filter_by(code=selected_method_code).first()
 
+    # ── Binance Pay auto-verification ──────────────────────────────────────────
+    _app = current_app._get_current_object()
+    binance_auto = (
+        selected_method_code == 'binance'
+        and is_binance_auto_enabled(_app)
+    )
+
     display_currency = 'bs'
-    if selected_method and (selected_method.account_currency or '').lower() == 'usd':
+    if binance_auto:
+        # Binance auto se muestra y cobra en USDT.
+        display_currency = 'usd'
+    elif selected_method and (selected_method.account_currency or '').lower() == 'usd':
         display_currency = 'usd'
 
     usd_amount = float(package.price)
@@ -472,9 +486,16 @@ def checkout(package_id):
         original_display = original_amount
         discount_display = discount_amount
     else:
-        display_amount = final_amount * (usd_rate or 0.0)
-        original_display = original_amount * (usd_rate or 0.0)
-        discount_display = discount_amount * (usd_rate or 0.0)
+        if selected_method and not bool(selected_method.uses_rate):
+            display_amount = final_amount
+            original_display = original_amount
+            discount_display = discount_amount
+        else:
+            # Mantener consistente el monto mostrado con el monto que se guarda en la orden
+            # para evitar discrepancias al verificar en Pabilo.
+            display_amount = final_amount * (usd_rate or 0.0)
+            original_display = original_amount * (usd_rate or 0.0)
+            discount_display = discount_amount * (usd_rate or 0.0)
 
     pkg_data = checkout_data.get(pkg_key) or {}
     player_nickname = (pkg_data.get('player_nickname') or '').strip()
@@ -486,17 +507,11 @@ def checkout(package_id):
         checkout_confirm_tokens[pkg_key] = confirm_token
         session['checkout_confirm_tokens'] = checkout_confirm_tokens
 
-    # ── Binance Pay auto-verification ──────────────────────────────────────────
-    _app = current_app._get_current_object()
-    binance_auto = (
-        selected_method_code == 'binance'
-        and is_binance_auto_enabled(_app)
-    )
     binance_code = None
     binance_wallet = ''
     if binance_auto:
         # Reuse or generate a code for this package session
-        binance_codes = session.get('binance_codes') or {}
+            # The payment_reference is the 6-digit code stored in the session.
         existing_code = binance_codes.get(pkg_key)
         if existing_code and is_binance_auto_reference(existing_code):
             binance_code = existing_code
@@ -546,7 +561,7 @@ def order_status(order_number):
         usd_amount = float(order.amount)
         display_amount = usd_amount if display_currency == 'usd' else (usd_amount * (usd_rate or 0.0))
 
-    # Binance auto order: has a 6-char alphanumeric reference
+    # Binance auto order: has a 6-digit numeric reference
     is_binance_auto_order = (
         (order.payment_method or '').lower() == 'binance'
         and is_binance_auto_reference(order.payment_reference or '')
