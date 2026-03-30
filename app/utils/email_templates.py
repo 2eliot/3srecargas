@@ -31,6 +31,37 @@ def _format_order_amount(order):
     return f"Bs {amt_bs_int}"
 
 
+def _format_order_amount_bs(order):
+    """Devuelve monto en bolivares para notificaciones que deben mostrarse en Bs."""
+    try:
+        payment_currency = (getattr(order, 'payment_currency', None) or '').strip().lower()
+        payment_amount = getattr(order, 'payment_amount', None)
+        if payment_amount is not None and payment_currency in ('bs', 'ves'):
+            amount_bs = Decimal(str(float(payment_amount or 0)))
+        else:
+            from app.models import Setting
+            usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
+            usd_rate = Decimal(str(usd_rate_setting.value)) if usd_rate_setting and usd_rate_setting.value else Decimal('0')
+            amt_usd = Decimal(str(float(getattr(order, 'amount', 0) or 0)))
+            amount_bs = amt_usd * (usd_rate or Decimal('0'))
+    except Exception:
+        amount_bs = Decimal('0')
+
+    amount_bs = amount_bs.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return f"{float(amount_bs):.2f} Bs."
+
+
+def _format_order_datetime(order):
+    """Fecha de orden en formato legible para cliente."""
+    dt = getattr(order, 'created_at', None) or getattr(order, 'updated_at', None)
+    if not dt:
+        return 'N/A'
+    try:
+        return dt.strftime('%d/%m/%Y %H:%M')
+    except Exception:
+        return str(dt)
+
+
 def _base_style():
     """Constantes CSS inline compartidas."""
     return {
@@ -205,8 +236,9 @@ def build_order_approved_email(order, package, game):
     """Construye HTML + texto para notificación de 'orden aprobada' al cliente (sin PIN)."""
     s = _base_style()
     brand = _brand_name()
-    amount_str = _format_order_amount(order)
+    amount_str = _format_order_amount_bs(order)
     game_description = _game_description(game)
+    order_datetime = _format_order_datetime(order)
 
     body = f"""
 <h2 style="margin:0 0 8px 0; font-size:20px; color:{s['white']};">¡Tu orden fue aprobada! ✅</h2>
@@ -219,10 +251,13 @@ def build_order_approved_email(order, package, game):
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
 {_detail_row('Orden', f'#{order.order_number}')}
+{_detail_row('Número de Factura', str(order.order_number))}
 {_detail_row('Juego', game.name if game else 'N/A')}
 {f'{_detail_row("Descripción", game_description)}' if game_description else ''}
 {_detail_row('Paquete', package.name if package else 'N/A')}
 {_detail_row('Monto', amount_str, s['accent_light'])}
+{_detail_row('Referencia', order.payment_reference or 'N/A')}
+{_detail_row('Fecha', order_datetime)}
 {f'{_detail_row("Jugador", order.player_nickname or order.player_id or "N/A")}' if order.player_id else ''}
 </table>
 
@@ -240,6 +275,9 @@ Juego: {game.name if game else 'N/A'}
 {f'Descripción: {game_description}' if game_description else ''}
 Paquete: {package.name if package else 'N/A'}
 Monto: {amount_str}
+Referencia: {order.payment_reference or 'N/A'}
+Número de Factura: {order.order_number}
+Fecha: {order_datetime}
 
 ¡Gracias por tu compra!
 

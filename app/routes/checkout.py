@@ -551,15 +551,12 @@ def order_status(order_number):
     order = Order.query.filter_by(order_number=order_number).first_or_404()
     usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
     usd_rate = float(usd_rate_setting.value) if usd_rate_setting else 0.0
-    method = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
     display_currency = 'bs'
-    if method and (method.account_currency or '').lower() == 'usd':
-        display_currency = 'usd'
-    if order.payment_amount is not None and (order.payment_currency or '').lower() == display_currency:
+    if order.payment_amount is not None and (order.payment_currency or '').lower() in ('bs', 'ves'):
         display_amount = float(order.payment_amount)
     else:
         usd_amount = float(order.amount)
-        display_amount = usd_amount if display_currency == 'usd' else (usd_amount * (usd_rate or 0.0))
+        display_amount = usd_amount * (usd_rate or 0.0)
 
     # Binance auto order: has a 6-digit numeric reference
     is_binance_auto_order = (

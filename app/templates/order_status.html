@@ -83,6 +83,10 @@
                 <span class="info-label">Pago</span>
                 <span class="info-value">{{ order.payment_method | title }}</span>
             </div>
+            <div class="order-info-item">
+                <span class="info-label">Referencia</span>
+                <span class="info-value">{{ order.payment_reference or 'N/A' }}</span>
+            </div>
             {% if order.player_id %}
             <div class="order-info-item">
                 <span class="info-label">{{ order.game.player_id_label }}</span>
