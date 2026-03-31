@@ -20,6 +20,12 @@ from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
 from ..utils.order_processing import approve_order, get_revendedores_env, process_affiliate_commission
+from ..utils.payment_verification import (
+    clear_pabilo_verification_state,
+    normalize_reference_last5,
+    stamp_verified_payment,
+    verify_order_payment,
+)
 
 admin_bp = Blueprint('admin_bp', __name__)
 
@@ -449,6 +455,48 @@ def orders_latest():
 def order_detail(order_id):
     order = Order.query.get_or_404(order_id)
     return render_template('admin/order_detail.html', order=order)
+
+
+@admin_bp.route('/orders/<int:order_id>/payment-reference', methods=['POST'])
+@login_required
+def order_update_payment_reference(order_id):
+    order = Order.query.get_or_404(order_id)
+    reference = request.form.get('payment_reference', '').strip()
+
+    if not reference:
+        flash('La referencia bancaria es obligatoria.', 'danger')
+        return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
+    previous_reference = str(order.payment_reference or '').strip()
+    clear_pabilo_verification_state(order)
+    order.payment_reference = reference
+    order.payment_reference_last5 = normalize_reference_last5(reference)
+    order.updated_at = datetime.utcnow()
+
+    verification = verify_order_payment(order)
+    order.payment_verification_attempts = int(order.payment_verification_attempts or 0) + 1
+    order.payment_last_verification_at = datetime.utcnow()
+
+    if verification.get('verified'):
+        stamp_verified_payment(order, verification)
+        note = '[Admin] Referencia bancaria actualizada y pago re-verificado en Pabilo.'
+        if previous_reference and previous_reference != reference:
+            note = f'[Admin] Referencia bancaria actualizada de {previous_reference} a {reference} y pago re-verificado en Pabilo.'
+        existing_notes = order.notes or ''
+        if note not in existing_notes:
+            order.notes = (existing_notes + '\n' + note).strip()
+        db.session.commit()
+        flash(verification.get('message') or 'Pago re-verificado correctamente en Pabilo.', 'success')
+        return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
+    note = verification.get('message') or 'No se pudo re-verificar el pago en Pabilo.'
+    audit_note = f'[Admin] {note}'
+    existing_notes = order.notes or ''
+    if audit_note not in existing_notes:
+        order.notes = (existing_notes + '\n' + audit_note).strip()
+    db.session.commit()
+    flash(note, 'warning' if verification.get('ok') else 'danger')
+    return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
 
 @admin_bp.route('/orders/<int:order_id>/approve', methods=['POST'])

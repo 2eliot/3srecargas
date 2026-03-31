@@ -90,6 +90,12 @@
             <span class="detail-label">Referencia</span>
             <span class="detail-value"><code class="ref-code">{{ order.payment_reference }}</code></span>
         </div>
+        {% if order.payment_verified_at %}
+        <div class="detail-row">
+            <span class="detail-label">Pago verificado en</span>
+            <span class="detail-value">{{ order.payment_verified_at|datetime_ve('%d/%m/%Y %H:%M:%S') }}</span>
+        </div>
+        {% endif %}
         {% if order.payment_reference_last5 %}
         <div class="detail-row">
             <span class="detail-label">Últimos 5 de ref.</span>
@@ -123,6 +129,30 @@
         <div class="detail-row">
             <span class="detail-label">Afiliado</span>
             <span class="detail-value"><span class="aff-badge">{{ order.affiliate.code }}</span></span>
+        </div>
+        {% endif %}
+
+        {% if order.status == 'pending' %}
+        <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border-color)">
+            <h3 style="margin-bottom:12px">Editar referencia</h3>
+            <form method="POST" action="{{ url_for('admin_bp.order_update_payment_reference', order_id=order.id) }}">
+                <div class="form-group">
+                    <label for="payment_reference">Nueva referencia bancaria</label>
+                    <input
+                        id="payment_reference"
+                        name="payment_reference"
+                        type="text"
+                        value="{{ order.payment_reference }}"
+                        required
+                        autocomplete="off"
+                        placeholder="Ej: 02792"
+                    >
+                    <small style="display:block;margin-top:6px;color:var(--text-muted)">
+                        Al guardar, se limpia el estado previo de Pabilo y se re-verifica con el mismo monto exacto de la orden.
+                    </small>
+                </div>
+                <button type="submit" class="btn-secondary">Guardar referencia y re-verificar</button>
+            </form>
         </div>
         {% endif %}
     </div>

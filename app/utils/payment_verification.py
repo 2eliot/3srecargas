@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 import requests
 from flask import current_app
@@ -8,6 +9,7 @@ from ..models import Order, PaymentMethod, Setting
 
 AUTO_VERIFY_SETTING_KEY = 'auto_verify_payments'
 PABILO_API_KEY_SETTING_KEY = 'pabilo_api_key'
+PABILO_DEFAULT_MOVEMENT_TYPE = 'GENERIC'
 
 
 def get_setting_value(key, default=''):
@@ -77,11 +79,79 @@ def _get_bs_amount(order):
     return None
 
 
+def _coerce_decimal_amount(value):
+    if value is None:
+        return None
+
+    if isinstance(value, Decimal):
+        return value
+
+    if isinstance(value, int):
+        return Decimal(value)
+
+    if isinstance(value, float):
+        return Decimal(str(value))
+
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+
+    cleaned = raw.upper()
+    for token in ('BSD', 'BS.D', 'BS', '$'):
+        cleaned = cleaned.replace(token, '')
+    cleaned = cleaned.replace(' ', '')
+
+    filtered = ''.join(ch for ch in cleaned if ch.isdigit() or ch in ',.-')
+    if not filtered:
+        return None
+
+    if ',' in filtered and '.' in filtered:
+        filtered = filtered.replace(',', '')
+    elif ',' in filtered:
+        filtered = filtered.replace(',', '.')
+
+    try:
+        return Decimal(filtered)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _normalize_pabilo_amount(order):
+    amount = _coerce_decimal_amount(_get_bs_amount(order))
+    if amount is None:
+        return None, 'La orden no tiene un monto exacto válido para consultar en Pabilo.'
+
+    if amount <= 0:
+        return None, 'La orden no tiene un monto válido mayor a cero para consultar en Pabilo.'
+
+    integral_amount = amount.to_integral_value()
+    if amount != integral_amount:
+        return None, 'El monto de la orden no puede normalizarse a un entero exacto para Pabilo.'
+
+    return int(integral_amount), None
+
+
+def _resolve_pabilo_movement_type(order):
+    raw_value = order.payer_movement_type or current_app.config.get('PABILO_MOVEMENT_TYPE') or PABILO_DEFAULT_MOVEMENT_TYPE
+    normalized = str(raw_value or '').strip().upper()
+    return normalized or PABILO_DEFAULT_MOVEMENT_TYPE
+
+
 def build_pabilo_payload(order, include_amount=True):
-    """Construye el payload para Pabilo. El amount NO se envía: Pabilo busca
-    por bank_reference y el monto solo genera falsos negativos cuando hay
-    descuentos de afiliado o diferencias de redondeo."""
-    payload = {'bank_reference': str(order.payment_reference or '').strip()}
+    reference = str(order.payment_reference or '').strip()
+    if not reference:
+        return None, 'La orden no tiene una referencia bancaria válida para consultar en Pabilo.'
+
+    payload = {
+        'bank_reference': reference,
+        'movement_type': _resolve_pabilo_movement_type(order),
+    }
+
+    if include_amount:
+        normalized_amount, amount_error = _normalize_pabilo_amount(order)
+        if amount_error:
+            return None, amount_error
+        payload['amount'] = normalized_amount
 
     if order.payer_dni_number:
         payload['dni_pagador'] = {
@@ -94,10 +164,8 @@ def build_pabilo_payload(order, include_amount=True):
         payload['bank_origin'] = str(order.payer_bank_origin).strip()
     if order.payer_payment_date:
         payload['fecha_pago'] = order.payer_payment_date.strftime('%Y-%m-%d')
-    if order.payer_movement_type:
-        payload['movement_type'] = str(order.payer_movement_type).strip().upper()
 
-    return payload
+    return payload, None
 
 
 def _request_pabilo_verify(url, api_key, payload, timeout):
@@ -159,6 +227,15 @@ def verify_order_payment(order):
     if not order:
         return {'ok': False, 'verified': False, 'message': 'Orden inválida.'}
 
+    payload, payload_error = build_pabilo_payload(order, include_amount=True)
+    if payload_error:
+        return {
+            'ok': False,
+            'verified': False,
+            'requestable': False,
+            'message': payload_error,
+        }
+
     payment_method = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
     if not payment_method:
         return {'ok': False, 'verified': False, 'message': 'Método de pago no encontrado.'}
@@ -189,7 +266,6 @@ def verify_order_payment(order):
         }
 
     url = f"{current_app.config.get('PABILO_BASE_URL', 'https://api.pabilo.app').rstrip('/')}/userbankpayment/{user_bank_id}/betaserio"
-    payload = build_pabilo_payload(order, include_amount=True)
     timeout = current_app.config.get('PABILO_TIMEOUT', 30)
 
     response, data = _request_pabilo_verify(url, api_key, payload, timeout)
@@ -265,6 +341,13 @@ def verify_order_payment(order):
         'is_new': is_new,
         'response': full_data,
     }
+
+
+def clear_pabilo_verification_state(order):
+    order.payment_verified_at = None
+    order.payment_verification_id = None
+    order.payment_verification_attempts = 0
+    order.payment_last_verification_at = None
 
 
 def stamp_verified_payment(order, verification_result):
