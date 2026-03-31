@@ -807,6 +807,8 @@ def settings():
     default_auto_package_id = default_pkg_setting.value if default_pkg_setting else ''
     site_logo_setting = Setting.query.filter_by(key='site_logo').first()
     site_logo_value = site_logo_setting.value if site_logo_setting else ''
+    order_status_image_setting = Setting.query.filter_by(key='order_status_image').first()
+    order_status_image_value = order_status_image_setting.value if order_status_image_setting else ''
 
     social_keys = {
         'social_facebook': 'URL de Facebook',
@@ -856,6 +858,8 @@ def settings():
         default_pkg = request.form.get('default_auto_package_id', '').strip()
         remove_logo = request.form.get('remove_logo')
         logo_file = request.files.get('site_logo')
+        remove_order_status_image = request.form.get('remove_order_status_image')
+        order_status_image_file = request.files.get('order_status_image')
         social_payload = {k: (request.form.get(k, '') or '').strip() for k in social_keys}
         email_payload = {k: (request.form.get(k, '') or '').strip() for k in email_keys}
         payment_verify_payload = {
@@ -914,6 +918,25 @@ def settings():
                 else:
                     site_logo_setting.value = saved_logo
 
+        if remove_order_status_image and order_status_image_setting:
+            delete_uploaded_file(order_status_image_setting.value)
+            order_status_image_setting.value = ''
+
+        if order_status_image_file and order_status_image_file.filename:
+            saved_order_status_image = save_image(order_status_image_file, 'branding')
+            if saved_order_status_image:
+                if order_status_image_setting and order_status_image_setting.value:
+                    delete_uploaded_file(order_status_image_setting.value)
+                if not order_status_image_setting:
+                    order_status_image_setting = Setting(
+                        key='order_status_image',
+                        value=saved_order_status_image,
+                        description='Imagen decorativa para el seguimiento de órdenes'
+                    )
+                    db.session.add(order_status_image_setting)
+                else:
+                    order_status_image_setting.value = saved_order_status_image
+
         for key, desc in social_keys.items():
             val = social_payload.get(key, '')
             current_setting = Setting.query.filter_by(key=key).first()
@@ -967,6 +990,7 @@ def settings():
         usd_rate=usd_rate,
         default_package_id=default_auto_package_id,
         site_logo=site_logo_value,
+        order_status_image=order_status_image_value,
         social_settings=social_settings,
         email_settings=email_settings,
         payment_verify_settings=payment_verify_settings,

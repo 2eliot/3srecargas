@@ -39,14 +39,14 @@
             <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}">
                 {% for order in orders %}
                 <tr data-order-id="{{ order.id }}">
-                    <td><span class="order-num">#{{ order.order_number }}</span></td>
-                    <td>
+                    <td data-label="#Orden"><span class="order-num">#{{ order.order_number }}</span></td>
+                    <td data-label="Juego / Paquete">
                         <div class="cell-stack">
                             <span>{{ order.game.name }}</span>
                             <small>{{ order.package.name }}</small>
                         </div>
                     </td>
-                    <td>
+                    <td data-label="Jugador">
                         <div class="cell-stack">
                             {% if order.player_id %}<span>{{ order.player_id }}</span>{% endif %}
                             {% if order.player_nickname %}<small style="color:#22c55e;font-weight:600">{{ order.player_nickname }}</small>{% endif %}
@@ -55,17 +55,17 @@
                             {% if order.phone %}<small>{{ order.phone }}</small>{% endif %}
                         </div>
                     </td>
-                    <td>{{ order.payment_method | title }}</td>
-                    <td><code class="ref-code">{{ order.payment_reference }}</code></td>
-                    <td><strong>${{ "%.2f"|format(order.amount) }}</strong></td>
-                    <td>
+                    <td data-label="Pago">{{ order.payment_method | title }}</td>
+                    <td data-label="Referencia"><code class="ref-code">{{ order.payment_reference }}</code></td>
+                    <td data-label="Monto"><strong>${{ "%.2f"|format(order.amount) }}</strong></td>
+                    <td data-label="Afiliado">
                         {% if order.affiliate %}
                         <span class="aff-badge">{{ order.affiliate.code }}</span>
                         {% else %}—{% endif %}
                     </td>
-                    <td><span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span></td>
-                    <td>{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
-                    <td>
+                    <td data-label="Estado"><span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span></td>
+                    <td data-label="Fecha">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td data-label="Acciones">
                         {% if order.status == 'pending' %}
                         <div class="action-btns" id="actions-{{ order.id }}"
                              data-order-id="{{ order.id }}"

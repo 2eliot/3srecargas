@@ -295,6 +295,126 @@ input[type="file"] {
 .card-header h2, .card-header h3 { font-size: 15px; font-weight: 700; }
 .btn-link { color: var(--accent); font-size: 13px; background: none; border: none; cursor: pointer; }
 
+.admin-order-feed {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+}
+
+.admin-order-card {
+    background: linear-gradient(180deg, rgba(18, 26, 44, 0.96), rgba(15, 22, 37, 0.98));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 18px;
+    display: grid;
+    gap: 16px;
+}
+
+.admin-order-card__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.admin-order-card__identity {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.admin-order-card__title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.admin-order-card__game {
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.1;
+    word-break: break-word;
+}
+
+.admin-order-card__package {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.admin-order-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.admin-order-card__amount-wrap {
+    min-width: 140px;
+    display: grid;
+    gap: 6px;
+    justify-items: end;
+    text-align: right;
+}
+
+.admin-order-card__label {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.admin-order-card__amount {
+    font-size: 26px;
+    color: var(--success);
+    line-height: 1;
+}
+
+.admin-order-card__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.admin-order-card__item {
+    min-width: 0;
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.06);
+}
+
+.admin-order-card__item--wide {
+    grid-column: span 2;
+}
+
+.admin-order-card__item .cell-stack {
+    min-width: 0;
+}
+
+.admin-order-card__item .cell-stack > * {
+    overflow-wrap: anywhere;
+}
+
+.admin-order-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+    padding-top: 4px;
+}
+
+.admin-order-card__actions form {
+    display: inline-flex;
+}
+
 .table-wrap { overflow-x: auto; }
 .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .admin-table th {
@@ -313,6 +433,7 @@ input[type="file"] {
     padding: 11px 14px;
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
+    overflow-wrap: anywhere;
 }
 .admin-table tr:last-child td { border-bottom: none; }
 .admin-table tr:hover td { background: rgba(255,255,255,.02); }
@@ -573,10 +694,13 @@ input[type="file"] {
     .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 199; }
     .sidebar-overlay.active { display: block; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .admin-order-card__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
-    .stats-grid { grid-template-columns: 1fr; }
+    .admin-content { padding: 12px; }
+    .card-header { padding: 12px 14px; }
+    .stats-grid { display: none; }
     .form-grid-2 { grid-template-columns: 1fr; }
     .detail-grid { grid-template-columns: 1fr; }
     .detail-section { padding: 16px; }
@@ -606,23 +730,62 @@ input[type="file"] {
         align-items: flex-start;
         gap: 10px;
     }
-    .action-btns {
-        flex-direction: column;
-        align-items: stretch;
+    .admin-order-feed {
+        padding: 10px;
+        gap: 10px;
     }
-    .action-btns form { width: 100%; }
-    .action-btns .btn-sm,
-    .action-btns .btn-primary,
-    .action-btns .btn-secondary,
-    .action-btns .btn-danger-solid,
-    .action-btns .btn-outline,
-    .action-btns .btn-success,
-    .action-btns .btn-danger {
-        width: 100%;
+    .admin-order-card {
+        padding: 12px;
+        gap: 12px;
+    }
+    .admin-order-card__top {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+    }
+    .admin-order-card__amount-wrap {
+        min-width: 92px;
+        width: auto;
+        justify-items: end;
+        text-align: right;
+    }
+    .admin-order-card__game {
+        font-size: 18px;
+    }
+    .admin-order-card__package {
+        font-size: 14px;
+    }
+    .admin-order-card__meta {
+        gap: 8px;
+        font-size: 12px;
+    }
+    .admin-order-card__amount {
+        font-size: 22px;
+    }
+    .admin-order-card__grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .admin-order-card__item--wide {
+        grid-column: 1 / -1;
+    }
+    .admin-order-card__item {
+        padding: 10px 12px;
+        gap: 5px;
+    }
+    .admin-order-card__actions {
+        justify-content: flex-start;
+    }
+    .admin-order-card__actions form {
+        display: inline-flex;
+    }
+    .action-btns {
+        flex-direction: row;
+        align-items: center;
     }
     .table-wrap {
         overflow: visible;
-        padding: 10px;
+        padding: 8px;
     }
     .table-wrap table,
     .table-wrap thead,
@@ -660,7 +823,7 @@ input[type="file"] {
         align-items: flex-start;
         justify-content: space-between;
         gap: 14px;
-        padding: 12px 14px;
+        padding: 10px 12px;
         border-bottom: 1px solid var(--border);
         text-align: right;
     }
@@ -668,22 +831,22 @@ input[type="file"] {
     .table-wrap td::before {
         content: attr(data-label);
         color: var(--text-muted);
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         letter-spacing: .04em;
         text-transform: uppercase;
         text-align: left;
-        flex: 0 0 42%;
-        max-width: 42%;
+        flex: 0 0 38%;
+        max-width: 38%;
     }
     .table-wrap td > * {
-        max-width: 58%;
+        max-width: 62%;
         margin-left: auto;
     }
     .table-wrap td .cell-stack,
     .table-wrap td .action-btns {
         width: 100%;
-        max-width: 58%;
+        max-width: 62%;
         margin-left: auto;
         align-items: flex-end;
     }
@@ -701,12 +864,11 @@ input[type="file"] {
         max-width: 100%;
         margin-left: 0;
     }
-    .admin-content { padding: 12px; }
 }
 
 @media (max-width: 480px) {
     .admin-topbar {
-        padding: 0 12px;
+        padding: 0 10px;
         gap: 10px;
     }
     .topbar-title {
@@ -718,10 +880,88 @@ input[type="file"] {
         padding: 4px 10px;
         max-width: 38vw;
     }
+    .admin-content {
+        padding: 10px;
+    }
+    .card-header {
+        padding: 10px 12px;
+    }
+    .card-header h2,
+    .card-header h3 {
+        font-size: 14px;
+    }
+    .btn-link {
+        font-size: 12px;
+    }
+    .admin-order-feed {
+        padding: 8px;
+        gap: 8px;
+    }
+    .admin-order-card {
+        padding: 10px;
+        gap: 10px;
+        border-radius: 10px;
+    }
+    .admin-order-card__top {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .admin-order-card__title-row {
+        gap: 8px;
+    }
+    .admin-order-card__game {
+        font-size: 16px;
+    }
+    .admin-order-card__package {
+        font-size: 13px;
+    }
+    .admin-order-card__meta {
+        font-size: 11px;
+        gap: 6px;
+    }
+    .admin-order-card__amount-wrap {
+        width: 100%;
+        justify-items: start;
+        text-align: left;
+    }
+    .admin-order-card__amount {
+        font-size: 20px;
+    }
+    .admin-order-card__grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .admin-order-card__item {
+        padding: 9px 10px;
+    }
+    .admin-order-card__actions,
+    .action-btns {
+        gap: 6px;
+    }
+    .admin-order-card__actions .btn-sm,
+    .admin-order-card__actions form,
+    .admin-order-card__actions form .btn-sm,
+    .action-btns form,
+    .action-btns .btn-sm,
+    .action-btns .btn-primary,
+    .action-btns .btn-secondary,
+    .action-btns .btn-danger-solid,
+    .action-btns .btn-outline,
+    .action-btns .btn-success,
+    .action-btns .btn-danger {
+        width: 100%;
+    }
+    .table-wrap {
+        padding: 6px;
+    }
+    .table-wrap tbody {
+        gap: 8px;
+    }
     .table-wrap td {
         flex-direction: column;
         text-align: left;
         gap: 6px;
+        padding: 9px 10px;
     }
     .table-wrap td::before {
         flex: none;

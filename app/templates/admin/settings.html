@@ -37,6 +37,20 @@
                 </div>
                 {% endif %}
             </div>
+            <div class="form-group">
+                <label for="order_status_image">Imagen para seguimiento de órdenes</label>
+                <input type="file" id="order_status_image" name="order_status_image" accept="image/png,image/jpeg,image/webp,image/gif">
+                <p class="form-hint">Se muestra al lado del estado de procesamiento en la página de la orden. Usa una imagen vertical o cuadrada.</p>
+                {% if order_status_image %}
+                <div class="logo-preview">
+                    <img src="{{ url_for('static', filename='uploads/' + order_status_image) }}" alt="Imagen actual de seguimiento">
+                    <label class="remove-logo">
+                        <input type="checkbox" name="remove_order_status_image" value="1">
+                        Quitar imagen de seguimiento
+                    </label>
+                </div>
+                {% endif %}
+            </div>
         </div>
         <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
         <h3 style="margin-bottom:16px;">Verificación Automática de Pagos</h3>

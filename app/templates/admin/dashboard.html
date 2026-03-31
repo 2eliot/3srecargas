@@ -41,65 +41,74 @@
         <h2>Órdenes Recientes</h2>
         <a href="{{ url_for('admin_bp.orders') }}" class="btn-link">Ver todas →</a>
     </div>
-    <div class="table-wrap">
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Juego / Paquete</th>
-                    <th>Player ID</th>
-                    <th>Referencia</th>
-                    <th>Monto</th>
-                    <th>Estado</th>
-                    <th>Fecha</th>
-                    <th>Comprobante</th>
-                    <th>Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for order in recent_orders %}
-                <tr>
-                    <td><span class="order-num">#{{ order.order_number }}</span></td>
-                    <td>
-                        <div class="cell-stack">
-                            <span>{{ order.game.name }}</span>
-                            <small>{{ order.package.name }}</small>
-                        </div>
-                    </td>
-                    <td>{{ order.player_id or order.email or order.phone or '—' }}</td>
-                    <td><code>{{ order.payment_reference }}</code></td>
-                    <td>${{ "%.2f"|format(order.amount) }}</td>
-                    <td><span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span></td>
-                    <td>{{ order.created_at|datetime_ve('%d/%m %H:%M') }}</td>
-                    <td>
-                        {% if order.payment_capture %}
-                        <button class="btn-sm btn-secondary" type="button"
-                                onclick="openCaptureModal('{{ url_for('static', filename='uploads/' + order.payment_capture) }}', '{{ order.order_number }}')">
-                            Ver
-                        </button>
-                        {% else %}
-                        <span class="text-muted" style="font-size:12px">No adjunto</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if order.status == 'pending' %}
-                        <div class="action-btns">
-                            <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Gestionar</a>
-                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline" class="approve-form">
-                                <button class="btn-sm btn-success approve-btn" type="submit">✓</button>
-                            </form>
-                            <button class="btn-sm btn-danger" onclick="openRejectModal({{ order.id }})">✗</button>
-                        </div>
-                        {% else %}
-                        <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Ver detalle</a>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="8" class="empty-row">No hay órdenes aún.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="admin-order-feed">
+        {% for order in recent_orders %}
+        <article class="admin-order-card">
+            <div class="admin-order-card__top">
+                <div class="admin-order-card__identity">
+                    <div class="admin-order-card__title-row">
+                        <span class="admin-order-card__game">{{ order.game.name }}</span>
+                        <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
+                    </div>
+                    <div class="admin-order-card__package">{{ order.package.name }}</div>
+                    <div class="admin-order-card__meta">
+                        <span class="order-num">#{{ order.order_number }}</span>
+                        <span>{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
+                    </div>
+                </div>
+                <div class="admin-order-card__amount-wrap">
+                    <span class="admin-order-card__label">Monto</span>
+                    <strong class="admin-order-card__amount">${{ "%.2f"|format(order.amount) }}</strong>
+                </div>
+            </div>
+
+            <div class="admin-order-card__grid">
+                <div class="admin-order-card__item admin-order-card__item--wide">
+                    <span class="admin-order-card__label">Jugador</span>
+                    <div class="cell-stack">
+                        <span>{{ order.player_id or 'Sin player ID' }}</span>
+                        {% if order.player_nickname %}<small style="color:#22c55e;font-weight:600">{{ order.player_nickname }}</small>{% endif %}
+                        {% if order.zone_id %}<small>Zona: {{ order.zone_id }}</small>{% endif %}
+                        {% if order.email %}<small>{{ order.email }}</small>{% endif %}
+                        {% if order.phone %}<small>{{ order.phone }}</small>{% endif %}
+                    </div>
+                </div>
+                <div class="admin-order-card__item">
+                    <span class="admin-order-card__label">Pago</span>
+                    <strong>{{ order.payment_method | title }}</strong>
+                </div>
+                <div class="admin-order-card__item">
+                    <span class="admin-order-card__label">Referencia</span>
+                    <code class="ref-code">{{ order.payment_reference or 'Sin referencia' }}</code>
+                </div>
+                <div class="admin-order-card__item admin-order-card__item--wide">
+                    <span class="admin-order-card__label">Comprobante</span>
+                    {% if order.payment_capture %}
+                    <button class="btn-sm btn-secondary" type="button"
+                            onclick="openCaptureModal('{{ url_for('static', filename='uploads/' + order.payment_capture) }}', '{{ order.order_number }}')">
+                        Ver comprobante
+                    </button>
+                    {% else %}
+                    <span class="text-muted" style="font-size:12px">No adjunto</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="admin-order-card__actions {% if order.status == 'pending' %}action-btns{% endif %}">
+                <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">
+                    {% if order.status == 'pending' %}Gestionar{% else %}Ver detalle{% endif %}
+                </a>
+                {% if order.status == 'pending' %}
+                <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" class="approve-form">
+                    <button class="btn-sm btn-success approve-btn" type="submit">✓ Aprobar</button>
+                </form>
+                <button class="btn-sm btn-danger" type="button" onclick="openRejectModal({{ order.id }})">✗ Rechazar</button>
+                {% endif %}
+            </div>
+        </article>
+        {% else %}
+        <div class="empty-row">No hay órdenes aún.</div>
+        {% endfor %}
     </div>
 </div>
 

@@ -109,28 +109,37 @@
         {% endif %}
 
         {% if auto_verify_allowed and order.status in ['pending', 'approved', 'completed'] %}
-        <div class="processing-flow" id="processingFlow" data-status="{{ order.status }}">
-            <h3 class="processing-title">Estado de procesamiento</h3>
-            <div class="processing-step" data-step="search">
-                <span class="step-icon">✕</span>
-                <span class="step-text">Buscando pago en el sistema</span>
+        <div class="order-status-showcase{% if order_status_image %} has-side-image{% endif %}">
+            <div class="processing-flow" id="processingFlow" data-status="{{ order.status }}">
+                <h3 class="processing-title">Estado de procesamiento</h3>
+                <div class="processing-step" data-step="search">
+                    <span class="step-icon">✕</span>
+                    <span class="step-text">Buscando pago en el sistema</span>
+                </div>
+                <div class="processing-step" data-step="confirm">
+                    <span class="step-icon">✕</span>
+                    <span class="step-text">Pago confirmado</span>
+                </div>
+                <div class="processing-step" data-step="validate">
+                    <span class="step-icon">✕</span>
+                    <span class="step-text">Validando la orden</span>
+                </div>
+                <div class="processing-step" data-step="connect">
+                    <span class="step-icon">✕</span>
+                    <span class="step-text">Conectando con servidor de recargas</span>
+                </div>
+                <div class="processing-step" data-step="deliver">
+                    <span class="step-icon">✕</span>
+                    <span class="step-text">Recarga procesada correctamente</span>
+                </div>
             </div>
-            <div class="processing-step" data-step="confirm">
-                <span class="step-icon">✕</span>
-                <span class="step-text">Pago confirmado</span>
-            </div>
-            <div class="processing-step" data-step="validate">
-                <span class="step-icon">✕</span>
-                <span class="step-text">Validando la orden</span>
-            </div>
-            <div class="processing-step" data-step="connect">
-                <span class="step-icon">✕</span>
-                <span class="step-text">Conectando con servidor de recargas</span>
-            </div>
-            <div class="processing-step" data-step="deliver">
-                <span class="step-icon">✕</span>
-                <span class="step-text">Recarga procesada correctamente</span>
-            </div>
+            {% if order_status_image %}
+            <aside class="order-status-side-media" aria-label="Imagen de seguimiento de la orden">
+                <div class="order-status-side-media__frame">
+                    <img src="{{ url_for('static', filename='uploads/' + order_status_image) }}" alt="Imagen decorativa del seguimiento de la orden">
+                </div>
+            </aside>
+            {% endif %}
         </div>
         {% endif %}
 

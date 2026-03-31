@@ -558,6 +558,8 @@ def order_status(order_number):
     order = Order.query.filter_by(order_number=order_number).first_or_404()
     usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
     usd_rate = float(usd_rate_setting.value) if usd_rate_setting else 0.0
+    order_status_image_setting = Setting.query.filter_by(key='order_status_image').first()
+    order_status_image = order_status_image_setting.value if order_status_image_setting else ''
     method = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
     display_currency = 'bs'
     if method and (method.account_currency or '').lower() == 'usd':
@@ -592,6 +594,7 @@ def order_status(order_number):
         auto_verify_allowed=auto_verify_allowed,
         is_manual_order=not auto_verify_allowed and not is_binance_auto_order,
         is_binance_auto_order=is_binance_auto_order,
+        order_status_image=order_status_image,
     )
 
 
