@@ -1238,7 +1238,7 @@ select option { background: var(--bg-secondary); }
 .status-icon-rejected  { background: rgba(239,68,68,.15);  color: var(--danger);  border: 2px solid var(--danger); }
 
 .status-title    { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
-.status-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 28px; }
+.status-subtitle { font-size: 14px; color: var(--text-muted); margin: 0 auto 28px; max-width: 620px; }
 
 .order-info-grid {
     display: grid;
@@ -1303,7 +1303,7 @@ select option { background: var(--bg-secondary); }
 
 .order-status-showcase.has-side-image {
     grid-template-columns: minmax(0, 1.75fr) minmax(220px, .85fr);
-    align-items: start;
+    align-items: center;
 }
 
 .processing-flow {
@@ -1317,24 +1317,33 @@ select option { background: var(--bg-secondary); }
 
 .order-status-side-media {
     min-width: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .order-status-side-media__frame {
     position: relative;
-    overflow: hidden;
-    min-height: 100%;
-    padding: 12px;
-    border-radius: 22px;
-    border: 1px solid rgba(59, 130, 246, 0.18);
-    background: radial-gradient(circle at top, rgba(37, 99, 235, 0.18), rgba(15, 23, 42, 0.92));
-    box-shadow: 0 18px 40px rgba(2, 8, 23, 0.35);
+    overflow: visible;
+    min-height: 0;
+    padding: 0;
+    border-radius: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .order-status-side-media__frame img {
     width: 100%;
-    aspect-ratio: 4 / 5;
-    object-fit: cover;
-    border-radius: 16px;
+    max-width: 360px;
+    max-height: 520px;
+    height: auto;
+    aspect-ratio: auto;
+    object-fit: contain;
+    border-radius: 0;
 }
 
 .processing-title {
@@ -1344,6 +1353,7 @@ select option { background: var(--bg-secondary); }
     margin-bottom: 10px;
     text-transform: uppercase;
     letter-spacing: .5px;
+    text-align: center;
 }
 
 .processing-step {
@@ -1539,8 +1549,13 @@ select option { background: var(--bg-secondary); }
     }
 
     .order-status-side-media__frame {
-        padding: 10px;
-        border-radius: 18px;
+        padding: 0;
+        border-radius: 0;
+    }
+
+    .order-status-side-media__frame img {
+        max-width: 280px;
+        max-height: 420px;
     }
 }
 
@@ -1565,12 +1580,14 @@ select option { background: var(--bg-secondary); }
     }
 
     .order-status-side-media__frame {
-        padding: 8px;
-        border-radius: 16px;
+        padding: 0;
+        border-radius: 0;
     }
 
     .order-status-side-media__frame img {
-        aspect-ratio: 16 / 10;
+        max-width: min(100%, 240px);
+        max-height: 320px;
+        aspect-ratio: auto;
     }
 }
 
