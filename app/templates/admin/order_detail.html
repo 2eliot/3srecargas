@@ -132,9 +132,9 @@
         </div>
         {% endif %}
 
-        {% if order.status == 'pending' %}
+        {% if order.status != 'rejected' %}
         <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border-color)">
-            <h3 style="margin-bottom:12px">Editar referencia</h3>
+            <h3 style="margin-bottom:12px">Verificación Pabilo</h3>
             <form method="POST" action="{{ url_for('admin_bp.order_update_payment_reference', order_id=order.id) }}">
                 <div class="form-group">
                     <label for="payment_reference">Nueva referencia bancaria</label>
@@ -151,7 +151,12 @@
                         Al guardar, se limpia el estado previo de Pabilo y se re-verifica con el mismo monto exacto de la orden.
                     </small>
                 </div>
-                <button type="submit" class="btn-secondary">Guardar referencia y re-verificar</button>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button type="submit" class="btn-secondary">Guardar referencia y validar recarga</button>
+                </div>
+            </form>
+            <form method="POST" action="{{ url_for('admin_bp.order_reverify_payment', order_id=order.id) }}" style="margin-top:10px">
+                <button type="submit" class="btn-primary">Validar recarga con referencia actual</button>
             </form>
         </div>
         {% endif %}

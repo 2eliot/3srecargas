@@ -457,12 +457,8 @@ def order_detail(order_id):
     return render_template('admin/order_detail.html', order=order)
 
 
-@admin_bp.route('/orders/<int:order_id>/payment-reference', methods=['POST'])
-@login_required
-def order_update_payment_reference(order_id):
-    order = Order.query.get_or_404(order_id)
-    reference = request.form.get('payment_reference', '').strip()
-
+def _run_admin_pabilo_reverification(order, reference=None):
+    reference = str(reference if reference is not None else order.payment_reference or '').strip()
     if not reference:
         flash('La referencia bancaria es obligatoria.', 'danger')
         return redirect(url_for('admin_bp.order_detail', order_id=order.id))
@@ -479,7 +475,7 @@ def order_update_payment_reference(order_id):
 
     if verification.get('verified'):
         stamp_verified_payment(order, verification)
-        note = '[Admin] Referencia bancaria actualizada y pago re-verificado en Pabilo.'
+        note = '[Admin] Pago re-verificado manualmente en Pabilo.'
         if previous_reference and previous_reference != reference:
             note = f'[Admin] Referencia bancaria actualizada de {previous_reference} a {reference} y pago re-verificado en Pabilo.'
         existing_notes = order.notes or ''
@@ -497,6 +493,21 @@ def order_update_payment_reference(order_id):
     db.session.commit()
     flash(note, 'warning' if verification.get('ok') else 'danger')
     return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
+
+@admin_bp.route('/orders/<int:order_id>/payment-reference', methods=['POST'])
+@login_required
+def order_update_payment_reference(order_id):
+    order = Order.query.get_or_404(order_id)
+    reference = request.form.get('payment_reference', '').strip()
+    return _run_admin_pabilo_reverification(order, reference=reference)
+
+
+@admin_bp.route('/orders/<int:order_id>/reverify-payment', methods=['POST'])
+@login_required
+def order_reverify_payment(order_id):
+    order = Order.query.get_or_404(order_id)
+    return _run_admin_pabilo_reverification(order)
 
 
 @admin_bp.route('/orders/<int:order_id>/approve', methods=['POST'])

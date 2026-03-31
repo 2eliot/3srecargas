@@ -16,6 +16,7 @@ from ..models import Setting
 from ..utils.order_processing import approve_order, get_order_auto_mapping
 from ..utils.payment_verification import (
     is_auto_verify_enabled,
+    normalize_bs_integer_amount,
     normalize_reference_last5,
     stamp_verified_payment,
     verify_order_payment,
@@ -44,6 +45,11 @@ PAYMENT_METHODS = [
     ('binance', 'Binance Pay'),
     ('efectivo', 'Efectivo'),
 ]
+
+
+def _normalize_bs_checkout_amount(value):
+    normalized = normalize_bs_integer_amount(value)
+    return normalized if normalized is not None else 0
 
 
 def save_capture(file):
@@ -363,9 +369,9 @@ def checkout(package_id):
         if not _binance_auto and method_config and (method_config.account_currency or '').lower() == 'bs':
             payment_currency = 'bs'
             if bool(method_config.uses_rate):
-                payment_amount = round(final_amount * (usd_rate or 0.0), 2)
+                payment_amount = _normalize_bs_checkout_amount(final_amount * (usd_rate or 0.0))
             else:
-                payment_amount = round(final_amount, 2)
+                payment_amount = _normalize_bs_checkout_amount(final_amount)
 
         order = Order(
             game_id=game.id,
@@ -487,15 +493,15 @@ def checkout(package_id):
         discount_display = discount_amount
     else:
         if selected_method and not bool(selected_method.uses_rate):
-            display_amount = final_amount
-            original_display = original_amount
-            discount_display = discount_amount
+            display_amount = _normalize_bs_checkout_amount(final_amount)
+            original_display = _normalize_bs_checkout_amount(original_amount)
+            discount_display = _normalize_bs_checkout_amount(discount_amount)
         else:
             # Mantener consistente el monto mostrado con el monto que se guarda en la orden
             # para evitar discrepancias al verificar en Pabilo.
-            display_amount = final_amount * (usd_rate or 0.0)
-            original_display = original_amount * (usd_rate or 0.0)
-            discount_display = discount_amount * (usd_rate or 0.0)
+            display_amount = _normalize_bs_checkout_amount(final_amount * (usd_rate or 0.0))
+            original_display = _normalize_bs_checkout_amount(original_amount * (usd_rate or 0.0))
+            discount_display = _normalize_bs_checkout_amount(discount_amount * (usd_rate or 0.0))
 
     pkg_data = checkout_data.get(pkg_key) or {}
     player_nickname = (pkg_data.get('player_nickname') or '').strip()

@@ -1,5 +1,5 @@
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import requests
 from flask import current_app
@@ -116,6 +116,15 @@ def _coerce_decimal_amount(value):
         return None
 
 
+def normalize_bs_integer_amount(value):
+    amount = _coerce_decimal_amount(value)
+    if amount is None:
+        return None
+
+    normalized = amount.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    return int(normalized)
+
+
 def _normalize_pabilo_amount(order):
     amount = _coerce_decimal_amount(_get_bs_amount(order))
     if amount is None:
@@ -124,11 +133,11 @@ def _normalize_pabilo_amount(order):
     if amount <= 0:
         return None, 'La orden no tiene un monto válido mayor a cero para consultar en Pabilo.'
 
-    integral_amount = amount.to_integral_value()
-    if amount != integral_amount:
-        return None, 'El monto de la orden no puede normalizarse a un entero exacto para Pabilo.'
+    normalized_amount = normalize_bs_integer_amount(amount)
+    if normalized_amount is None or normalized_amount <= 0:
+        return None, 'El monto de la orden no puede normalizarse correctamente para Pabilo.'
 
-    return int(integral_amount), None
+    return normalized_amount, None
 
 
 def _resolve_pabilo_movement_type(order):
@@ -250,10 +259,16 @@ def verify_order_payment(order):
 
     duplicate = has_possible_duplicate_reference(
         reference_last5=order.payment_reference_last5,
-        amount=order.payment_amount,
+        amount=None,
         payment_method_code=order.payment_method,
         exclude_order_id=order.id,
     )
+    if duplicate:
+        duplicate_amount, _ = _normalize_pabilo_amount(duplicate)
+        current_amount = payload.get('amount')
+        if duplicate_amount != current_amount:
+            duplicate = None
+
     if duplicate:
         return {
             'ok': False,
