@@ -509,9 +509,10 @@ def checkout(package_id):
 
     binance_code = None
     binance_wallet = ''
+    binance_codes = session.get('binance_codes') or {}
     if binance_auto:
         # Reuse or generate a code for this package session
-            # The payment_reference is the 6-digit code stored in the session.
+        # The payment_reference is the 6-digit code stored in the session.
         existing_code = binance_codes.get(pkg_key)
         if existing_code and is_binance_auto_reference(existing_code):
             binance_code = existing_code
