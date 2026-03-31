@@ -70,15 +70,19 @@
                         <div class="action-btns" id="actions-{{ order.id }}"
                              data-order-id="{{ order.id }}"
                              data-auto-resp="{{ order.automation_response|default('',true)|e }}">
+                            <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline" title="Gestionar">Gestionar</a>
                             <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline" class="approve-form">
                                 <button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>
                             </form>
                             <button class="btn-sm btn-danger" onclick="openRejectModal({{ order.id }})" title="Rechazar">✗</button>
                         </div>
                         {% elif order.status == 'completed' and order.pin_delivered %}
-                        <button class="btn-sm btn-outline" onclick="showPin('{{ order.pin_delivered }}')">Ver PIN</button>
+                        <div class="action-btns">
+                            <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Ver detalle</a>
+                            <button class="btn-sm btn-outline" onclick="showPin('{{ order.pin_delivered }}')">Ver PIN</button>
+                        </div>
                         {% else %}
-                        <span class="no-action">—</span>
+                        <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Ver detalle</a>
                         {% endif %}
                     </td>
                 </tr>
@@ -153,13 +157,19 @@ function _renderOrderRow(o) {
     var actions = '—';
     if (o.status === 'pending') {
         actions = '<div class="action-btns" id="actions-' + o.id + '" data-order-id="' + o.id + '" data-auto-resp="' + _escapeHtml(o.automation_response || '') + '">' +
+            '<a href="/admin/orders/' + o.id + '" class="btn-sm btn-outline" title="Gestionar">Gestionar</a>' +
             '<form method="POST" action="/admin/orders/' + o.id + '/approve" style="display:inline" class="approve-form">' +
                 '<button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>' +
             '</form>' +
             '<button class="btn-sm btn-danger" onclick="openRejectModal(' + o.id + ')" title="Rechazar">✗</button>' +
         '</div>';
     } else if (o.status === 'completed' && o.pin_delivered) {
-        actions = '<button class="btn-sm btn-outline" onclick="showPin(\'' + _escapeHtml(o.pin_delivered) + '\')">Ver PIN</button>';
+        actions = '<div class="action-btns">' +
+            '<a href="/admin/orders/' + o.id + '" class="btn-sm btn-outline">Ver detalle</a>' +
+            '<button class="btn-sm btn-outline" onclick="showPin(\'' + _escapeHtml(o.pin_delivered) + '\')">Ver PIN</button>' +
+        '</div>';
+    } else {
+        actions = '<a href="/admin/orders/' + o.id + '" class="btn-sm btn-outline">Ver detalle</a>';
     }
 
     var html = '';

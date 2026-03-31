@@ -84,13 +84,14 @@
                     <td>
                         {% if order.status == 'pending' %}
                         <div class="action-btns">
+                            <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Gestionar</a>
                             <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline" class="approve-form">
                                 <button class="btn-sm btn-success approve-btn" type="submit">✓</button>
                             </form>
                             <button class="btn-sm btn-danger" onclick="openRejectModal({{ order.id }})">✗</button>
                         </div>
                         {% else %}
-                        —
+                        <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Ver detalle</a>
                         {% endif %}
                     </td>
                 </tr>
