@@ -1407,7 +1407,7 @@ body.modal-open {
 
 .phone-prefix-box {
     position: relative;
-    min-width: 132px;
+    min-width: 92px;
     border-right: 1px solid rgba(255,255,255,.1);
     background: rgba(22,24,28,.98);
     border-radius: 14px 0 0 14px;
@@ -1426,11 +1426,24 @@ body.modal-open {
 .phone-country-display {
     display: flex;
     align-items: center;
+    gap: 8px;
     color: #e5e7eb;
     font-size: 14px;
     font-weight: 700;
-    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", "Segoe UI", sans-serif;
     white-space: nowrap;
+}
+
+.phone-country-flag {
+    width: 20px;
+    height: 15px;
+    border-radius: 3px;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.08);
+}
+
+.phone-country-code {
+    letter-spacing: .01em;
 }
 
 .phone-country-menu {
@@ -1461,6 +1474,19 @@ body.modal-open {
     color: #f3f4f6;
     font-size: 14px;
     text-align: left;
+}
+
+.phone-country-option-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.phone-country-option-main span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .phone-country-option strong {
@@ -2787,18 +2813,20 @@ body.modal-open {
         border-bottom: 1px solid var(--border);
     }
     .packages-grid {
-        grid-template-columns: repeat(2, 1fr) !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
         gap: 6px;
         width: 100%;
         margin-bottom: 0;
     }
     .package-item {
-        padding: 6px;
+        min-height: 78px;
+        padding: 10px 8px;
         gap: 8px;
         overflow: hidden;
+        border-radius: 12px;
     }
-    .package-item img, .pkg-img-placeholder { width: 28px; height: 28px; }
-    .pkg-info h4 { font-size: 11px; }
+    .package-item img, .pkg-img-placeholder { width: 24px; height: 24px; }
+    .pkg-info h4 { font-size: 11px; line-height: 1.15; }
     .pkg-info .price { font-size: 11px; }
 
     /* === Sidebar / Checkout === */
@@ -3239,10 +3267,9 @@ body.modal-open {
 }
 
 .packages-grid {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
 }
 
 .pkg-section-label {
@@ -3273,29 +3300,31 @@ body.modal-open {
 }
 
 .package-item {
-    flex: 0 0 calc(33.333% - 6px);
-    min-height: 52px;
-    max-width: 124px;
-    padding: 8px 6px;
-    gap: 6px;
-    border-radius: 10px;
+    flex: unset;
+    min-height: 108px;
+    max-width: none;
+    padding: 14px 12px;
+    gap: 10px;
+    border-radius: 16px;
 }
 
 .package-item img,
 .pkg-img-placeholder {
-    width: 18px;
-    height: 18px;
-    border-radius: 4px;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
 }
 
 .pkg-info h4 {
-    font-size: 9px;
-    margin-bottom: 2px;
+    font-size: 13px;
+    margin-bottom: 4px;
+    line-height: 1.2;
 }
 
 .pkg-info .price,
 .pkg-info .price-usd {
-    font-size: 9px;
+    color: var(--accent);
+    font-size: 12px;
 }
 
 .payment-card-list {
@@ -3599,7 +3628,8 @@ body.modal-open {
     .packages-grid {
         display: flex !important;
         flex-wrap: wrap;
-        justify-content: center;
+        justify-content: flex-start;
+        align-content: flex-start;
     }
 
     .package-item {
@@ -3629,7 +3659,8 @@ body.modal-open {
     .packages-grid {
         display: flex !important;
         flex-wrap: wrap;
-        justify-content: center;
+        justify-content: flex-start;
+        align-content: flex-start;
     }
 }
 

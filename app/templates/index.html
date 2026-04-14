@@ -213,45 +213,48 @@
                                     <div class="phone-input-shell">
                                         <div class="phone-prefix-box">
                                             <button type="button" class="phone-country-trigger" id="phoneCountryTrigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Prefijo del país">
-                                                <span class="phone-country-display" id="phoneCountryDisplay">🇻🇪 +58</span>
+                                                <span class="phone-country-display" id="phoneCountryDisplay">
+                                                    <img src="https://flagcdn.com/w20/ve.png" alt="Venezuela" class="phone-country-flag" width="20" height="15">
+                                                    <span class="phone-country-code">+58</span>
+                                                </span>
                                             </button>
                                             <select id="phoneCountryCode" class="phone-country-select" aria-label="Prefijo del país" tabindex="-1">
-                                                <option value="+58" data-flag="🇻🇪" selected>🇻🇪 +58</option>
-                                                <option value="+57" data-flag="🇨🇴">🇨🇴 +57</option>
-                                                <option value="+52" data-flag="🇲🇽">🇲🇽 +52</option>
-                                                <option value="+51" data-flag="🇵🇪">🇵🇪 +51</option>
-                                                <option value="+56" data-flag="🇨🇱">🇨🇱 +56</option>
-                                                <option value="+54" data-flag="🇦🇷">🇦🇷 +54</option>
-                                                <option value="+593" data-flag="🇪🇨">🇪🇨 +593</option>
-                                                <option value="+1" data-flag="🇺🇸">🇺🇸 +1</option>
-                                                <option value="+55" data-flag="🇧🇷">🇧🇷 +55</option>
-                                                <option value="+591" data-flag="🇧🇴">🇧🇴 +591</option>
-                                                <option value="+595" data-flag="🇵🇾">🇵🇾 +595</option>
-                                                <option value="+598" data-flag="🇺🇾">🇺🇾 +598</option>
-                                                <option value="+507" data-flag="🇵🇦">🇵🇦 +507</option>
-                                                <option value="+34" data-flag="🇪🇸">🇪🇸 +34</option>
-                                                <option value="+1809" data-flag="🇩🇴">🇩🇴 +1809</option>
+                                                <option value="+58" data-flag-src="https://flagcdn.com/w20/ve.png" data-country-name="Venezuela" selected>Venezuela +58</option>
+                                                <option value="+57" data-flag-src="https://flagcdn.com/w20/co.png" data-country-name="Colombia">Colombia +57</option>
+                                                <option value="+52" data-flag-src="https://flagcdn.com/w20/mx.png" data-country-name="México">México +52</option>
+                                                <option value="+51" data-flag-src="https://flagcdn.com/w20/pe.png" data-country-name="Perú">Perú +51</option>
+                                                <option value="+56" data-flag-src="https://flagcdn.com/w20/cl.png" data-country-name="Chile">Chile +56</option>
+                                                <option value="+54" data-flag-src="https://flagcdn.com/w20/ar.png" data-country-name="Argentina">Argentina +54</option>
+                                                <option value="+593" data-flag-src="https://flagcdn.com/w20/ec.png" data-country-name="Ecuador">Ecuador +593</option>
+                                                <option value="+1" data-flag-src="https://flagcdn.com/w20/us.png" data-country-name="Estados Unidos">Estados Unidos +1</option>
+                                                <option value="+55" data-flag-src="https://flagcdn.com/w20/br.png" data-country-name="Brasil">Brasil +55</option>
+                                                <option value="+591" data-flag-src="https://flagcdn.com/w20/bo.png" data-country-name="Bolivia">Bolivia +591</option>
+                                                <option value="+595" data-flag-src="https://flagcdn.com/w20/py.png" data-country-name="Paraguay">Paraguay +595</option>
+                                                <option value="+598" data-flag-src="https://flagcdn.com/w20/uy.png" data-country-name="Uruguay">Uruguay +598</option>
+                                                <option value="+507" data-flag-src="https://flagcdn.com/w20/pa.png" data-country-name="Panamá">Panamá +507</option>
+                                                <option value="+34" data-flag-src="https://flagcdn.com/w20/es.png" data-country-name="España">España +34</option>
+                                                <option value="+1809" data-flag-src="https://flagcdn.com/w20/do.png" data-country-name="República Dominicana">República Dominicana +1809</option>
                                             </select>
                                         </div>
                                         <input type="tel" id="phoneLocal" inputmode="tel" autocomplete="tel-national" placeholder="Número de teléfono">
                                         <input type="hidden" id="phone" name="phone">
                                     </div>
                                     <div class="phone-country-menu" id="phoneCountryMenu" role="listbox" aria-label="Países">
-                                        <button type="button" class="phone-country-option is-selected" data-code="+58" data-flag="🇻🇪" role="option" aria-selected="true">🇻🇪 Venezuela <strong>+58</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+57" data-flag="🇨🇴" role="option" aria-selected="false">🇨🇴 Colombia <strong>+57</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+52" data-flag="🇲🇽" role="option" aria-selected="false">🇲🇽 México <strong>+52</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+51" data-flag="🇵🇪" role="option" aria-selected="false">🇵🇪 Perú <strong>+51</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+56" data-flag="🇨🇱" role="option" aria-selected="false">🇨🇱 Chile <strong>+56</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+54" data-flag="🇦🇷" role="option" aria-selected="false">🇦🇷 Argentina <strong>+54</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+593" data-flag="🇪🇨" role="option" aria-selected="false">🇪🇨 Ecuador <strong>+593</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+1" data-flag="🇺🇸" role="option" aria-selected="false">🇺🇸 Estados Unidos <strong>+1</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+55" data-flag="🇧🇷" role="option" aria-selected="false">🇧🇷 Brasil <strong>+55</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+591" data-flag="🇧🇴" role="option" aria-selected="false">🇧🇴 Bolivia <strong>+591</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+595" data-flag="🇵🇾" role="option" aria-selected="false">🇵🇾 Paraguay <strong>+595</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+598" data-flag="🇺🇾" role="option" aria-selected="false">🇺🇾 Uruguay <strong>+598</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+507" data-flag="🇵🇦" role="option" aria-selected="false">🇵🇦 Panamá <strong>+507</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+34" data-flag="🇪🇸" role="option" aria-selected="false">🇪🇸 España <strong>+34</strong></button>
-                                        <button type="button" class="phone-country-option" data-code="+1809" data-flag="🇩🇴" role="option" aria-selected="false">🇩🇴 Rep. Dominicana <strong>+1809</strong></button>
+                                        <button type="button" class="phone-country-option is-selected" data-code="+58" data-flag-src="https://flagcdn.com/w20/ve.png" data-country-name="Venezuela" role="option" aria-selected="true"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/ve.png" alt="Venezuela" class="phone-country-flag" width="20" height="15"><span>Venezuela</span></span><strong>+58</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+57" data-flag-src="https://flagcdn.com/w20/co.png" data-country-name="Colombia" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/co.png" alt="Colombia" class="phone-country-flag" width="20" height="15"><span>Colombia</span></span><strong>+57</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+52" data-flag-src="https://flagcdn.com/w20/mx.png" data-country-name="México" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/mx.png" alt="México" class="phone-country-flag" width="20" height="15"><span>México</span></span><strong>+52</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+51" data-flag-src="https://flagcdn.com/w20/pe.png" data-country-name="Perú" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/pe.png" alt="Perú" class="phone-country-flag" width="20" height="15"><span>Perú</span></span><strong>+51</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+56" data-flag-src="https://flagcdn.com/w20/cl.png" data-country-name="Chile" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/cl.png" alt="Chile" class="phone-country-flag" width="20" height="15"><span>Chile</span></span><strong>+56</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+54" data-flag-src="https://flagcdn.com/w20/ar.png" data-country-name="Argentina" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/ar.png" alt="Argentina" class="phone-country-flag" width="20" height="15"><span>Argentina</span></span><strong>+54</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+593" data-flag-src="https://flagcdn.com/w20/ec.png" data-country-name="Ecuador" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/ec.png" alt="Ecuador" class="phone-country-flag" width="20" height="15"><span>Ecuador</span></span><strong>+593</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+1" data-flag-src="https://flagcdn.com/w20/us.png" data-country-name="Estados Unidos" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/us.png" alt="Estados Unidos" class="phone-country-flag" width="20" height="15"><span>Estados Unidos</span></span><strong>+1</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+55" data-flag-src="https://flagcdn.com/w20/br.png" data-country-name="Brasil" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/br.png" alt="Brasil" class="phone-country-flag" width="20" height="15"><span>Brasil</span></span><strong>+55</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+591" data-flag-src="https://flagcdn.com/w20/bo.png" data-country-name="Bolivia" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/bo.png" alt="Bolivia" class="phone-country-flag" width="20" height="15"><span>Bolivia</span></span><strong>+591</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+595" data-flag-src="https://flagcdn.com/w20/py.png" data-country-name="Paraguay" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/py.png" alt="Paraguay" class="phone-country-flag" width="20" height="15"><span>Paraguay</span></span><strong>+595</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+598" data-flag-src="https://flagcdn.com/w20/uy.png" data-country-name="Uruguay" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/uy.png" alt="Uruguay" class="phone-country-flag" width="20" height="15"><span>Uruguay</span></span><strong>+598</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+507" data-flag-src="https://flagcdn.com/w20/pa.png" data-country-name="Panamá" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/pa.png" alt="Panamá" class="phone-country-flag" width="20" height="15"><span>Panamá</span></span><strong>+507</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+34" data-flag-src="https://flagcdn.com/w20/es.png" data-country-name="España" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/es.png" alt="España" class="phone-country-flag" width="20" height="15"><span>España</span></span><strong>+34</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+1809" data-flag-src="https://flagcdn.com/w20/do.png" data-country-name="República Dominicana" role="option" aria-selected="false"><span class="phone-country-option-main"><img src="https://flagcdn.com/w20/do.png" alt="República Dominicana" class="phone-country-flag" width="20" height="15"><span>Rep. Dominicana</span></span><strong>+1809</strong></button>
                                     </div>
                                 </div>
                             </div>

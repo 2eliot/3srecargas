@@ -136,7 +136,7 @@
                             </span>
                             <span class="payment-detail-value payment-detail-value-main">{{ selected_method.name }}</span>
                         </div>
-                        <button type="button" class="copy-inline-btn" data-copy-value="{{ selected_method.name }}">Copiar</button>
+                        <button type="button" class="copy-inline-btn" data-copy-label="Banco" data-copy-value="{{ selected_method.name }}">Copiar</button>
                     </div>
                     {% endif %}
                     {% if display_currency == 'bs' and selected_method.id_number %}
@@ -150,7 +150,7 @@
                             </span>
                             <span class="payment-detail-value payment-detail-value-main">{{ selected_method.id_number }}</span>
                         </div>
-                        <button type="button" class="copy-inline-btn" data-copy-value="{{ selected_method.id_number }}">Copiar</button>
+                        <button type="button" class="copy-inline-btn" data-copy-label="Cédula" data-copy-value="{{ selected_method.id_number }}">Copiar</button>
                     </div>
                     {% endif %}
                     {% if display_currency != 'bs' and selected_method.contact_email %}
@@ -164,7 +164,7 @@
                             </span>
                             <span class="payment-detail-value payment-detail-value-main">{{ selected_method.contact_email }}</span>
                         </div>
-                        <button type="button" class="copy-inline-btn" data-copy-value="{{ selected_method.contact_email }}">Copiar</button>
+                        <button type="button" class="copy-inline-btn" data-copy-label="Correo" data-copy-value="{{ selected_method.contact_email }}">Copiar</button>
                     </div>
                     {% endif %}
                     {% if display_currency != 'bs' and selected_method.pay_id %}
@@ -179,7 +179,7 @@
                             </span>
                             <span class="payment-detail-value payment-detail-value-main">{{ selected_method.pay_id }}</span>
                         </div>
-                        <button type="button" class="copy-inline-btn" data-copy-value="{{ selected_method.pay_id }}">Copiar</button>
+                        <button type="button" class="copy-inline-btn" data-copy-label="Pay ID" data-copy-value="{{ selected_method.pay_id }}">Copiar</button>
                     </div>
                     {% endif %}
                     {% if selected_method.contact_phone %}
@@ -192,7 +192,7 @@
                             </span>
                             <span class="payment-detail-value payment-detail-value-main">{{ selected_method.contact_phone }}</span>
                         </div>
-                        <button type="button" class="copy-inline-btn" data-copy-value="{{ selected_method.contact_phone }}">Copiar</button>
+                        <button type="button" class="copy-inline-btn" data-copy-label="Teléfono" data-copy-value="{{ selected_method.contact_phone }}">Copiar</button>
                     </div>
                     {% endif %}
                     </div>
@@ -392,6 +392,23 @@
         }
     }
 
+    function buildPaymentDetailsText() {
+        var rows = Array.from(document.querySelectorAll('.payment-detail-row-checkout'));
+        var lines = [];
+
+        rows.forEach(function (row) {
+            var copyBtn = row.querySelector('.copy-inline-btn');
+            var valueEl = row.querySelector('.payment-detail-value-main, .payment-detail-value');
+            var label = copyBtn ? String(copyBtn.getAttribute('data-copy-label') || '').trim() : '';
+            var value = valueEl ? String(valueEl.textContent || '').trim() : '';
+
+            if (!value) return;
+            lines.push(label ? (label + ': ' + value) : value);
+        });
+
+        return lines.join('\n');
+    }
+
     if (copyWalletBtn) {
         var walletEl = document.getElementById('binanceWalletDisplay');
         copyWalletBtn.addEventListener('click', function () {
@@ -407,23 +424,7 @@
 
     if (copyBtn) {
         copyBtn.addEventListener('click', function () {
-            var box = document.querySelector('.payment-details');
-            if (!box) return;
-            var rows = Array.from(box.querySelectorAll('.payment-detail-row'));
-            var lines = [];
-            rows.forEach(function (row) {
-                var label = row.querySelector('.payment-detail-label');
-                var value = row.querySelector('.payment-detail-value');
-                var l = label ? String(label.textContent || '').trim() : '';
-                var v = value ? String(value.textContent || '').trim() : '';
-                if (!l || !v) return;
-                lines.push(l + ': ' + v);
-            });
-            var text = lines.join('\n');
-            if (!text) return;
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).catch(function () {});
-            }
+            copyText(buildPaymentDetailsText(), copyBtn);
         });
     }
 

@@ -25,6 +25,7 @@ RANKING_DEFS = {
         'setting_key': 'ranking_free_fire_game_id',
         'enabled_key': 'ranking_free_fire_enabled',
         'rewards': [6160, 2398, 1166, 572, 341],
+        'aliases': ['free fire', 'freefire', 'ff'],
     },
     'blood_strike': {
         'label': 'Blood Strike',
@@ -32,6 +33,7 @@ RANKING_DEFS = {
         'setting_key': 'ranking_blood_strike_game_id',
         'enabled_key': 'ranking_blood_strike_enabled',
         'rewards': [1500, 700, 350, 200, 120],
+        'aliases': ['blood strike', 'bloodstrike'],
     },
 }
 
@@ -41,6 +43,51 @@ def _month_range_for_ve(target_date=None):
     month_start = date(target_date.year, target_date.month, 1)
     next_month = date(target_date.year + (1 if target_date.month == 12 else 0), 1 if target_date.month == 12 else target_date.month + 1, 1)
     return ve_day_start_utc_naive(month_start), ve_day_start_utc_naive(next_month)
+
+
+def _resolve_ranking_game(config):
+    game_id_raw = _get_setting_val(config['setting_key'], '')
+    game_id = int(game_id_raw) if str(game_id_raw).isdigit() else None
+    if game_id:
+        game = Game.query.get(game_id)
+        if game:
+            return game
+
+    aliases = [alias.strip().lower() for alias in (config.get('aliases') or []) if alias]
+    if not aliases:
+        return None
+
+    all_games = Game.query.order_by(Game.is_active.desc(), Game.position.asc(), Game.name.asc()).all()
+    for game in all_games:
+        haystack = ' '.join([
+            str(game.name or '').strip().lower(),
+            str(game.slug or '').strip().lower(),
+            str(game.description or '').strip().lower(),
+        ])
+        if any(alias in haystack for alias in aliases):
+            return game
+
+    return None
+
+
+def _ranking_has_month_orders(game_id, target_date=None):
+    if not game_id:
+        return False
+
+    start_at, end_at = _month_range_for_ve(target_date)
+    return db.session.query(Order.id).filter(
+        Order.game_id == game_id,
+        Order.status.in_(['approved', 'completed']),
+        Order.created_at >= start_at,
+        Order.created_at < end_at,
+    ).first() is not None
+
+
+def _is_ranking_enabled(config, game, target_date=None):
+    setting_row = Setting.query.filter_by(key=config['enabled_key']).first()
+    if setting_row and str(setting_row.value or '').strip() != '':
+        return str(setting_row.value).strip() == '1'
+    return bool(game and _ranking_has_month_orders(game.id, target_date=target_date))
 
 
 def _is_admin_ranking_view():
@@ -219,10 +266,8 @@ def _get_previous_archive_payload(ranking_key):
 
 def _build_ranking_payload(ranking_key, target_date=None):
     config = RANKING_DEFS[ranking_key]
-    enabled = _get_setting_val(config['enabled_key'], '0') == '1'
-    game_id_raw = _get_setting_val(config['setting_key'], '')
-    game_id = int(game_id_raw) if str(game_id_raw).isdigit() else None
-    game = Game.query.get(game_id) if game_id else None
+    game = _resolve_ranking_game(config)
+    enabled = _is_ranking_enabled(config, game, target_date=target_date)
 
     payload = {
         'key': ranking_key,

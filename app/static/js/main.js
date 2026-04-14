@@ -159,9 +159,25 @@
         if (!phoneCountryCodeInput || !phoneCountryDisplay) return;
         var selectedOption = phoneCountryCodeInput.options[phoneCountryCodeInput.selectedIndex];
         if (!selectedOption) return;
-        var flag = String(selectedOption.getAttribute('data-flag') || '').trim();
+        var flagSrc = String(selectedOption.getAttribute('data-flag-src') || '').trim();
+        var countryName = String(selectedOption.getAttribute('data-country-name') || '').trim();
         var code = String(selectedOption.value || '').trim();
-        phoneCountryDisplay.textContent = (flag ? flag + ' ' : '') + code;
+        phoneCountryDisplay.innerHTML = '';
+
+        if (flagSrc) {
+            var flagImg = document.createElement('img');
+            flagImg.src = flagSrc;
+            flagImg.alt = countryName || code;
+            flagImg.width = 20;
+            flagImg.height = 15;
+            flagImg.className = 'phone-country-flag';
+            phoneCountryDisplay.appendChild(flagImg);
+        }
+
+        var codeSpan = document.createElement('span');
+        codeSpan.className = 'phone-country-code';
+        codeSpan.textContent = code;
+        phoneCountryDisplay.appendChild(codeSpan);
 
         phoneCountryOptions.forEach(function (optionBtn) {
             var isSelected = optionBtn.dataset.code === code;
