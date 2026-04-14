@@ -38,6 +38,14 @@
                 </svg>
                 Juegos
             </a>
+            <a href="{{ url_for('admin_bp.categories') }}"
+               class="nav-item {% if 'category' in request.endpoint %}active{% endif %}">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="6" rx="2"></rect>
+                    <rect x="3" y="14" width="18" height="6" rx="2"></rect>
+                </svg>
+                Servicios
+            </a>
             <a href="{{ url_for('admin_bp.packages') }}"
                class="nav-item {% if 'package' in request.endpoint %}active{% endif %}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

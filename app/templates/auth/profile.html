@@ -147,7 +147,7 @@
                 <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
             </a>
             <div style="display: flex; align-items: center; gap: 16px;">
-                <span style="color: var(--text-muted);">Hola, {{ current_user.username }}</span>
+                <span style="color: var(--text-muted);">{{ current_user.scope_name }}</span>
                 <a href="{{ url_for('main_bp.index') }}" class="btn-admin">← Tienda</a>
                 <form method="POST" action="{{ url_for('auth_bp.logout') }}" style="display: inline;">
                     <button type="submit" class="btn-logout">Cerrar Sesión</button>
@@ -160,11 +160,14 @@
         <div class="profile-header">
             <div class="profile-info">
                 <div class="profile-avatar">
-                    {{ current_user.username[0].upper() }}
+                    {{ current_user.avatar_letter }}
                 </div>
                 <div class="profile-details">
-                    <h1>{{ current_user.username }}</h1>
-                    <p>📧 {{ current_user.email }}</p>
+                    <h1>{{ current_user.display_name }}</h1>
+                    <p>🔐 Acceso actual: {{ current_user.scope_name }}</p>
+                    {% if current_user.preferred_contact_email %}
+                    <p>📧 {{ current_user.preferred_contact_email }}</p>
+                    {% endif %}
                     {% if current_user.phone %}
                     <p>📱 {{ current_user.phone }}</p>
                     {% endif %}

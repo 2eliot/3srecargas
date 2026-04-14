@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import requests
 from datetime import datetime, timedelta
 from functools import wraps
@@ -12,7 +13,7 @@ from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 from ..models import (
     db, AdminUser, Game, Package, Category, Order,
-    Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting,
+    Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting, Discount,
     RevendedoresCatalogItem, RevendedoresItemMapping,
 )
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
@@ -20,6 +21,7 @@ from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
 from ..utils.order_processing import approve_order, get_revendedores_env, process_affiliate_commission
+from ..utils.auth_accounts import sync_env_admin_user
 from ..utils.payment_verification import (
     clear_pabilo_verification_state,
     normalize_reference_last5,
@@ -35,6 +37,19 @@ HOUSEKEEPING_INTERVAL_HOURS = 6
 _last_housekeeping_run = None
 
 ALLOWED_EXT = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+PROTECTED_CATEGORY_SLUGS = {'juegos', 'tarjetas', 'wallet'}
+RANKING_PRIZE_POSITIONS = [1, 2, 3, 4, 5]
+RANKING_PRIZE_LABELS = {
+    'free_fire': ['6160 diamantes', '2398 diamantes', '1166 diamantes', '572 diamantes', '341 diamantes'],
+    'blood_strike': ['1500 oro', '700 oro', '350 oro', '200 oro', '120 oro'],
+}
+
+
+def slugify_category(value):
+    value = (value or '').strip().lower()
+    value = re.sub(r'[^a-z0-9]+', '-', value)
+    value = re.sub(r'-{2,}', '-', value).strip('-')
+    return value
 
 
 def allowed_file(filename):
@@ -106,6 +121,51 @@ def run_housekeeping_if_needed():
     _last_housekeeping_run = now
 
 
+def _ranking_prize_package_key(ranking_key, position):
+    return f'ranking_{ranking_key}_prize_package_{position}'
+
+
+def _ranking_prize_auto_key(ranking_key, position):
+    return f'ranking_{ranking_key}_prize_auto_{position}'
+
+
+def _parse_optional_decimal(raw_value):
+    raw_value = (raw_value or '').strip()
+    if not raw_value:
+        return None
+    return float(raw_value)
+
+
+def _parse_optional_int(raw_value):
+    raw_value = (raw_value or '').strip()
+    if not raw_value:
+        return None
+    return int(raw_value)
+
+
+def _parse_optional_datetime(raw_value):
+    raw_value = (raw_value or '').strip()
+    if not raw_value:
+        return None
+    return datetime.strptime(raw_value, '%Y-%m-%dT%H:%M')
+
+
+def _discount_kind_label(discount):
+    usage_limit = int(discount.usage_limit or 0)
+    if usage_limit == 1:
+        return 'Único (1 sola vez)'
+    if usage_limit > 1:
+        return f'Multi-uso (hasta {usage_limit})'
+    return 'Masivo'
+
+
+def _discount_value_label(discount):
+    if discount.discount_type == 'percentage':
+        return f'{float(discount.discount_value or 0):.0f}%'
+    value = float(discount.discount_value or 0)
+    return f'${value:.2f}'.rstrip('0').rstrip('.')
+
+
 @admin_bp.before_app_request
 def admin_housekeeping_hook():
     if not request.path.startswith('/admin'):
@@ -113,12 +173,26 @@ def admin_housekeeping_hook():
     run_housekeeping_if_needed()
 
 
+@admin_bp.before_request
+def admin_access_guard():
+    if request.endpoint in {'admin_bp.login'}:
+        return None
+    if not current_user.is_authenticated:
+        return None
+    if current_user.__class__.__name__ != 'AdminUser':
+        flash('Esta sección es solo para administradores.', 'warning')
+        return redirect(url_for('main_bp.index'))
+    return None
+
+
 # ─── Auth ────────────────────────────────────────────────────────────────────
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('admin_bp.dashboard'))
+        if current_user.__class__.__name__ == 'AdminUser':
+            return redirect(url_for('admin_bp.dashboard'))
+        return redirect(url_for('main_bp.index'))
 
     env_admin_username = (os.environ.get('ADMIN_USERNAME') or '').strip()
     env_admin_password = (os.environ.get('ADMIN_PASSWORD') or '').strip()
@@ -129,61 +203,22 @@ def login():
             flash('Acceso admin no disponible: faltan ADMIN_USERNAME/ADMIN_PASSWORD en entorno.', 'danger')
             return render_template('admin/login.html')
 
-        username = request.form.get('username', '').strip()
+        identifier = request.form.get('identifier', '').strip()
         password = request.form.get('password', '').strip()
 
-        if username != env_admin_username or password != env_admin_password:
-            flash('Usuario o contraseña incorrectos.', 'danger')
+        valid_identifiers = {env_admin_username.lower()}
+        if env_admin_email:
+            valid_identifiers.add(env_admin_email.lower())
+
+        if identifier.lower() not in valid_identifiers or password != env_admin_password:
+            flash('Correo/usuario admin o contraseña incorrectos.', 'danger')
             return render_template('admin/login.html')
 
         try:
-            user = AdminUser.query.filter_by(username=env_admin_username).first()
-            if not user and env_admin_email:
-                user = AdminUser.query.filter_by(email=env_admin_email).first()
-
-            if not user and AdminUser.query.count() == 1:
-                user = AdminUser.query.first()
-
-            if not user:
-                user = AdminUser(
-                    username=env_admin_username,
-                    email=env_admin_email or f'{env_admin_username}@localhost',
-                )
-                user.set_password(env_admin_password)
-                db.session.add(user)
-                db.session.commit()
-            else:
-                needs_commit = False
-                if user.username != env_admin_username:
-                    username_taken = (
-                        AdminUser.query
-                        .filter(AdminUser.username == env_admin_username, AdminUser.id != user.id)
-                        .first()
-                    )
-                    if username_taken:
-                        flash('ADMIN_USERNAME ya existe en otro registro admin.', 'danger')
-                        return render_template('admin/login.html')
-                    user.username = env_admin_username
-                    needs_commit = True
-                if env_admin_email and user.email != env_admin_email:
-                    email_taken = (
-                        AdminUser.query
-                        .filter(AdminUser.email == env_admin_email, AdminUser.id != user.id)
-                        .first()
-                    )
-                    if email_taken:
-                        flash('ADMIN_EMAIL ya existe en otro registro admin.', 'danger')
-                        return render_template('admin/login.html')
-                    user.email = env_admin_email
-                    needs_commit = True
-                if not user.check_password(env_admin_password):
-                    user.set_password(env_admin_password)
-                    needs_commit = True
-                if needs_commit:
-                    db.session.commit()
-        except Exception:
+            user = sync_env_admin_user(env_admin_username, env_admin_email, env_admin_password)
+        except Exception as exc:
             db.session.rollback()
-            flash('No se pudo sincronizar la cuenta de administrador. Revisa ADMIN_USERNAME/ADMIN_EMAIL.', 'danger')
+            flash(f'No se pudo sincronizar la cuenta de administrador. {exc}', 'danger')
             return render_template('admin/login.html')
 
         if user:
@@ -235,6 +270,92 @@ def dashboard():
         recent_orders=recent_orders,
         low_stock=low_stock,
     )
+
+
+# ─── Categories / Services ──────────────────────────────────────────────────
+
+@admin_bp.route('/categories')
+@login_required
+def categories():
+    all_categories = Category.query.order_by(Category.id.asc()).all()
+    return render_template('admin/categories.html', categories=all_categories, protected_slugs=PROTECTED_CATEGORY_SLUGS)
+
+
+@admin_bp.route('/categories/add', methods=['POST'])
+@login_required
+def category_add():
+    name = request.form.get('name', '').strip()
+    slug = slugify_category(request.form.get('slug') or name)
+    icon = (request.form.get('icon') or '🎮').strip()[:10]
+
+    if not name:
+        flash('El nombre del servicio es obligatorio.', 'danger')
+        return redirect(url_for('admin_bp.categories'))
+
+    if not slug:
+        flash('No se pudo generar un slug válido para el servicio.', 'danger')
+        return redirect(url_for('admin_bp.categories'))
+
+    if Category.query.filter_by(slug=slug).first():
+        flash('Ya existe un servicio con ese slug.', 'danger')
+        return redirect(url_for('admin_bp.categories'))
+
+    category = Category(name=name, slug=slug, icon=icon or '🎮')
+    db.session.add(category)
+    db.session.commit()
+    flash(f'Servicio "{name}" creado.', 'success')
+    return redirect(url_for('admin_bp.categories'))
+
+
+@admin_bp.route('/categories/<int:category_id>/edit', methods=['POST'])
+@login_required
+def category_edit(category_id):
+    category = Category.query.get_or_404(category_id)
+    name = request.form.get('name', '').strip()
+    slug = slugify_category(request.form.get('slug') or category.slug)
+    icon = (request.form.get('icon') or '🎮').strip()[:10]
+
+    if not name:
+        flash('El nombre del servicio es obligatorio.', 'danger')
+        return redirect(url_for('admin_bp.categories'))
+
+    if category.slug in PROTECTED_CATEGORY_SLUGS:
+        slug = category.slug
+
+    if not slug:
+        flash('El slug del servicio es inválido.', 'danger')
+        return redirect(url_for('admin_bp.categories'))
+
+    duplicate = Category.query.filter(Category.slug == slug, Category.id != category.id).first()
+    if duplicate:
+        flash('Ya existe otro servicio con ese slug.', 'danger')
+        return redirect(url_for('admin_bp.categories'))
+
+    category.name = name
+    category.slug = slug
+    category.icon = icon or '🎮'
+    db.session.commit()
+    flash('Servicio actualizado.', 'success')
+    return redirect(url_for('admin_bp.categories'))
+
+
+@admin_bp.route('/categories/<int:category_id>/delete', methods=['POST'])
+@login_required
+def category_delete(category_id):
+    category = Category.query.get_or_404(category_id)
+
+    if category.slug in PROTECTED_CATEGORY_SLUGS:
+        flash('Los servicios base no se pueden eliminar.', 'danger')
+        return redirect(url_for('admin_bp.categories'))
+
+    if category.games.count() > 0:
+        flash('No puedes eliminar este servicio porque todavía tiene juegos asociados.', 'danger')
+        return redirect(url_for('admin_bp.categories'))
+
+    db.session.delete(category)
+    db.session.commit()
+    flash('Servicio eliminado.', 'success')
+    return redirect(url_for('admin_bp.categories'))
 
 
 # ─── Games ───────────────────────────────────────────────────────────────────
@@ -621,7 +742,14 @@ def pin_delete(pin_id):
 @login_required
 def affiliates():
     all_affiliates = Affiliate.query.order_by(Affiliate.created_at.desc()).all()
-    return render_template('admin/affiliates.html', affiliates=all_affiliates)
+    discount_codes = Discount.query.order_by(Discount.created_at.desc()).all()
+    return render_template(
+        'admin/affiliates.html',
+        affiliates=all_affiliates,
+        discount_codes=discount_codes,
+        discount_kind_label=_discount_kind_label,
+        discount_value_label=_discount_value_label,
+    )
 
 
 @admin_bp.route('/affiliates/add', methods=['POST'])
@@ -694,6 +822,114 @@ def affiliate_update_balance(aff_id):
     aff.balance = new_balance
     db.session.commit()
     flash(f'Monto actualizado para {aff.name}: ${new_balance:.2f}', 'success')
+    return redirect(url_for('admin_bp.affiliates'))
+
+
+@admin_bp.route('/discount-codes/add', methods=['POST'])
+@login_required
+def discount_code_add():
+    code = (request.form.get('code') or '').strip().upper()
+    description = (request.form.get('description') or '').strip()
+    discount_type = (request.form.get('discount_type') or 'percentage').strip().lower()
+
+    try:
+        discount_value = float((request.form.get('discount_value') or '').strip())
+        usage_limit = _parse_optional_int(request.form.get('usage_limit'))
+        min_amount = _parse_optional_decimal(request.form.get('min_amount'))
+        max_discount = _parse_optional_decimal(request.form.get('max_discount'))
+        expires_at = _parse_optional_datetime(request.form.get('expires_at'))
+    except ValueError:
+        flash('Datos inválidos para el código de descuento.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if not code:
+        flash('El código es obligatorio.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if discount_type not in {'percentage', 'fixed'}:
+        flash('Tipo de descuento inválido.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if discount_value <= 0:
+        flash('El valor del descuento debe ser mayor a 0.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if usage_limit is not None and usage_limit < 1:
+        flash('El límite de usos debe ser mayor o igual a 1.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if Discount.query.filter_by(code=code).first():
+        flash('Ese código de descuento ya existe.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    discount = Discount(
+        code=code,
+        description=description or None,
+        discount_type=discount_type,
+        discount_value=discount_value,
+        min_amount=min_amount,
+        max_discount=max_discount,
+        usage_limit=usage_limit,
+        is_active=bool(request.form.get('is_active')),
+        expires_at=expires_at,
+    )
+    db.session.add(discount)
+    db.session.commit()
+    flash(f'Código de descuento {code} creado.', 'success')
+    return redirect(url_for('admin_bp.affiliates'))
+
+
+@admin_bp.route('/discount-codes/<int:discount_id>/edit', methods=['POST'])
+@login_required
+def discount_code_edit(discount_id):
+    discount = Discount.query.get_or_404(discount_id)
+    code = (request.form.get('code') or discount.code).strip().upper()
+    description = (request.form.get('description') or '').strip()
+    discount_type = (request.form.get('discount_type') or discount.discount_type).strip().lower()
+    discount_value_raw = (request.form.get('discount_value') or '').strip()
+
+    try:
+        discount_value = float(discount_value_raw or float(discount.discount_value or 0))
+        usage_limit = _parse_optional_int(request.form.get('usage_limit'))
+        min_amount = _parse_optional_decimal(request.form.get('min_amount'))
+        max_discount = _parse_optional_decimal(request.form.get('max_discount'))
+        expires_at = _parse_optional_datetime(request.form.get('expires_at'))
+    except ValueError:
+        flash('Datos inválidos para el código de descuento.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if not code:
+        flash('El código es obligatorio.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if discount_type not in {'percentage', 'fixed'}:
+        flash('Tipo de descuento inválido.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if discount_value <= 0:
+        flash('El valor del descuento debe ser mayor a 0.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if usage_limit is not None and usage_limit < 1:
+        flash('El límite de usos debe ser mayor o igual a 1.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    duplicate = Discount.query.filter(Discount.code == code, Discount.id != discount.id).first()
+    if duplicate:
+        flash('Ya existe otro código de descuento con ese valor.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    discount.code = code
+    discount.description = description or None
+    discount.discount_type = discount_type
+    discount.discount_value = discount_value
+    discount.usage_limit = usage_limit
+    discount.min_amount = min_amount
+    discount.max_discount = max_discount
+    discount.expires_at = expires_at
+    discount.is_active = bool(request.form.get('is_active'))
+    db.session.commit()
+    flash(f'Código de descuento {code} actualizado.', 'success')
     return redirect(url_for('admin_bp.affiliates'))
 
 
@@ -838,6 +1074,12 @@ def settings():
         'binance_auto_enabled': 'Activa verificación automática de Binance Pay',
         'binance_wallet_address': 'Dirección/email de Binance Pay que se muestra al cliente',
     }
+    ranking_keys = {
+        'ranking_free_fire_enabled': 'Mostrar ranking mensual de Free Fire',
+        'ranking_blood_strike_enabled': 'Mostrar ranking mensual de Blood Strike',
+        'ranking_free_fire_game_id': 'Juego asociado al ranking de Free Fire',
+        'ranking_blood_strike_game_id': 'Juego asociado al ranking de Blood Strike',
+    }
     email_settings = {}
     for key in email_keys:
         setting = Setting.query.filter_by(key=key).first()
@@ -852,6 +1094,34 @@ def settings():
     for key in binance_auto_keys:
         setting = Setting.query.filter_by(key=key).first()
         binance_auto_settings[key] = setting.value if setting else ''
+
+    ranking_settings = {}
+    for key in ranking_keys:
+        setting = Setting.query.filter_by(key=key).first()
+        ranking_settings[key] = setting.value if setting else ''
+
+    ranking_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
+    ranking_packages = Package.query.filter_by(is_active=True).order_by(Package.game_id.asc(), Package.sort_order.asc(), Package.name.asc()).all()
+    ranking_packages_by_game = {}
+    for package in ranking_packages:
+        ranking_packages_by_game.setdefault(str(package.game_id), []).append({
+            'id': package.id,
+            'name': package.name,
+            'sort_order': package.sort_order,
+            'is_automated': bool(package.is_automated),
+        })
+
+    ranking_prize_settings = {'free_fire': {}, 'blood_strike': {}}
+    for ranking_key_name in ranking_prize_settings.keys():
+        labels = RANKING_PRIZE_LABELS.get(ranking_key_name, [])
+        for position in RANKING_PRIZE_POSITIONS:
+            package_setting = Setting.query.filter_by(key=_ranking_prize_package_key(ranking_key_name, position)).first()
+            auto_setting = Setting.query.filter_by(key=_ranking_prize_auto_key(ranking_key_name, position)).first()
+            ranking_prize_settings[ranking_key_name][position] = {
+                'package_id': package_setting.value if package_setting else '',
+                'auto': auto_setting.value if auto_setting else '0',
+                'reward_label': labels[position - 1] if position - 1 < len(labels) else f'Puesto #{position}',
+            }
 
     if request.method == 'POST':
         new_rate = request.form.get('usd_rate_bs', '').strip()
@@ -869,6 +1139,12 @@ def settings():
         binance_auto_payload = {
             'binance_auto_enabled': '1' if request.form.get('binance_auto_enabled') else '0',
             'binance_wallet_address': (request.form.get('binance_wallet_address', '') or '').strip(),
+        }
+        ranking_payload = {
+            'ranking_free_fire_enabled': '1' if request.form.get('ranking_free_fire_enabled') else '0',
+            'ranking_blood_strike_enabled': '1' if request.form.get('ranking_blood_strike_enabled') else '0',
+            'ranking_free_fire_game_id': (request.form.get('ranking_free_fire_game_id', '') or '').strip(),
+            'ranking_blood_strike_game_id': (request.form.get('ranking_blood_strike_game_id', '') or '').strip(),
         }
 
         if new_rate:
@@ -981,6 +1257,55 @@ def settings():
             else:
                 current_setting.value = val
 
+        for key, desc in ranking_keys.items():
+            val = ranking_payload.get(key, '')
+            current_setting = Setting.query.filter_by(key=key).first()
+            if not current_setting:
+                current_setting = Setting(key=key, value=val, description=desc)
+                db.session.add(current_setting)
+            else:
+                current_setting.value = val
+
+        ranking_prize_desc = 'Paquete vinculado al premio mensual del ranking por puesto.'
+        ranking_prize_auto_desc = 'Si está activo, el paquete del premio se fuerza como automatizado.'
+        for ranking_key_name in ('free_fire', 'blood_strike'):
+            selected_game_id = ranking_payload.get(f'ranking_{ranking_key_name}_game_id', '')
+            selected_game_id_int = int(selected_game_id) if selected_game_id.isdigit() else None
+
+            for position in RANKING_PRIZE_POSITIONS:
+                package_key = _ranking_prize_package_key(ranking_key_name, position)
+                auto_key = _ranking_prize_auto_key(ranking_key_name, position)
+                package_value = (request.form.get(package_key, '') or '').strip()
+                auto_value = '1' if request.form.get(auto_key) else '0'
+
+                valid_package_value = ''
+                prize_package = None
+                if package_value.isdigit() and selected_game_id_int:
+                    prize_package = Package.query.filter_by(
+                        id=int(package_value),
+                        game_id=selected_game_id_int,
+                        is_active=True,
+                    ).first()
+                    if prize_package:
+                        valid_package_value = str(prize_package.id)
+
+                package_setting = Setting.query.filter_by(key=package_key).first()
+                if not package_setting:
+                    package_setting = Setting(key=package_key, value=valid_package_value, description=ranking_prize_desc)
+                    db.session.add(package_setting)
+                else:
+                    package_setting.value = valid_package_value
+
+                auto_setting = Setting.query.filter_by(key=auto_key).first()
+                if not auto_setting:
+                    auto_setting = Setting(key=auto_key, value=auto_value, description=ranking_prize_auto_desc)
+                    db.session.add(auto_setting)
+                else:
+                    auto_setting.value = auto_value
+
+                if prize_package and auto_value == '1':
+                    prize_package.is_automated = True
+
         db.session.commit()
         flash('Configuración actualizada.', 'success')
         return redirect(url_for('admin_bp.settings'))
@@ -995,6 +1320,12 @@ def settings():
         email_settings=email_settings,
         payment_verify_settings=payment_verify_settings,
         binance_auto_settings=binance_auto_settings,
+        ranking_settings=ranking_settings,
+        ranking_games=ranking_games,
+        ranking_prize_settings=ranking_prize_settings,
+        ranking_prize_positions=RANKING_PRIZE_POSITIONS,
+        ranking_prize_labels=RANKING_PRIZE_LABELS,
+        ranking_packages_by_game=ranking_packages_by_game,
     )
 
 

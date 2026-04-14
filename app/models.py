@@ -294,21 +294,70 @@ class Setting(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class RankingArchive(db.Model):
+    __tablename__ = 'ranking_archives'
+    id = db.Column(db.Integer, primary_key=True)
+    ranking_key = db.Column(db.String(50), nullable=False)
+    year = db.Column(db.Integer, nullable=False)
+    month = db.Column(db.Integer, nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+    game_name = db.Column(db.String(100), nullable=False)
+    masked_player_id = db.Column(db.String(100), nullable=False)
+    masked_nickname = db.Column(db.String(200), nullable=False)
+    total_units = db.Column(db.Integer, default=0)
+    prize_label = db.Column(db.String(100), default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('ranking_key', 'year', 'month', 'position', name='uq_ranking_archive_month_pos'),
+    )
+
+
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    account_scope = db.Column(db.String(120), index=True)
+    account_scope_label = db.Column(db.String(120))
+    account_identifier = db.Column(db.String(255))
+    account_identifier_normalized = db.Column(db.String(255), index=True)
+    account_kind = db.Column(db.String(50), default='player_id')
+    contact_email = db.Column(db.String(255))
     phone = db.Column(db.String(20))
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def get_id(self):
+        return f'user:{self.id}'
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
     
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    @property
+    def display_name(self):
+        return (self.account_identifier or self.username or '').strip()
+
+    @property
+    def scope_name(self):
+        return (self.account_scope_label or 'Cuenta').strip()
+
+    @property
+    def preferred_contact_email(self):
+        if self.contact_email:
+            return self.contact_email
+        if self.account_kind in {'wallet_email', 'delivery_email', 'binance_account', 'email'}:
+            return self.account_identifier or ''
+        return ''
+
+    @property
+    def avatar_letter(self):
+        value = self.display_name or self.scope_name or 'U'
+        return value[:1].upper()
 
 
 class RevendedoresCatalogItem(db.Model):
@@ -352,6 +401,9 @@ class AdminUser(db.Model, UserMixin):
     password_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def get_id(self):
+        return f'admin:{self.id}'
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)

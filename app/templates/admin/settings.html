@@ -172,6 +172,131 @@
             </div>
         </div>
 
+        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
+        <h3 style="margin-bottom:16px;">Rankings Mensuales</h3>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label class="check-label" style="margin-top:30px;">
+                    <input type="checkbox" name="ranking_free_fire_enabled" value="1"
+                           {% if ranking_settings.ranking_free_fire_enabled == '1' %}checked{% endif %}>
+                    Mostrar ranking de Free Fire
+                </label>
+                <p class="form-hint">Visible en el header y en el modal público. Puedes ocultarlo de forma independiente.</p>
+            </div>
+            <div class="form-group">
+                <label for="ranking_free_fire_game_id">Juego asociado a Free Fire</label>
+                <select id="ranking_free_fire_game_id" name="ranking_free_fire_game_id">
+                    <option value="">Selecciona un juego</option>
+                    {% for game in ranking_games %}
+                    <option value="{{ game.id }}" {% if ranking_settings.ranking_free_fire_game_id == game.id|string %}selected{% endif %}>{{ game.name }} (#{{ game.id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="check-label" style="margin-top:30px;">
+                    <input type="checkbox" name="ranking_blood_strike_enabled" value="1"
+                           {% if ranking_settings.ranking_blood_strike_enabled == '1' %}checked{% endif %}>
+                    Mostrar ranking de Blood Strike
+                </label>
+                <p class="form-hint">Se comporta igual que Free Fire, pero con tabla independiente y activación separada.</p>
+            </div>
+            <div class="form-group">
+                <label for="ranking_blood_strike_game_id">Juego asociado a Blood Strike</label>
+                <select id="ranking_blood_strike_game_id" name="ranking_blood_strike_game_id">
+                    <option value="">Selecciona un juego</option>
+                    {% for game in ranking_games %}
+                    <option value="{{ game.id }}" {% if ranking_settings.ranking_blood_strike_game_id == game.id|string %}selected{% endif %}>{{ game.name }} (#{{ game.id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="ranking-prize-config-grid">
+            <div class="admin-card ranking-prize-card" data-ranking-key="free_fire">
+                <div class="card-header">
+                    <h3>Premios Automáticos: Top Free Fire</h3>
+                </div>
+                <div class="table-wrap">
+                    <table class="admin-table ranking-prize-table">
+                        <thead>
+                            <tr>
+                                <th>Puesto</th>
+                                <th>Premio visible</th>
+                                <th>Paquete que se entregará</th>
+                                <th>Auto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for position in ranking_prize_positions %}
+                            {% set row = ranking_prize_settings['free_fire'][position] %}
+                            <tr>
+                                <td>#{{ position }}</td>
+                                <td>{{ row.reward_label }}</td>
+                                <td>
+                                    <select name="ranking_free_fire_prize_package_{{ position }}"
+                                            class="ranking-prize-select"
+                                            data-ranking-key="free_fire"
+                                            data-selected="{{ row.package_id }}">
+                                        <option value="">Selecciona un paquete</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <label class="check-label">
+                                        <input type="checkbox" name="ranking_free_fire_prize_auto_{{ position }}" value="1"
+                                               {% if row.auto == '1' %}checked{% endif %}>
+                                        Activar
+                                    </label>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="admin-card ranking-prize-card" data-ranking-key="blood_strike">
+                <div class="card-header">
+                    <h3>Premios Automáticos: Top Blood Strike</h3>
+                </div>
+                <div class="table-wrap">
+                    <table class="admin-table ranking-prize-table">
+                        <thead>
+                            <tr>
+                                <th>Puesto</th>
+                                <th>Premio visible</th>
+                                <th>Paquete que se entregará</th>
+                                <th>Auto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for position in ranking_prize_positions %}
+                            {% set row = ranking_prize_settings['blood_strike'][position] %}
+                            <tr>
+                                <td>#{{ position }}</td>
+                                <td>{{ row.reward_label }}</td>
+                                <td>
+                                    <select name="ranking_blood_strike_prize_package_{{ position }}"
+                                            class="ranking-prize-select"
+                                            data-ranking-key="blood_strike"
+                                            data-selected="{{ row.package_id }}">
+                                        <option value="">Selecciona un paquete</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <label class="check-label">
+                                        <input type="checkbox" name="ranking_blood_strike_prize_auto_{{ position }}" value="1"
+                                               {% if row.auto == '1' %}checked{% endif %}>
+                                        Activar
+                                    </label>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <div class="modal-actions" style="margin-top:18px;">
             <button type="submit" class="btn-primary">Guardar configuración</button>
         </div>
@@ -217,6 +342,61 @@
 
 <script>
 (function() {
+    var rankingPackagesByGame = {{ ranking_packages_by_game|tojson }};
+
+    function fillRankingPrizeSelects(rankingKey) {
+        var gameSelect = document.getElementById('ranking_' + rankingKey + '_game_id');
+        var enabledInput = document.querySelector('input[name="ranking_' + rankingKey + '_enabled"]');
+        var card = document.querySelector('.ranking-prize-card[data-ranking-key="' + rankingKey + '"]');
+        var selects = document.querySelectorAll('.ranking-prize-select[data-ranking-key="' + rankingKey + '"]');
+        var gameId = gameSelect ? String(gameSelect.value || '') : '';
+        var options = rankingPackagesByGame[gameId] || [];
+        var shouldShow = !!(enabledInput && enabledInput.checked && gameId);
+
+        if (card) {
+            card.style.opacity = shouldShow ? '1' : '.55';
+        }
+
+        selects.forEach(function(select) {
+            var selectedValue = select.getAttribute('data-selected') || select.value || '';
+            select.innerHTML = '<option value="">Selecciona un paquete</option>';
+
+            options.forEach(function(pkg) {
+                var option = document.createElement('option');
+                option.value = String(pkg.id);
+                option.textContent = '#' + pkg.id + ' · ' + pkg.name + (pkg.is_automated ? ' · Auto' : '');
+                if (String(pkg.id) === String(selectedValue)) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+
+            select.disabled = !shouldShow;
+        });
+    }
+
+    ['free_fire', 'blood_strike'].forEach(function(rankingKey) {
+        fillRankingPrizeSelects(rankingKey);
+
+        var gameSelect = document.getElementById('ranking_' + rankingKey + '_game_id');
+        var enabledInput = document.querySelector('input[name="ranking_' + rankingKey + '_enabled"]');
+
+        if (gameSelect) {
+            gameSelect.addEventListener('change', function() {
+                document.querySelectorAll('.ranking-prize-select[data-ranking-key="' + rankingKey + '"]').forEach(function(select) {
+                    select.setAttribute('data-selected', '');
+                });
+                fillRankingPrizeSelects(rankingKey);
+            });
+        }
+
+        if (enabledInput) {
+            enabledInput.addEventListener('change', function() {
+                fillRankingPrizeSelects(rankingKey);
+            });
+        }
+    });
+
     // Load current values on page load
     function loadVerifyConfig() {
         fetch('/admin/config/active_login_game', {credentials: 'same-origin'})

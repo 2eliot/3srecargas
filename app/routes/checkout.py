@@ -7,7 +7,7 @@ from flask import (
     Blueprint, render_template, request, redirect,
     url_for, flash, session, abort, current_app, jsonify
 )
-from flask_login import current_user
+from flask_login import current_user, login_user, logout_user
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
@@ -29,6 +29,7 @@ from ..utils.binance_pay import (
 )
 from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
+from ..utils.auth_accounts import attach_matching_orders_to_customer, extract_customer_identifier_for_game, get_or_create_scoped_customer
 
 checkout_bp = Blueprint('checkout_bp', __name__)
 
@@ -229,6 +230,10 @@ def checkout(package_id):
                 if not player_id:
                     flash('Debes ingresar tu correo electrónico.', 'danger')
                     return redirect(url_for('main_bp.index'))
+            elif tarjetas_without_id:
+                if not email:
+                    flash('Debes ingresar el correo de entrega para esta tarjeta o gift card.', 'danger')
+                    return redirect(url_for('main_bp.index'))
             elif not tarjetas_without_id:
                 if not player_id:
                     flash(f'{game.player_id_label} es obligatorio.', 'danger')
@@ -243,6 +248,24 @@ def checkout(package_id):
                 'payment_method': payment_method,
                 'affiliate_code': aff_code,
             }
+
+            identity_meta = extract_customer_identifier_for_game(game, player_id=player_id, email=email)
+            identifier_value = (identity_meta.get('identifier') or '').strip()
+            if identifier_value and current_user.__class__.__name__ != 'AdminUser':
+                scoped_user = get_or_create_scoped_customer(
+                    scope_key=identity_meta['scope_key'],
+                    scope_label=identity_meta['scope_label'],
+                    raw_identifier=identifier_value,
+                    account_kind=identity_meta['account_kind'],
+                    contact_email=email,
+                    phone=phone,
+                )
+                if scoped_user:
+                    attach_matching_orders_to_customer(scoped_user, game.id, identifier_value, identity_meta['account_kind'])
+                    if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.id != scoped_user.id:
+                        logout_user()
+                    login_user(scoped_user)
+
             session['checkout_data'] = checkout_data
             session['last_payment_method'] = payment_method
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))

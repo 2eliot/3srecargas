@@ -217,34 +217,50 @@
                     <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
                 {% endif %}
             </a>
-            {% if current_user.is_authenticated %}
-                {% if current_user.__class__.__name__ == 'AdminUser' %}
-                    <a href="{{ url_for('admin_bp.dashboard') }}" class="btn-admin">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                            <circle cx="12" cy="7" r="4"/>
-                        </svg>
-                        Panel Admin
+                <div class="header-actions">
+                  <button type="button" class="header-action-btn" id="openRankingModalBtn">
+                    <span class="header-action-icon header-action-icon-ranking">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M8 21h8"/>
+                        <path d="M12 17v4"/>
+                        <path d="M7 4h10v4a5 5 0 0 1-10 0z"/>
+                        <path d="M5 6H3a2 2 0 0 0 0 4h2"/>
+                        <path d="M19 6h2a2 2 0 0 1 0 4h-2"/>
+                      </svg>
+                    </span>
+                    <span class="header-action-label" data-short="Rank">Ranking</span>
+                  </button>
+                  <button type="button" class="header-action-btn" id="openSupportModalBtn">
+                    <span class="header-action-icon header-action-icon-support">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884"/></svg>
+                    </span>
+                    <span class="header-action-label" data-short="Ayuda">Soporte</span>
+                  </button>
+                  {% if current_user.is_authenticated %}
+                    {% if current_user.__class__.__name__ == 'AdminUser' %}
+                    <a href="{{ url_for('admin_bp.dashboard') }}" class="header-action-btn header-action-link">
+                      <span class="header-action-icon header-action-icon-user">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      </span>
+                      <span class="header-action-label" data-short="Admin">Panel Admin</span>
                     </a>
-                {% else %}
-                    <a href="{{ url_for('auth_bp.profile') }}" class="btn-admin">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                            <circle cx="12" cy="7" r="4"/>
-                        </svg>
-                        Mi Perfil
+                    {% else %}
+                    <a href="{{ url_for('auth_bp.profile') }}" class="header-action-btn header-action-link">
+                      <span class="header-action-icon header-action-icon-user">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      </span>
+                      <span class="header-action-label" data-short="Perfil">Mi Perfil</span>
                     </a>
-                {% endif %}
-            {% else %}
-                <a href="{{ url_for('auth_bp.login') }}" class="btn-admin">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
-                        <polyline points="10 17 15 12 10 7"/>
-                        <line x1="15" y1="12" x2="3" y2="12"/>
-                    </svg>
-                    Iniciar Sesión
-                </a>
-            {% endif %}
+                    {% endif %}
+                  {% else %}
+                  <a href="{{ url_for('auth_bp.login') }}" class="header-action-btn header-action-link">
+                    <span class="header-action-icon header-action-icon-login">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    </span>
+                    <span class="header-action-label" data-short="Entrar">Iniciar Sesión</span>
+                  </a>
+                  {% endif %}
+                </div>
         </div>
     </header>
 
@@ -262,6 +278,47 @@
     {% endwith %}
 
     {% block content %}{% endblock %}
+
+  <div class="overlay-modal" id="rankingModal" style="display:none" aria-hidden="true">
+    <div class="overlay-modal-card ranking-modal-card" role="dialog" aria-modal="true" aria-labelledby="rankingModalTitle">
+      <div class="overlay-modal-header">
+        <div>
+          <h2 id="rankingModalTitle">RANKING MENSUAL</h2>
+        </div>
+        <button type="button" class="overlay-close-btn" id="rankingModalCloseBtn">✕</button>
+      </div>
+      <div class="ranking-tabs" id="rankingTabs"></div>
+      <div class="ranking-status" id="rankingStatus">Cargando ranking...</div>
+      <div class="ranking-board" id="rankingBoard" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="overlay-modal" id="supportModal" style="display:none" aria-hidden="true">
+    <div class="overlay-modal-card support-modal-card" role="dialog" aria-modal="true" aria-labelledby="supportModalTitle">
+      <div class="overlay-modal-header">
+        <div>
+          <h2 id="supportModalTitle">CENTRO DE SOPORTE</h2>
+          <p>Por favor, indícanos los detalles de tu pedido.</p>
+        </div>
+        <button type="button" class="overlay-close-btn" id="supportModalCloseBtn">✕</button>
+      </div>
+      <form id="supportForm" class="support-form">
+        <div class="support-field">
+          <label for="supportOrderIdentity">ID de jugador o Correo del pedido</label>
+          <input type="text" id="supportOrderIdentity" placeholder="Ej: 55678210 o cliente@correo.com" required>
+        </div>
+        <div class="support-field">
+          <label for="supportGame">Juego o Servicio</label>
+          <input type="text" id="supportGame" placeholder="Ej: Free Fire / Blood Strike / Netflix" required>
+        </div>
+        <div class="support-field">
+          <label for="supportReason">Motivo breve</label>
+          <textarea id="supportReason" rows="4" placeholder="Describe brevemente el inconveniente..." required></textarea>
+        </div>
+        <button type="submit" class="support-submit-btn">INICIAR SOPORTE</button>
+      </form>
+    </div>
+  </div>
 
     <!-- Footer -->
     <footer class="main-footer">
@@ -344,6 +401,10 @@
     </footer>
 
     {% block extra_js %}{% endblock %}
+    <script>
+      window.SUPPORT_WHATSAPP_URL = {{ SUPPORT_WHATSAPP_URL|tojson }};
+      window.HAS_ACTIVE_RANKING = {{ 'true' if HAS_ACTIVE_RANKING else 'false' }};
+    </script>
     
     <!-- Main JS loaded at end of body for DOM readiness -->
     <script src="{{ url_for('static', filename='js/main.js') }}?v={{ range(100000)|random }}"></script>

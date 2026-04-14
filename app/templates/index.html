@@ -23,6 +23,10 @@
     <div class="store-main">
         <!-- Game Section -->
         <section class="games-section" id="gamesSection">
+            <div class="games-section-header">
+                <p class="section-kicker">Selecciona tu juego</p>
+            </div>
+
             <div class="games-carousel">
                 <button class="carousel-nav prev" id="gamesPrev" aria-label="Anterior">
                     <span>‹</span>
@@ -58,28 +62,14 @@
                     <span>›</span>
                 </button>
             </div>
-
-            <!-- Packages Panel – inserted into grid via JS -->
-            <div class="packages-panel" id="packagesPanel" style="display:none">
-                <div class="packages-panel-header">
-                    <div class="panel-title-row">
-                        <span class="panel-game-icon" id="panelGameIcon"></span>
-                        <h3 id="packagesPanelTitle"></h3>
-                    </div>
-                    <button class="close-packages-btn" onclick="closePackages()" aria-label="Cerrar">✕</button>
-                </div>
-                <p class="panel-hint">Selecciona un paquete para continuar</p>
-                <div class="packages-grid" id="packagesGrid">
-                    <div class="pkg-loading">
-                        <div class="spinner"></div>
-                    </div>
-                </div>
-            </div>
-
         </section>
 
         <!-- Quick Checkout Sidebar -->
         <aside class="order-sidebar">
+            <div class="order-sidebar-header">
+                <h2 class="order-sidebar-title" id="sidebarTitle">Completa tu compra</h2>
+                <p class="order-sidebar-subtitle" id="sidebarGameName">Selecciona un paquete para continuar.</p>
+            </div>
 
             <form method="POST" id="quickCheckoutForm">
                 <input type="hidden" name="stage" value="init">
@@ -110,6 +100,59 @@
                     </div>
                 </div>
 
+                <div class="step-card step-card-discount">
+                    <div class="step-card-header step-card-header-inline">
+                        <button type="button" class="step-badge step-badge-alt" id="discountInfoTrigger" aria-label="Información sobre código de descuento">?</button>
+                        <div>
+                            <h3 class="step-title">Si no lo tienes, ignoralo</h3>
+                        </div>
+                    </div>
+                    <div class="discount-box discount-box-inline">
+                        <label for="affiliate_code">CÓDIGO DE DESCUENTO (opcional)</label>
+                        <div class="discount-inline-row">
+                            <input type="text" id="affiliate_code" name="affiliate_code"
+                                   placeholder="CÓDIGO" style="text-transform:uppercase">
+                            <button type="button" class="discount-toggle-action" id="applyDiscountBtn">Aplicar</button>
+                        </div>
+                        <p class="discount-apply-feedback" id="discountApplyFeedback" aria-live="polite"></p>
+                    </div>
+                </div>
+
+                <div class="step-card step-card-packages">
+                    <div class="step-card-header">
+                        <div class="step-badge">2</div>
+                        <div>
+                            <h3 class="step-title">Selecciona tu paquete</h3>
+                        </div>
+                    </div>
+                    <div class="step-body">
+                        <div id="packagesPanelHost">
+                            <div class="packages-panel packages-panel-sidebar" id="packagesPanel" style="display:none">
+                                <div class="packages-panel-header">
+                                    <div class="panel-title-row">
+                                        <span class="panel-game-icon" id="panelGameIcon"></span>
+                                        <h3 id="packagesPanelTitle"></h3>
+                                    </div>
+                                    <button class="close-packages-btn" onclick="closePackages()" aria-label="Cerrar">✕</button>
+                                </div>
+                                <p class="panel-hint">Selecciona un paquete para continuar</p>
+                                <div class="packages-grid" id="packagesGrid">
+                                    <div class="pkg-loading">
+                                        <div class="spinner"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="total-row total-row-emphasis">
+                            <span>Total</span>
+                            <div class="total-values">
+                                <span id="sidebarTotal">-</span>
+                                <span id="sidebarTotalBs" class="total-bs d-none">≈ Bs 0,00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Paso 3: Método de pago -->
                 <div class="step-card">
                     <div class="step-card-header">
@@ -136,6 +179,7 @@
                                        data-show-contact-phone="{{ 1 if m.show_contact_phone else 0 }}"
                                        {% if loop.first %}checked{% endif %}>
                                 <div class="payment-card-inner">
+                                    <span class="payment-card-check" aria-hidden="true"></span>
                                     {% if m.logo %}
                                     <img src="{{ url_for('static', filename='uploads/' + m.logo) }}"
                                          alt="{{ m.name }}" class="payment-logo">
@@ -145,13 +189,6 @@
                                 </div>
                             </label>
                             {% endfor %}
-                        </div>
-                        <div class="total-row">
-                            <span>Total</span>
-                            <div class="total-values">
-                                <span id="sidebarTotal">-</span>
-                                <span id="sidebarTotalBs" class="total-bs d-none">≈ Bs 0,00</span>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -171,17 +208,56 @@
                                 <input type="email" id="email" name="email" placeholder="Correo de contacto">
                             </div>
                             <div class="form-group">
-                                <label for="phone">Número de teléfono</label>
-                                <input type="tel" id="phone" name="phone" placeholder="Número de teléfono">
+                                <label for="phoneLocal">Número de teléfono <span class="label-accent">(whatsapp)</span></label>
+                                <div class="phone-field-stack" id="phoneFieldStack">
+                                    <div class="phone-input-shell">
+                                        <div class="phone-prefix-box">
+                                            <button type="button" class="phone-country-trigger" id="phoneCountryTrigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Prefijo del país">
+                                                <span class="phone-country-display" id="phoneCountryDisplay">🇻🇪 +58</span>
+                                            </button>
+                                            <select id="phoneCountryCode" class="phone-country-select" aria-label="Prefijo del país" tabindex="-1">
+                                                <option value="+58" data-flag="🇻🇪" selected>🇻🇪 +58</option>
+                                                <option value="+57" data-flag="🇨🇴">🇨🇴 +57</option>
+                                                <option value="+52" data-flag="🇲🇽">🇲🇽 +52</option>
+                                                <option value="+51" data-flag="🇵🇪">🇵🇪 +51</option>
+                                                <option value="+56" data-flag="🇨🇱">🇨🇱 +56</option>
+                                                <option value="+54" data-flag="🇦🇷">🇦🇷 +54</option>
+                                                <option value="+593" data-flag="🇪🇨">🇪🇨 +593</option>
+                                                <option value="+1" data-flag="🇺🇸">🇺🇸 +1</option>
+                                                <option value="+55" data-flag="🇧🇷">🇧🇷 +55</option>
+                                                <option value="+591" data-flag="🇧🇴">🇧🇴 +591</option>
+                                                <option value="+595" data-flag="🇵🇾">🇵🇾 +595</option>
+                                                <option value="+598" data-flag="🇺🇾">🇺🇾 +598</option>
+                                                <option value="+507" data-flag="🇵🇦">🇵🇦 +507</option>
+                                                <option value="+34" data-flag="🇪🇸">🇪🇸 +34</option>
+                                                <option value="+1809" data-flag="🇩🇴">🇩🇴 +1809</option>
+                                            </select>
+                                        </div>
+                                        <input type="tel" id="phoneLocal" inputmode="tel" autocomplete="tel-national" placeholder="Número de teléfono">
+                                        <input type="hidden" id="phone" name="phone">
+                                    </div>
+                                    <div class="phone-country-menu" id="phoneCountryMenu" role="listbox" aria-label="Países">
+                                        <button type="button" class="phone-country-option is-selected" data-code="+58" data-flag="🇻🇪" role="option" aria-selected="true">🇻🇪 Venezuela <strong>+58</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+57" data-flag="🇨🇴" role="option" aria-selected="false">🇨🇴 Colombia <strong>+57</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+52" data-flag="🇲🇽" role="option" aria-selected="false">🇲🇽 México <strong>+52</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+51" data-flag="🇵🇪" role="option" aria-selected="false">🇵🇪 Perú <strong>+51</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+56" data-flag="🇨🇱" role="option" aria-selected="false">🇨🇱 Chile <strong>+56</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+54" data-flag="🇦🇷" role="option" aria-selected="false">🇦🇷 Argentina <strong>+54</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+593" data-flag="🇪🇨" role="option" aria-selected="false">🇪🇨 Ecuador <strong>+593</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+1" data-flag="🇺🇸" role="option" aria-selected="false">🇺🇸 Estados Unidos <strong>+1</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+55" data-flag="🇧🇷" role="option" aria-selected="false">🇧🇷 Brasil <strong>+55</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+591" data-flag="🇧🇴" role="option" aria-selected="false">🇧🇴 Bolivia <strong>+591</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+595" data-flag="🇵🇾" role="option" aria-selected="false">🇵🇾 Paraguay <strong>+595</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+598" data-flag="🇺🇾" role="option" aria-selected="false">🇺🇾 Uruguay <strong>+598</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+507" data-flag="🇵🇦" role="option" aria-selected="false">🇵🇦 Panamá <strong>+507</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+34" data-flag="🇪🇸" role="option" aria-selected="false">🇪🇸 España <strong>+34</strong></button>
+                                        <button type="button" class="phone-country-option" data-code="+1809" data-flag="🇩🇴" role="option" aria-selected="false">🇩🇴 Rep. Dominicana <strong>+1809</strong></button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div class="discount-box">
-                            <label for="affiliate_code">CÓDIGO DE DESCUENTO (opcional)</label>
-                            <input type="text" id="affiliate_code" name="affiliate_code"
-                                   placeholder="CÓDIGO" style="text-transform:uppercase">
-                        </div>
                         <label class="checkbox-row">
-                            <input type="checkbox" name="remember_data">
+                            <input type="checkbox" name="remember_data" id="rememberData">
                             <span>Guardar datos para futuras compras</span>
                         </label>
                     </div>
@@ -196,6 +272,41 @@
             </form>
         </aside>
     </div>
+
+    <div class="store-popup-overlay" id="manualInfoPopup" style="display:none" aria-hidden="true">
+        <div class="store-popup-card" role="dialog" aria-modal="true" aria-labelledby="manualInfoTitle">
+            <div class="store-popup-header">
+                <span id="manualInfoTitle">AVISO: RECARGA MANUAL</span>
+            </div>
+            <div class="store-popup-body">
+                <p class="store-popup-lead">M. basica - m semanal - m mensual no se hacen en automatico</p>
+                <ul class="store-popup-list">
+                    <li>Nuestro horario de atención para procesar estas recargas es de <strong>10:00 AM a 10:00 PM</strong>.</li>
+                    <li>No te preocupes. Te atenderemos <strong>LO MÁS RÁPIDO POSIBLE</strong> para que no dejes de jugar.</li>
+                </ul>
+            </div>
+            <div class="store-popup-actions">
+                <button type="button" class="store-popup-confirm" id="manualInfoCloseBtn">ENTIENDO, CONTINUAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="store-popup-overlay" id="discountInfoPopup" style="display:none" aria-hidden="true">
+        <div class="store-popup-card" role="dialog" aria-modal="true" aria-labelledby="discountInfoTitle">
+            <div class="store-popup-header">
+                <span id="discountInfoTitle">AVISO: CÓDIGO DE DESCUENTO</span>
+            </div>
+            <div class="store-popup-body">
+                <p class="store-popup-lead">Si tienes un código de descuento puedes colocarlo aquí, para tener una rebaja de precios.</p>
+                <ul class="store-popup-list">
+                    <li>Si no lo tienes, ignora este paso y sigue con tu recarga.</li>
+                </ul>
+            </div>
+            <div class="store-popup-actions">
+                <button type="button" class="store-popup-confirm" id="discountInfoCloseBtn">ENTIENDO, CONTINUAR</button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -204,6 +315,10 @@
     window.ACTIVE_CATEGORY = "{{ active_category.slug }}";
     window.USD_RATE_BS = {{ usd_rate|default(0)|safe }};
     window.DEFAULT_PACKAGE_ID = {{ default_package_id if default_package_id is not none else 'null'|safe }};
+    window.CONTACT_PREFILL = {
+        email: {{ (current_user.preferred_contact_email if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.preferred_contact_email else '')|tojson }},
+        phone: {{ (current_user.phone if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.phone else '')|tojson }}
+    };
     
     // Cargar descuentos válidos
     fetch('/api/discounts')

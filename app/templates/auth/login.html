@@ -94,6 +94,15 @@
         .auth-link a:hover {
             text-decoration: underline;
         }
+        .auth-helper {
+            background: rgba(255,255,255,.03);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px 14px;
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-bottom: 18px;
+        }
         .flash {
             padding: 12px;
             border-radius: var(--radius-sm);
@@ -115,6 +124,52 @@
             border: 1px solid rgba(59,130,246,0.3);
             color: var(--info);
         }
+        .flash-warning {
+            background: rgba(245,158,11,0.1);
+            border: 1px solid rgba(245,158,11,0.3);
+            color: var(--warning);
+        }
+        .admin-popup {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 1200;
+        }
+        .admin-popup-card {
+            width: min(100%, 420px);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 24px;
+        }
+        .admin-popup-card h3 {
+            margin-bottom: 8px;
+        }
+        .admin-popup-card p {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        .admin-popup-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        .admin-popup-actions button {
+            flex: 1;
+            min-height: 44px;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+        }
+        .admin-cancel-btn {
+            background: rgba(255,255,255,.06);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
     </style>
 </head>
 <body>
@@ -133,7 +188,7 @@
             <div class="auth-header">
                 <div class="auth-logo">3S Recargas</div>
                 <h1 class="auth-title">Iniciar Sesión</h1>
-                <p class="auth-subtitle">Ingresa tus datos para acceder (clientes y administradores)</p>
+                <p class="auth-subtitle">Accede con tu ID o correo del servicio. Tu historial se separa por juego o servicio.</p>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -144,26 +199,111 @@
                 {% endif %}
             {% endwith %}
 
-            <form method="POST">
+            <div class="auth-helper">
+                Clientes: selecciona el servicio y escribe tu ID, correo o cuenta asociada. No necesitas contraseña. Si ese historial ya existe, entras directamente.
+            </div>
+
+            <form method="POST" id="customerLoginForm">
+                <input type="hidden" name="admin_password" id="adminPasswordField">
                 <div class="form-group">
-                    <label for="username">Usuario o Correo</label>
-                    <input type="text" id="username" name="username" required 
-                           placeholder="Usuario o correo@ejemplo.com" autocomplete="username">
+                    <label for="service_id">Juego o Servicio</label>
+                    <select id="service_id" name="service_id">
+                        <option value="">Selecciona dónde hiciste tu compra</option>
+                        {% for game in active_games %}
+                        <option value="{{ game.id }}">{{ game.name }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
-                
                 <div class="form-group">
-                    <label for="password">Contraseña</label>
-                    <input type="password" id="password" name="password" required 
-                           placeholder="Tu contraseña" autocomplete="current-password">
+                    <label for="identifier">ID, Correo o Cuenta</label>
+                    <input type="text" id="identifier" name="identifier" required 
+                           placeholder="Ej: 55678210, correo@ejemplo.com o Pay ID" autocomplete="username">
                 </div>
-                
-                <button type="submit" class="submit-btn">Iniciar Sesión</button>
+
+                <button type="submit" class="submit-btn">Continuar</button>
             </form>
 
             <div class="auth-link">
-                <p>¿No tienes cuenta? <a href="{{ url_for('auth_bp.register') }}">Crear Cuenta</a></p>
+                <p>No necesitas registro previo. <a href="{{ url_for('main_bp.index') }}">Haz tu compra desde la tienda</a></p>
             </div>
         </div>
     </main>
+
+    <div class="admin-popup" id="adminPasswordPopup" aria-hidden="true">
+        <div class="admin-popup-card">
+            <h3>Acceso de Administrador</h3>
+            <p>Ese correo corresponde a la cuenta administrativa. Ingresa la clave para continuar.</p>
+            <div class="form-group" style="margin-bottom:0;">
+                <label for="adminPasswordInput">Clave admin</label>
+                <input type="password" id="adminPasswordInput" placeholder="••••••••" autocomplete="current-password">
+            </div>
+            <div class="admin-popup-actions">
+                <button type="button" class="admin-cancel-btn" id="adminPopupCancelBtn">Cancelar</button>
+                <button type="button" class="submit-btn" id="adminPopupConfirmBtn" style="margin-top:0;">Entrar como admin</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            var form = document.getElementById('customerLoginForm');
+            var identifierInput = document.getElementById('identifier');
+            var serviceInput = document.getElementById('service_id');
+            var adminPasswordField = document.getElementById('adminPasswordField');
+            var adminPopup = document.getElementById('adminPasswordPopup');
+            var adminPasswordInput = document.getElementById('adminPasswordInput');
+            var adminPopupConfirmBtn = document.getElementById('adminPopupConfirmBtn');
+            var adminPopupCancelBtn = document.getElementById('adminPopupCancelBtn');
+            var adminEmail = {{ admin_email_hint|tojson }};
+
+            function openAdminPopup() {
+                if (!adminPopup) return;
+                adminPopup.style.display = 'flex';
+                adminPopup.setAttribute('aria-hidden', 'false');
+                if (adminPasswordInput) adminPasswordInput.focus();
+            }
+
+            function closeAdminPopup() {
+                if (!adminPopup) return;
+                adminPopup.style.display = 'none';
+                adminPopup.setAttribute('aria-hidden', 'true');
+                if (adminPasswordInput) adminPasswordInput.value = '';
+                if (adminPasswordField) adminPasswordField.value = '';
+            }
+
+            if (adminPopupCancelBtn) {
+                adminPopupCancelBtn.addEventListener('click', closeAdminPopup);
+            }
+
+            if (adminPopupConfirmBtn) {
+                adminPopupConfirmBtn.addEventListener('click', function () {
+                    if (!adminPasswordInput || !adminPasswordInput.value.trim()) {
+                        adminPasswordInput.focus();
+                        return;
+                    }
+                    adminPasswordField.value = adminPasswordInput.value.trim();
+                    form.submit();
+                });
+            }
+
+            if (form) {
+                form.addEventListener('submit', function (event) {
+                    var identifier = (identifierInput && identifierInput.value || '').trim().toLowerCase();
+                    var adminMatch = adminEmail && identifier && identifier === String(adminEmail).trim().toLowerCase();
+
+                    if (adminMatch && !adminPasswordField.value) {
+                        event.preventDefault();
+                        openAdminPopup();
+                        return;
+                    }
+
+                    if (!adminMatch && serviceInput && !serviceInput.value) {
+                        event.preventDefault();
+                        serviceInput.focus();
+                    }
+                });
+            }
+        })();
+    </script>
 </body>
 </html>

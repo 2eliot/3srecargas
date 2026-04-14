@@ -168,6 +168,22 @@
         <p class="refresh-hint">Esta orden será revisada manualmente por nuestro equipo.</p>
         {% endif %}
 
+        {% if is_manual_order and order.status in ['pending', 'approved'] %}
+        <div class="manual-order-whatsapp-card">
+            <div class="manual-order-whatsapp-copy">
+                <h3>Finaliza tu pedido manual por WhatsApp</h3>
+                <p>Envianos tu numero de pedido para concretar la recarga con soporte.</p>
+            </div>
+            <button
+                type="button"
+                class="manual-order-whatsapp-btn"
+                id="manualOrderWhatsAppBtn"
+                data-message="Hola, ya complete mi pedido manual y necesito finalizar la recarga.%0A%0ANumero de pedido: #{{ order.order_number }}%0AJuego: {{ order.game.name|replace('%', '%25')|replace('\n', ' ') }}%0APaquete adquirido: {{ order.package.name|replace('%', '%25')|replace('\n', ' ') }}{% if order.player_id %}%0A{{ order.game.player_id_label|replace('%', '%25')|replace('\n', ' ') }}: {{ order.player_id|replace('%', '%25')|replace('\n', ' ') }}{% endif %}{% if order.zone_id %}%0A{{ order.game.zone_id_label|replace('%', '%25')|replace('\n', ' ') }}: {{ order.zone_id|replace('%', '%25')|replace('\n', ' ') }}{% endif %}">
+                CONTINUAR PEDIDO EN WHATSAPP
+            </button>
+        </div>
+        {% endif %}
+
         {% if order.pin_delivered and order.game.category and order.game.category.slug == 'tarjetas' %}
         <div class="pin-reveal">
             <p class="pin-label">Tu PIN / Código</p>
@@ -272,6 +288,38 @@
 })();
 </script>
 {% endif %}
+<script>
+(function () {
+    function normalizeWhatsAppTarget(raw) {
+        if (raw === null || raw === undefined) return '';
+        var text = String(raw).trim();
+        if (!text) return '';
+
+        var phoneParamMatch = text.match(/[?&]phone=(\d+)/i);
+        if (phoneParamMatch) {
+            return phoneParamMatch[1];
+        }
+
+        var waMatch = text.match(/wa\.me\/(\d+)/i);
+        if (waMatch) {
+            return waMatch[1];
+        }
+
+        return text.replace(/\D/g, '');
+    }
+
+    var manualOrderWhatsAppBtn = document.getElementById('manualOrderWhatsAppBtn');
+    if (!manualOrderWhatsAppBtn) return;
+
+    manualOrderWhatsAppBtn.addEventListener('click', function () {
+        var target = normalizeWhatsAppTarget(window.SUPPORT_WHATSAPP_URL || '');
+        if (!target) return;
+        var rawMessage = manualOrderWhatsAppBtn.getAttribute('data-message') || '';
+        var url = 'https://wa.me/' + target + '?text=' + rawMessage;
+        window.open(url, '_blank', 'noopener');
+    });
+})();
+</script>
 {% if auto_verify_allowed %}
 <script>
 (function () {

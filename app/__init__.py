@@ -1,5 +1,6 @@
 import os
 from flask import Flask
+from flask_login import current_user
 from flask_login import LoginManager
 from sqlalchemy import text
 from .models import db, AdminUser, User, Category, Discount, Setting
@@ -15,22 +16,44 @@ def create_app(config_class=Config):
 
     db.init_app(app)
     login_manager.init_app(app)
-    login_manager.login_view = 'admin_bp.login'
-    login_manager.login_message = 'Inicia sesión para acceder al panel.'
+    login_manager.login_view = 'auth_bp.login'
+    login_manager.login_message = 'Inicia sesión para continuar.'
     login_manager.login_message_category = 'warning'
 
     @login_manager.user_loader
     def load_user(user_id):
-        # Intentar cargar como User primero, luego como AdminUser
-        try:
-            user_id_int = int(user_id)
-        except (TypeError, ValueError):
+        raw_id = str(user_id or '').strip()
+        if not raw_id:
             return None
 
+        if ':' in raw_id:
+            user_type, _, user_pk = raw_id.partition(':')
+            try:
+                user_pk = int(user_pk)
+            except (TypeError, ValueError):
+                return None
+            if user_type == 'user':
+                return User.query.get(user_pk)
+            if user_type == 'admin':
+                return AdminUser.query.get(user_pk)
+            return None
+
+        try:
+            user_id_int = int(raw_id)
+        except (TypeError, ValueError):
+            return None
         user = User.query.get(user_id_int)
         if user:
             return user
         return AdminUser.query.get(user_id_int)
+
+    @login_manager.unauthorized_handler
+    def handle_unauthorized():
+        from flask import redirect, request, url_for
+
+        if request.path.startswith('/admin'):
+            return redirect(url_for('admin_bp.login', next=request.url))
+        return redirect(url_for('auth_bp.login', next=request.url))
 
     from .routes.main import main_bp
     from .routes.checkout import checkout_bp
@@ -38,6 +61,7 @@ def create_app(config_class=Config):
     from .routes.affiliates import affiliates_bp
     from .routes.auth import auth_bp
     from .routes.verify import verify_bp
+    from .routes.main import archive_previous_month_rankings_if_needed
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
@@ -63,13 +87,40 @@ def create_app(config_class=Config):
             val_setting = Setting.query.filter_by(key=key).first()
             social_links[key.upper()] = val_setting.value if val_setting and val_setting.value else ''
 
+        support_whatsapp_setting = Setting.query.filter_by(key='support_whatsapp').first()
+        support_whatsapp_url = support_whatsapp_setting.value if support_whatsapp_setting and support_whatsapp_setting.value else 'https://wa.me/19543789224'
+
+        ranking_keys = [
+            'ranking_free_fire_enabled',
+            'ranking_blood_strike_enabled',
+            'ranking_free_fire_game_id',
+            'ranking_blood_strike_game_id',
+        ]
+        ranking_settings = {}
+        for key in ranking_keys:
+            current_setting = Setting.query.filter_by(key=key).first()
+            ranking_settings[key] = current_setting.value if current_setting and current_setting.value else ''
+
+        has_active_ranking = bool(
+            (ranking_settings.get('ranking_free_fire_enabled') == '1' and ranking_settings.get('ranking_free_fire_game_id'))
+            or (ranking_settings.get('ranking_blood_strike_enabled') == '1' and ranking_settings.get('ranking_blood_strike_game_id'))
+        )
+
         return {
             'SITE_LOGO': site_logo,
             'SOCIAL_LINKS': social_links,
+            'SUPPORT_WHATSAPP_URL': support_whatsapp_url,
+            'RANKING_SETTINGS': ranking_settings,
+            'HAS_ACTIVE_RANKING': has_active_ranking,
             'APP_TIMEZONE': 'GMT-4',
             'APP_TIMEZONE_NAME': 'Venezuela',
             'APP_TIMEZONE_OFFSET': VENEZUELA_TIMEZONE.utcoffset(None),
         }
+
+    @app.cli.command('archive-rankings-month')
+    def archive_rankings_month_command():
+        archive_previous_month_rankings_if_needed()
+        print('Ranking mensual archivado/verificado correctamente.')
 
     with app.app_context():
         os.makedirs(app.config.get('DATA_DIR', ''), exist_ok=True)
@@ -127,11 +178,29 @@ def _ensure_user_columns():
         if db.engine.dialect.name != 'sqlite':
             return
 
-        # Agregar columna user_id a la tabla orders si no existe
         rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
         existing = {r[1] for r in rows}
         if 'user_id' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN user_id INTEGER'))
+
+        user_rows = db.session.execute(text('PRAGMA table_info(users)')).fetchall()
+        user_existing = {r[1] for r in user_rows}
+        if 'account_scope' not in user_existing:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN account_scope VARCHAR(120)'))
+        if 'account_scope_label' not in user_existing:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN account_scope_label VARCHAR(120)'))
+        if 'account_identifier' not in user_existing:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN account_identifier VARCHAR(255)'))
+        if 'account_identifier_normalized' not in user_existing:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN account_identifier_normalized VARCHAR(255)'))
+        if 'account_kind' not in user_existing:
+            db.session.execute(text("ALTER TABLE users ADD COLUMN account_kind VARCHAR(50) DEFAULT 'player_id'"))
+        if 'contact_email' not in user_existing:
+            db.session.execute(text('ALTER TABLE users ADD COLUMN contact_email VARCHAR(255)'))
+
+        db.session.execute(
+            text('CREATE UNIQUE INDEX IF NOT EXISTS uq_users_scope_identifier ON users(account_scope, account_identifier_normalized)')
+        )
         
         db.session.commit()
     except Exception:

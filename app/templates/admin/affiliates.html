@@ -5,6 +5,7 @@
 {% block content %}
 <div class="page-actions">
     <button class="btn-primary" onclick="openModal('addAffModal')">+ Nuevo Afiliado</button>
+    <button class="btn-primary" onclick="openModal('addDiscountModal')">+ Nuevo Código</button>
 </div>
 
 <div class="admin-card">
@@ -67,6 +68,74 @@
                 </tr>
                 {% else %}
                 <tr><td colspan="11" class="empty-row">No hay afiliados registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header-inline">
+        <div>
+            <h3>Códigos de Descuento</h3>
+            <p class="card-subtext">Códigos independientes para campañas, canales o promociones sin correo ni cuenta asociada.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Descuento</th>
+                    <th>Límite Total</th>
+                    <th>Usos Actuales</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                    <th>Expira</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for discount in discount_codes %}
+                <tr>
+                    <td>
+                        <strong>{{ discount.code }}</strong>
+                        {% if discount.description %}
+                        <div class="table-subtext">{{ discount.description }}</div>
+                        {% endif %}
+                    </td>
+                    <td>{{ discount_value_label(discount) }}</td>
+                    <td>{{ discount.usage_limit if discount.usage_limit else 'Ilimitado' }}</td>
+                    <td>{{ discount.used_count or 0 }}</td>
+                    <td>{{ discount_kind_label(discount) }}</td>
+                    <td>
+                        <span class="badge {% if discount.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                            {{ 'Activo' if discount.is_active else 'Inactivo' }}
+                        </span>
+                    </td>
+                    <td>{{ discount.expires_at.strftime('%d/%m/%Y %H:%M') if discount.expires_at else '—' }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button
+                                class="btn-sm btn-outline"
+                                onclick='openEditDiscount({{ discount.id }}, {{ {
+                                    "code": discount.code,
+                                    "description": discount.description or "",
+                                    "discount_type": discount.discount_type,
+                                    "discount_value": discount.discount_value|string,
+                                    "usage_limit": discount.usage_limit or "",
+                                    "min_amount": discount.min_amount|string if discount.min_amount is not none else "",
+                                    "max_discount": discount.max_discount|string if discount.max_discount is not none else "",
+                                    "expires_at": discount.expires_at.strftime("%Y-%m-%dT%H:%M") if discount.expires_at else "",
+                                    "is_active": discount.is_active
+                                }|tojson|safe }})'>
+                                Editar
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="empty-row">No hay códigos de descuento registrados.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -176,6 +245,128 @@
         </form>
     </div>
 </div>
+
+<div class="modal-overlay" id="addDiscountModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>Nuevo Código de Descuento</h3>
+            <button onclick="closeModal('addDiscountModal')">✕</button>
+        </div>
+        <form method="POST" action="{{ url_for('admin_bp.discount_code_add') }}">
+            <div class="form-group">
+                <label>Código *</label>
+                <input type="text" name="code" required maxlength="20" placeholder="PROMO10" style="text-transform:uppercase">
+            </div>
+            <div class="form-group">
+                <label>Descripción</label>
+                <input type="text" name="description" placeholder="Promo para canal o campaña puntual">
+            </div>
+            <div class="form-row form-row-2">
+                <div class="form-group">
+                    <label>Tipo *</label>
+                    <select name="discount_type" required>
+                        <option value="percentage">Porcentaje (%)</option>
+                        <option value="fixed">Monto fijo ($)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Valor *</label>
+                    <input type="number" name="discount_value" min="0.01" step="0.01" required placeholder="10">
+                </div>
+            </div>
+            <div class="form-row form-row-2">
+                <div class="form-group">
+                    <label>Límite total de usos</label>
+                    <input type="number" name="usage_limit" min="1" step="1" placeholder="Vacío = ilimitado">
+                </div>
+                <div class="form-group">
+                    <label>Monto mínimo</label>
+                    <input type="number" name="min_amount" min="0" step="0.01" placeholder="Opcional">
+                </div>
+            </div>
+            <div class="form-row form-row-2">
+                <div class="form-group">
+                    <label>Tope máximo de descuento</label>
+                    <input type="number" name="max_discount" min="0" step="0.01" placeholder="Opcional">
+                </div>
+                <div class="form-group">
+                    <label>Fecha de expiración</label>
+                    <input type="datetime-local" name="expires_at">
+                </div>
+            </div>
+            <div class="form-checks">
+                <label class="check-label">
+                    <input type="checkbox" name="is_active" checked> Activo
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('addDiscountModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Crear Código</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="editDiscountModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>Editar Código de Descuento</h3>
+            <button onclick="closeModal('editDiscountModal')">✕</button>
+        </div>
+        <form method="POST" id="editDiscountForm">
+            <div class="form-group">
+                <label>Código *</label>
+                <input type="text" name="code" id="editDiscountCode" required maxlength="20" style="text-transform:uppercase">
+            </div>
+            <div class="form-group">
+                <label>Descripción</label>
+                <input type="text" name="description" id="editDiscountDescription">
+            </div>
+            <div class="form-row form-row-2">
+                <div class="form-group">
+                    <label>Tipo *</label>
+                    <select name="discount_type" id="editDiscountType" required>
+                        <option value="percentage">Porcentaje (%)</option>
+                        <option value="fixed">Monto fijo ($)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Valor *</label>
+                    <input type="number" name="discount_value" id="editDiscountValue" min="0.01" step="0.01" required>
+                </div>
+            </div>
+            <div class="form-row form-row-2">
+                <div class="form-group">
+                    <label>Límite total de usos</label>
+                    <input type="number" name="usage_limit" id="editDiscountUsageLimit" min="1" step="1">
+                </div>
+                <div class="form-group">
+                    <label>Monto mínimo</label>
+                    <input type="number" name="min_amount" id="editDiscountMinAmount" min="0" step="0.01">
+                </div>
+            </div>
+            <div class="form-row form-row-2">
+                <div class="form-group">
+                    <label>Tope máximo de descuento</label>
+                    <input type="number" name="max_discount" id="editDiscountMaxDiscount" min="0" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Fecha de expiración</label>
+                    <input type="datetime-local" name="expires_at" id="editDiscountExpiresAt">
+                </div>
+            </div>
+            <div class="form-checks">
+                <label class="check-label">
+                    <input type="checkbox" name="is_active" id="editDiscountActive"> Activo
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('editDiscountModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Actualizar</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -198,6 +389,20 @@ function openBalanceModal(id, name, balance) {
     document.getElementById('editBalanceName').value = name;
     document.getElementById('editBalanceAmount').value = balance;
     openModal('editBalanceModal');
+}
+
+function openEditDiscount(id, payload) {
+    document.getElementById('editDiscountForm').action = '/admin/discount-codes/' + id + '/edit';
+    document.getElementById('editDiscountCode').value = payload.code || '';
+    document.getElementById('editDiscountDescription').value = payload.description || '';
+    document.getElementById('editDiscountType').value = payload.discount_type || 'percentage';
+    document.getElementById('editDiscountValue').value = payload.discount_value || '';
+    document.getElementById('editDiscountUsageLimit').value = payload.usage_limit || '';
+    document.getElementById('editDiscountMinAmount').value = payload.min_amount || '';
+    document.getElementById('editDiscountMaxDiscount').value = payload.max_discount || '';
+    document.getElementById('editDiscountExpiresAt').value = payload.expires_at || '';
+    document.getElementById('editDiscountActive').checked = !!payload.is_active;
+    openModal('editDiscountModal');
 }
 
 function copyLink(url) {

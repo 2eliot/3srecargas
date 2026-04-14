@@ -52,7 +52,12 @@
                             {% if order.player_nickname %}<small style="color:#22c55e;font-weight:600">{{ order.player_nickname }}</small>{% endif %}
                             {% if order.zone_id %}<small>Zone: {{ order.zone_id }}</small>{% endif %}
                             {% if order.email %}<span>{{ order.email }}</span>{% endif %}
-                            {% if order.phone %}<small>{{ order.phone }}</small>{% endif %}
+                            {% if order.phone %}
+                            <div class="customer-phone-row">
+                                <span class="customer-phone-value">{{ order.phone }}</span>
+                                <button type="button" class="btn-sm btn-whatsapp-admin" onclick="openAdminWhatsAppContact('{{ order.phone|e }}')">WhatsApp</button>
+                            </div>
+                            {% endif %}
                         </div>
                     </td>
                     <td data-label="Pago">{{ order.payment_method | title }}</td>
@@ -119,6 +124,28 @@
         <button onclick="document.getElementById('pinModal').style.display='none'" class="btn-secondary" style="margin-top:16px">Cerrar</button>
     </div>
 </div>
+
+<div class="modal-overlay" id="whatsAppComposeModal" style="display:none">
+    <div class="modal-box">
+        <h3>Escribir por WhatsApp</h3>
+        <form id="whatsAppComposeForm">
+            <input type="hidden" id="whatsAppComposePhone">
+            <div class="form-group" style="margin-top:16px">
+                <label>Mensaje base</label>
+                <textarea rows="3" readonly>Hola, gracias por tu compra, te escribimos por el siguiente motivo:</textarea>
+            </div>
+            <div class="form-group">
+                <label for="whatsAppComposeReason">Completa el motivo</label>
+                <textarea id="whatsAppComposeReason" rows="4" placeholder="Escribe aquí por qué estás contactando al cliente..." required></textarea>
+                <p class="whatsapp-compose-help">Se abrirá el chat con ese mensaje ya escrito para que solo tengas que enviarlo.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeAdminWhatsAppModal()" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-success">Abrir WhatsApp</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -145,13 +172,53 @@ function _escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
+function _normalizeWhatsAppTarget(raw) {
+    if (raw === null || raw === undefined) return '';
+    var text = String(raw).trim();
+    if (!text) return '';
+    return text.replace(/\D/g, '');
+}
+
+function closeAdminWhatsAppModal() {
+    var modal = document.getElementById('whatsAppComposeModal');
+    var reasonInput = document.getElementById('whatsAppComposeReason');
+    if (modal) modal.style.display = 'none';
+    if (reasonInput) reasonInput.value = '';
+}
+
+function openAdminWhatsAppContact(phone) {
+    var target = _normalizeWhatsAppTarget(phone);
+    if (!target) return;
+    var modal = document.getElementById('whatsAppComposeModal');
+    var phoneInput = document.getElementById('whatsAppComposePhone');
+    var reasonInput = document.getElementById('whatsAppComposeReason');
+    if (phoneInput) phoneInput.value = target;
+    if (modal) modal.style.display = 'flex';
+    if (reasonInput) reasonInput.focus();
+}
+
+document.getElementById('whatsAppComposeForm').addEventListener('submit', function(evt) {
+    evt.preventDefault();
+    var phone = document.getElementById('whatsAppComposePhone').value || '';
+    var reason = (document.getElementById('whatsAppComposeReason').value || '').trim();
+    if (!phone || !reason) return;
+    var message = 'Hola, gracias por tu compra, te escribimos por el siguiente motivo:\n\n' + reason;
+    window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(message), '_blank', 'noopener');
+    closeAdminWhatsAppModal();
+});
+
 function _renderOrderRow(o) {
     var playerBits = '';
     if (o.player_id) playerBits += '<span>' + _escapeHtml(o.player_id) + '</span>';
     if (o.player_nickname) playerBits += '<small style="color:#22c55e;font-weight:600">' + _escapeHtml(o.player_nickname) + '</small>';
     if (o.zone_id) playerBits += '<small>Zone: ' + _escapeHtml(o.zone_id) + '</small>';
     if (o.email) playerBits += '<span>' + _escapeHtml(o.email) + '</span>';
-    if (o.phone) playerBits += '<small>' + _escapeHtml(o.phone) + '</small>';
+    if (o.phone) {
+        playerBits += '<div class="customer-phone-row">' +
+            '<span class="customer-phone-value">' + _escapeHtml(o.phone) + '</span>' +
+            '<button type="button" class="btn-sm btn-whatsapp-admin" onclick="openAdminWhatsAppContact(\'' + _escapeHtml(o.phone) + '\')">WhatsApp</button>' +
+        '</div>';
+    }
 
     var aff = o.affiliate_code ? '<span class="aff-badge">' + _escapeHtml(o.affiliate_code) + '</span>' : '—';
     var actions = '—';

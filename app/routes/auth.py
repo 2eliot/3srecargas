@@ -1,61 +1,15 @@
 import os
-from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
-from ..models import db, User, AdminUser, Order
-from werkzeug.security import generate_password_hash, check_password_hash
+from ..models import db, User, Order, Game
+from ..utils.auth_accounts import find_scoped_customer, get_game_account_meta, hydrate_scoped_customer_from_orders, sync_env_admin_user
 
 auth_bp = Blueprint('auth_bp', __name__)
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('main_bp.index'))
-    
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        email = request.form.get('email', '').strip()
-        password = request.form.get('password', '').strip()
-        confirm_password = request.form.get('confirm_password', '').strip()
-        phone = request.form.get('phone', '').strip()
-        
-        # Validaciones
-        if not username or not email or not password:
-            flash('Todos los campos son obligatorios excepto el teléfono.', 'danger')
-            return render_template('auth/register.html')
-        
-        if password != confirm_password:
-            flash('Las contraseñas no coinciden.', 'danger')
-            return render_template('auth/register.html')
-        
-        if len(password) < 6:
-            flash('La contraseña debe tener al menos 6 caracteres.', 'danger')
-            return render_template('auth/register.html')
-        
-        # Verificar si ya existe
-        if User.query.filter_by(username=username).first():
-            flash('El nombre de usuario ya está en uso.', 'danger')
-            return render_template('auth/register.html')
-        
-        if User.query.filter_by(email=email).first():
-            flash('El correo electrónico ya está registrado.', 'danger')
-            return render_template('auth/register.html')
-        
-        # Crear usuario
-        user = User(
-            username=username,
-            email=email,
-            phone=phone if phone else None
-        )
-        user.set_password(password)
-        
-        db.session.add(user)
-        db.session.commit()
-        
-        flash('¡Cuenta creada exitosamente! Ahora puedes iniciar sesión.', 'success')
-        return redirect(url_for('auth_bp.login'))
-    
-    return render_template('auth/register.html')
+    flash('Ya no necesitas crear cuenta. Tu acceso se genera automáticamente con tu primer ID o correo de compra.', 'info')
+    return redirect(url_for('auth_bp.login'))
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -65,92 +19,62 @@ def login():
             return redirect(url_for('admin_bp.dashboard'))
         return redirect(url_for('main_bp.index'))
     
+    env_admin_username = (os.environ.get('ADMIN_USERNAME') or '').strip()
+    env_admin_password = (os.environ.get('ADMIN_PASSWORD') or '').strip()
+    env_admin_email = (os.environ.get('ADMIN_EMAIL') or '').strip()
+    active_games = Game.query.filter_by(is_active=True).order_by(Game.position.asc(), Game.name.asc()).all()
+
     if request.method == 'POST':
-        env_admin_username = (os.environ.get('ADMIN_USERNAME') or '').strip()
-        env_admin_password = (os.environ.get('ADMIN_PASSWORD') or '').strip()
-        env_admin_email = (os.environ.get('ADMIN_EMAIL') or '').strip()
+        identifier = request.form.get('identifier', '').strip()
+        service_id_raw = request.form.get('service_id', '').strip()
+        admin_password = request.form.get('admin_password', '').strip()
 
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '').strip()
-        
-        if not username or not password:
-            flash('Por favor ingresa usuario y contraseña.', 'danger')
-            return render_template('auth/login.html')
-        
-        # Buscar primero en usuarios normales
-        user = User.query.filter(
-            (User.username == username) | (User.email == username)
-        ).first()
-        
-        if user and user.check_password(password):
-            login_user(user)
-            flash('¡Bienvenido de nuevo!', 'success')
-            next_page = request.args.get('next')
-            return redirect(next_page or url_for('main_bp.index'))
-        
-        # Admin: autenticación estricta por variables de entorno.
-        if (
-            env_admin_username and env_admin_password
-            and username == env_admin_username
-            and password == env_admin_password
-        ):
+        if not identifier:
+            flash('Ingresa tu ID, correo o cuenta del servicio.', 'danger')
+            return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email)
+
+        if env_admin_email and identifier.lower() == env_admin_email.lower():
+            if not admin_password:
+                flash('Ingresa la clave del administrador para continuar.', 'danger')
+                return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email)
+            if admin_password != env_admin_password:
+                flash('Clave de administrador incorrecta.', 'danger')
+                return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email)
+
             try:
-                admin = AdminUser.query.filter_by(username=env_admin_username).first()
-                if not admin and env_admin_email:
-                    admin = AdminUser.query.filter_by(email=env_admin_email).first()
-
-                if not admin and AdminUser.query.count() == 1:
-                    admin = AdminUser.query.first()
-
-                if not admin:
-                    admin = AdminUser(
-                        username=env_admin_username,
-                        email=env_admin_email or f'{env_admin_username}@localhost',
-                    )
-                    admin.set_password(env_admin_password)
-                    db.session.add(admin)
-                    db.session.commit()
-                else:
-                    needs_commit = False
-                    if admin.username != env_admin_username:
-                        username_taken = (
-                            AdminUser.query
-                            .filter(AdminUser.username == env_admin_username, AdminUser.id != admin.id)
-                            .first()
-                        )
-                        if username_taken:
-                            flash('ADMIN_USERNAME ya existe en otro registro admin.', 'danger')
-                            return render_template('auth/login.html')
-                        admin.username = env_admin_username
-                        needs_commit = True
-                    if env_admin_email and admin.email != env_admin_email:
-                        email_taken = (
-                            AdminUser.query
-                            .filter(AdminUser.email == env_admin_email, AdminUser.id != admin.id)
-                            .first()
-                        )
-                        if email_taken:
-                            flash('ADMIN_EMAIL ya existe en otro registro admin.', 'danger')
-                            return render_template('auth/login.html')
-                        admin.email = env_admin_email
-                        needs_commit = True
-                    if not admin.check_password(env_admin_password):
-                        admin.set_password(env_admin_password)
-                        needs_commit = True
-                    if needs_commit:
-                        db.session.commit()
-            except Exception:
+                admin = sync_env_admin_user(env_admin_username, env_admin_email, env_admin_password)
+            except Exception as exc:
                 db.session.rollback()
-                flash('No se pudo sincronizar la cuenta de administrador. Revisa ADMIN_USERNAME/ADMIN_EMAIL.', 'danger')
-                return render_template('auth/login.html')
+                flash(f'No se pudo sincronizar la cuenta admin. {exc}', 'danger')
+                return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email)
 
             login_user(admin)
-            flash('¡Bienvenido administrador!', 'success')
+            flash('Sesión de administrador iniciada.', 'success')
             return redirect(url_for('admin_bp.dashboard'))
-        
-        flash('Usuario o contraseña incorrectos.', 'danger')
-    
-    return render_template('auth/login.html')
+
+        if not service_id_raw.isdigit():
+            flash('Selecciona el juego o servicio para ubicar tu historial.', 'danger')
+            return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email)
+
+        game = Game.query.filter_by(id=int(service_id_raw), is_active=True).first()
+        if not game:
+            flash('El servicio seleccionado no está disponible.', 'danger')
+            return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email)
+
+        account_meta = get_game_account_meta(game)
+        user = find_scoped_customer(account_meta['scope_key'], identifier, account_meta['account_kind'])
+        if not user:
+            user = hydrate_scoped_customer_from_orders(game, identifier)
+        if not user:
+            flash('No encontramos compras previas para ese identificador en ese servicio. Haz tu primera recarga y tu acceso se creará automáticamente.', 'warning')
+            return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email)
+
+        login_user(user)
+        flash('Sesión iniciada con tu identificador actual.', 'success')
+        next_page = request.args.get('next')
+        return redirect(next_page or url_for('auth_bp.profile'))
+
+    return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email)
 
 @auth_bp.route('/logout', methods=['GET', 'POST'])
 @login_required

@@ -1,0 +1,145 @@
+{% extends 'admin/base.html' %}
+{% block title %}Servicios{% endblock %}
+{% block page_title %}Gestión de Servicios{% endblock %}
+
+{% block content %}
+<div class="page-actions">
+    <button class="btn-primary" onclick="openModal('addCategoryModal')">+ Agregar Servicio</button>
+</div>
+
+<div class="admin-card">
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Icono</th>
+                    <th>Nombre</th>
+                    <th>Slug</th>
+                    <th>Juegos</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category in categories %}
+                <tr>
+                    <td><span class="category-chip">{{ category.icon or '🎮' }}</span></td>
+                    <td>
+                        <div class="cell-stack">
+                            <strong>{{ category.name }}</strong>
+                            {% if category.slug in protected_slugs %}<small>Servicio base protegido</small>{% endif %}
+                        </div>
+                    </td>
+                    <td><code>{{ category.slug }}</code></td>
+                    <td>{{ category.games.count() }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-outline"
+                                    data-category='{{ category.to_dict() | tojson | forceescape }}'
+                                    data-protected="{{ 1 if category.slug in protected_slugs else 0 }}"
+                                    data-category-id="{{ category.id }}"
+                                    onclick="openEditCategory(this)">Editar</button>
+                            <form method="POST" action="{{ url_for('admin_bp.category_delete', category_id=category.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit"
+                                        {% if category.slug in protected_slugs %}disabled{% endif %}
+                                        onclick="return confirm('¿Eliminar este servicio?')">Eliminar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty-row">No hay servicios creados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal-overlay" id="addCategoryModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>Agregar Servicio</h3>
+            <button onclick="closeModal('addCategoryModal')">✕</button>
+        </div>
+        <form method="POST" action="{{ url_for('admin_bp.category_add') }}">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label>Nombre *</label>
+                    <input type="text" name="name" required placeholder="Streaming, Gift Cards...">
+                </div>
+                <div class="form-group">
+                    <label>Icono</label>
+                    <input type="text" name="icon" maxlength="10" placeholder="🎮">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Slug</label>
+                <input type="text" name="slug" placeholder="streaming">
+                <small class="text-muted">Si lo dejas vacío, se genera desde el nombre.</small>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('addCategoryModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar Servicio</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="editCategoryModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>Editar Servicio</h3>
+            <button onclick="closeModal('editCategoryModal')">✕</button>
+        </div>
+        <form method="POST" id="editCategoryForm">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label>Nombre *</label>
+                    <input type="text" name="name" id="editCategoryName" required>
+                </div>
+                <div class="form-group">
+                    <label>Icono</label>
+                    <input type="text" name="icon" id="editCategoryIcon" maxlength="10">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Slug</label>
+                <input type="text" name="slug" id="editCategorySlug">
+                <small class="text-muted" id="editCategoryHelp">El slug se usa para construir la pestaña pública del servicio.</small>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('editCategoryModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Actualizar Servicio</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function openEditCategory(btn) {
+    var category = {};
+    var protectedCategory = btn.getAttribute('data-protected') === '1';
+    var categoryId = btn.getAttribute('data-category-id');
+    try {
+        category = JSON.parse(btn.getAttribute('data-category'));
+    } catch (e) {
+        console.error('No se pudo parsear la categoría', e);
+        return;
+    }
+
+    document.getElementById('editCategoryForm').action = '/admin/categories/' + categoryId + '/edit';
+    document.getElementById('editCategoryName').value = category.name || '';
+    document.getElementById('editCategoryIcon').value = category.icon || '';
+    document.getElementById('editCategorySlug').value = category.slug || '';
+    document.getElementById('editCategorySlug').readOnly = protectedCategory;
+    document.getElementById('editCategoryHelp').textContent = protectedCategory
+        ? 'El slug de los servicios base está protegido para no romper la lógica actual.'
+        : 'El slug se usa para construir la pestaña pública del servicio.';
+    openModal('editCategoryModal');
+}
+</script>
+{% endblock %}

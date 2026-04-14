@@ -12,6 +12,42 @@
     var gamesGridEl = document.getElementById('gamesGrid');
     var gamesPrevBtn = document.getElementById('gamesPrev');
     var gamesNextBtn = document.getElementById('gamesNext');
+    var applyDiscountBtn = document.getElementById('applyDiscountBtn');
+    var discountApplyFeedback = document.getElementById('discountApplyFeedback');
+    var manualInfoPopup = document.getElementById('manualInfoPopup');
+    var manualInfoCloseBtn = document.getElementById('manualInfoCloseBtn');
+    var discountInfoPopup = document.getElementById('discountInfoPopup');
+    var discountInfoCloseBtn = document.getElementById('discountInfoCloseBtn');
+    var contactEmailInput = document.getElementById('email');
+    var phoneFieldStack = document.getElementById('phoneFieldStack');
+    var phoneCountryCodeInput = document.getElementById('phoneCountryCode');
+    var phoneCountryTrigger = document.getElementById('phoneCountryTrigger');
+    var phoneCountryMenu = document.getElementById('phoneCountryMenu');
+    var phoneCountryDisplay = document.getElementById('phoneCountryDisplay');
+    var phoneCountryOptions = Array.prototype.slice.call(document.querySelectorAll('.phone-country-option'));
+    var phoneLocalInput = document.getElementById('phoneLocal');
+    var phoneHiddenInput = document.getElementById('phone');
+    var rememberDataInput = document.getElementById('rememberData');
+    var rememberedContactKey = 'store:remembered-contact';
+    var rankingModal = document.getElementById('rankingModal');
+    var rankingModalOpenBtn = document.getElementById('openRankingModalBtn');
+    var rankingModalCloseBtn = document.getElementById('rankingModalCloseBtn');
+    var rankingTabsEl = document.getElementById('rankingTabs');
+    var rankingStatusEl = document.getElementById('rankingStatus');
+    var rankingBoardEl = document.getElementById('rankingBoard');
+    var supportModal = document.getElementById('supportModal');
+    var supportModalOpenBtn = document.getElementById('openSupportModalBtn');
+    var supportModalCloseBtn = document.getElementById('supportModalCloseBtn');
+    var supportForm = document.getElementById('supportForm');
+    var supportIdentityInput = document.getElementById('supportOrderIdentity');
+    var supportGameInput = document.getElementById('supportGame');
+    var supportReasonInput = document.getElementById('supportReason');
+    var rankingState = {
+        loading: false,
+        loaded: false,
+        activeKey: null,
+        items: []
+    };
 
     function scrollGames(direction) {
         if (!gamesGridEl) return;
@@ -26,6 +62,8 @@
     if (gamesNextBtn) {
         gamesNextBtn.addEventListener('click', function () { scrollGames(1); });
     }
+
+    initRememberedContact();
 
     /* ── Category Buttons ─────────────────────────────────── */
     document.querySelectorAll('.cat-btn').forEach(function (btn) {
@@ -84,6 +122,406 @@
         return (c === 'usd') ? 'usd' : 'bs';
     }
 
+    function normalizePhoneValue(value) {
+        return String(value || '').replace(/[^\d+]/g, '').trim();
+    }
+
+    function splitPhoneValue(rawPhone) {
+        var normalized = normalizePhoneValue(rawPhone);
+        var result = { countryCode: '+58', localNumber: '' };
+
+        if (!normalized) return result;
+
+        var options = phoneCountryCodeInput ? Array.prototype.slice.call(phoneCountryCodeInput.options) : [];
+        options.sort(function (a, b) { return b.value.length - a.value.length; });
+
+        for (var i = 0; i < options.length; i += 1) {
+            var code = String(options[i].value || '');
+            if (normalized.indexOf(code) === 0) {
+                result.countryCode = code;
+                result.localNumber = normalized.slice(code.length);
+                return result;
+            }
+        }
+
+        result.localNumber = normalized.replace(/^\+/, '');
+        return result;
+    }
+
+    function syncPhoneHiddenValue() {
+        if (!phoneHiddenInput) return;
+        var code = phoneCountryCodeInput ? String(phoneCountryCodeInput.value || '+58').trim() : '+58';
+        var localNumber = phoneLocalInput ? String(phoneLocalInput.value || '').replace(/[^\d]/g, '') : '';
+        phoneHiddenInput.value = localNumber ? (code + ' ' + localNumber) : '';
+    }
+
+    function updatePhoneCountryDisplay() {
+        if (!phoneCountryCodeInput || !phoneCountryDisplay) return;
+        var selectedOption = phoneCountryCodeInput.options[phoneCountryCodeInput.selectedIndex];
+        if (!selectedOption) return;
+        var flag = String(selectedOption.getAttribute('data-flag') || '').trim();
+        var code = String(selectedOption.value || '').trim();
+        phoneCountryDisplay.textContent = (flag ? flag + ' ' : '') + code;
+
+        phoneCountryOptions.forEach(function (optionBtn) {
+            var isSelected = optionBtn.dataset.code === code;
+            optionBtn.classList.toggle('is-selected', isSelected);
+            optionBtn.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        });
+    }
+
+    function openPhoneCountryMenu() {
+        if (!phoneCountryTrigger || !phoneFieldStack) return;
+        phoneFieldStack.classList.add('is-open');
+        phoneCountryTrigger.setAttribute('aria-expanded', 'true');
+    }
+
+    function closePhoneCountryMenu() {
+        if (!phoneCountryTrigger || !phoneFieldStack) return;
+        phoneFieldStack.classList.remove('is-open');
+        phoneCountryTrigger.setAttribute('aria-expanded', 'false');
+    }
+
+    function openModal(modalEl) {
+        if (!modalEl) return;
+        modalEl.style.display = 'block';
+        modalEl.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('modal-open');
+    }
+
+    function closeModal(modalEl) {
+        if (!modalEl) return;
+        modalEl.style.display = 'none';
+        modalEl.setAttribute('aria-hidden', 'true');
+        if (!document.querySelector('.overlay-modal[aria-hidden="false"]')) {
+            document.body.classList.remove('modal-open');
+        }
+    }
+
+    function setRankingStatus(text) {
+        if (rankingStatusEl) {
+            rankingStatusEl.textContent = text;
+            rankingStatusEl.style.display = 'block';
+        }
+        if (rankingBoardEl) {
+            rankingBoardEl.style.display = 'none';
+        }
+    }
+
+    function isPrizeLabel(prizeLabel, isPrizeEligible) {
+        return !!isPrizeEligible || /^premio/i.test(String(prizeLabel || ''));
+    }
+
+    function getRankingLookupParams() {
+        var playerIdInput = document.getElementById('playerId');
+        var lookupIdentifier = playerIdInput ? String(playerIdInput.value || '').trim() : '';
+        var lookupGameId = currentGame && currentGame.id ? currentGame.id : null;
+
+        if (!lookupIdentifier || !lookupGameId) {
+            return '';
+        }
+
+        return '?lookup_game_id=' + encodeURIComponent(String(lookupGameId)) + '&lookup_identifier=' + encodeURIComponent(lookupIdentifier);
+    }
+
+    function formatRewardValue(value) {
+        if (value === null || typeof value === 'undefined' || value === '') {
+            return 'Sin premio';
+        }
+        return String(value);
+    }
+
+    function renderRankingTabs() {
+        if (!rankingTabsEl) return;
+        rankingTabsEl.innerHTML = '';
+
+        rankingState.items.forEach(function (item) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'ranking-tab' + (item.key === rankingState.activeKey ? ' active' : '');
+            btn.dataset.rankingKey = item.key;
+            btn.textContent = item.label;
+            rankingTabsEl.appendChild(btn);
+        });
+    }
+
+    function renderRankingBoard() {
+        if (!rankingBoardEl) return;
+
+        var activeItem = null;
+        for (var i = 0; i < rankingState.items.length; i += 1) {
+            if (rankingState.items[i].key === rankingState.activeKey) {
+                activeItem = rankingState.items[i];
+                break;
+            }
+        }
+
+        if (!activeItem) {
+            setRankingStatus('No hay rankings disponibles en este momento.');
+            return;
+        }
+
+        var html =
+            '<div class="ranking-shell">' +
+                '<div class="ranking-prizes">' +
+                    '<div class="ranking-prizes-title">Premio</div>';
+
+        if (activeItem.reward_ladder && activeItem.reward_ladder.length) {
+            activeItem.reward_ladder.forEach(function (reward) {
+                html +=
+                    '<div class="ranking-prize-item">' +
+                        '<span>#' + escHtml(reward.position) + '</span>' +
+                        '<strong>' + escHtml(formatRewardValue(reward.reward_label)) + '</strong>' +
+                    '</div>';
+            });
+        }
+
+        html +=
+                '</div>' +
+                '<div class="ranking-main-card">' +
+                    '<div class="ranking-live-chip">LIVE</div>';
+
+        if (!activeItem.entries || activeItem.entries.length === 0) {
+            html += '<div class="ranking-empty">Aún no hay posiciones registradas para este mes.</div>';
+        } else {
+            html +=
+                '<div class="ranking-table-wrap">' +
+                    '<table class="ranking-table">' +
+                        '<thead>' +
+                            '<tr>' +
+                                '<th>#</th>' +
+                                '<th>Jugador</th>' +
+                                '<th>ID</th>' +
+                                '<th>' + escHtml(activeItem.units_label || 'Total') + '</th>' +
+                                '<th>Premio</th>' +
+                            '</tr>' +
+                        '</thead>' +
+                        '<tbody>';
+
+            activeItem.entries.forEach(function (entry) {
+                var prizeClass = isPrizeLabel(entry.prize_label, entry.is_prize_eligible) ? ' style="color:#f8d16a;font-weight:800"' : '';
+                html +=
+                    '<tr>' +
+                        '<td class="ranking-position-cell">#' + escHtml(entry.position) + '</td>' +
+                        '<td>' + escHtml(entry.masked_nickname || 'Jugador***') + '</td>' +
+                        '<td>' + escHtml(entry.masked_player_id || '----') + '</td>' +
+                        '<td>' + escHtml(entry.total_units) + '</td>' +
+                        '<td' + prizeClass + '>' + escHtml(formatRewardValue(entry.prize_label || 'Sin premio')) + '</td>' +
+                    '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+        }
+
+        if (activeItem.previous_winners && activeItem.previous_winners.entries && activeItem.previous_winners.entries.length) {
+            html +=
+                '<div class="ranking-archive-card">' +
+                    '<div class="ranking-archive-title">Ganadores archivados ' + escHtml(activeItem.previous_winners.label || '') + '</div>' +
+                    '<div class="ranking-archive-list">';
+
+            activeItem.previous_winners.entries.forEach(function (entry) {
+                html +=
+                    '<div class="ranking-archive-item">' +
+                        '<strong>#' + escHtml(entry.position) + '</strong>' +
+                        '<span>' + escHtml(entry.masked_nickname || 'Jugador***') + '</span>' +
+                        '<span>' + escHtml(entry.prize_label || 'Sin premio') + '</span>' +
+                    '</div>';
+            });
+
+            html += '</div></div>';
+        }
+
+        if (activeItem.current_position) {
+            html +=
+                '<div class="ranking-current-card">' +
+                    '<div class="ranking-current-title">Tu posición actual #' + escHtml(activeItem.current_position.position) + '</div>' +
+                    '<div class="ranking-current-meta">' +
+                        '<span>' + escHtml(activeItem.current_position.masked_player_id || '----') + '</span>' +
+                        '<strong>' + escHtml(activeItem.current_position.total_units) + ' ' + escHtml(activeItem.units_label || '') + '</strong>' +
+                    '</div>' +
+                    '<div class="ranking-progress">' +
+                        '<div class="ranking-progress-bar" style="width:' + escHtml(activeItem.current_position.progress_percent) + '%"></div>' +
+                        '<span>' + escHtml(activeItem.current_position.progress_percent) + '%</span>' +
+                    '</div>';
+
+            if (activeItem.current_position.missing_units > 0) {
+                html += '<div class="ranking-current-hint">Te faltan ' + escHtml(activeItem.current_position.missing_units) + ' ' + escHtml(activeItem.units_label || '') + ' para el siguiente puesto.</div>';
+            } else {
+                html += '<div class="ranking-current-hint">Ya estás en el primer puesto de este ranking.</div>';
+            }
+
+            html += '</div>';
+        } else {
+            html += '<div class="ranking-current-card is-empty"><div class="ranking-current-title">Tu posición actual</div><div class="ranking-current-hint">Ingresa tu ID del juego actual o inicia sesión con tu cuenta de ese servicio para ver tu puesto.</div></div>';
+        }
+
+        html += '</div></div>';
+
+        rankingBoardEl.innerHTML = html;
+        rankingBoardEl.style.display = 'block';
+        if (rankingStatusEl) {
+            rankingStatusEl.style.display = 'none';
+        }
+        renderRankingTabs();
+    }
+
+    function fetchRankings(forceReload) {
+        if (rankingState.loading) return;
+        if (rankingState.loaded && !forceReload) {
+            renderRankingBoard();
+            return;
+        }
+
+        rankingState.loading = true;
+        setRankingStatus('Cargando ranking...');
+
+        fetch('/api/rankings' + getRankingLookupParams())
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                var rankings = data && Array.isArray(data.rankings) ? data.rankings : [];
+                rankingState.items = rankings.filter(function (item) {
+                    return item && item.enabled;
+                });
+                rankingState.activeKey = rankingState.items.length ? rankingState.items[0].key : null;
+                rankingState.loaded = true;
+                renderRankingTabs();
+                renderRankingBoard();
+            })
+            .catch(function () {
+                setRankingStatus('No se pudo cargar el ranking en este momento.');
+            })
+            .finally(function () {
+                rankingState.loading = false;
+            });
+    }
+
+    function openRankingModal() {
+        if (!rankingModal) return;
+        openModal(rankingModal);
+        fetchRankings(false);
+    }
+
+    function closeRankingModal() {
+        closeModal(rankingModal);
+    }
+
+    function prefillSupportForm() {
+        var playerIdInput = document.getElementById('playerId');
+        if (supportIdentityInput && !supportIdentityInput.value && playerIdInput && playerIdInput.value) {
+            supportIdentityInput.value = playerIdInput.value.trim();
+        }
+        if (supportGameInput && !supportGameInput.value && currentGame && currentGame.name) {
+            supportGameInput.value = currentGame.name;
+        }
+    }
+
+    function buildWhatsAppSupportUrl(message) {
+        var baseUrl = String(window.SUPPORT_WHATSAPP_URL || 'https://wa.me/19543789224').trim();
+        var separator = baseUrl.indexOf('?') >= 0 ? '&' : '?';
+        return baseUrl + separator + 'text=' + encodeURIComponent(message);
+    }
+
+    function openSupportModal() {
+        if (!supportModal) return;
+        prefillSupportForm();
+        openModal(supportModal);
+    }
+
+    function closeSupportModal() {
+        closeModal(supportModal);
+    }
+
+    function getRememberedContact() {
+        try {
+            var raw = localStorage.getItem(rememberedContactKey);
+            return raw ? JSON.parse(raw) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function saveRememberedContact() {
+        if (!rememberDataInput) return;
+        syncPhoneHiddenValue();
+
+        if (!rememberDataInput.checked) {
+            try { localStorage.removeItem(rememberedContactKey); } catch (_) {}
+            return;
+        }
+
+        var payload = {
+            email: contactEmailInput ? String(contactEmailInput.value || '').trim() : '',
+            phone: phoneHiddenInput ? String(phoneHiddenInput.value || '').trim() : ''
+        };
+
+        try {
+            localStorage.setItem(rememberedContactKey, JSON.stringify(payload));
+        } catch (_) {}
+    }
+
+    function applyContactPrefill(data, shouldCheckRemember) {
+        if (!data) return;
+
+        if (contactEmailInput && !contactEmailInput.value && data.email) {
+            contactEmailInput.value = data.email;
+        }
+
+        if (data.phone && phoneCountryCodeInput && phoneLocalInput) {
+            var parts = splitPhoneValue(data.phone);
+            phoneCountryCodeInput.value = parts.countryCode;
+            phoneLocalInput.value = parts.localNumber;
+        }
+
+        if (rememberDataInput && shouldCheckRemember) {
+            rememberDataInput.checked = true;
+        }
+
+        updatePhoneCountryDisplay();
+        syncPhoneHiddenValue();
+    }
+
+    function initRememberedContact() {
+        if (phoneCountryCodeInput && !phoneCountryCodeInput.value) {
+            phoneCountryCodeInput.value = '+58';
+        }
+
+        applyContactPrefill(window.CONTACT_PREFILL || null, false);
+
+        var remembered = getRememberedContact();
+        if (remembered) {
+            applyContactPrefill(remembered, true);
+        }
+
+        if (phoneCountryCodeInput) {
+            phoneCountryCodeInput.addEventListener('change', function () {
+                updatePhoneCountryDisplay();
+                syncPhoneHiddenValue();
+            });
+        }
+
+        if (phoneLocalInput) {
+            phoneLocalInput.addEventListener('input', function () {
+                this.value = String(this.value || '').replace(/[^\d]/g, '');
+                syncPhoneHiddenValue();
+            });
+        }
+
+        if (contactEmailInput) {
+            contactEmailInput.addEventListener('input', function () {
+                if (rememberDataInput && rememberDataInput.checked) {
+                    saveRememberedContact();
+                }
+            });
+        }
+
+        if (rememberDataInput) {
+            rememberDataInput.addEventListener('change', saveRememberedContact);
+        }
+
+        updatePhoneCountryDisplay();
+        syncPhoneHiddenValue();
+    }
+
     /* ── Render Game Cards ────────────────────────────────── */
     function renderGames(games) {
         var grid = document.getElementById('gamesGrid');
@@ -134,9 +572,9 @@
 
     /* ── Insert & Show Packages Panel Below the Row ───────── */
     function showPackagesPanel(clickedCard, gameName) {
-        var grid  = document.getElementById('gamesGrid');
         var panel = document.getElementById('packagesPanel');
         var section = document.getElementById('gamesSection');
+        var host = document.getElementById('packagesPanelHost');
 
         if (!panel) {
             panel = document.createElement('div');
@@ -167,17 +605,22 @@
             gridEl.innerHTML = '<div class="pkg-loading"><div class="spinner"></div></div>';
         }
 
-        if (section && panel.parentNode !== section) {
-            section.appendChild(panel);
-        }
+        if (host) {
+            if (panel.parentNode !== host) {
+                host.appendChild(panel);
+            }
+        } else {
+            if (section && panel.parentNode !== section) {
+                section.appendChild(panel);
+            }
 
-        var carousel = document.querySelector('.games-carousel');
-        if (section && carousel && carousel.nextSibling !== panel) {
-            section.insertBefore(panel, carousel.nextSibling);
+            var carousel = document.querySelector('.games-carousel');
+            if (section && carousel && carousel.nextSibling !== panel) {
+                section.insertBefore(panel, carousel.nextSibling);
+            }
         }
 
         panel.style.display = 'block';
-        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     /* ── Fetch Packages via AJAX ──────────────────────────── */
@@ -215,9 +658,6 @@
         var autoPkgs   = packages.filter(function (p) { return p.is_auto; });
         var manualPkgs = packages.filter(function (p) { return !p.is_auto; });
 
-        var firstButton        = null;
-        var firstPkgForDefault = null;
-
         function buildItem(pkg) {
             var item = document.createElement('button');
             item.type      = 'button';
@@ -241,27 +681,22 @@
             item.addEventListener('click', function () {
                 selectPackage(pkg, item);
             });
-
-            if (!firstButton) {
-                firstButton = item;
-                firstPkgForDefault = pkg;
-            }
-            if (defaultPackageId && pkg.id === defaultPackageId) {
-                firstButton = item;
-                firstPkgForDefault = pkg;
-            }
             return item;
         }
 
-        function addSectionLabel(text) {
+        function addSectionLabel(text, sectionType) {
             var lbl = document.createElement('div');
             lbl.className = 'pkg-section-label';
-            lbl.textContent = text;
+            if (sectionType === 'manual') {
+                lbl.innerHTML = '<span>' + escHtml(text) + '</span><button type="button" class="pkg-section-help" id="manualInfoTrigger" aria-label="Información sobre recarga manual">?</button>';
+            } else {
+                lbl.textContent = text;
+            }
             grid.appendChild(lbl);
         }
 
         if (autoPkgs.length > 0) {
-            addSectionLabel('⚡ Automático 24/7');
+            addSectionLabel('⚡ Automático 24/7', 'auto');
             autoPkgs.forEach(function (pkg) { grid.appendChild(buildItem(pkg)); });
         }
 
@@ -271,7 +706,7 @@
                 sep.className = 'pkg-section-sep';
                 grid.appendChild(sep);
             }
-            addSectionLabel('Recarga manual');
+            addSectionLabel('Recarga manual', 'manual');
             manualPkgs.forEach(function (pkg) { grid.appendChild(buildItem(pkg)); });
         }
 
@@ -279,11 +714,6 @@
         selectedPackage = null;
         updateSidebarForPackage(null);
         refreshPackagePriceViews();
-
-        // Auto-seleccionar el primer paquete (o el configurado)
-        if (firstButton && firstPkgForDefault) {
-            selectPackage(firstPkgForDefault, firstButton);
-        }
     }
 
     /* ── Player ID Verification (replicated from Inefablestore) ── */
@@ -594,10 +1024,14 @@
         submitBtn.disabled = false;
         var priceNum = parseFloat(pkg.price);
         var currency = getSelectedPaymentCurrency();
+
         if (currency === 'usd') {
             submitLabel.textContent = 'Comprar — $' + (isNaN(priceNum) ? '0.00' : priceNum.toFixed(2));
         } else {
-            var bs = (usdRate && !isNaN(priceNum)) ? (priceNum * usdRate) : NaN;
+            var bs = NaN;
+            if (!isNaN(priceNum)) {
+                bs = getSelectedPaymentMethodUsesRate() ? (priceNum * usdRate) : priceNum;
+            }
             submitLabel.textContent = 'Comprar — Bs ' + (isNaN(bs) ? '0' : Math.round(bs).toLocaleString('es-VE'));
         }
         updateTotals(pkg.price);
@@ -626,47 +1060,15 @@
         var priceNum = parseFloat(price);
         if (isNaN(priceNum)) return;
 
-        // Obtener código de descuento
-        var discountCode = document.getElementById('affiliate_code') ? 
-            document.getElementById('affiliate_code').value.trim().toUpperCase() : '';
-        
-        // Aplicar descuento si hay un código válido
-        var finalAmount = priceNum;
-        var discountAmount = 0;
-        
-        if (discountCode && window.validDiscounts && window.validDiscounts[discountCode]) {
-            var discount = window.validDiscounts[discountCode];
-            if (discount.discount_type === 'percentage') {
-                discountAmount = priceNum * parseFloat(discount.discount_value) / 100;
-                if (discount.max_discount && discountAmount > parseFloat(discount.max_discount)) {
-                    discountAmount = parseFloat(discount.max_discount);
-                }
-            } else { // fixed
-                discountAmount = parseFloat(discount.discount_value);
-                if (discountAmount > priceNum) {
-                    discountAmount = priceNum;
-                }
-            }
-            finalAmount = priceNum - discountAmount;
-        }
-
         var currency = getSelectedPaymentCurrency();
         if (currency === 'usd') {
-            if (discountAmount > 0) {
-                totalEl.innerHTML = '<span style="text-decoration: line-through; color: #999;">$' + priceNum.toFixed(2) + '</span> $' + finalAmount.toFixed(2) + ' <span style="color: var(--accent); font-size: 12px;">(Ahorrado: $' + discountAmount.toFixed(2) + ')</span>';
-            } else {
-                totalEl.textContent = '$' + finalAmount.toFixed(2);
-            }
+            totalEl.textContent = '$' + priceNum.toFixed(2);
             if (totalBsEl) totalBsEl.classList.add('d-none');
         } else {
-            if (usdRate) {
-                var bs = finalAmount * usdRate;
-                var originalBs = priceNum * usdRate;
-                if (discountAmount > 0) {
-                    totalEl.innerHTML = '<span style="text-decoration: line-through; color: #999;">Bs ' + Math.round(originalBs).toLocaleString('es-VE') + '</span> Bs ' + Math.round(bs).toLocaleString('es-VE') + ' <span style="color: var(--accent); font-size: 12px;">(Ahorrado: Bs ' + Math.round(discountAmount * usdRate).toLocaleString('es-VE') + ')</span>';
-                } else {
-                    totalEl.textContent = 'Bs ' + Math.round(bs).toLocaleString('es-VE');
-                }
+            var bs = getSelectedPaymentMethodUsesRate() ? (priceNum * usdRate) : priceNum;
+
+            if (!isNaN(bs)) {
+                totalEl.textContent = 'Bs ' + Math.round(bs).toLocaleString('es-VE');
             } else {
                 totalEl.textContent = 'Bs 0';
             }
@@ -674,6 +1076,96 @@
                 totalBsEl.classList.add('d-none');
             }
         }
+    }
+
+    function getValidDiscountMeta(code, priceNum) {
+        if (!code || !window.validDiscounts || !window.validDiscounts[code]) {
+            return null;
+        }
+
+        var discount = window.validDiscounts[code];
+        var numericPrice = typeof priceNum === 'number' ? priceNum : parseFloat(priceNum);
+        var amount = 0;
+
+        if (!isNaN(numericPrice) && discount.min_amount && numericPrice < parseFloat(discount.min_amount)) {
+            return null;
+        }
+
+        if (isNaN(numericPrice)) {
+            return {
+                code: code,
+                source: discount.source || 'discount',
+                amount: 0,
+                config: discount
+            };
+        }
+
+        if (discount.discount_type === 'percentage') {
+            amount = numericPrice * parseFloat(discount.discount_value) / 100;
+            if (discount.max_discount && amount > parseFloat(discount.max_discount)) {
+                amount = parseFloat(discount.max_discount);
+            }
+        } else {
+            amount = parseFloat(discount.discount_value);
+            if (amount > numericPrice) {
+                amount = numericPrice;
+            }
+        }
+
+        if (!(amount > 0)) {
+            return null;
+        }
+
+        return {
+            code: code,
+            source: discount.source || 'discount',
+            amount: amount,
+            config: discount
+        };
+    }
+
+    function setDiscountFeedback(message, kind) {
+        if (!discountApplyFeedback) return;
+        discountApplyFeedback.textContent = message || '';
+        discountApplyFeedback.classList.remove('is-success', 'is-error');
+        if (kind) {
+            discountApplyFeedback.classList.add(kind);
+        }
+    }
+
+    function applyDiscountCode() {
+        if (!affInput) return;
+
+        affInput.dispatchEvent(new Event('input', { bubbles: true }));
+        var code = affInput.value.trim().toUpperCase();
+        if (!code) {
+            setDiscountFeedback('Escribe un código para aplicarlo.', 'is-error');
+            affInput.focus();
+            return;
+        }
+
+        var packagePrice = selectedPackage ? parseFloat(selectedPackage.price) : NaN;
+        var knownCode = !!(window.validDiscounts && window.validDiscounts[code]);
+        var discountMeta = getValidDiscountMeta(code, packagePrice);
+
+        if (discountMeta) {
+            setDiscountFeedback('Descuento ' + code + ' aplicado.', 'is-success');
+            return;
+        }
+
+        if (knownCode && selectedPackage) {
+            setDiscountFeedback('Ese código existe, pero no aplica para este monto.', 'is-error');
+        } else if (knownCode) {
+            setDiscountFeedback('Código reconocido. Selecciona un paquete para calcular el descuento.', 'is-success');
+        } else {
+            setDiscountFeedback('Código no válido o inactivo.', 'is-error');
+        }
+
+        if (selectedPackage) {
+            updateTotals(selectedPackage.price);
+            updateSidebarForPackage(selectedPackage);
+        }
+        affInput.focus();
     }
 
     function refreshPackagePriceViews() {
@@ -728,6 +1220,9 @@
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(function () {
             if (activeGameId !== null) {
+                if (document.getElementById('packagesPanelHost')) {
+                    return;
+                }
                 var card = document.querySelector('.game-card.active');
                 if (card) {
                     var panel = document.getElementById('packagesPanel');
@@ -764,13 +1259,189 @@
     if (affInput) {
         affInput.addEventListener('input', function () {
             this.value = this.value.toUpperCase();
+            if (!this.value.trim()) {
+                setDiscountFeedback('', null);
+            }
         });
+
+        affInput.addEventListener('keydown', function (evt) {
+            if (evt.key === 'Enter') {
+                evt.preventDefault();
+                applyDiscountCode();
+            }
+        });
+    }
+
+    if (applyDiscountBtn && affInput) {
+        applyDiscountBtn.addEventListener('click', function () {
+            applyDiscountCode();
+        });
+    }
+
+    if (manualInfoCloseBtn && manualInfoPopup) {
+        manualInfoCloseBtn.addEventListener('click', closeManualInfoPopup);
+        manualInfoPopup.addEventListener('click', function (evt) {
+            if (evt.target === manualInfoPopup) {
+                closeManualInfoPopup();
+            }
+        });
+    }
+
+    if (discountInfoCloseBtn && discountInfoPopup) {
+        discountInfoCloseBtn.addEventListener('click', closeDiscountInfoPopup);
+        discountInfoPopup.addEventListener('click', function (evt) {
+            if (evt.target === discountInfoPopup) {
+                closeDiscountInfoPopup();
+            }
+        });
+    }
+
+    if (rankingModalOpenBtn) {
+        rankingModalOpenBtn.addEventListener('click', openRankingModal);
+    }
+
+    if (rankingModalCloseBtn && rankingModal) {
+        rankingModalCloseBtn.addEventListener('click', closeRankingModal);
+        rankingModal.addEventListener('click', function (evt) {
+            if (evt.target === rankingModal) {
+                closeRankingModal();
+            }
+        });
+    }
+
+    if (supportModalOpenBtn) {
+        supportModalOpenBtn.addEventListener('click', openSupportModal);
+    }
+
+    if (supportModalCloseBtn && supportModal) {
+        supportModalCloseBtn.addEventListener('click', closeSupportModal);
+        supportModal.addEventListener('click', function (evt) {
+            if (evt.target === supportModal) {
+                closeSupportModal();
+            }
+        });
+    }
+
+    if (rankingTabsEl) {
+        rankingTabsEl.addEventListener('click', function (evt) {
+            var tabBtn = evt.target && evt.target.closest('.ranking-tab');
+            if (!tabBtn) return;
+            rankingState.activeKey = tabBtn.dataset.rankingKey || null;
+            renderRankingBoard();
+        });
+    }
+
+    if (supportForm) {
+        supportForm.addEventListener('submit', function (evt) {
+            evt.preventDefault();
+
+            var identity = supportIdentityInput ? String(supportIdentityInput.value || '').trim() : '';
+            var gameName = supportGameInput ? String(supportGameInput.value || '').trim() : '';
+            var reason = supportReasonInput ? String(supportReasonInput.value || '').trim() : '';
+            var packageName = selectedPackage && selectedPackage.name ? String(selectedPackage.name).trim() : 'No especificado';
+
+            if (!identity || !gameName || !reason) {
+                return;
+            }
+
+            var lines = [
+                'Hola, necesito soporte con un pedido de 3S Recargas.',
+                '',
+                'ID o correo: ' + identity,
+                'Juego o servicio: ' + gameName,
+                'Paquete: ' + packageName,
+                'Motivo: ' + reason
+            ];
+
+            var url = buildWhatsAppSupportUrl(lines.join('\n'));
+            window.open(url, '_blank', 'noopener');
+            closeSupportModal();
+        });
+    }
+
+    document.addEventListener('click', function (evt) {
+        var phoneOption = evt.target && evt.target.closest('.phone-country-option');
+        if (phoneOption) {
+            evt.preventDefault();
+            if (phoneCountryCodeInput) {
+                phoneCountryCodeInput.value = phoneOption.dataset.code || '+58';
+            }
+            updatePhoneCountryDisplay();
+            syncPhoneHiddenValue();
+            closePhoneCountryMenu();
+            return;
+        }
+
+        var phoneTrigger = evt.target && evt.target.closest('#phoneCountryTrigger');
+        if (phoneTrigger) {
+            evt.preventDefault();
+            if (phoneFieldStack && phoneFieldStack.classList.contains('is-open')) {
+                closePhoneCountryMenu();
+            } else {
+                openPhoneCountryMenu();
+            }
+            return;
+        }
+
+        var insidePhoneSelector = evt.target && evt.target.closest('.phone-field-stack');
+        if (!insidePhoneSelector) {
+            closePhoneCountryMenu();
+        }
+
+        var trigger = evt.target && evt.target.closest('#manualInfoTrigger');
+        if (trigger) {
+            evt.preventDefault();
+            openManualInfoPopup();
+            return;
+        }
+
+        trigger = evt.target && evt.target.closest('#discountInfoTrigger');
+        if (!trigger) return;
+        evt.preventDefault();
+        openDiscountInfoPopup();
+    });
+
+    document.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Escape') {
+            closePhoneCountryMenu();
+            closeManualInfoPopup();
+            closeDiscountInfoPopup();
+            closeRankingModal();
+            closeSupportModal();
+        }
+    });
+
+    function openManualInfoPopup() {
+        if (!manualInfoPopup) return;
+        manualInfoPopup.style.display = 'flex';
+        manualInfoPopup.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeManualInfoPopup() {
+        if (!manualInfoPopup) return;
+        manualInfoPopup.style.display = 'none';
+        manualInfoPopup.setAttribute('aria-hidden', 'true');
+    }
+
+    function openDiscountInfoPopup() {
+        if (!discountInfoPopup) return;
+        discountInfoPopup.style.display = 'flex';
+        discountInfoPopup.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeDiscountInfoPopup() {
+        if (!discountInfoPopup) return;
+        discountInfoPopup.style.display = 'none';
+        discountInfoPopup.setAttribute('aria-hidden', 'true');
     }
 
     /* ── Quick checkout form submit UX ───────────────────── */
     var quickForm = document.getElementById('quickCheckoutForm');
     if (quickForm) {
         quickForm.addEventListener('submit', function (e) {
+            syncPhoneHiddenValue();
+            saveRememberedContact();
+
             if (!selectedPackage) {
                 e.preventDefault();
                 alert('Primero selecciona un paquete.');
