@@ -85,9 +85,9 @@ def _ranking_has_month_orders(game_id, target_date=None):
 
 def _is_ranking_enabled(config, game, target_date=None):
     setting_row = Setting.query.filter_by(key=config['enabled_key']).first()
-    if setting_row and str(setting_row.value or '').strip() != '':
-        return str(setting_row.value).strip() == '1'
-    return bool(game and _ranking_has_month_orders(game.id, target_date=target_date))
+    if not setting_row:
+        return False
+    return str(setting_row.value or '').strip() == '1'
 
 
 def _is_admin_ranking_view():
@@ -314,6 +314,14 @@ def _build_ranking_payload(ranking_key, target_date=None):
     return payload
 
 
+def get_public_rankings_payload(target_date=None):
+    return [_build_ranking_payload(ranking_key, target_date=target_date) for ranking_key in RANKING_DEFS.keys()]
+
+
+def has_visible_public_rankings(target_date=None):
+    return any(item.get('enabled') for item in get_public_rankings_payload(target_date=target_date))
+
+
 def archive_previous_month_rankings_if_needed():
     today = now_ve().date()
     previous_month_last_day = today.replace(day=1) - timedelta(days=1)
@@ -473,7 +481,7 @@ def get_discounts():
 @main_bp.route('/api/rankings')
 def api_rankings():
     archive_previous_month_rankings_if_needed()
-    rankings = [_build_ranking_payload('free_fire'), _build_ranking_payload('blood_strike')]
+    rankings = get_public_rankings_payload()
     return jsonify({'rankings': rankings})
 
 

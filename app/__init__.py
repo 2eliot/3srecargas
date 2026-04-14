@@ -55,13 +55,12 @@ def create_app(config_class=Config):
             return redirect(url_for('admin_bp.login', next=request.url))
         return redirect(url_for('auth_bp.login', next=request.url))
 
-    from .routes.main import main_bp
+    from .routes.main import main_bp, archive_previous_month_rankings_if_needed, has_visible_public_rankings
     from .routes.checkout import checkout_bp
     from .routes.admin import admin_bp
     from .routes.affiliates import affiliates_bp
     from .routes.auth import auth_bp
     from .routes.verify import verify_bp
-    from .routes.main import archive_previous_month_rankings_if_needed
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
@@ -101,10 +100,7 @@ def create_app(config_class=Config):
             current_setting = Setting.query.filter_by(key=key).first()
             ranking_settings[key] = current_setting.value if current_setting and current_setting.value else ''
 
-        has_active_ranking = bool(
-            (ranking_settings.get('ranking_free_fire_enabled') == '1' and ranking_settings.get('ranking_free_fire_game_id'))
-            or (ranking_settings.get('ranking_blood_strike_enabled') == '1' and ranking_settings.get('ranking_blood_strike_game_id'))
-        )
+        has_active_ranking = has_visible_public_rankings()
 
         return {
             'SITE_LOGO': site_logo,
