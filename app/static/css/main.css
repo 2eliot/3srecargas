@@ -1743,7 +1743,7 @@ body.modal-open {
     display: flex;
     align-items: center;
     gap: 10px;
-    background: linear-gradient(180deg, rgba(20,20,20,.98), rgba(7,7,7,.96));
+    background: rgba(12,12,12,.98);
     border: 1px solid rgba(255,255,255,.07);
     border-radius: 14px;
     padding: 12px;
@@ -1755,7 +1755,7 @@ body.modal-open {
 }
 .package-item:hover {
     border-color: var(--accent);
-    background: linear-gradient(180deg, rgba(38,13,18,.98), rgba(20,8,10,.95));
+    background: rgba(22,12,14,.98);
     transform: translateY(-2px);
     box-shadow: 0 10px 24px rgba(255,26,60,.14);
 }
@@ -3722,9 +3722,14 @@ body.modal-open {
 
     .package-item {
         flex: unset;
+        display: grid;
+        grid-template-columns: 16px auto;
+        align-items: center;
+        justify-content: center;
+        align-content: center;
         min-height: 64px;
         padding: 6px 5px;
-        gap: 4px;
+        gap: 3px;
         max-width: none;
     }
 
@@ -3738,6 +3743,16 @@ body.modal-open {
     .pkg-info .price {
         font-size: 8px;
         line-height: 1.05;
+    }
+
+    .pkg-info {
+        width: auto;
+    }
+
+    .pkg-info h4,
+    .pkg-info .price,
+    .pkg-info .price-usd {
+        text-align: left;
     }
 }
 
@@ -3754,9 +3769,14 @@ body.modal-open {
     }
 
     .package-item {
+        display: grid;
+        grid-template-columns: 15px auto;
+        align-items: center;
+        justify-content: center;
+        align-content: center;
         min-height: 62px;
         padding: 5px 4px;
-        gap: 4px;
+        gap: 3px;
         border-radius: 10px;
     }
 
@@ -3772,6 +3792,11 @@ body.modal-open {
         font-size: 8px;
         line-height: 1.05;
         margin-bottom: 1px;
+        text-align: left;
+    }
+
+    .pkg-info {
+        width: auto;
     }
 }
 
