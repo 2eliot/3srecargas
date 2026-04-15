@@ -31,6 +31,11 @@
             {% else %}Orden Rechazada{% endif %}
         </h1>
 
+        <div class="order-status-order-number">
+            <span class="order-status-order-label">Numero de orden</span>
+            <strong class="order-status-order-value">#{{ order.order_number }}</strong>
+        </div>
+
         <p class="status-subtitle">
             {% if order.status == 'pending' %}
             Tu orden está siendo procesada. Te notificaremos pronto.
@@ -45,10 +50,6 @@
 
         {% if is_manual_order %}
         <div class="order-info-grid">
-            <div class="order-info-item">
-                <span class="info-label">Nro. de Orden</span>
-                <span class="info-value order-number">#{{ order.order_number }}</span>
-            </div>
             <div class="order-info-item">
                 <span class="info-label">Estado</span>
                 <span class="info-value">

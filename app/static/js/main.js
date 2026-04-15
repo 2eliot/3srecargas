@@ -7,6 +7,7 @@
     var activeCategory = window.ACTIVE_CATEGORY || 'juegos';
     var currentGame    = null;
     var selectedPackage = null;
+    var appliedDiscountCode = '';
     var usdRate = typeof window.USD_RATE_BS === 'number' ? window.USD_RATE_BS : 0;
     var defaultPackageId = (typeof window.DEFAULT_PACKAGE_ID === 'number' ? window.DEFAULT_PACKAGE_ID : null);
     var gamesGridEl = document.getElementById('gamesGrid');
@@ -1038,7 +1039,7 @@
         form.action = '/checkout/' + pkg.id;
         if (hiddenInput) hiddenInput.value = String(pkg.id);
         submitBtn.disabled = false;
-        var priceNum = parseFloat(pkg.price);
+        var priceNum = getEffectivePackagePrice(pkg.price);
         var currency = getSelectedPaymentCurrency();
 
         if (currency === 'usd') {
@@ -1059,6 +1060,44 @@
         return checked.dataset.usesRate === '1';
     }
 
+    function getActiveDiscountCode() {
+        return String(appliedDiscountCode || '').trim().toUpperCase();
+    }
+
+    function getEffectivePackagePrice(price) {
+        var numericPrice = typeof price === 'number' ? price : parseFloat(price);
+        if (isNaN(numericPrice)) return NaN;
+
+        var discountMeta = getValidDiscountMeta(getActiveDiscountCode(), numericPrice);
+        if (!discountMeta) {
+            return numericPrice;
+        }
+
+        return Math.max(numericPrice - discountMeta.amount, 0);
+    }
+
+    function formatPackageAmount(amount, currency) {
+        if (isNaN(amount)) {
+            return currency === 'usd' ? '$0.00' : 'Bs 0';
+        }
+
+        if (currency === 'usd') {
+            return '$' + amount.toFixed(2);
+        }
+
+        var bsAmount = getSelectedPaymentMethodUsesRate() ? (amount * usdRate) : amount;
+        return 'Bs ' + (isNaN(bsAmount) ? '0' : Math.round(bsAmount).toLocaleString('es-VE'));
+    }
+
+    function syncDiscountPricingViews() {
+        refreshPackagePriceViews();
+        if (selectedPackage) {
+            updateSidebarForPackage(selectedPackage);
+        } else {
+            updateTotals(null);
+        }
+    }
+
     function updateTotals(price) {
         var totalEl = document.getElementById('sidebarTotal');
         var totalBsEl = document.getElementById('sidebarTotalBs');
@@ -1075,13 +1114,14 @@
 
         var priceNum = parseFloat(price);
         if (isNaN(priceNum)) return;
+        var finalPrice = getEffectivePackagePrice(priceNum);
 
         var currency = getSelectedPaymentCurrency();
         if (currency === 'usd') {
-            totalEl.textContent = '$' + priceNum.toFixed(2);
+            totalEl.textContent = '$' + finalPrice.toFixed(2);
             if (totalBsEl) totalBsEl.classList.add('d-none');
         } else {
-            var bs = getSelectedPaymentMethodUsesRate() ? (priceNum * usdRate) : priceNum;
+            var bs = getSelectedPaymentMethodUsesRate() ? (finalPrice * usdRate) : finalPrice;
 
             if (!isNaN(bs)) {
                 totalEl.textContent = 'Bs ' + Math.round(bs).toLocaleString('es-VE');
@@ -1155,6 +1195,8 @@
         affInput.dispatchEvent(new Event('input', { bubbles: true }));
         var code = affInput.value.trim().toUpperCase();
         if (!code) {
+            appliedDiscountCode = '';
+            syncDiscountPricingViews();
             setDiscountFeedback('Escribe un código para aplicarlo.', 'is-error');
             affInput.focus();
             return;
@@ -1165,8 +1207,16 @@
         var discountMeta = getValidDiscountMeta(code, packagePrice);
 
         if (discountMeta) {
+            appliedDiscountCode = code;
+            syncDiscountPricingViews();
             setDiscountFeedback('Descuento ' + code + ' aplicado.', 'is-success');
             return;
+        }
+
+        if (knownCode) {
+            appliedDiscountCode = code;
+        } else {
+            appliedDiscountCode = '';
         }
 
         if (knownCode && selectedPackage) {
@@ -1177,16 +1227,14 @@
             setDiscountFeedback('Código no válido o inactivo.', 'is-error');
         }
 
-        if (selectedPackage) {
-            updateTotals(selectedPackage.price);
-            updateSidebarForPackage(selectedPackage);
-        }
+        syncDiscountPricingViews();
         affInput.focus();
     }
 
     function refreshPackagePriceViews() {
         var items = document.querySelectorAll('.package-item');
         var currency = getSelectedPaymentCurrency();
+        var activeCode = getActiveDiscountCode();
         items.forEach(function (item) {
             var priceSpan = item.querySelector('.price');
             var priceUsdSpan = item.querySelector('.price-usd');
@@ -1194,19 +1242,21 @@
             if (!priceSpan || !usdStr) return;
             var usd = parseFloat(usdStr);
             if (isNaN(usd)) return;
+            var discountMeta = getValidDiscountMeta(activeCode, usd);
+            var finalUsd = discountMeta ? Math.max(usd - discountMeta.amount, 0) : usd;
 
-            if (currency === 'usd') {
-                priceSpan.textContent = '$' + usd.toFixed(2);
-            } else if (usdRate) {
-                var bs = usd * usdRate;
-                priceSpan.textContent = 'Bs ' + Math.round(bs).toLocaleString('es-VE');
-            } else {
-                priceSpan.textContent = 'Bs 0';
-            }
+            priceSpan.textContent = formatPackageAmount(finalUsd, currency);
 
             if (priceUsdSpan) {
-                priceUsdSpan.textContent = '';
-                priceUsdSpan.style.display = 'none';
+                if (discountMeta) {
+                    priceUsdSpan.textContent = formatPackageAmount(usd, currency);
+                    priceUsdSpan.style.display = 'block';
+                    item.classList.add('has-discount');
+                } else {
+                    priceUsdSpan.textContent = '';
+                    priceUsdSpan.style.display = 'none';
+                    item.classList.remove('has-discount');
+                }
             }
         });
 
@@ -1276,7 +1326,12 @@
         affInput.addEventListener('input', function () {
             this.value = this.value.toUpperCase();
             if (!this.value.trim()) {
+                appliedDiscountCode = '';
                 setDiscountFeedback('', null);
+                syncDiscountPricingViews();
+            } else if (this.value.trim() !== getActiveDiscountCode()) {
+                appliedDiscountCode = '';
+                syncDiscountPricingViews();
             }
         });
 
@@ -1515,6 +1570,8 @@
                 if (selectedPackage) {
                     updateTotals(selectedPackage.price);
                     updateSidebarForPackage(selectedPackage);
+                } else {
+                    refreshPackagePriceViews();
                 }
             });
         }

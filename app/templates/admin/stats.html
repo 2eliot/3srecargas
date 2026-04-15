@@ -4,113 +4,537 @@
 
 {% block extra_css %}
 <style>
-.day-label { font-size: 13px; font-weight: 600; color: #8896a6; text-transform: uppercase; letter-spacing: 0.5px; }
-.day-date  { font-size: 11px; color: #64748b; margin-top: 2px; }
+.stats-filters {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    align-items: end;
+}
 
-.sales-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.sales-table th {
-    padding: 10px 14px;
+.stats-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stats-field label,
+.stats-muted-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #8b9ab0;
+}
+
+.stats-field select,
+.stats-field input {
+    width: 100%;
+    min-height: 40px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.03);
+    color: #eef2ff;
+}
+
+.stats-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.stats-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.stats-summary-card {
+    background: linear-gradient(180deg, rgba(22,24,38,.98), rgba(14,16,26,.94));
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 16px;
+    padding: 18px;
+}
+
+.stats-summary-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #8ea0b9;
+}
+
+.stats-summary-value {
+    display: block;
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1;
+    color: #ffffff;
+}
+
+.stats-summary-meta {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #8ea0b9;
+}
+
+.stats-summary-value.is-money { color: #22c55e; }
+.stats-summary-value.is-coupon { color: #f97316; }
+.stats-summary-value.is-plain { color: #60a5fa; }
+
+.stats-days-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.stats-day-card {
+    display: block;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.06);
+    background: rgba(255,255,255,.02);
+    color: inherit;
+}
+
+.stats-day-card.is-active {
+    border-color: rgba(96,165,250,.6);
+    box-shadow: 0 0 0 1px rgba(96,165,250,.25) inset;
+    background: rgba(59,130,246,.10);
+}
+
+.stats-day-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.stats-day-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #eef2ff;
+}
+
+.stats-day-date {
+    font-size: 11px;
+    color: #7f91aa;
+}
+
+.stats-day-metrics {
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    color: #ced7e5;
+}
+
+.stats-day-revenue {
+    color: #22c55e;
+    font-weight: 700;
+}
+
+.stats-section-head {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.stats-section-head h2 {
+    margin: 0;
+}
+
+.stats-section-note {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #8ea0b9;
+}
+
+.stats-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.stats-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.06);
+    font-size: 12px;
+    color: #dbe4f3;
+}
+
+.stats-chip strong {
+    color: #ffffff;
+}
+
+.stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.stats-table th {
+    padding: 12px 14px;
     text-align: left;
     color: #8896a6;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.02);
 }
-.sales-table td {
-    padding: 11px 14px;
+
+.stats-table td {
+    padding: 12px 14px;
     border-bottom: 1px solid rgba(255,255,255,0.04);
     color: #e0e0e0;
-    vertical-align: middle;
+    vertical-align: top;
 }
-.sales-table tr:last-child td { border-bottom: none; }
-.sales-table tr:hover td { background: rgba(255,255,255,0.04); }
 
-.pkg-game  { font-weight: 600; color: #fff; }
-.pkg-name  { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+.stats-table tr:last-child td {
+    border-bottom: none;
+}
 
-.cell-count { text-align: center; min-width: 90px; }
-.count-total { font-size: 22px; font-weight: 700; color: #fff; line-height: 1; }
-.count-breakdown { font-size: 11px; margin-top: 4px; display: flex; flex-direction: column; gap: 2px; align-items: center; }
-.tag-done    { color: #4ade80; }
-.tag-pending { color: #fbbf24; }
-.count-zero  { color: rgba(255,255,255,0.15); font-size: 18px; font-weight: 600; text-align: center; }
-.empty-row td { text-align: center; color: #64748b; padding: 36px 0; font-size: 13px; }
+.stats-table tr:hover td {
+    background: rgba(255,255,255,0.03);
+}
+
+.stats-game {
+    font-weight: 700;
+    color: #fff;
+}
+
+.stats-package {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-top: 2px;
+}
+
+.stats-number {
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+}
+
+.stats-subnumber {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+    color: #8ea0b9;
+}
+
+.stats-money {
+    font-size: 20px;
+    font-weight: 800;
+    color: #22c55e;
+}
+
+.coupon-stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.coupon-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(249,115,22,.10);
+    border: 1px solid rgba(249,115,22,.22);
+    color: #fed7aa;
+    font-size: 12px;
+}
+
+.coupon-badge.is-muted {
+    background: rgba(255,255,255,.04);
+    border-color: rgba(255,255,255,.07);
+    color: #cbd5e1;
+}
+
+.order-number-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(59,130,246,.12);
+    border: 1px solid rgba(59,130,246,.22);
+    color: #bfdbfe;
+    font-weight: 700;
+}
+
+.empty-state-admin {
+    text-align: center;
+    color: #64748b;
+    padding: 30px 10px;
+    font-size: 13px;
+}
+
+@media (max-width: 1080px) {
+    .stats-filters,
+    .stats-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .stats-days-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .stats-filters,
+    .stats-summary-grid,
+    .stats-days-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stats-section-head {
+        flex-direction: column;
+    }
+
+    .stats-actions {
+        width: 100%;
+    }
+
+    .stats-actions .btn-primary,
+    .stats-actions .btn-secondary {
+        flex: 1 1 0;
+    }
+}
 </style>
 {% endblock %}
 
 {% block content %}
-{% set day_names = ['Hoy', 'Ayer', 'Antes de ayer'] %}
+<div class="admin-card">
+    <div class="card-header">
+        <div>
+            <h2>Resumen de estadísticas</h2>
+            <p class="stats-section-note">Filtra por servicio y fecha. Todas las métricas del día y de los últimos 15 días respetan ese filtro.</p>
+        </div>
+    </div>
+
+    <form method="GET" class="stats-filters">
+        <div class="stats-field">
+            <label for="service">Servicio</label>
+            <select name="service" id="service">
+                <option value="">Todos los servicios</option>
+                {% for game in service_options %}
+                <option value="{{ game.id }}" {% if selected_service_id == game.id %}selected{% endif %}>{{ game.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="stats-field">
+            <label for="date">Día a revisar</label>
+            <input type="date" id="date" name="date" value="{{ selected_date.isoformat() }}" max="{{ today.isoformat() }}">
+        </div>
+        <div class="stats-field">
+            <span class="stats-muted-label">Vista activa</span>
+            <div class="stats-chip-list">
+                <span class="stats-chip"><strong>Servicio:</strong> {{ selected_service.name if selected_service else 'Todos' }}</span>
+                <span class="stats-chip"><strong>Día:</strong> {{ selected_date.strftime('%d/%m/%Y') }}</span>
+            </div>
+        </div>
+        <div class="stats-actions">
+            <button type="submit" class="btn-primary">Aplicar filtros</button>
+            <a href="{{ url_for('admin_bp.stats') }}" class="btn-secondary">Limpiar</a>
+        </div>
+    </form>
+</div>
+
+<div class="stats-summary-grid">
+    <div class="stats-summary-card">
+        <span class="stats-summary-label">Aprobadas / completadas del día</span>
+        <span class="stats-summary-value">{{ selected_summary.sold_orders }}</span>
+        <div class="stats-summary-meta">Total registradas: {{ selected_summary.total_orders }}{% if selected_summary.pending_orders %} · Pendientes: {{ selected_summary.pending_orders }}{% endif %}</div>
+    </div>
+    <div class="stats-summary-card">
+        <span class="stats-summary-label">Ingresos del día</span>
+        <span class="stats-summary-value is-money">${{ '%.2f'|format(selected_summary.revenue) }}</span>
+        <div class="stats-summary-meta">Descuento aplicado: ${{ '%.2f'|format(selected_summary.discount_total) }}</div>
+    </div>
+    <div class="stats-summary-card">
+        <span class="stats-summary-label">Recargas con cupón</span>
+        <span class="stats-summary-value is-coupon">{{ selected_summary.coupon_orders }}</span>
+        <div class="stats-summary-meta">Con código de descuento o afiliado registrado en la orden</div>
+    </div>
+    <div class="stats-summary-card">
+        <span class="stats-summary-label">Recargas sin cupón</span>
+        <span class="stats-summary-value is-plain">{{ selected_summary.no_coupon_orders }}</span>
+        <div class="stats-summary-meta">Órdenes del día sin código aplicado</div>
+    </div>
+</div>
 
 <div class="admin-card">
-    <div class="card-header" style="margin-bottom:0">
-        <h2>Ventas por paquete &mdash; últimos 3 días</h2>
-        <span style="font-size:12px; color:#8896a6">completadas/aprobadas &nbsp;&nbsp; pendientes</span>
+    <div class="stats-section-head">
+        <div>
+            <h2>Últimos 15 días</h2>
+            <p class="stats-section-note">Pulsa un día para cargar abajo el detalle por paquete, cupones y órdenes.</p>
+        </div>
+    </div>
+
+    <div class="stats-days-grid">
+        {% for day in daily_history %}
+            {% if selected_service_id %}
+                {% set day_link = url_for('admin_bp.stats', service=selected_service_id, date=day.date.isoformat()) %}
+            {% else %}
+                {% set day_link = url_for('admin_bp.stats', date=day.date.isoformat()) %}
+            {% endif %}
+            <a href="{{ day_link }}" class="stats-day-card {% if day.date == selected_date %}is-active{% endif %}">
+                <div class="stats-day-top">
+                    <div>
+                        <div class="stats-day-label">{{ 'Hoy' if day.date == today else day.date.strftime('%A')|capitalize }}</div>
+                        <div class="stats-day-date">{{ day.date.strftime('%d/%m/%Y') }}</div>
+                    </div>
+                    {% if day.date == selected_date %}<span class="coupon-badge is-muted">Activo</span>{% endif %}
+                </div>
+                <div class="stats-day-metrics">
+                    <span>Vendidas: <strong>{{ day.sold_orders }}</strong></span>
+                    <span>Pendientes: <strong>{{ day.pending_orders }}</strong></span>
+                    <span>Con cupón: <strong>{{ day.coupon_orders }}</strong></span>
+                    <span class="stats-day-revenue">Ingresos: ${{ '%.2f'|format(day.revenue) }}</span>
+                </div>
+            </a>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="stats-section-head">
+        <div>
+            <h2>Resumen de cupones del día</h2>
+            <p class="stats-section-note">Conteo global de códigos usados en {{ selected_date.strftime('%d/%m/%Y') }}{% if selected_service %} para {{ selected_service.name }}{% endif %}.</p>
+        </div>
+    </div>
+
+    <div class="coupon-stack">
+        {% for coupon in coupon_summary %}
+        <span class="coupon-badge"><strong>{{ coupon.code }}</strong> / {{ coupon.count }} ventas</span>
+        {% endfor %}
+        <span class="coupon-badge is-muted"><strong>Sin cupón</strong> / {{ no_coupon_total }} ventas</span>
+        {% if not coupon_summary and not no_coupon_total %}
+        <div class="empty-state-admin">No hay órdenes para ese día con los filtros actuales.</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="stats-section-head">
+        <div>
+            <h2>Paquetes vendidos o procesados</h2>
+            <p class="stats-section-note">Solo se muestran paquetes con movimiento en el día seleccionado.</p>
+        </div>
     </div>
 
     <div class="table-wrap">
-        <table class="sales-table">
+        <table class="stats-table">
             <thead>
                 <tr>
-                    <th style="min-width:200px">Juego / Paquete</th>
-                    {% for i in range(3) %}
-                    <th class="cell-count">
-                        <div class="day-label">{{ day_names[i] }}</div>
-                        <div class="day-date">{{ days[i].strftime('%d/%m/%Y') }}</div>
-                    </th>
-                    {% endfor %}
-                    <th class="cell-count">
-                        <div class="day-label">Total</div>
-                        <div class="day-date">3 dias</div>
-                    </th>
+                    <th>Servicio / Paquete</th>
+                    <th>Órdenes</th>
+                    <th>Vendidas</th>
+                    <th>Pendientes</th>
+                    <th>Ingresos</th>
+                    <th>Descuento</th>
+                    <th>Cupones usados</th>
                 </tr>
             </thead>
             <tbody>
-                {% if ordered_rows %}
-                    {% for row in ordered_rows %}
-                        {% set grand = namespace(v=0, done=0, pend=0) %}
-                        {% for d in days %}
-                            {% set cell = row.cells[d.isoformat()] %}
-                            {% set grand.v    = grand.v    + cell.total     %}
-                            {% set grand.done = grand.done + cell.completed %}
-                            {% set grand.pend = grand.pend + cell.pending   %}
-                        {% endfor %}
-                        <tr>
-                            <td>
-                                <div class="pkg-game">{{ row.game_name }}</div>
-                                <div class="pkg-name">{{ row.pkg_name }}</div>
-                            </td>
-                            {% for d in days %}
-                                {% set cell = row.cells[d.isoformat()] %}
-                                <td class="cell-count">
-                                    {% if cell.total > 0 %}
-                                        <div class="count-total">{{ cell.total }}</div>
-                                        <div class="count-breakdown">
-                                            {% if cell.completed > 0 %}<span class="tag-done">OK {{ cell.completed }}</span>{% endif %}
-                                            {% if cell.pending   > 0 %}<span class="tag-pending">Pen {{ cell.pending }}</span>{% endif %}
-                                        </div>
-                                    {% else %}
-                                        <div class="count-zero">-</div>
-                                    {% endif %}
-                                </td>
-                            {% endfor %}
-                            <td class="cell-count">
-                                {% if grand.v > 0 %}
-                                    <div class="count-total" style="color:#a78bfa">{{ grand.v }}</div>
-                                    <div class="count-breakdown">
-                                        {% if grand.done > 0 %}<span class="tag-done">OK {{ grand.done }}</span>{% endif %}
-                                        {% if grand.pend > 0 %}<span class="tag-pending">Pen {{ grand.pend }}</span>{% endif %}
-                                    </div>
-                                {% else %}
-                                    <div class="count-zero">-</div>
-                                {% endif %}
-                            </td>
-                        </tr>
+                {% if package_stats %}
+                    {% for row in package_stats %}
+                    <tr>
+                        <td data-label="Servicio / Paquete">
+                            <div class="stats-game">{{ row.game_name }}</div>
+                            <div class="stats-package">{{ row.package_name }}</div>
+                        </td>
+                        <td data-label="Órdenes">
+                            <div class="stats-number">{{ row.total_orders }}</div>
+                        </td>
+                        <td data-label="Vendidas">
+                            <div class="stats-number">{{ row.sold_orders }}</div>
+                        </td>
+                        <td data-label="Pendientes">
+                            <div class="stats-number">{{ row.pending_orders }}</div>
+                        </td>
+                        <td data-label="Ingresos">
+                            <div class="stats-money">${{ '%.2f'|format(row.revenue) }}</div>
+                        </td>
+                        <td data-label="Descuento">
+                            <div class="stats-money" style="color:#f97316">${{ '%.2f'|format(row.discount_total) }}</div>
+                        </td>
+                        <td data-label="Cupones usados">
+                            <div class="coupon-stack">
+                                {% for coupon in row.coupon_breakdown %}
+                                <span class="coupon-badge"><strong>{{ coupon.code }}</strong> / {{ coupon.count }}</span>
+                                {% endfor %}
+                                <span class="coupon-badge is-muted"><strong>Sin cupón</strong> / {{ row.no_coupon_orders }}</span>
+                            </div>
+                        </td>
+                    </tr>
                     {% endfor %}
                 {% else %}
-                <tr class="empty-row"><td colspan="5">Sin ordenes en los ultimos 3 dias</td></tr>
+                <tr>
+                    <td colspan="7" class="empty-state-admin">No hay paquetes con movimiento para ese día y filtro.</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="stats-section-head">
+        <div>
+            <h2>Órdenes del día</h2>
+            <p class="stats-section-note">Cada recarga muestra su número de orden y el código usado, si aplicó.</p>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table class="stats-table">
+            <thead>
+                <tr>
+                    <th># Orden</th>
+                    <th>Servicio / Paquete</th>
+                    <th>Estado</th>
+                    <th>Monto</th>
+                    <th>Cupón</th>
+                    <th>Descuento</th>
+                    <th>Cliente</th>
+                    <th>Hora</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if daily_orders %}
+                    {% for item in daily_orders %}
+                    <tr>
+                        <td data-label="# Orden"><span class="order-number-chip">#{{ item.order_number }}</span></td>
+                        <td data-label="Servicio / Paquete">
+                            <div class="stats-game">{{ item.game_name }}</div>
+                            <div class="stats-package">{{ item.package_name }}</div>
+                        </td>
+                        <td data-label="Estado"><span class="status-badge {{ item.status_class }}">{{ item.status_label }}</span></td>
+                        <td data-label="Monto"><strong>${{ '%.2f'|format(item.amount) }}</strong></td>
+                        <td data-label="Cupón">{{ item.coupon_label }}</td>
+                        <td data-label="Descuento">${{ '%.2f'|format(item.discount_amount) }}</td>
+                        <td data-label="Cliente">{{ item.customer_label }}</td>
+                        <td data-label="Hora">{{ item.created_at_ve.strftime('%H:%M') }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="8" class="empty-state-admin">No hay órdenes registradas para ese día y filtro.</td>
+                </tr>
                 {% endif %}
             </tbody>
         </table>

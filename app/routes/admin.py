@@ -2,6 +2,7 @@ import os
 import json
 import re
 import requests
+from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import (
@@ -10,6 +11,7 @@ from flask import (
 )
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 from ..models import (
     db, AdminUser, Game, Package, Category, Order,
@@ -1680,56 +1682,209 @@ def order_verify_recharge(order_id):
 def stats():
     today = now_ve().date()
 
-    days = [today, today - timedelta(days=1), today - timedelta(days=2)]
+    tracked_statuses = ('pending', 'approved', 'completed')
+    history_start = today - timedelta(days=14)
+    history_days = [history_start + timedelta(days=offset) for offset in range(15)]
+    history_index = {day.isoformat(): day for day in history_days}
 
-    day_keys = [d.isoformat() for d in days]
+    service_options = Game.query.filter_by(is_active=True).order_by(Game.position.asc(), Game.id.asc()).all()
+    service_map = {str(game.id): game for game in service_options}
 
-    # Keep the same order used in admin lists: game.position then package.sort_order
-    games = Game.query.filter_by(is_active=True).order_by(Game.position.asc(), Game.id.asc()).all()
+    selected_service_raw = (request.args.get('service') or '').strip()
+    selected_service = service_map.get(selected_service_raw)
 
-    ordered_rows = []
-    row_map = {}
-    for game in games:
-        packages = game.packages.filter_by(is_active=True).order_by(Package.sort_order.asc(), Package.id.asc()).all()
-        for pkg in packages:
-            cells = {k: {'total': 0, 'completed': 0, 'pending': 0} for k in day_keys}
-            row = {
-                'game_name': game.name,
-                'pkg_name': pkg.name,
-                'cells': cells,
-            }
-            ordered_rows.append(row)
-            row_map[(game.id, pkg.id)] = row
+    selected_date = today
+    selected_date_raw = (request.args.get('date') or '').strip()
+    if selected_date_raw:
+        try:
+            parsed_date = datetime.strptime(selected_date_raw, '%Y-%m-%d').date()
+            if parsed_date < history_start:
+                selected_date = history_start
+            elif parsed_date > today:
+                selected_date = today
+            else:
+                selected_date = parsed_date
+        except ValueError:
+            selected_date = today
 
-    # Convert Venezuela day window to UTC for querying stored timestamps.
-    window_start = ve_day_start_utc_naive(days[2])
+    def _coupon_code_for_order(order):
+        code = (order.affiliate_code or '').strip().upper()
+        if code:
+            return code
+
+        discount_amount = float(order.discount_amount or 0)
+        if discount_amount > 0 or order.discount_id or order.affiliate_id:
+            return 'CODIGO NO REGISTRADO'
+
+        return ''
+
+    def _sort_text(value):
+        return str(value or '').strip().lower()
+
+    window_start = ve_day_start_utc_naive(history_start)
     window_end = ve_day_start_utc_naive(today + timedelta(days=1))
 
-    rows = Order.query.filter(
+    orders_query = Order.query.options(
+        joinedload(Order.game),
+        joinedload(Order.package),
+    ).filter(
         Order.created_at >= window_start,
         Order.created_at < window_end,
-        Order.status.in_(['pending', 'approved', 'completed']),
-    ).all()
+        Order.status.in_(tracked_statuses),
+    )
 
-    for order in rows:
+    if selected_service:
+        orders_query = orders_query.filter(Order.game_id == selected_service.id)
+
+    orders = orders_query.order_by(Order.created_at.desc()).all()
+
+    daily_stats = {
+        day.isoformat(): {
+            'date': day,
+            'total_orders': 0,
+            'sold_orders': 0,
+            'pending_orders': 0,
+            'revenue': 0.0,
+            'coupon_orders': 0,
+            'no_coupon_orders': 0,
+            'discount_total': 0.0,
+        }
+        for day in history_days
+    }
+
+    package_rows = {}
+    daily_orders = []
+
+    for order in orders:
         created_at_ve = to_ve(order.created_at)
         if created_at_ve is None:
             continue
 
         day_iso = created_at_ve.date().isoformat()
-        data_row = row_map.get((order.game_id, order.package_id))
-        if not data_row or day_iso not in data_row['cells']:
+        if day_iso not in history_index:
             continue
 
-        cell = data_row['cells'][day_iso]
-        cell['total'] += 1
-        if order.status in ('completed', 'approved'):
-            cell['completed'] += 1
+        amount_value = float(order.amount or 0)
+        discount_value = float(order.discount_amount or 0)
+        coupon_code = _coupon_code_for_order(order)
+        has_coupon = bool(coupon_code)
+        sold_order = order.status in ('approved', 'completed')
+
+        day_bucket = daily_stats[day_iso]
+        day_bucket['total_orders'] += 1
+        day_bucket['discount_total'] += discount_value
+        if sold_order:
+            day_bucket['sold_orders'] += 1
+            day_bucket['revenue'] += amount_value
         elif order.status == 'pending':
-            cell['pending'] += 1
+            day_bucket['pending_orders'] += 1
+
+        if has_coupon:
+            day_bucket['coupon_orders'] += 1
+        else:
+            day_bucket['no_coupon_orders'] += 1
+
+        if day_iso != selected_date.isoformat():
+            continue
+
+        pkg_key = order.package_id
+        row = package_rows.get(pkg_key)
+        if row is None:
+            row = {
+                'game_name': order.game.name if order.game else 'Servicio',
+                'game_position': getattr(order.game, 'position', 0) or 0,
+                'package_name': order.package.name if order.package else 'Paquete',
+                'package_sort_order': getattr(order.package, 'sort_order', 0) or 0,
+                'total_orders': 0,
+                'sold_orders': 0,
+                'pending_orders': 0,
+                'revenue': 0.0,
+                'discount_total': 0.0,
+                'coupon_breakdown': defaultdict(int),
+                'no_coupon_orders': 0,
+            }
+            package_rows[pkg_key] = row
+
+        row['total_orders'] += 1
+        row['discount_total'] += discount_value
+        if sold_order:
+            row['sold_orders'] += 1
+            row['revenue'] += amount_value
+        elif order.status == 'pending':
+            row['pending_orders'] += 1
+
+        if has_coupon:
+            row['coupon_breakdown'][coupon_code] += 1
+        else:
+            row['no_coupon_orders'] += 1
+
+        daily_orders.append({
+            'order_number': order.order_number,
+            'game_name': order.game.name if order.game else 'Servicio',
+            'package_name': order.package.name if order.package else 'Paquete',
+            'status_label': order.status_label,
+            'status_class': order.status_class,
+            'amount': amount_value,
+            'discount_amount': discount_value,
+            'coupon_code': coupon_code,
+            'coupon_label': coupon_code or 'Sin cupón',
+            'customer_label': (order.player_id or order.email or order.phone or 'Sin dato'),
+            'created_at_ve': created_at_ve,
+        })
+
+    package_stats = []
+    for row in package_rows.values():
+        coupons = [
+            {'code': code, 'count': count}
+            for code, count in sorted(row['coupon_breakdown'].items(), key=lambda item: (-item[1], item[0]))
+        ]
+        package_stats.append({
+            'game_name': row['game_name'],
+            'package_name': row['package_name'],
+            'game_position': row['game_position'],
+            'package_sort_order': row['package_sort_order'],
+            'total_orders': row['total_orders'],
+            'sold_orders': row['sold_orders'],
+            'pending_orders': row['pending_orders'],
+            'revenue': row['revenue'],
+            'discount_total': row['discount_total'],
+            'coupon_breakdown': coupons,
+            'no_coupon_orders': row['no_coupon_orders'],
+        })
+
+    package_stats.sort(key=lambda row: (
+        row['game_position'],
+        _sort_text(row['game_name']),
+        row['package_sort_order'],
+        _sort_text(row['package_name']),
+    ))
+
+    coupon_totals = defaultdict(int)
+    no_coupon_total = 0
+    for row in package_stats:
+        for coupon in row['coupon_breakdown']:
+            coupon_totals[coupon['code']] += coupon['count']
+        no_coupon_total += row['no_coupon_orders']
+
+    coupon_summary = [
+        {'code': code, 'count': count}
+        for code, count in sorted(coupon_totals.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+    selected_summary = daily_stats[selected_date.isoformat()]
+    daily_history = [daily_stats[day.isoformat()] for day in reversed(history_days)]
 
     return render_template(
         'admin/stats.html',
-        days=days,
-        ordered_rows=ordered_rows,
+        today=today,
+        selected_date=selected_date,
+        selected_service=selected_service,
+        selected_service_id=selected_service.id if selected_service else None,
+        service_options=service_options,
+        daily_history=daily_history,
+        selected_summary=selected_summary,
+        package_stats=package_stats,
+        coupon_summary=coupon_summary,
+        no_coupon_total=no_coupon_total,
+        daily_orders=daily_orders,
     )
