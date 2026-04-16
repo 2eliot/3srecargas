@@ -75,10 +75,38 @@ def order_qualifies_for_auto_verify(order):
     return has_mapping or uses_pin_stock
 
 
+def order_supports_background_payment_verification(order):
+    if not order:
+        return False
+
+    payment_method_code = (order.payment_method or '').strip().lower()
+    if not payment_method_code:
+        return False
+
+    payment_method = PaymentMethod.query.filter_by(code=payment_method_code).first()
+    if not payment_method:
+        return False
+
+    return bool((payment_method.pabilo_user_bank_id or '').strip())
+
+
 def auto_verify_and_process_order(order, force=False):
-    auto_allowed = order_qualifies_for_auto_verify(order)
-    if not order or order.status != 'pending' or not is_auto_verify_enabled() or not auto_allowed:
+    payment_verify_allowed = order_supports_background_payment_verification(order)
+    auto_approve_allowed = order_qualifies_for_auto_verify(order)
+
+    if not order or order.status != 'pending' or not is_auto_verify_enabled() or not payment_verify_allowed:
         return {'checked': False, 'verified': False, 'message': '', 'stop_polling': True}
+
+    if order.payment_verified_at and not auto_approve_allowed:
+        return {
+            'ok': True,
+            'checked': True,
+            'verified': True,
+            'payment_verified': True,
+            'manual_review_required': True,
+            'message': 'Pago verificado en Pabilo. La orden sigue pendiente de revisión manual.',
+            'stop_polling': True,
+        }
 
     attempts = int(order.payment_verification_attempts or 0)
     if attempts >= AUTO_VERIFY_MAX_ATTEMPTS and not force and not order.payment_verified_at:
@@ -126,10 +154,27 @@ def auto_verify_and_process_order(order, force=False):
             existing_notes = order.notes or ''
             if pabilo_note not in existing_notes:
                 order.notes = (existing_notes + '\n' + pabilo_note).strip()
+
+            if not auto_approve_allowed:
+                manual_note = '[Pabilo] Orden manual: pago verificado sin aprobación automática.'
+                if manual_note not in (order.notes or ''):
+                    order.notes = ((order.notes or '') + '\n' + manual_note).strip()
+                db.session.commit()
+                return {
+                    'ok': True,
+                    'checked': True,
+                    'verified': True,
+                    'payment_verified': True,
+                    'manual_review_required': True,
+                    'message': 'Pago verificado en Pabilo. La orden sigue pendiente de revisión manual.',
+                    'stop_polling': True,
+                }
+
             db.session.commit()
             approval = approve_order(order)
             approval['checked'] = True
             approval['verified'] = approval.get('ok', False)
+            approval['payment_verified'] = approval.get('ok', False)
             approval['stop_polling'] = True
             return approval
 
@@ -141,6 +186,7 @@ def auto_verify_and_process_order(order, force=False):
                 db.session.commit()
 
         verification['checked'] = True
+        verification['payment_verified'] = False
         verification['stop_polling'] = False
         if verification.get('rate_limited'):
             verification['next_retry_in_seconds'] = AUTO_VERIFY_COOLDOWN_SECONDS
@@ -600,8 +646,13 @@ def order_status(order_number):
     )
 
     auto_verify_enabled = is_auto_verify_enabled()
+    payment_auto_verify_allowed = (
+        auto_verify_enabled
+        and order_supports_background_payment_verification(order)
+        and not is_binance_auto_order
+    )
     # Don't run Pabilo auto-verify on Binance auto orders; the background thread handles them
-    auto_verify_allowed = (
+    auto_process_allowed = (
         auto_verify_enabled
         and order_qualifies_for_auto_verify(order)
         and not is_binance_auto_order
@@ -614,8 +665,9 @@ def order_status(order_number):
         display_currency=display_currency,
         display_amount=display_amount,
         auto_verify_enabled=auto_verify_enabled,
-        auto_verify_allowed=auto_verify_allowed,
-        is_manual_order=not auto_verify_allowed and not is_binance_auto_order,
+        auto_verify_allowed=payment_auto_verify_allowed,
+        auto_process_allowed=auto_process_allowed,
+        is_manual_order=not auto_process_allowed and not is_binance_auto_order,
         is_binance_auto_order=is_binance_auto_order,
         order_status_image=order_status_image,
     )
@@ -624,12 +676,13 @@ def order_status(order_number):
 @checkout_bp.route('/order/<order_number>/auto-verify', methods=['POST'])
 def order_auto_verify(order_number):
     order = Order.query.filter_by(order_number=order_number).first_or_404()
-    auto_verify_allowed = is_auto_verify_enabled() and order_qualifies_for_auto_verify(order)
+    auto_verify_allowed = is_auto_verify_enabled() and order_supports_background_payment_verification(order)
     if not auto_verify_allowed:
         return jsonify({
             'ok': True,
             'checked': False,
             'verified': False,
+            'payment_verified': False,
             'message': 'Esta orden se procesa manualmente por operador.',
             'stop_polling': True,
             'next_retry_in_seconds': 0,
@@ -646,6 +699,8 @@ def order_auto_verify(order_number):
         'ok': result.get('ok', True),
         'checked': result.get('checked', False),
         'verified': result.get('verified', False),
+        'payment_verified': result.get('payment_verified', result.get('verified', False)),
+        'manual_review_required': result.get('manual_review_required', False),
         'message': result.get('message', ''),
         'stop_polling': result.get('stop_polling', False),
         'next_retry_in_seconds': result.get('next_retry_in_seconds', 0),

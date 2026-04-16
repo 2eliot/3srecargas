@@ -38,7 +38,11 @@
 
         <p class="status-subtitle">
             {% if order.status == 'pending' %}
-            Tu orden está siendo procesada. Te notificaremos pronto.
+                {% if is_manual_order and order.payment_verified_at %}
+                Tu pago fue verificado en Pabilo. La orden sigue pendiente de revisión manual.
+                {% else %}
+                Tu orden está siendo procesada. Te notificaremos pronto.
+                {% endif %}
             {% elif order.status == 'approved' %}
             Tu pago fue verificado. La recarga será procesada en breve.
             {% elif order.status == 'completed' %}
@@ -48,70 +52,9 @@
             {% endif %}
         </p>
 
-        {% if is_manual_order %}
-        <div class="order-info-grid">
-            <div class="order-info-item">
-                <span class="info-label">Estado</span>
-                <span class="info-value">
-                    <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
-                </span>
-            </div>
-            <div class="order-info-item">
-                <span class="info-label">Juego</span>
-                <span class="info-value">{{ order.game.name }}</span>
-            </div>
-            {% if order.game and order.game.description %}
-            <div class="order-info-item">
-                <span class="info-label">Descripción</span>
-                <span class="info-value">{{ order.game.description }}</span>
-            </div>
-            {% endif %}
-            <div class="order-info-item">
-                <span class="info-label">Paquete</span>
-                <span class="info-value">{{ order.package.name }}</span>
-            </div>
-            <div class="order-info-item">
-                <span class="info-label">Monto</span>
-                <span class="info-value">
-                    {% if display_currency == 'usd' %}
-                    ${{ "%.2f"|format(display_amount) }}
-                    {% else %}
-                    Bs {{ "%.0f"|format(display_amount) }}
-                    {% endif %}
-                </span>
-            </div>
-            <div class="order-info-item">
-                <span class="info-label">Pago</span>
-                <span class="info-value">{{ order.payment_method | title }}</span>
-            </div>
-            {% if order.player_id %}
-            <div class="order-info-item">
-                <span class="info-label">{{ order.game.player_id_label }}</span>
-                <span class="info-value">{{ order.player_id }}</span>
-            </div>
-            {% endif %}
-            {% if order.zone_id %}
-            <div class="order-info-item">
-                <span class="info-label">{{ order.game.zone_id_label }}</span>
-                <span class="info-value">{{ order.zone_id }}</span>
-            </div>
-            {% endif %}
-            {% if order.email %}
-            <div class="order-info-item">
-                <span class="info-label">Email</span>
-                <span class="info-value">{{ order.email }}</span>
-            </div>
-            {% endif %}
-            <div class="order-info-item">
-                <span class="info-label">Fecha</span>
-                <span class="info-value">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
-            </div>
-        </div>
-        {% endif %}
-
         {% if auto_verify_allowed and order.status in ['pending', 'approved', 'completed'] %}
         <div class="order-status-showcase{% if order_status_image %} has-side-image{% endif %}">
-            <div class="processing-flow" id="processingFlow" data-status="{{ order.status }}">
+            <div class="processing-flow" id="processingFlow" data-status="{{ order.status }}" data-manual-flow="{{ 'true' if is_manual_order else 'false' }}" data-payment-verified="{{ 'true' if order.payment_verified_at else 'false' }}">
                 <h3 class="processing-title">Estado de procesamiento</h3>
                 <div class="processing-step" data-step="search">
                     <span class="step-icon">✕</span>
@@ -125,6 +68,7 @@
                     <span class="step-icon">✕</span>
                     <span class="step-text">Validando la orden</span>
                 </div>
+                {% if auto_process_allowed %}
                 <div class="processing-step" data-step="connect">
                     <span class="step-icon">✕</span>
                     <span class="step-text">Conectando con servidor de recargas</span>
@@ -133,6 +77,7 @@
                     <span class="step-icon">✕</span>
                     <span class="step-text">Recarga procesada correctamente</span>
                 </div>
+                {% endif %}
             </div>
             {% if order_status_image %}
             <aside class="order-status-side-media" aria-label="Imagen de seguimiento de la orden">
@@ -329,6 +274,8 @@
     var initialStatus = '{{ order.status }}';
     var currentDelayMs = 30000;
     var flow = document.getElementById('processingFlow');
+    var manualFlow = flow ? flow.getAttribute('data-manual-flow') === 'true' : false;
+    var initialPaymentVerified = flow ? flow.getAttribute('data-payment-verified') === 'true' : false;
 
     function getStepEl(step) {
         return flow ? flow.querySelector('[data-step="' + step + '"]') : null;
@@ -349,6 +296,16 @@
     function paintFlowByStatus(status, verified) {
         if (!flow) return;
         var s = String(status || '').toLowerCase();
+        if (manualFlow) {
+            if (s === 'approved' || s === 'completed') {
+                ['search', 'confirm', 'validate'].forEach(function (k) { setStepState(k, 'done'); });
+                return;
+            }
+            setStepState('search', verified ? 'done' : 'active');
+            setStepState('confirm', verified ? 'done' : 'pending');
+            setStepState('validate', verified ? 'done' : 'pending');
+            return;
+        }
         if (s === 'completed') {
             ['search', 'confirm', 'validate', 'connect', 'deliver'].forEach(function (k) { setStepState(k, 'done'); });
             return;
@@ -386,7 +343,7 @@
                 if (hint && data.message) {
                     hint.textContent = data.message;
                 }
-                paintFlowByStatus(data.status, data.verified);
+                paintFlowByStatus(data.status, !!(data.payment_verified || data.verified));
                 if (data.status && data.status !== 'pending') {
                     if (data.status === 'completed') {
                         window.setTimeout(function () { window.location.reload(); }, 1200);
@@ -411,7 +368,7 @@
             });
     }
 
-    paintFlowByStatus(initialStatus, false);
+    paintFlowByStatus(initialStatus, initialPaymentVerified);
     if (initialStatus !== 'pending') {
         return;
     }
