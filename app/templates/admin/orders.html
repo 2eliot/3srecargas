@@ -6,17 +6,36 @@
 <!-- Filters -->
 <div class="filters-bar">
     <div class="filter-tabs">
-        <a href="{{ url_for('admin_bp.orders') }}"
+        <a href="{{ url_for('admin_bp.orders', q=search_query or None) }}"
            class="filter-tab {% if not status_filter %}active{% endif %}">Todas</a>
-        <a href="{{ url_for('admin_bp.orders', status='pending') }}"
+        <a href="{{ url_for('admin_bp.orders', status='pending', q=search_query or None) }}"
            class="filter-tab {% if status_filter == 'pending' %}active{% endif %}">Pendientes</a>
-        <a href="{{ url_for('admin_bp.orders', status='approved') }}"
+        <a href="{{ url_for('admin_bp.orders', status='approved', q=search_query or None) }}"
            class="filter-tab {% if status_filter == 'approved' %}active{% endif %}">Aprobadas</a>
-        <a href="{{ url_for('admin_bp.orders', status='completed') }}"
+        <a href="{{ url_for('admin_bp.orders', status='completed', q=search_query or None) }}"
            class="filter-tab {% if status_filter == 'completed' %}active{% endif %}">Completadas</a>
-        <a href="{{ url_for('admin_bp.orders', status='rejected') }}"
+        <a href="{{ url_for('admin_bp.orders', status='rejected', q=search_query or None) }}"
            class="filter-tab {% if status_filter == 'rejected' %}active{% endif %}">Rechazadas</a>
     </div>
+    <form method="GET" action="{{ url_for('admin_bp.orders') }}" class="orders-search-form">
+        {% if status_filter %}
+        <input type="hidden" name="status" value="{{ status_filter }}">
+        {% endif %}
+        <div class="orders-search-input-wrap">
+            <input
+                type="search"
+                name="q"
+                value="{{ search_query or '' }}"
+                class="orders-search-input"
+                placeholder="Buscar por referencia o numero de orden"
+                autocomplete="off"
+            >
+            {% if search_query %}
+            <a href="{{ url_for('admin_bp.orders', status=status_filter or None) }}" class="btn-secondary orders-search-clear">Limpiar</a>
+            {% endif %}
+            <button type="submit" class="btn-primary orders-search-submit">Buscar</button>
+        </div>
+    </form>
 </div>
 
 <div class="admin-card">
@@ -36,7 +55,7 @@
                     <th>Acciones</th>
                 </tr>
             </thead>
-            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}">
+            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}">
                 {% for order in orders %}
                 <tr data-order-id="{{ order.id }}">
                     <td data-label="#Orden"><span class="order-num">#{{ order.order_number }}</span></td>
@@ -92,7 +111,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="10" class="empty-row">No hay órdenes.</td></tr>
+                <tr><td colspan="10" class="empty-row">{% if search_query %}No hay órdenes que coincidan con la búsqueda.{% else %}No hay órdenes.{% endif %}</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -351,6 +370,7 @@ function _kickAutoVerification(scopeEl) {
     var tbody = document.getElementById('ordersTbody');
     if (!tbody) return;
     var statusFilter = tbody.getAttribute('data-status-filter') || '';
+    var searchQuery = tbody.getAttribute('data-search-query') || '';
 
     function getMaxId() {
         var max = 0;
@@ -365,6 +385,7 @@ function _kickAutoVerification(scopeEl) {
         var sinceId = getMaxId();
         var url = '/admin/orders/latest?since_id=' + encodeURIComponent(String(sinceId));
         if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
+        if (searchQuery) url += '&q=' + encodeURIComponent(searchQuery);
         fetch(url)
             .then(function(r) { return r.json(); })
             .then(function(data) {
