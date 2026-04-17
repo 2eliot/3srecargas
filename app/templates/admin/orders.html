@@ -79,7 +79,7 @@
                             <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline" class="approve-form">
                                 <button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>
                             </form>
-                            <button class="btn-sm btn-danger" onclick="openRejectModal({{ order.id }})" title="Rechazar">✗</button>
+                            <button type="button" class="btn-sm btn-danger reject-order-btn" data-order-id="{{ order.id }}" title="Rechazar">✗</button>
                         </div>
                         {% elif order.status == 'completed' and order.pin_delivered %}
                         <div class="action-btns">
@@ -157,6 +157,17 @@ function openRejectModal(orderId) {
 function closeRejectModal() {
     document.getElementById('rejectModal').style.display = 'none';
 }
+
+document.addEventListener('click', function(evt) {
+    var rejectButton = evt.target.closest('.reject-order-btn');
+    if (!rejectButton) return;
+
+    var orderId = rejectButton.getAttribute('data-order-id') || '';
+    if (!orderId) return;
+
+    openRejectModal(orderId);
+});
+
 function showPin(pin) {
     document.getElementById('pinCodeDisplay').textContent = pin;
     document.getElementById('pinModal').style.display = 'flex';
@@ -228,7 +239,7 @@ function _renderOrderRow(o) {
             '<form method="POST" action="/admin/orders/' + o.id + '/approve" style="display:inline" class="approve-form">' +
                 '<button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>' +
             '</form>' +
-            '<button class="btn-sm btn-danger" onclick="openRejectModal(' + o.id + ')" title="Rechazar">✗</button>' +
+            '<button type="button" class="btn-sm btn-danger reject-order-btn" data-order-id="' + o.id + '" title="Rechazar">✗</button>' +
         '</div>';
     } else if (o.status === 'completed' && o.pin_delivered) {
         actions = '<div class="action-btns">' +

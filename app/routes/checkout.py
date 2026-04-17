@@ -15,6 +15,7 @@ from ..models import db, Game, Package, Order, Affiliate, AffiliateCommission, P
 from ..models import Setting
 from ..utils.order_processing import approve_order, get_order_auto_mapping
 from ..utils.payment_verification import (
+    find_reference_conflict,
     is_auto_verify_enabled,
     normalize_bs_integer_amount,
     normalize_reference_last5,
@@ -367,9 +368,13 @@ def checkout(package_id):
                 flash('Debes ingresar la referencia del pago.', 'danger')
                 return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
-        existing_ref = Order.query.filter_by(payment_reference=payment_reference_input, status='pending').first()
+        existing_ref = find_reference_conflict(
+            reference=payment_reference_input,
+            payment_method_code=payment_method,
+            statuses=['pending', 'approved', 'completed'],
+        )
         if existing_ref:
-            flash('Esta referencia ya fue registrada en otra orden. Verifica tu pago e intenta nuevamente.', 'danger')
+            flash('Esta referencia ya fue registrada en otra orden activa o ya aprobada. Verifica tu pago e intenta nuevamente.', 'danger')
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
         aff_code = (data.get('affiliate_code') or '').strip()

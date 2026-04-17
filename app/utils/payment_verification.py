@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import requests
 from flask import current_app
+from sqlalchemy import or_
 
 from ..models import Order, PaymentMethod, Setting
 
@@ -10,6 +11,7 @@ from ..models import Order, PaymentMethod, Setting
 AUTO_VERIFY_SETTING_KEY = 'auto_verify_payments'
 PABILO_API_KEY_SETTING_KEY = 'pabilo_api_key'
 PABILO_DEFAULT_MOVEMENT_TYPE = 'GENERIC'
+PABILO_MIN_ACCEPTANCE_RATIO = Decimal('0.99')
 
 
 def get_setting_value(key, default=''):
@@ -34,23 +36,51 @@ def normalize_reference_last5(reference):
     return raw[-6:] if raw else ''
 
 
-def has_possible_duplicate_reference(reference_last5, amount, payment_method_code, exclude_order_id=None):
-    if not reference_last5:
+def normalize_reference_key(reference):
+    raw = str(reference or '').strip()
+    if not raw:
+        return ''
+
+    digits_only = ''.join(ch for ch in raw if ch.isdigit())
+    if digits_only:
+        return digits_only
+
+    return ''.join(raw.upper().split())
+
+
+def find_reference_conflict(reference, payment_method_code, exclude_order_id=None, statuses=None):
+    reference_key = normalize_reference_key(reference)
+    reference_last5 = normalize_reference_last5(reference)
+    if not reference_key and not reference_last5:
         return None
 
+    statuses = statuses or ['pending', 'approved', 'completed']
     query = Order.query.filter(
-        Order.payment_reference_last5 == reference_last5,
         Order.payment_method == payment_method_code,
-        Order.status.in_(['pending', 'approved', 'completed']),
+        Order.status.in_(statuses),
     )
 
-    if amount is not None:
-        query = query.filter(Order.payment_amount == amount)
+    filters = []
+    raw_reference = str(reference or '').strip()
+    if raw_reference:
+        filters.append(Order.payment_reference == raw_reference)
+    if reference_last5:
+        filters.append(Order.payment_reference_last5 == reference_last5)
+    if filters:
+        query = query.filter(or_(*filters))
 
     if exclude_order_id:
         query = query.filter(Order.id != exclude_order_id)
 
-    return query.order_by(Order.id.desc()).first()
+    candidates = query.order_by(Order.id.desc()).all()
+    for candidate in candidates:
+        candidate_key = normalize_reference_key(candidate.payment_reference)
+        if reference_key and candidate_key and candidate_key == reference_key:
+            return candidate
+        if not reference_key and reference_last5 and candidate.payment_reference_last5 == reference_last5:
+            return candidate
+
+    return None
 
 
 def _get_bs_amount(order):
@@ -125,13 +155,21 @@ def normalize_bs_integer_amount(value):
     return int(normalized)
 
 
-def _normalize_pabilo_amount(order):
+def _get_expected_order_amount(order):
     amount = _coerce_decimal_amount(_get_bs_amount(order))
     if amount is None:
-        return None, 'La orden no tiene un monto exacto válido para consultar en Pabilo.'
+        return None, 'La orden no tiene un monto exacto válido para validar en Pabilo.'
 
     if amount <= 0:
-        return None, 'La orden no tiene un monto válido mayor a cero para consultar en Pabilo.'
+        return None, 'La orden no tiene un monto válido mayor a cero para validar en Pabilo.'
+
+    return amount, None
+
+
+def _normalize_pabilo_amount(order):
+    amount, amount_error = _get_expected_order_amount(order)
+    if amount_error:
+        return None, amount_error
 
     normalized_amount = normalize_bs_integer_amount(amount)
     if normalized_amount is None or normalized_amount <= 0:
@@ -140,41 +178,97 @@ def _normalize_pabilo_amount(order):
     return normalized_amount, None
 
 
-def _resolve_pabilo_movement_type(order):
-    raw_value = order.payer_movement_type or current_app.config.get('PABILO_MOVEMENT_TYPE') or PABILO_DEFAULT_MOVEMENT_TYPE
-    normalized = str(raw_value or '').strip().upper()
-    return normalized or PABILO_DEFAULT_MOVEMENT_TYPE
-
-
-def build_pabilo_payload(order, include_amount=True):
+def build_pabilo_payload(order):
     reference = str(order.payment_reference or '').strip()
     if not reference:
         return None, 'La orden no tiene una referencia bancaria válida para consultar en Pabilo.'
 
     payload = {
         'bank_reference': reference,
-        'movement_type': _resolve_pabilo_movement_type(order),
     }
 
-    if include_amount:
-        normalized_amount, amount_error = _normalize_pabilo_amount(order)
-        if amount_error:
-            return None, amount_error
-        payload['amount'] = normalized_amount
-
-    if order.payer_dni_number:
-        payload['dni_pagador'] = {
-            'dniType': (order.payer_dni_type or 'V').strip().upper(),
-            'dniNumber': str(order.payer_dni_number).strip(),
-        }
-    if order.payer_phone:
-        payload['phone_pagador'] = str(order.payer_phone).strip()
-    if order.payer_bank_origin:
-        payload['bank_origin'] = str(order.payer_bank_origin).strip()
-    if order.payer_payment_date:
-        payload['fecha_pago'] = order.payer_payment_date.strftime('%Y-%m-%d')
-
     return payload, None
+
+
+def _iter_amount_candidates(payload):
+    if isinstance(payload, dict):
+        for key in (
+            'amount', 'monto', 'payment_amount', 'paid_amount', 'amount_paid',
+            'bank_amount', 'credited_amount', 'transfer_amount', 'amount_bs',
+            'bs_amount', 'montobs', 'monto_bs',
+        ):
+            if key in payload:
+                yield payload.get(key)
+
+        for value in payload.values():
+            if isinstance(value, dict):
+                yield from _iter_amount_candidates(value)
+            elif isinstance(value, list):
+                for item in value:
+                    yield from _iter_amount_candidates(item)
+    elif isinstance(payload, list):
+        for item in payload:
+            yield from _iter_amount_candidates(item)
+
+
+def _extract_pabilo_reported_amount(payload_data, full_data):
+    for candidate in _iter_amount_candidates(payload_data):
+        amount = _coerce_decimal_amount(candidate)
+        if amount is not None and amount > 0:
+            return amount
+
+    payment_data = payload_data.get('user_bank_payment') if isinstance(payload_data, dict) else None
+    if payment_data:
+        for candidate in _iter_amount_candidates(payment_data):
+            amount = _coerce_decimal_amount(candidate)
+            if amount is not None and amount > 0:
+                return amount
+
+    for candidate in _iter_amount_candidates(full_data):
+        amount = _coerce_decimal_amount(candidate)
+        if amount is not None and amount > 0:
+            return amount
+
+    return None
+
+
+def _validate_verified_payment_amount(order, payload_data, full_data):
+    expected_amount, amount_error = _get_expected_order_amount(order)
+    if amount_error:
+        return {
+            'ok': False,
+            'verified': False,
+            'message': amount_error,
+        }
+
+    reported_amount = _extract_pabilo_reported_amount(payload_data, full_data)
+    if reported_amount is None:
+        return {
+            'ok': False,
+            'verified': False,
+            'message': 'Pabilo confirmó la referencia, pero no devolvió un monto válido para compararlo con la orden.',
+        }
+
+    minimum_amount = (expected_amount * PABILO_MIN_ACCEPTANCE_RATIO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    if reported_amount < minimum_amount:
+        return {
+            'ok': False,
+            'verified': False,
+            'message': (
+                f'Pabilo devolvió un monto menor al permitido para la orden. '
+                f'Esperado: Bs {expected_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)}. '
+                f'Mínimo aceptado: Bs {minimum_amount}. '
+                f'Reportado: Bs {reported_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)}.'
+            ),
+        }
+
+    return {
+        'ok': True,
+        'verified': True,
+        'expected_amount': str(expected_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
+        'minimum_amount': str(minimum_amount),
+        'reported_amount': str(reported_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
+    }
 
 
 def _request_pabilo_verify(url, api_key, payload, timeout):
@@ -236,7 +330,7 @@ def verify_order_payment(order):
     if not order:
         return {'ok': False, 'verified': False, 'message': 'Orden inválida.'}
 
-    payload, payload_error = build_pabilo_payload(order, include_amount=True)
+    payload, payload_error = build_pabilo_payload(order)
     if payload_error:
         return {
             'ok': False,
@@ -257,25 +351,19 @@ def verify_order_payment(order):
     if not user_bank_id:
         return {'ok': False, 'verified': False, 'message': 'Este método de pago no tiene userBankId de Pabilo.'}
 
-    duplicate = has_possible_duplicate_reference(
-        reference_last5=order.payment_reference_last5,
-        amount=None,
+    duplicate = find_reference_conflict(
+        reference=order.payment_reference,
         payment_method_code=order.payment_method,
         exclude_order_id=order.id,
     )
-    if duplicate:
-        duplicate_amount, _ = _normalize_pabilo_amount(duplicate)
-        current_amount = payload.get('amount')
-        if duplicate_amount != current_amount:
-            duplicate = None
 
     if duplicate:
         return {
             'ok': False,
             'verified': False,
             'message': (
-                'Se detectó otra orden con los mismos últimos 5 dígitos de referencia '
-                'y monto. La aprobación automática fue bloqueada.'
+                'Se detectó otra orden con la misma referencia bancaria. '
+                'La aprobación automática fue bloqueada.'
             ),
             'duplicate_order_id': duplicate.id,
         }
@@ -343,6 +431,11 @@ def verify_order_payment(order):
             'response': full_data,
         }
 
+    amount_validation = _validate_verified_payment_amount(order, payload_data, full_data)
+    if not amount_validation.get('verified'):
+        amount_validation['response'] = full_data
+        return amount_validation
+
     if not verification_id:
         # Fallback cuando Pabilo no devuelve ID único de verificación.
         # El sistema sigue protegido por referencia única en órdenes.
@@ -351,9 +444,15 @@ def verify_order_payment(order):
     return {
         'ok': True,
         'verified': True,
-        'message': 'Pago verificado correctamente en Pabilo.',
+        'message': (
+            'Pago verificado correctamente en Pabilo. '
+            f"Monto reportado: Bs {amount_validation['reported_amount']}"
+        ),
         'verification_id': verification_id,
         'is_new': is_new,
+        'expected_amount': amount_validation.get('expected_amount'),
+        'minimum_amount': amount_validation.get('minimum_amount'),
+        'reported_amount': amount_validation.get('reported_amount'),
         'response': full_data,
     }
 

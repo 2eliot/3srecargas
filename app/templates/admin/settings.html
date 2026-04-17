@@ -424,7 +424,6 @@
             }).catch(function() {});
     }
 
-    // Save all three values
     document.getElementById('btnSaveVerifyConfig').addEventListener('click', function() {
         var btn = this;
         var status = document.getElementById('verifyConfigStatus');
@@ -453,6 +452,7 @@
         ];
 
         Promise.all(promises).then(function() {
+            status.style.color = 'var(--accent)';
             status.textContent = 'Configuración de verificación guardada.';
             status.style.display = 'block';
             btn.disabled = false;

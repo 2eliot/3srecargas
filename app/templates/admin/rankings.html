@@ -1,0 +1,203 @@
+{% extends 'admin/base.html' %}
+{% block title %}Ranking{% endblock %}
+{% block page_title %}Ranking{% endblock %}
+
+{% block content %}
+<div class="admin-card ranking-live-admin-card">
+    <div class="card-header card-header-inline">
+        <div>
+            <h3>Ganadores Provisionales</h3>
+            <p class="form-hint">Monitorea el top actual del mes en tiempo real y revisa el histórico archivado de ganadores desde el mismo panel.</p>
+        </div>
+        <span class="badge badge-active" id="rankingAdminSyncStatus">Cargando...</span>
+    </div>
+    <div class="ranking-admin-toolbar">
+        <div class="ranking-admin-tabs" id="rankingAdminTabs"></div>
+        <div class="ranking-admin-meta" id="rankingAdminMeta"></div>
+    </div>
+    <div class="ranking-admin-status" id="rankingAdminStatus">Cargando ranking actual...</div>
+    <div class="ranking-admin-board" id="rankingAdminBoard" style="display:none"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var tabsEl = document.getElementById('rankingAdminTabs');
+    var metaEl = document.getElementById('rankingAdminMeta');
+    var statusEl = document.getElementById('rankingAdminStatus');
+    var boardEl = document.getElementById('rankingAdminBoard');
+    var syncEl = document.getElementById('rankingAdminSyncStatus');
+    if (!tabsEl || !metaEl || !statusEl || !boardEl || !syncEl) return;
+
+    var state = {
+        items: [],
+        activeKey: '',
+        generatedAt: '',
+        loading: false
+    };
+
+    function escHtml(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function formatReward(value, rankingKey) {
+        if (value === null || value === undefined || value === '') return 'Sin premio';
+        var text = String(value).trim();
+        if (!text) return 'Sin premio';
+        if (rankingKey === 'free_fire' && /^\d+(?:[.,]\d+)?$/.test(text)) {
+            return '💎 ' + text;
+        }
+        return text;
+    }
+
+    function setStatus(text, isError) {
+        statusEl.textContent = text;
+        statusEl.style.display = 'block';
+        statusEl.style.color = isError ? '#fca5a5' : '';
+        boardEl.style.display = 'none';
+        metaEl.textContent = '';
+    }
+
+    function getActiveItem() {
+        for (var index = 0; index < state.items.length; index += 1) {
+            if (state.items[index].key === state.activeKey) return state.items[index];
+        }
+        return state.items.length ? state.items[0] : null;
+    }
+
+    function renderTabs() {
+        tabsEl.innerHTML = '';
+        state.items.forEach(function(item) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'ranking-admin-tab' + (item.key === state.activeKey ? ' active' : '');
+            button.dataset.rankingKey = item.key;
+            button.textContent = item.label;
+            tabsEl.appendChild(button);
+        });
+    }
+
+    function renderArchiveHistory(item) {
+        if (!item.archive_history || !item.archive_history.length) {
+            return '';
+        }
+
+        var html = '<div class="ranking-admin-archive-stack">';
+        item.archive_history.forEach(function(period) {
+            html += '<div class="ranking-admin-archive">' +
+                '<div class="ranking-admin-archive-title">Ganadores archivados ' + escHtml(period.label || '') + '</div>' +
+                '<div class="ranking-admin-archive-list">';
+
+            (period.entries || []).forEach(function(entry) {
+                html += '<div class="ranking-admin-archive-item">' +
+                    '<strong>#' + escHtml(entry.position) + '</strong>' +
+                    '<span>' + escHtml(entry.nickname || entry.masked_nickname || 'Jugador***') + '</span>' +
+                    '<code>' + escHtml(entry.player_id || entry.masked_player_id || '----') + '</code>' +
+                    '<span>' + escHtml(formatReward(entry.prize_label, item.key)) + '</span>' +
+                '</div>';
+            });
+
+            html += '</div></div>';
+        });
+        html += '</div>';
+        return html;
+    }
+
+    function renderBoard() {
+        var item = getActiveItem();
+        if (!item) {
+            setStatus('No hay rankings activos configurados en este momento.', false);
+            return;
+        }
+
+        metaEl.textContent = 'Mes ' + (item.month_label || '') + ' · ' + item.game_name + ' · ' + String(item.total_players || 0) + ' jugador(es) rankeados · Actualizado ' + (state.generatedAt || '');
+
+        var html = '<div class="table-wrap"><table class="admin-table ranking-admin-table"><thead><tr><th>Puesto</th><th>Jugador</th><th>ID</th><th>' + escHtml(item.units_label || 'Total') + '</th><th>Premio</th></tr></thead><tbody>';
+
+        if (item.leaders && item.leaders.length) {
+            item.leaders.forEach(function(entry) {
+                var prizeTone = entry.is_prize_eligible ? ' ranking-admin-prize-cell' : '';
+                html += '<tr>' +
+                    '<td><span class="ranking-admin-position">#' + escHtml(entry.position) + '</span></td>' +
+                    '<td>' + escHtml(entry.nickname || 'Sin nickname') + '</td>' +
+                    '<td><code class="ref-code">' + escHtml(entry.player_id || '----') + '</code></td>' +
+                    '<td><strong>' + escHtml(entry.total_units) + '</strong></td>' +
+                    '<td class="' + prizeTone.trim() + '">' + escHtml(formatReward(entry.prize_label, item.key)) + '</td>' +
+                '</tr>';
+            });
+        } else {
+            html += '<tr><td colspan="5" class="empty-row">Todavía no hay órdenes aprobadas o completadas para este ranking en el mes actual.</td></tr>';
+        }
+
+        html += '</tbody></table></div>';
+        html += renderArchiveHistory(item);
+
+        statusEl.style.display = 'none';
+        statusEl.style.color = '';
+        boardEl.innerHTML = html;
+        boardEl.style.display = 'block';
+    }
+
+    function loadRankings() {
+        if (state.loading) return;
+        state.loading = true;
+        syncEl.textContent = 'Actualizando...';
+
+        fetch('/admin/rankings/live', { credentials: 'same-origin' })
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                var items = data && Array.isArray(data.rankings) ? data.rankings.filter(function(item) {
+                    return item && item.enabled;
+                }) : [];
+
+                state.items = items;
+                state.generatedAt = data && data.generated_at ? data.generated_at : '';
+
+                if (!state.items.length) {
+                    state.activeKey = '';
+                    setStatus('No hay rankings activos configurados en este momento.', false);
+                    tabsEl.innerHTML = '';
+                    syncEl.textContent = 'Sin datos';
+                    return;
+                }
+
+                var hasCurrentActive = state.items.some(function(item) {
+                    return item.key === state.activeKey;
+                });
+                if (!hasCurrentActive) {
+                    state.activeKey = state.items[0].key;
+                }
+
+                renderTabs();
+                renderBoard();
+                syncEl.textContent = 'En línea';
+            })
+            .catch(function() {
+                setStatus('No se pudo cargar el monitoreo del ranking.', true);
+                syncEl.textContent = 'Error';
+            })
+            .finally(function() {
+                state.loading = false;
+            });
+    }
+
+    tabsEl.addEventListener('click', function(event) {
+        var button = event.target.closest('.ranking-admin-tab');
+        if (!button) return;
+        state.activeKey = button.getAttribute('data-ranking-key') || '';
+        renderTabs();
+        renderBoard();
+    });
+
+    loadRankings();
+    window.setInterval(loadRankings, 30000);
+})();
+</script>
+{% endblock %}

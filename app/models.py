@@ -302,6 +302,8 @@ class RankingArchive(db.Model):
     month = db.Column(db.Integer, nullable=False)
     position = db.Column(db.Integer, nullable=False)
     game_name = db.Column(db.String(100), nullable=False)
+    player_id = db.Column(db.String(100))
+    nickname = db.Column(db.String(200))
     masked_player_id = db.Column(db.String(100), nullable=False)
     masked_nickname = db.Column(db.String(200), nullable=False)
     total_units = db.Column(db.Integer, default=0)

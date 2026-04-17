@@ -591,6 +591,110 @@ input[type="file"] {
     overflow: hidden;
 }
 
+.ranking-live-admin-card {
+    margin-top: 18px;
+}
+
+.ranking-admin-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 18px 14px;
+}
+
+.ranking-admin-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ranking-admin-tab {
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,.03);
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ranking-admin-tab.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(139,92,246,.14);
+}
+
+.ranking-admin-meta,
+.ranking-admin-status {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.ranking-admin-status {
+    padding: 0 18px 18px;
+}
+
+.ranking-admin-board {
+    padding: 0 18px 18px;
+}
+
+.ranking-admin-position {
+    font-weight: 800;
+    color: #f8d16a;
+}
+
+.ranking-admin-prize-cell {
+    color: #f8d16a;
+    font-weight: 700;
+}
+
+.ranking-admin-archive {
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    background: rgba(255,255,255,.02);
+}
+
+.ranking-admin-archive-stack {
+    display: grid;
+    gap: 14px;
+}
+
+.ranking-admin-archive-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.ranking-admin-archive-list {
+    display: grid;
+    gap: 10px;
+}
+
+.ranking-admin-archive-item {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(0,0,0,.18);
+    border: 1px solid rgba(255,255,255,.04);
+}
+
+.ranking-admin-archive-item strong {
+    color: #f8d16a;
+}
+
+.ranking-admin-archive-item code {
+    color: var(--text-muted);
+    word-break: break-word;
+}
+
 .ranking-prize-table td:first-child,
 .ranking-prize-table th:first-child {
     width: 88px;
@@ -651,6 +755,25 @@ input[type="file"] {
     flex-wrap: wrap;
 }
 .filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.orders-search-form {
+    display: flex;
+    width: 100%;
+}
+.orders-search-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    flex-wrap: wrap;
+}
+.orders-search-input {
+    flex: 1 1 280px;
+    min-width: 0;
+}
+.orders-search-submit,
+.orders-search-clear {
+    flex: 0 0 auto;
+}
 .filter-tab {
     padding: 6px 14px;
     border-radius: 16px;
@@ -662,7 +785,12 @@ input[type="file"] {
 }
 .filter-tab:hover { border-color: var(--accent); color: var(--text-primary); }
 .filter-tab.active { background: rgba(139,92,246,.15); border-color: var(--accent); color: var(--accent); }
-.filters-bar { margin-bottom: 10px; }
+.filters-bar {
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
 
 .filter-select-wrap select { width: auto; min-width: 180px; }
 
@@ -1101,4 +1229,29 @@ input[type="file"] {
         align-items: flex-start;
     }
     .table-wrap td .cell-stack > * { text-align: left; }
+    .orders-search-input-wrap {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .orders-search-submit,
+    .orders-search-clear {
+        width: 100%;
+    }
+    .ranking-admin-toolbar {
+        padding: 0 14px 14px;
+        align-items: stretch;
+    }
+    .ranking-admin-tabs {
+        width: 100%;
+    }
+    .ranking-admin-meta,
+    .ranking-admin-status,
+    .ranking-admin-board {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+    .ranking-admin-archive-item {
+        grid-template-columns: 1fr;
+        justify-items: start;
+    }
 }

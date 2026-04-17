@@ -128,6 +128,7 @@ def create_app(config_class=Config):
         _ensure_affiliate_columns()
         _ensure_payment_verification_columns()
         _ensure_order_idempotency_column()
+        _ensure_ranking_archive_columns()
         _init_default_data(app)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -301,6 +302,23 @@ def _ensure_order_idempotency_column():
         db.session.execute(
             text('CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_idempotency_key ON orders(idempotency_key)')
         )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_ranking_archive_columns():
+    try:
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(ranking_archives)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'player_id' not in existing:
+            db.session.execute(text('ALTER TABLE ranking_archives ADD COLUMN player_id VARCHAR(100)'))
+        if 'nickname' not in existing:
+            db.session.execute(text('ALTER TABLE ranking_archives ADD COLUMN nickname VARCHAR(200)'))
+
         db.session.commit()
     except Exception:
         db.session.rollback()

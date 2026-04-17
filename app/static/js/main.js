@@ -241,11 +241,21 @@
         return '?lookup_game_id=' + encodeURIComponent(String(lookupGameId)) + '&lookup_identifier=' + encodeURIComponent(lookupIdentifier);
     }
 
-    function formatRewardValue(value) {
+    function formatRewardValue(value, rankingKey) {
         if (value === null || typeof value === 'undefined' || value === '') {
             return 'Sin premio';
         }
-        return String(value);
+
+        var text = String(value).trim();
+        if (!text) {
+            return 'Sin premio';
+        }
+
+        if (rankingKey === 'free_fire' && /^\d+(?:[.,]\d+)?$/.test(text)) {
+            return '💎 ' + text;
+        }
+
+        return text;
     }
 
     function renderRankingTabs() {
@@ -288,7 +298,7 @@
                 html +=
                     '<div class="ranking-prize-item">' +
                         '<span>#' + escHtml(reward.position) + '</span>' +
-                        '<strong>' + escHtml(formatRewardValue(reward.reward_label)) + '</strong>' +
+                        '<strong>' + escHtml(formatRewardValue(reward.reward_label, activeItem.key)) + '</strong>' +
                     '</div>';
             });
         }
@@ -323,7 +333,7 @@
                         '<td>' + escHtml(entry.masked_nickname || 'Jugador***') + '</td>' +
                         '<td>' + escHtml(entry.masked_player_id || '----') + '</td>' +
                         '<td>' + escHtml(entry.total_units) + '</td>' +
-                        '<td' + prizeClass + '>' + escHtml(formatRewardValue(entry.prize_label || 'Sin premio')) + '</td>' +
+                        '<td' + prizeClass + '>' + escHtml(formatRewardValue(entry.prize_label || 'Sin premio', activeItem.key)) + '</td>' +
                     '</tr>';
             });
 
@@ -341,7 +351,7 @@
                     '<div class="ranking-archive-item">' +
                         '<strong>#' + escHtml(entry.position) + '</strong>' +
                         '<span>' + escHtml(entry.masked_nickname || 'Jugador***') + '</span>' +
-                        '<span>' + escHtml(entry.prize_label || 'Sin premio') + '</span>' +
+                        '<span>' + escHtml(formatRewardValue(entry.prize_label || 'Sin premio', activeItem.key)) + '</span>' +
                     '</div>';
             });
 

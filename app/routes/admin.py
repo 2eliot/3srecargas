@@ -516,21 +516,45 @@ def package_delete(pkg_id):
 
 # ─── Orders ──────────────────────────────────────────────────────────────────
 
+def _apply_order_filters(query, status_filter='', search_query=''):
+    status_filter = (status_filter or '').strip()
+    search_query = (search_query or '').strip()
+
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+
+    if search_query:
+        like_term = f"%{search_query}%"
+        query = query.filter(
+            or_(
+                Order.order_number.ilike(like_term),
+                Order.payment_reference.ilike(like_term),
+            )
+        )
+
+    return query
+
 @admin_bp.route('/orders')
 @login_required
 def orders():
-    status_filter = request.args.get('status', '')
+    status_filter = (request.args.get('status') or '').strip()
+    search_query = (request.args.get('q') or '').strip()
     query = Order.query.order_by(Order.created_at.desc())
-    if status_filter:
-        query = query.filter_by(status=status_filter)
+    query = _apply_order_filters(query, status_filter=status_filter, search_query=search_query)
     all_orders = query.all()
-    return render_template('admin/orders.html', orders=all_orders, status_filter=status_filter)
+    return render_template(
+        'admin/orders.html',
+        orders=all_orders,
+        status_filter=status_filter,
+        search_query=search_query,
+    )
 
 
 @admin_bp.route('/orders/latest')
 @login_required
 def orders_latest():
     status_filter = (request.args.get('status') or '').strip()
+    search_query = (request.args.get('q') or '').strip()
     since_id_raw = (request.args.get('since_id') or '').strip()
     try:
         since_id = int(since_id_raw) if since_id_raw else 0
@@ -538,8 +562,7 @@ def orders_latest():
         since_id = 0
 
     query = Order.query
-    if status_filter:
-        query = query.filter_by(status=status_filter)
+    query = _apply_order_filters(query, status_filter=status_filter, search_query=search_query)
     if since_id:
         query = query.filter(Order.id > since_id)
 
@@ -1035,6 +1058,76 @@ def payment_method_delete(method_id):
 
 
 # ─── Settings ────────────────────────────────────────────────────────────────
+
+def _build_admin_rankings_payload():
+    from .main import (
+        RANKING_DEFS,
+        _get_archive_history_payload,
+        _get_previous_archive_payload,
+        _get_ranking_entries,
+        _is_ranking_enabled,
+        _resolve_ranking_game,
+    )
+
+    month_label = now_ve().strftime('%m/%Y')
+    rankings = []
+
+    for ranking_key, config in RANKING_DEFS.items():
+        game = _resolve_ranking_game(config)
+        enabled = bool(game and _is_ranking_enabled(config, game))
+        rewards = config.get('rewards') or []
+        item = {
+            'key': ranking_key,
+            'label': config.get('label') or ranking_key,
+            'units_label': config.get('units_label') or 'Unidades',
+            'month_label': month_label,
+            'enabled': enabled,
+            'game_id': game.id if game else None,
+            'game_name': game.name if game else (config.get('label') or ranking_key),
+            'leaders': [],
+            'total_players': 0,
+            'archive_history': _get_archive_history_payload(ranking_key, include_private=True),
+            'previous_winners': _get_previous_archive_payload(ranking_key),
+        }
+
+        if enabled:
+            entries = _get_ranking_entries(game.id)
+            item['total_players'] = len(entries)
+            for index, entry in enumerate(entries[:10], start=1):
+                reward_value = rewards[index - 1] if index - 1 < len(rewards) else None
+                item['leaders'].append({
+                    'position': index,
+                    'player_id': (entry.get('player_id') or '').strip() or '----',
+                    'nickname': (entry.get('nickname') or '').strip() or 'Sin nickname',
+                    'total_units': int(entry.get('total_units') or 0),
+                    'total_spent': round(float(entry.get('total_spent') or 0), 2),
+                    'reward_value': reward_value,
+                    'prize_label': str(reward_value) if reward_value is not None else 'Sin premio',
+                    'is_prize_eligible': index <= len(rewards),
+                })
+
+        rankings.append(item)
+
+    return rankings
+
+
+@admin_bp.route('/rankings')
+@login_required
+def rankings():
+    return render_template('admin/rankings.html')
+
+
+@admin_bp.route('/rankings/live')
+@login_required
+def rankings_live():
+    from .main import backfill_ranking_archives_if_needed
+
+    backfill_ranking_archives_if_needed()
+    return jsonify({
+        'ok': True,
+        'generated_at': format_ve(now_ve(), '%d/%m/%Y %H:%M:%S'),
+        'rankings': _build_admin_rankings_payload(),
+    })
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])
 @login_required

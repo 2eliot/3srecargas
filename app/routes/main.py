@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, current_app, has_request_context
 from flask_login import current_user
+from sqlalchemy import or_
 
 from ..models import (
     db, Game, Package, Category, PaymentMethod, Setting, RevendedoresItemMapping,
@@ -230,38 +231,115 @@ def _resolve_ranking_lookup_identifier(game):
     return ''
 
 
+def _serialize_archive_entry(row, include_private=False):
+    payload = {
+        'position': row.position,
+        'total_units': row.total_units,
+        'prize_label': row.prize_label,
+    }
+
+    if include_private:
+        payload['player_id'] = (row.player_id or row.masked_player_id or '').strip() or '----'
+        payload['nickname'] = (row.nickname or row.masked_nickname or '').strip() or 'Jugador***'
+    else:
+        payload['masked_player_id'] = row.masked_player_id
+        payload['masked_nickname'] = row.masked_nickname
+
+    return payload
+
+
+def _get_archive_history_payload(ranking_key, include_private=False, limit=None):
+    archive_rows = (
+        RankingArchive.query
+        .filter_by(ranking_key=ranking_key)
+        .order_by(RankingArchive.year.desc(), RankingArchive.month.desc(), RankingArchive.position.asc())
+        .all()
+    )
+    if not archive_rows:
+        return []
+
+    periods = []
+    current_group = None
+    current_group_key = None
+
+    for row in archive_rows:
+        group_key = (row.year, row.month)
+        if current_group_key != group_key:
+            if limit and len(periods) >= limit:
+                break
+            current_group_key = group_key
+            current_group = {
+                'label': f'{row.month:02d}/{row.year}',
+                'year': row.year,
+                'month': row.month,
+                'game_name': row.game_name,
+                'entries': [],
+            }
+            periods.append(current_group)
+
+        current_group['entries'].append(_serialize_archive_entry(row, include_private=include_private))
+
+    return periods
+
+
+def backfill_ranking_archives_if_needed():
+    incomplete_rows = (
+        RankingArchive.query
+        .filter(
+            or_(
+                RankingArchive.player_id.is_(None),
+                RankingArchive.player_id == '',
+                RankingArchive.nickname.is_(None),
+                RankingArchive.nickname == '',
+            )
+        )
+        .order_by(RankingArchive.year.desc(), RankingArchive.month.desc())
+        .all()
+    )
+    if not incomplete_rows:
+        return
+
+    grouped = {}
+    for row in incomplete_rows:
+        grouped.setdefault((row.ranking_key, row.year, row.month, row.game_name), []).append(row)
+
+    updated = False
+    for (ranking_key, year, month, game_name), rows in grouped.items():
+        config = RANKING_DEFS.get(ranking_key)
+        if not config:
+            continue
+
+        game = Game.query.filter_by(name=game_name).first() or _resolve_ranking_game(config)
+        if not game:
+            continue
+
+        entries = _get_ranking_entries(game.id, target_date=date(year, month, 1))
+        if not entries:
+            continue
+
+        for row in rows:
+            index = int(row.position or 0) - 1
+            if index < 0 or index >= len(entries):
+                continue
+            entry = entries[index]
+            player_id = (entry.get('player_id') or '').strip()
+            nickname = (entry.get('nickname') or '').strip()
+            row.player_id = player_id or row.player_id
+            row.nickname = nickname or row.nickname
+            row.masked_player_id = _mask_player_id(player_id)
+            row.masked_nickname = _mask_nickname(nickname)
+            updated = True
+
+    if updated:
+        db.session.commit()
+
+
 def _get_previous_archive_payload(ranking_key):
     if not _is_admin_ranking_view():
         return None
 
-    today = now_ve().date()
-    previous_month_last_day = today.replace(day=1) - timedelta(days=1)
-    archive_rows = (
-        RankingArchive.query
-        .filter_by(
-            ranking_key=ranking_key,
-            year=previous_month_last_day.year,
-            month=previous_month_last_day.month,
-        )
-        .order_by(RankingArchive.position.asc())
-        .all()
-    )
-    if not archive_rows:
-        return None
-
-    return {
-        'label': f'{previous_month_last_day.month:02d}/{previous_month_last_day.year}',
-        'entries': [
-            {
-                'position': row.position,
-                'masked_player_id': row.masked_player_id,
-                'masked_nickname': row.masked_nickname,
-                'total_units': row.total_units,
-                'prize_label': row.prize_label,
-            }
-            for row in archive_rows
-        ],
-    }
+    history = _get_archive_history_payload(ranking_key, include_private=True, limit=1)
+    return history[0] if history else None
 
 
 def _build_ranking_payload(ranking_key, target_date=None):
@@ -323,6 +401,7 @@ def has_visible_public_rankings(target_date=None):
 
 
 def archive_previous_month_rankings_if_needed():
+    backfill_ranking_archives_if_needed()
     today = now_ve().date()
     previous_month_last_day = today.replace(day=1) - timedelta(days=1)
     year = previous_month_last_day.year
@@ -337,21 +416,30 @@ def archive_previous_month_rankings_if_needed():
         if existing:
             continue
 
-        payload = _build_ranking_payload(ranking_key, target_date=previous_month_last_day)
-        if not payload['enabled'] or not payload['entries']:
+        game = _resolve_ranking_game(config)
+        if not game:
             continue
 
-        for entry in payload['entries'][:5]:
+        entries = _get_ranking_entries(game.id, target_date=previous_month_last_day)
+        if not entries:
+            continue
+
+        rewards = config.get('rewards') or []
+
+        for index, entry in enumerate(entries[:5], start=1):
+            reward_value = rewards[index - 1] if index - 1 < len(rewards) else None
             db.session.add(RankingArchive(
                 ranking_key=ranking_key,
                 year=year,
                 month=month,
-                position=entry['position'],
-                game_name=payload['game_name'],
-                masked_player_id=entry['masked_player_id'],
-                masked_nickname=entry['masked_nickname'],
-                total_units=entry['total_units'],
-                prize_label=entry['prize_label'],
+                position=index,
+                game_name=game.name,
+                player_id=(entry.get('player_id') or '').strip() or None,
+                nickname=(entry.get('nickname') or '').strip() or None,
+                masked_player_id=_mask_player_id(entry.get('player_id')),
+                masked_nickname=_mask_nickname(entry.get('nickname')),
+                total_units=entry.get('total_units') or 0,
+                prize_label=str(reward_value) if reward_value is not None else 'Sin premio',
             ))
 
     db.session.commit()
