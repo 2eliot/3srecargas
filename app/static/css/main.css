@@ -1012,8 +1012,11 @@ body.modal-open {
     display: flex;
     gap: 12px;
     overflow-x: auto;
+    justify-content: flex-start;
     scroll-behavior: smooth;
     scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
     padding: 20px 36px 12px;
     margin: 0;
 }
@@ -3090,9 +3093,11 @@ body.modal-open {
         scroll-behavior: smooth;
         scroll-snap-type: x mandatory;
         gap: 8px !important;
-        padding: 8px 24px !important;
+        justify-content: flex-start !important;
+        padding: 8px 16px !important;
         margin: 0 !important;
-        width: 100% !important;
+        width: max-content !important;
+        min-width: 100% !important;
     }
     .games-grid::-webkit-scrollbar { height: 0; }
     .game-card {
@@ -3606,11 +3611,11 @@ body.modal-open {
 
 .games-grid {
     gap: 8px;
-    justify-content: center;
+    justify-content: flex-start;
     width: max-content;
     min-width: 100%;
-    margin: 0 auto;
-    padding: 10px 30px 12px;
+    margin: 0;
+    padding: 10px 16px 12px;
 }
 
 .game-card {
@@ -4182,11 +4187,11 @@ body.modal-open {
     }
 
     .games-grid {
-        justify-content: center;
+        justify-content: flex-start;
         width: max-content;
         min-width: 100%;
-        margin: 0 auto !important;
-        padding: 10px 24px 12px !important;
+        margin: 0 !important;
+        padding: 10px 16px 12px !important;
     }
 
     .game-card {
