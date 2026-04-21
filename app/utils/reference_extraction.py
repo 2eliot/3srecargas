@@ -102,6 +102,22 @@ def _guess_mime_type(filename, fallback='image/jpeg'):
     return fallback
 
 
+def _build_gemini_error_message(status_code, remote_message=''):
+    remote_message = str(remote_message or '').strip()
+    lowered = remote_message.lower()
+
+    if 'quota exceeded' in lowered or 'rate limit' in lowered or 'too many requests' in lowered:
+        return 'La lectura automática de referencias no está disponible en este momento. Ingresa la referencia manualmente.'
+
+    if status_code in (401, 403):
+        return 'La lectura automática de referencias no está disponible en este momento. Ingresa la referencia manualmente.'
+
+    if status_code >= 500:
+        return 'La lectura automática de referencias no está disponible en este momento. Ingresa la referencia manualmente.'
+
+    return remote_message or f'Gemini devolvió HTTP {status_code}.'
+
+
 def extract_reference_from_image_bytes(image_bytes, mime_type='image/jpeg', filename='capture.jpg'):
     if not image_bytes:
         return {'ok': False, 'reference': '', 'message': 'No se recibieron bytes del comprobante.'}
@@ -160,8 +176,7 @@ def extract_reference_from_image_bytes(image_bytes, mime_type='image/jpeg', file
             error_data = data.get('error') or {}
             if isinstance(error_data, dict):
                 message = str(error_data.get('message') or '').strip()
-        if not message:
-            message = f'Gemini devolvió HTTP {response.status_code}.'
+        message = _build_gemini_error_message(response.status_code, message)
         return {'ok': False, 'reference': '', 'message': message}
 
     raw_text = _extract_text_from_gemini_response(data)
