@@ -5,6 +5,7 @@ import requests
 from flask import current_app
 
 from ..models import Affiliate, AffiliateCommission, Pin, RevendedoresItemMapping, db
+from .minigames import ensure_minigame_opportunity
 from .notifications import notify_order_approved, notify_order_completed
 
 
@@ -26,16 +27,226 @@ def process_affiliate_commission(order):
 
 
 def get_order_auto_mapping(order_obj):
+    mappings = get_order_auto_mappings(order_obj)
+    return mappings[0] if mappings else None
+
+
+def get_order_auto_mappings(order_obj):
     try:
         if not order_obj or not order_obj.package_id:
-            return None
-        return RevendedoresItemMapping.query.filter_by(
+            return []
+        mapping = RevendedoresItemMapping.query.filter_by(
             store_package_id=int(order_obj.package_id),
             active=True,
             auto_enabled=True,
         ).first()
+        if not mapping:
+            return []
+
+        items = []
+        seen_catalog_ids = set()
+        for attr_name in ('catalog_item', 'catalog_item_2'):
+            item = getattr(mapping, attr_name, None)
+            if not item or item.id in seen_catalog_ids:
+                continue
+            seen_catalog_ids.add(item.id)
+            items.append(item)
+
+        return items
     except Exception:
+        return []
+
+
+def _load_revendedores_auto_response(order, catalog_items, base_state=None):
+    auto_resp = {}
+    if isinstance(base_state, dict):
+        auto_resp = dict(base_state)
+    else:
+        try:
+            auto_resp = json.loads(order.automation_response or '{}')
+        except Exception:
+            auto_resp = {}
+
+    existing_steps = auto_resp.get('steps') if isinstance(auto_resp.get('steps'), list) else []
+    steps = []
+
+    for idx, item in enumerate(catalog_items):
+        current = existing_steps[idx] if idx < len(existing_steps) and isinstance(existing_steps[idx], dict) else {}
+        steps.append({
+            'slot': idx + 1,
+            'catalog_id': item.id,
+            'remote_product_id': item.remote_product_id,
+            'remote_product_name': item.remote_product_name or '',
+            'remote_package_id': item.remote_package_id,
+            'remote_package_name': item.remote_package_name or '',
+            'success': bool(current.get('success')),
+            'pending_verification': bool(current.get('pending_verification')),
+            'rev_attempt': int(current.get('rev_attempt') or 0),
+            'external_order_id': current.get('external_order_id') or '',
+            'player_name': current.get('player_name') or '',
+            'reference_no': current.get('reference_no') or '',
+            'order_id': current.get('order_id'),
+            'error': current.get('error') or '',
+            'verified': bool(current.get('verified')),
+        })
+
+    if not existing_steps and auto_resp.get('source') == 'revendedores_api' and steps:
+        steps[0].update({
+            'success': bool(auto_resp.get('success')),
+            'pending_verification': bool(auto_resp.get('pending_verification')),
+            'rev_attempt': int(auto_resp.get('rev_attempt') or 0),
+            'external_order_id': auto_resp.get('external_order_id') or '',
+            'player_name': auto_resp.get('player_name') or '',
+            'reference_no': auto_resp.get('reference_no') or '',
+            'order_id': auto_resp.get('order_id'),
+            'error': auto_resp.get('error') or '',
+            'verified': bool(auto_resp.get('verified')),
+        })
+
+    auto_resp['source'] = 'revendedores_api'
+    auto_resp['steps'] = steps
+    auto_resp['pending_verification'] = any(step.get('pending_verification') for step in steps)
+    auto_resp['current_step_index'] = next((idx for idx, step in enumerate(steps) if not step.get('success')), None)
+    auto_resp['step_count'] = len(steps)
+    return auto_resp
+
+
+def process_revendedores_queue(order, base_state=None):
+    catalog_items = get_order_auto_mappings(order)
+    if not catalog_items:
         return None
+
+    base_url, api_key, _, recharge_path = get_revendedores_env()
+    auto_resp = _load_revendedores_auto_response(order, catalog_items, base_state=base_state)
+    steps = auto_resp.get('steps') or []
+
+    if not base_url or not api_key:
+        auto_resp['pending_verification'] = False
+        auto_resp['last_error'] = 'Revendedores API no configurada.'
+        order.automation_response = json.dumps(auto_resp)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return {
+            'ok': False,
+            'changed': False,
+            'pending_verification': False,
+            'message': 'Revendedores API no configurada.',
+            'category': 'warning',
+        }
+
+    for step_index, step in enumerate(steps):
+        if step.get('success'):
+            continue
+
+        rev_attempt = int(step.get('rev_attempt') or 0) + 1
+        ext_order_id = f'{order.order_number}-s{step_index + 1}-{rev_attempt}'
+        rev_payload = {
+            'product_id': step.get('remote_product_id'),
+            'package_id': step.get('remote_package_id'),
+            'player_id': str(order.player_id or '').strip(),
+            'external_order_id': ext_order_id,
+        }
+        if order.zone_id:
+            rev_payload['player_id2'] = str(order.zone_id).strip()
+
+        try:
+            resp = requests.post(
+                f'{base_url}{recharge_path}',
+                json=rev_payload,
+                headers={'X-API-Key': api_key, 'Content-Type': 'application/json'},
+                timeout=120,
+            )
+            rev_data = resp.json() if resp.ok else {}
+            rev_ok = rev_data.get('ok', False)
+
+            if rev_ok:
+                player_name = rev_data.get('player_name', '')
+                ref_no = rev_data.get('reference_no', '')
+                step.update({
+                    'success': True,
+                    'pending_verification': False,
+                    'rev_attempt': rev_attempt,
+                    'external_order_id': ext_order_id,
+                    'player_name': player_name,
+                    'reference_no': ref_no,
+                    'order_id': rev_data.get('order_id'),
+                    'verified': True,
+                    'error': '',
+                })
+                note = f"[Revendedores API][Paso {step_index + 1}] Ref: {ref_no}, Player: {player_name}" if (ref_no or player_name) else f"[Revendedores API][Paso {step_index + 1}] Recarga completada."
+                order.notes = ((order.notes or '') + '\n' + note).strip()
+                continue
+
+            rev_error = rev_data.get('error', resp.text[:200] if not resp.ok else 'Error desconocido')
+            step.update({
+                'success': False,
+                'pending_verification': True,
+                'rev_attempt': rev_attempt,
+                'external_order_id': ext_order_id,
+                'error': rev_error,
+            })
+            auto_resp['pending_verification'] = True
+            auto_resp['current_step_index'] = step_index
+            auto_resp['external_order_id'] = ext_order_id
+            auto_resp['last_error'] = rev_error
+            order.automation_response = json.dumps(auto_resp)
+            db.session.commit()
+            return {
+                'ok': False,
+                'changed': False,
+                'pending_verification': True,
+                'current_step_index': step_index,
+                'message': f'Revendedores reportó error en el paso {step_index + 1}: {rev_error}. Verificando si se procesó para continuar con el siguiente.',
+                'category': 'warning',
+            }
+        except Exception as exc:
+            step.update({
+                'success': False,
+                'pending_verification': True,
+                'rev_attempt': rev_attempt,
+                'external_order_id': ext_order_id,
+                'error': str(exc),
+            })
+            auto_resp['pending_verification'] = True
+            auto_resp['current_step_index'] = step_index
+            auto_resp['external_order_id'] = ext_order_id
+            auto_resp['last_error'] = str(exc)
+            order.automation_response = json.dumps(auto_resp)
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            return {
+                'ok': False,
+                'changed': False,
+                'pending_verification': True,
+                'current_step_index': step_index,
+                'message': f'Error contactando Revendedores API en el paso {step_index + 1}: {exc}. Verificando si se procesó para continuar con el siguiente.',
+                'category': 'warning',
+            }
+
+    auto_resp['pending_verification'] = False
+    auto_resp['current_step_index'] = None
+    auto_resp['success'] = True
+    order.status = 'completed'
+    ensure_minigame_opportunity(order)
+    order.automation_response = json.dumps(auto_resp)
+    order.updated_at = datetime.utcnow()
+    process_affiliate_commission(order)
+    db.session.commit()
+    try:
+        notify_order_completed(order, order.package, order.game)
+    except Exception:
+        pass
+    return {
+        'ok': True,
+        'changed': True,
+        'pending_verification': False,
+        'message': f'Orden #{order.order_number} completada vía Revendedores API en {len(steps)} paso(s).',
+        'category': 'success',
+    }
 
 
 def get_revendedores_env():
@@ -46,7 +257,7 @@ def get_revendedores_env():
     return base_url, api_key, catalog_path, recharge_path
 
 
-def approve_order(order):
+def approve_order(order, delivery_proof_path=None):
     if order.status != 'pending':
         return {
             'ok': False,
@@ -57,105 +268,9 @@ def approve_order(order):
 
     rev_mapping = get_order_auto_mapping(order)
     if rev_mapping:
-        try:
-            base_url, api_key, _, recharge_path = get_revendedores_env()
-            catalog_item = rev_mapping.catalog_item
-            if base_url and api_key and catalog_item:
-                auto_resp = {}
-                try:
-                    auto_resp = json.loads(order.automation_response or '{}')
-                except Exception:
-                    auto_resp = {}
-
-                prev_attempt = 0
-                try:
-                    if (auto_resp.get('source') or '') == 'revendedores_api':
-                        prev_attempt = int(auto_resp.get('rev_attempt') or 0)
-                except Exception:
-                    prev_attempt = 0
-
-                rev_attempt = prev_attempt + 1
-                ext_order_id = f'{order.order_number}-{rev_attempt}'
-
-                rev_payload = {
-                    'product_id': catalog_item.remote_product_id,
-                    'package_id': catalog_item.remote_package_id,
-                    'player_id': str(order.player_id or '').strip(),
-                    'external_order_id': ext_order_id,
-                }
-                if order.zone_id:
-                    rev_payload['player_id2'] = str(order.zone_id).strip()
-
-                resp = requests.post(
-                    f'{base_url}{recharge_path}',
-                    json=rev_payload,
-                    headers={'X-API-Key': api_key, 'Content-Type': 'application/json'},
-                    timeout=120,
-                )
-                rev_data = resp.json() if resp.ok else {}
-                rev_ok = rev_data.get('ok', False)
-
-                if rev_ok:
-                    player_name = rev_data.get('player_name', '')
-                    ref_no = rev_data.get('reference_no', '')
-                    order.status = 'completed'
-                    order.automation_response = json.dumps({
-                        'source': 'revendedores_api',
-                        'success': True,
-                        'rev_attempt': rev_attempt,
-                        'external_order_id': ext_order_id,
-                        'player_name': player_name,
-                        'reference_no': ref_no,
-                        'order_id': rev_data.get('order_id'),
-                    })
-                    order.notes = (order.notes or '') + f'\n[Revendedores API] Ref: {ref_no}, Player: {player_name}'
-                    order.updated_at = datetime.utcnow()
-                    process_affiliate_commission(order)
-                    db.session.commit()
-                    try:
-                        notify_order_completed(order, order.package, order.game)
-                    except Exception:
-                        pass
-                    extra = f' (Jugador: {player_name})' if player_name else ''
-                    return {
-                        'ok': True,
-                        'changed': True,
-                        'message': f'Orden #{order.order_number} completada vía Revendedores API.{extra}',
-                        'category': 'success',
-                    }
-
-                rev_error = rev_data.get('error', resp.text[:200] if not resp.ok else 'Error desconocido')
-                order.automation_response = json.dumps({
-                    'source': 'revendedores_api',
-                    'pending_verification': True,
-                    'rev_attempt': rev_attempt,
-                    'external_order_id': ext_order_id,
-                    'error': rev_error,
-                })
-                db.session.commit()
-                return {
-                    'ok': False,
-                    'changed': False,
-                    'message': f'Revendedores reportó error: {rev_error}. Verificando si la recarga se procesó...',
-                    'category': 'warning',
-                }
-        except Exception as exc:
-            order.automation_response = json.dumps({
-                'source': 'revendedores_api',
-                'pending_verification': True,
-                'external_order_id': f'{order.order_number}-1',
-                'error': str(exc),
-            })
-            try:
-                db.session.commit()
-            except Exception:
-                pass
-            return {
-                'ok': False,
-                'changed': False,
-                'message': f'Error contactando Revendedores API: {exc}. Verificando si se procesó...',
-                'category': 'warning',
-            }
+        result = process_revendedores_queue(order)
+        if result:
+            return result
 
     package = order.package
     category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
@@ -218,6 +333,7 @@ def approve_order(order):
                 pin.used_at = datetime.utcnow()
                 pin.order_id = order.id
                 order.status = 'completed'
+                ensure_minigame_opportunity(order)
                 order.pin_id = pin.id
                 order.pin_delivered = pin.code
                 order.automation_response = json.dumps({
@@ -276,6 +392,7 @@ def approve_order(order):
         pin.used_at = datetime.utcnow()
         pin.order_id = order.id
         order.status = 'completed'
+        ensure_minigame_opportunity(order)
         order.pin_id = pin.id
         order.pin_delivered = pin.code
         order.updated_at = datetime.utcnow()
@@ -293,11 +410,13 @@ def approve_order(order):
         }
 
     order.status = 'approved'
+    if delivery_proof_path:
+        order.delivery_proof = delivery_proof_path
     order.updated_at = datetime.utcnow()
     process_affiliate_commission(order)
     db.session.commit()
     try:
-        notify_order_approved(order, order.package, order.game)
+        notify_order_approved(order, order.package, order.game, delivery_proof_path=delivery_proof_path)
     except Exception:
         pass
     return {

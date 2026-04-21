@@ -105,6 +105,12 @@
             <span class="detail-value">{{ order.payment_reference_last5 }}</span>
         </div>
         {% endif %}
+        {% if order.ai_extracted_reference %}
+        <div class="detail-row">
+            <span class="detail-label">Referencia IA</span>
+            <span class="detail-value"><code class="ref-code">{{ order.ai_extracted_reference }}</code></span>
+        </div>
+        {% endif %}
         {% if order.payer_dni_number %}
         <div class="detail-row">
             <span class="detail-label">Cédula pagador</span>
@@ -121,10 +127,45 @@
         <div class="detail-row">
             <span class="detail-label">Comprobante</span>
             <span class="detail-value">
-                <a class="btn-secondary" style="padding:6px 10px;font-size:12px" target="_blank"
-                   href="{{ url_for('static', filename='uploads/' + order.payment_capture) }}">Ver comprobante</a>
-                <a class="btn-secondary" style="padding:6px 10px;font-size:12px;margin-left:6px" download
-                   href="{{ url_for('static', filename='uploads/' + order.payment_capture) }}">Descargar</a>
+                <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:220px;">
+                        <a href="{{ url_for('static', filename='uploads/' + order.payment_capture) }}" target="_blank" rel="noopener">
+                            <img src="{{ url_for('static', filename='uploads/' + order.payment_capture) }}" alt="Miniatura del comprobante" style="display:block;width:100%;max-width:220px;max-height:220px;object-fit:cover;border-radius:12px;border:1px solid var(--border-color);box-shadow:0 10px 22px rgba(0,0,0,.18);">
+                        </a>
+                        {% if order.ai_extracted_reference %}
+                        <div style="padding:10px 12px;border-radius:10px;border:1px solid rgba(34,197,94,.25);background:rgba(34,197,94,.08);">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:4px;">Referencia extraída</div>
+                            <code class="ref-code" style="font-size:16px;">{{ order.ai_extracted_reference }}</code>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;">
+                        <a class="btn-secondary" style="padding:6px 10px;font-size:12px" target="_blank"
+                           href="{{ url_for('static', filename='uploads/' + order.payment_capture) }}">Ver comprobante</a>
+                        <a class="btn-secondary" style="padding:6px 10px;font-size:12px" download
+                           href="{{ url_for('static', filename='uploads/' + order.payment_capture) }}">Descargar</a>
+                    </div>
+                </div>
+            </span>
+        </div>
+        {% endif %}
+        {% if order.delivery_proof %}
+        <div class="detail-row">
+            <span class="detail-label">Comprobante enviado</span>
+            <span class="detail-value">
+                <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:220px;">
+                        <a href="{{ url_for('static', filename='uploads/' + order.delivery_proof) }}" target="_blank" rel="noopener">
+                            <img src="{{ url_for('static', filename='uploads/' + order.delivery_proof) }}" alt="Comprobante enviado al cliente" style="display:block;width:100%;max-width:220px;max-height:220px;object-fit:cover;border-radius:12px;border:1px solid var(--border-color);box-shadow:0 10px 22px rgba(0,0,0,.18);">
+                        </a>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;">
+                        <a class="btn-secondary" style="padding:6px 10px;font-size:12px" target="_blank"
+                           href="{{ url_for('static', filename='uploads/' + order.delivery_proof) }}">Ver comprobante</a>
+                        <a class="btn-secondary" style="padding:6px 10px;font-size:12px" download
+                           href="{{ url_for('static', filename='uploads/' + order.delivery_proof) }}">Descargar</a>
+                    </div>
+                </div>
             </span>
         </div>
         {% endif %}
@@ -183,7 +224,14 @@
 <div class="admin-card" style="margin-top:20px;padding:20px">
     <h3 style="margin-bottom:16px">Acciones</h3>
     <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" class="approve-form">
+        <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" class="approve-form" enctype="multipart/form-data" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+            {% if can_send_delivery_proof %}
+            <div class="form-group" style="margin:0;min-width:280px;">
+                <label for="delivery_proof" style="display:block;margin-bottom:6px;">Comprobante para enviar por correo</label>
+                <input id="delivery_proof" name="delivery_proof" type="file" accept="image/*">
+                <small style="display:block;margin-top:6px;color:var(--text-muted)">Opcional. Se adjunta al correo cuando apruebes esta orden manual.</small>
+            </div>
+            {% endif %}
             <button type="submit" class="btn-primary approve-btn">✓ Aprobar Orden</button>
         </form>
         <button class="btn-danger-solid" onclick="document.getElementById('rejectModal').style.display='flex'">

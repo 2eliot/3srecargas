@@ -3,9 +3,13 @@ Utilidades de envío de correo para 3S Recargas.
 Soporta STARTTLS, fallback SSL, envío síncrono y asíncrono.
 """
 
+import mimetypes
+import os
 import smtplib
 import threading
 import logging
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -57,7 +61,44 @@ def _smtp_send_ssl(cfg, msg, to_email):
         smtp.sendmail(cfg['username'], to_email, msg.as_string())
 
 
-def send_email_html(to_email, subject, html_body, text_body=''):
+def _iter_attachment_specs(attachments=None):
+    for item in attachments or []:
+        if isinstance(item, str):
+            path = item
+            filename = os.path.basename(path)
+        elif isinstance(item, dict):
+            path = (item.get('path') or '').strip()
+            filename = (item.get('filename') or '').strip() or os.path.basename(path)
+        else:
+            continue
+
+        if not path or not os.path.isfile(path):
+            logger.warning('Adjunto omitido: archivo no encontrado (%s).', path)
+            continue
+
+        yield {
+            'path': path,
+            'filename': filename or os.path.basename(path),
+        }
+
+
+def _attach_files(message, attachments=None):
+    for item in _iter_attachment_specs(attachments):
+        mime_type, _ = mimetypes.guess_type(item['path'])
+        main_type, sub_type = ('application', 'octet-stream')
+        if mime_type and '/' in mime_type:
+            main_type, sub_type = mime_type.split('/', 1)
+
+        with open(item['path'], 'rb') as fh:
+            part = MIMEBase(main_type, sub_type)
+            part.set_payload(fh.read())
+
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', 'attachment', filename=item['filename'])
+        message.attach(part)
+
+
+def send_email_html(to_email, subject, html_body, text_body='', attachments=None):
     """
     Envía un correo HTML con fallback a texto plano.
     Retorna True si se envió, False si falló.
@@ -68,7 +109,8 @@ def send_email_html(to_email, subject, html_body, text_body=''):
         return False
 
     try:
-        msg = MIMEMultipart('alternative')
+        msg = MIMEMultipart('mixed')
+        alt = MIMEMultipart('alternative')
         sender_name = get_setting('email_brand_name', '') or current_app.config.get('MAIL_BRAND_NAME', '3S Recargas')
         sender_addr = cfg['default_sender'] or cfg['username']
         msg['From'] = f'{sender_name} <{sender_addr}>'
@@ -76,8 +118,10 @@ def send_email_html(to_email, subject, html_body, text_body=''):
         msg['Subject'] = subject
 
         if text_body:
-            msg.attach(MIMEText(text_body, 'plain', 'utf-8'))
-        msg.attach(MIMEText(html_body or '', 'html', 'utf-8'))
+            alt.attach(MIMEText(text_body, 'plain', 'utf-8'))
+        alt.attach(MIMEText(html_body or '', 'html', 'utf-8'))
+        msg.attach(alt)
+        _attach_files(msg, attachments=attachments)
 
         try:
             _smtp_send_starttls(cfg, msg, to_email)
@@ -92,14 +136,14 @@ def send_email_html(to_email, subject, html_body, text_body=''):
         return False
 
 
-def send_email_async(app, to_email, subject, html_body, text_body=''):
+def send_email_async(app, to_email, subject, html_body, text_body='', attachments=None):
     """
     Envía el correo en un hilo de fondo para no bloquear la petición.
     `app` debe ser el objeto Flask real (no el proxy).
     """
     def _send():
         with app.app_context():
-            send_email_html(to_email, subject, html_body, text_body)
+            send_email_html(to_email, subject, html_body, text_body, attachments=attachments)
 
     t = threading.Thread(target=_send, daemon=True)
     t.start()

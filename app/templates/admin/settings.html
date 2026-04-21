@@ -103,6 +103,51 @@
         </div>
 
         <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
+        <h3 style="margin-bottom:16px;">Video Tutorial por Método de Pago</h3>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="checkout_payment_video_method">Método de pago</label>
+                <select id="checkout_payment_video_method" name="checkout_payment_video_method">
+                    <option value="">No mostrar video tutorial</option>
+                    {% for method in active_payment_methods %}
+                    <option value="{{ method.code }}" {% if checkout_payment_video_method == method.code %}selected{% endif %}>{{ method.name }} ({{ method.code }})</option>
+                    {% endfor %}
+                </select>
+                <p class="form-hint">Solo cuando el cliente entre con este método seleccionado verá el bloque con video.</p>
+            </div>
+            <div class="form-group">
+                <label for="checkout_payment_video_file">Video tutorial</label>
+                <input type="file" id="checkout_payment_video_file" name="checkout_payment_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
+                <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
+                {% if checkout_payment_video_file %}
+                <div class="logo-preview">
+                    <video controls preload="metadata" style="width:100%;max-width:280px;border-radius:12px;display:block;">
+                        <source src="{{ url_for('static', filename='uploads/' + checkout_payment_video_file) }}">
+                    </video>
+                    <label class="remove-logo">
+                        <input type="checkbox" name="remove_checkout_payment_video_file" value="1">
+                        Quitar video tutorial
+                    </label>
+                </div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="checkout_payment_video_title">Título</label>
+                <input type="text" id="checkout_payment_video_title" name="checkout_payment_video_title"
+                       value="{{ checkout_payment_video_title }}" placeholder="Ej: ¡Paga fácil con Binance!">
+            </div>
+            <div class="form-group">
+                <label for="checkout_payment_video_cta">Texto del botón</label>
+                <input type="text" id="checkout_payment_video_cta" name="checkout_payment_video_cta"
+                       value="{{ checkout_payment_video_cta }}" placeholder="Ej: Entendido, vamos a pagar">
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+                <label for="checkout_payment_video_message">Mensaje</label>
+                <textarea id="checkout_payment_video_message" name="checkout_payment_video_message" rows="3" placeholder="Ej: Mira este tutorial rápido para aprender a pagar. Es más fácil de lo que parece.">{{ checkout_payment_video_message }}</textarea>
+            </div>
+        </div>
+
+        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
         <h3 style="margin-bottom:16px;">Redes Sociales (Footer)</h3>
         <div class="form-grid-2">
             <div class="form-group">

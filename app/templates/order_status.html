@@ -2,6 +2,716 @@
 
 {% block title %}Orden #{{ order.order_number }} — 3S Recargas{% endblock %}
 
+{% block extra_css %}
+<style>
+.order-minigame-card {
+    margin: 24px 0 18px;
+    padding: 24px;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 0, 92, .28);
+    background:
+        radial-gradient(circle at top right, rgba(255, 0, 92, .18), transparent 34%),
+        linear-gradient(180deg, rgba(12, 12, 18, .98), rgba(6, 6, 10, .98));
+    box-shadow: 0 22px 60px rgba(0,0,0,.32);
+    text-align: center;
+}
+
+.order-minigame-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: rgba(255, 0, 92, .12);
+    color: #ff8fb8;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.order-minigame-title {
+    margin: 14px 0 8px;
+    font-size: clamp(24px, 4vw, 34px);
+    line-height: 1.02;
+}
+
+.order-minigame-shell {
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+}
+
+.order-minigame-actions {
+    margin-top: 18px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.order-minigame-btn,
+.order-minigame-claim {
+    min-height: 48px;
+    padding: 0 22px;
+    border-radius: 14px;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    border: 0;
+    cursor: pointer;
+}
+
+.order-minigame-btn {
+    background: linear-gradient(180deg, #ff1e68, #b10943);
+    color: #fff;
+    box-shadow: 0 12px 30px rgba(255, 30, 104, .24);
+}
+
+.order-minigame-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 36px rgba(255, 30, 104, .28);
+}
+
+.order-minigame-claim {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, #14f195, #08d67d);
+    color: #04220c;
+}
+
+.order-minigame-note {
+    margin-top: 16px;
+    color: #94a3b8;
+    font-size: 12px;
+    text-align: center;
+}
+
+.minigame-choice-grid,
+.minigame-topup-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 22px;
+}
+
+.minigame-choice-card,
+.minigame-topup-card {
+    position: relative;
+    padding: 18px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: linear-gradient(180deg, rgba(20,20,20,.98), rgba(8,8,8,.95));
+    color: #fff;
+    text-align: center;
+    cursor: pointer;
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+.minigame-choice-card:hover,
+.minigame-topup-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,.18);
+    box-shadow: 0 14px 30px rgba(0,0,0,.38);
+}
+
+.minigame-topup-card.is-selected {
+    border-color: #ff1e68;
+    box-shadow: 0 0 0 1px rgba(255,26,60,.28), 0 18px 36px rgba(255,26,60,.18);
+}
+
+.minigame-choice-card strong,
+.minigame-topup-card strong {
+    display: block;
+    margin-top: 8px;
+    font-size: 16px;
+}
+
+.minigame-choice-card span,
+.minigame-topup-card span {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.minigame-topup-icon {
+    width: 78px;
+    height: 78px;
+    margin: 0 auto;
+    border-radius: 22px;
+    display: grid;
+    place-items: center;
+    background: radial-gradient(circle at top, rgba(255, 30, 104, .26), rgba(255, 30, 104, .08));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), 0 14px 26px rgba(0,0,0,.22);
+}
+
+.minigame-topup-icon svg {
+    width: 42px;
+    height: 42px;
+    display: block;
+}
+
+.minigame-topup-body {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    margin-top: 14px;
+}
+
+.minigame-topup-tag {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(255, 30, 104, .16);
+    color: #ff9cbc;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.minigame-chooser-modal .overlay-modal-card {
+    width: min(100%, 700px);
+    border-radius: 28px;
+    border: 1px solid rgba(255,255,255,.08);
+    background:
+        radial-gradient(circle at top right, rgba(255, 30, 104, .12), transparent 36%),
+        linear-gradient(180deg, rgba(24,24,28,.98), rgba(12,12,16,.98));
+    box-shadow: 0 28px 80px rgba(0,0,0,.48);
+    overflow: hidden;
+}
+
+.minigame-chooser-modal .overlay-modal-header {
+    align-items: flex-start;
+    padding: 22px 24px 8px;
+}
+
+.minigame-chooser-copy {
+    width: 100%;
+    text-align: center;
+}
+
+.minigame-chooser-copy h2 {
+    margin: 0;
+    font-size: clamp(28px, 4vw, 34px);
+    line-height: 1.02;
+}
+
+.minigame-chooser-copy p {
+    max-width: 420px;
+    margin: 12px auto 0;
+    color: #b8c3d4;
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+.minigame-chooser-body {
+    padding: 16px 24px 26px;
+}
+
+.minigame-chooser-stage {
+    display: grid;
+    gap: 18px;
+}
+
+.minigame-chooser-modal .minigame-topup-grid {
+    margin-top: 0;
+    gap: 16px;
+}
+
+.minigame-chooser-modal .minigame-topup-card {
+    min-height: 188px;
+    padding: 22px 18px 18px;
+    border-radius: 24px;
+    background:
+        linear-gradient(180deg, rgba(18,18,20,.98), rgba(10,10,12,.98)),
+        linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+}
+
+.minigame-chooser-modal .minigame-topup-card:hover {
+    transform: translateY(-4px) scale(1.01);
+    border-color: rgba(255, 92, 148, .38);
+    box-shadow: 0 18px 36px rgba(0,0,0,.34), 0 0 0 1px rgba(255, 92, 148, .14);
+}
+
+.minigame-chooser-modal .minigame-topup-card strong {
+    margin-top: 0;
+    font-size: 19px;
+    line-height: 1.1;
+}
+
+.minigame-chooser-modal .minigame-topup-card span {
+    max-width: 250px;
+    line-height: 1.35;
+}
+
+.minigame-chooser-modal .overlay-close-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.08);
+    color: #fff;
+    flex: 0 0 auto;
+}
+
+.minigame-entry {
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.minigame-entry-glow {
+    width: min(100%, 360px);
+    padding: 18px;
+    border-radius: 22px;
+    background: radial-gradient(circle at top, rgba(20, 241, 149, .22), rgba(20, 241, 149, .04) 56%, transparent 72%);
+}
+
+.minigame-entry-glow .order-minigame-btn {
+    min-width: 220px;
+    background: linear-gradient(180deg, #22c55e, #15803d);
+    box-shadow: 0 18px 40px rgba(34, 197, 94, .28);
+}
+
+.minigame-entry-glow .order-minigame-btn:hover {
+    box-shadow: 0 20px 44px rgba(34, 197, 94, .32);
+}
+
+.minigame-selected-state {
+    display: grid;
+    gap: 18px;
+    margin-top: 18px;
+}
+
+.minigame-selected-copy {
+    color: #cbd5e1;
+    font-size: 13px;
+}
+
+.minigame-stage {
+    margin-top: 0;
+    padding: 18px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(8,8,10,.98), rgba(3,3,5,.98));
+    border: 1px solid rgba(255,255,255,.06);
+}
+
+.minigame-stage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    text-align: left;
+}
+
+.minigame-stage-header h3 {
+    font-size: 18px;
+}
+
+.minigame-stage-header p {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.minigame-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(20, 241, 149, .12);
+    color: #a7f3d0;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.roulette-shell {
+    display: grid;
+    justify-items: center;
+    gap: 22px;
+}
+
+.roulette-wheel-wrap {
+    position: relative;
+    width: min(100%, 380px);
+    aspect-ratio: 1;
+    padding: 16px;
+}
+
+.roulette-wheel-wrap::before {
+    content: '';
+    position: absolute;
+    inset: 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, rgba(255,255,255,.06), rgba(255,255,255,0) 62%);
+}
+
+.roulette-pointer {
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-left: 18px solid transparent;
+    border-right: 18px solid transparent;
+    border-top: 0;
+    border-bottom: 36px solid #ffcf33;
+    transform: translateX(-50%);
+    z-index: 5;
+    filter: drop-shadow(0 10px 20px rgba(255,212,59,.42));
+}
+
+.roulette-wheel {
+    position: absolute;
+    inset: 14px;
+    border-radius: 50%;
+    box-shadow:
+        inset 0 0 0 12px rgba(0,0,0,.08),
+        0 24px 44px rgba(0,0,0,.42);
+    transition: transform 4.2s cubic-bezier(.12,.88,.18,1);
+    overflow: hidden;
+}
+
+.roulette-wheel.is-spinning {
+    filter: drop-shadow(0 16px 30px rgba(255,207,51,.18));
+}
+
+.roulette-wheel::before {
+    content: '';
+    position: absolute;
+    inset: -16px;
+    border-radius: 50%;
+    border: 12px solid #1d2434;
+    box-shadow: inset 0 0 0 8px rgba(0,0,0,.24);
+}
+
+.roulette-wheel-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: 50%;
+}
+
+.roulette-segment-red {
+    fill: #ff1263;
+}
+
+.roulette-segment-white {
+    fill: #ffffff;
+}
+
+.roulette-segment-ring {
+    fill: none;
+    stroke: rgba(0, 0, 0, .08);
+    stroke-width: 20;
+}
+
+.roulette-svg-text {
+    font-family: Inter, sans-serif;
+    font-weight: 1000;
+    letter-spacing: .02em;
+    text-anchor: middle;
+}
+
+.roulette-svg-text.red {
+    fill: #ffffff;
+}
+
+.roulette-svg-text.dark {
+    fill: #111827;
+}
+
+.roulette-svg-mark {
+    fill: #ff7ba7;
+    font-size: 13px;
+}
+
+.roulette-svg-main {
+    font-size: 15px;
+}
+
+.roulette-svg-sub {
+    font-size: 10px;
+    letter-spacing: .08em;
+}
+
+.roulette-center {
+    position: absolute;
+    inset: 50%;
+    width: 88px;
+    height: 88px;
+    margin: -44px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #3a3a3a, #111 58%, #050505 100%);
+    border: 7px solid #222a3b;
+    color: #ffcf33;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 1000;
+    letter-spacing: .02em;
+    z-index: 4;
+    box-shadow: 0 10px 22px rgba(0,0,0,.42);
+}
+
+.slot-machine-shell {
+    display: grid;
+    gap: 18px;
+    justify-items: center;
+    perspective: 1200px;
+}
+
+.slot-reels {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(82px, 1fr));
+    gap: 14px;
+    width: min(100%, 360px);
+    padding: 14px;
+    border-radius: 24px;
+    background:
+        radial-gradient(circle at top, rgba(255,222,89,.18), transparent 42%),
+        linear-gradient(145deg, #181818, #040404);
+    border: 3px solid rgba(255,255,255,.08);
+    box-shadow: 0 20px 34px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.slot-reel {
+    position: relative;
+    min-height: 138px;
+    border-radius: 18px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #faf7ef 0%, #fffaf2 48%, #efe7d7 100%);
+    border: 4px solid #ff1e68;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.45), 0 10px 18px rgba(0,0,0,.28);
+}
+
+.slot-reel::before,
+.slot-reel::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.slot-reel::before {
+    top: 0;
+    height: 24px;
+    background: linear-gradient(180deg, rgba(2,6,23,.48), transparent);
+}
+
+.slot-reel::after {
+    bottom: 0;
+    height: 30px;
+    background: linear-gradient(0deg, rgba(2,6,23,.58), transparent);
+}
+
+.slot-reel-window {
+    position: relative;
+    height: 130px;
+    overflow: hidden;
+}
+
+.slot-reel-strip {
+    display: grid;
+    gap: 10px;
+    transform: translateY(0);
+    will-change: transform;
+}
+
+.slot-symbol {
+    min-height: 130px;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    text-align: center;
+    color: #0f172a;
+    padding: 14px 10px;
+}
+
+.slot-symbol.is-final {
+    background: radial-gradient(circle at top, rgba(255,255,255,.82), rgba(255,255,255,0) 55%);
+}
+
+.slot-reel-icon {
+    font-size: 44px;
+    line-height: 1;
+}
+
+.slot-reel-label {
+    margin-top: 8px;
+    font-size: 14px;
+    font-weight: 900;
+}
+
+.slot-reel.is-spinning {
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.45), 0 0 0 1px rgba(255,214,79,.42), 0 18px 34px rgba(0,0,0,.36), 0 0 28px rgba(255,30,104,.32);
+}
+
+.slot-reel.is-spinning .slot-reel-strip {
+    filter: blur(.7px);
+}
+
+.slot-reel.is-stopping .slot-reel-strip {
+    filter: blur(.18px);
+}
+
+.surprise-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.surprise-box {
+    min-height: 94px;
+    border-radius: 16px;
+    border: 2px solid rgba(255,255,255,.08);
+    background: linear-gradient(135deg, #121212, #050505);
+    color: #ff1e68;
+    font-size: 30px;
+    font-weight: 900;
+    display: grid;
+    place-items: center;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+}
+
+.surprise-box.is-revealed {
+    background: #fff;
+    color: #0f172a;
+    border-color: #ff1e68;
+}
+
+.surprise-box.is-selected {
+    box-shadow: 0 0 0 3px #ffd43b, 0 0 24px rgba(255,212,59,.24);
+}
+
+.surprise-box-label {
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.order-minigame-result {
+    margin-top: 18px;
+    padding: 16px;
+    border-radius: 18px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    text-align: left;
+}
+
+.order-minigame-result h4 {
+    font-size: 18px;
+    margin-bottom: 8px;
+}
+
+.order-minigame-result p {
+    color: #cbd5e1;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.order-minigame-code {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+
+.order-minigame-code strong {
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: #020617;
+    color: #14f195;
+    font-size: 16px;
+    letter-spacing: .08em;
+}
+
+.order-minigame-muted {
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+@media (max-width: 720px) {
+    .minigame-choice-grid,
+    .minigame-topup-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .minigame-chooser-modal .overlay-modal-header {
+        padding: 18px 18px 6px;
+    }
+
+    .minigame-chooser-copy h2 {
+        font-size: 24px;
+    }
+
+    .minigame-chooser-copy p {
+        font-size: 14px;
+    }
+
+    .minigame-chooser-body {
+        padding: 12px 18px 18px;
+    }
+
+    .minigame-chooser-modal .minigame-topup-card {
+        min-height: 156px;
+    }
+
+    .minigame-stage-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .slot-reels {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        padding: 10px;
+    }
+
+    .slot-reel {
+        min-height: 110px;
+        border-radius: 14px;
+    }
+
+    .slot-reel-window,
+    .slot-symbol {
+        min-height: 100px;
+        height: 100px;
+    }
+
+    .slot-reel-icon {
+        font-size: 34px;
+    }
+
+    .roulette-wheel-wrap {
+        width: min(100%, 324px);
+    }
+
+    .roulette-svg-main {
+        font-size: 12px;
+    }
+
+    .roulette-center {
+        width: 76px;
+        height: 76px;
+        margin: -38px;
+        font-size: 14px;
+    }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="order-status-wrap">
     <div class="order-status-card">
@@ -89,6 +799,13 @@
         </div>
         {% endif %}
 
+        <div class="order-minigame-card" id="orderMinigameCard" data-order-number="{{ order.order_number }}" style="display:none">
+            <div class="order-minigame-shell">
+                <span class="order-minigame-kicker">BONO DE COMPRA · MINI JUEGO</span>
+                <div id="orderMinigameContent"></div>
+            </div>
+        </div>
+
         {% if is_binance_auto_order and order.status == 'pending' %}
         <div id="binanceWaitBlock" style="margin:20px 0;padding:20px 22px;border:2px solid #f0b90b;border-radius:12px;background:rgba(240,185,11,.06);text-align:center;">
             <div style="font-size:28px;margin-bottom:8px;animation:spin 1.5s linear infinite;display:inline-block;">⏳</div>
@@ -152,10 +869,817 @@
         {% endif %}
 
     </div>
+
+</div>
+
+<div class="overlay-modal minigame-chooser-modal" id="minigameChooserModal" style="display:none" aria-hidden="true">
+    <div class="overlay-modal-card" role="dialog" aria-modal="true" aria-labelledby="minigameChooserTitle">
+        <div class="overlay-modal-header">
+            <div class="minigame-chooser-copy">
+                <h2 id="minigameChooserTitle">Elige tu mini juego</h2>
+                <p id="minigameChooserText">Solo puedes usar esta oportunidad en uno de los tres.</p>
+            </div>
+            <button type="button" class="overlay-close-btn" id="minigameChooserCloseBtn">✕</button>
+        </div>
+        <div class="minigame-chooser-body">
+            <div id="minigameChooserContent"></div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<script id="orderMinigameStateData" type="application/json">{{ minigame_state|tojson }}</script>
+<script>
+(function () {
+    var card = document.getElementById('orderMinigameCard');
+    var stateNode = document.getElementById('orderMinigameStateData');
+    var state = {};
+    try {
+        state = stateNode ? JSON.parse(stateNode.textContent || '{}') : {};
+    } catch (error) {
+        state = {};
+    }
+    var orderNumber = card ? String(card.getAttribute('data-order-number') || '') : '';
+    var content = document.getElementById('orderMinigameContent');
+    var flow = document.getElementById('processingFlow');
+    var chooserModal = document.getElementById('minigameChooserModal');
+    var chooserCloseBtn = document.getElementById('minigameChooserCloseBtn');
+    var chooserTitle = document.getElementById('minigameChooserTitle');
+    var chooserText = document.getElementById('minigameChooserText');
+    var chooserContent = document.getElementById('minigameChooserContent');
+    var spinning = false;
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function postJson(url, payload) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload || {})
+        }).then(function (response) {
+            return response.json().then(function (data) {
+                if (!response.ok) {
+                    throw data || {message: 'No se pudo completar la acción.'};
+                }
+                return data;
+            });
+        });
+    }
+
+    function getGameDef(gameKey) {
+        var games = state.games || [];
+        for (var i = 0; i < games.length; i += 1) {
+            if (games[i].key === gameKey) return games[i];
+        }
+        return null;
+    }
+
+    function getGameSubtitle(gameKey) {
+        if (gameKey === 'ruleta') return 'Gira y descubre si te toca premio instantáneo.';
+        if (gameKey === 'tragaperras') return 'Haz girar el top up y revela la combinación final.';
+        return 'Escoge una caja y abre tu premio sorpresa.';
+    }
+
+    function openChooser() {
+        if (!chooserModal) return;
+        renderChooserState();
+        chooserModal.style.display = 'block';
+        chooserModal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('modal-open');
+    }
+
+    function closeChooser() {
+        if (!chooserModal) return;
+        chooserModal.style.display = 'none';
+        chooserModal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('modal-open');
+    }
+
+    function isFlowReadyForMinigame() {
+        if (!flow) return false;
+        var steps = flow.querySelectorAll('.processing-step');
+        if (!steps.length) return false;
+        return Array.prototype.every.call(steps, function (step) {
+            return step.classList.contains('is-done');
+        });
+    }
+
+    function syncCardVisibility() {
+        if (!card) return false;
+        var qualifies = !!(state && (state.eligible || state.qualifies));
+        var visible = qualifies && isFlowReadyForMinigame();
+        card.style.display = visible ? 'block' : 'none';
+        if (!visible) {
+            closeChooser();
+        }
+        return visible;
+    }
+
+    function showError(message) {
+        if (!content) return;
+        content.innerHTML = '<div class="order-minigame-result"><h4>No se pudo continuar</h4><p>' + escapeHtml(message) + '</p></div>';
+    }
+
+    function buildChoiceCards() {
+        var games = state.games || [];
+        return '<div class="minigame-topup-grid">' + games.map(function (game) {
+            return '' +
+                '<button type="button" class="minigame-topup-card" data-minigame-key="' + escapeHtml(game.key) + '">' +
+                    '<span class="minigame-topup-tag">Top Up</span>' +
+                    '<div class="minigame-topup-icon">' + getGameSvg(game.key) + '</div>' +
+                    '<div class="minigame-topup-body"><strong>' + escapeHtml(game.label) + '</strong>' +
+                    '<span>' + escapeHtml(getGameSubtitle(game.key)) + '</span></div>' +
+                '</button>';
+        }).join('') + '</div>';
+    }
+
+    function getGameSvg(gameKey) {
+        if (gameKey === 'ruleta') {
+            return '' +
+                '<svg viewBox="0 0 48 48" aria-hidden="true" fill="none">' +
+                    '<circle cx="24" cy="24" r="15" fill="#ff1e68" opacity="0.18"></circle>' +
+                    '<circle cx="24" cy="24" r="12.5" stroke="#ff4c8f" stroke-width="3"></circle>' +
+                    '<circle cx="24" cy="24" r="6.5" stroke="#ffd0de" stroke-width="3"></circle>' +
+                    '<circle cx="24" cy="24" r="2.5" fill="#ffd166"></circle>' +
+                    '<path d="M31 17l8-8" stroke="#76e4ff" stroke-width="3.2" stroke-linecap="round"></path>' +
+                    '<path d="M36 8h4v4" stroke="#76e4ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"></path>' +
+                '</svg>';
+        }
+        if (gameKey === 'tragaperras') {
+            return '' +
+                '<svg viewBox="0 0 48 48" aria-hidden="true" fill="none">' +
+                    '<rect x="9" y="10" width="24" height="28" rx="8" fill="#201116" stroke="#ff4c8f" stroke-width="2.6"></rect>' +
+                    '<rect x="14" y="16" width="14" height="10" rx="3" fill="#fff7fb"></rect>' +
+                    '<path d="M18 16v10M24 16v10" stroke="#ffd6e5" stroke-width="2"></path>' +
+                    '<path d="M13 31h16" stroke="#ff7cac" stroke-width="2.4" stroke-linecap="round"></path>' +
+                    '<circle cx="36" cy="18" r="4" fill="#ffd166"></circle>' +
+                    '<path d="M33 18h7" stroke="#5be7a9" stroke-width="2.6" stroke-linecap="round"></path>' +
+                    '<path d="M36 22v8" stroke="#5be7a9" stroke-width="2.6" stroke-linecap="round"></path>' +
+                    '<circle cx="36" cy="32" r="3.5" fill="#5be7a9"></circle>' +
+                '</svg>';
+        }
+        return '' +
+            '<svg viewBox="0 0 48 48" aria-hidden="true" fill="none">' +
+                '<rect x="10" y="19" width="28" height="18" rx="4" fill="#ffbf47"></rect>' +
+                '<path d="M10 25h28" stroke="#ff8c42" stroke-width="3"></path>' +
+                '<path d="M24 19v18" stroke="#ff4c8f" stroke-width="3"></path>' +
+                '<path d="M16 19c-2.8 0-5-2.1-5-4.7S13.2 10 16 10c3.8 0 6.3 4.6 8 9" stroke="#ff4c8f" stroke-width="2.8" stroke-linecap="round"></path>' +
+                '<path d="M32 19c2.8 0 5-2.1 5-4.7S34.8 10 32 10c-3.8 0-6.3 4.6-8 9" stroke="#ff4c8f" stroke-width="2.8" stroke-linecap="round"></path>' +
+            '</svg>';
+    }
+
+    function parseRouletteLabel(label) {
+        var raw = String(label || '').trim();
+        var upper = raw.toUpperCase();
+        var mark = '';
+        var main = upper;
+        var sub = '';
+
+        if (upper.indexOf('FAILED') !== -1) {
+            mark = '✕';
+            main = 'FAILED';
+        } else if (upper.indexOf('CUP') !== -1) {
+            mark = '◻';
+            main = 'CUPON';
+            sub = '%';
+        } else if (upper.indexOf('$1') !== -1) {
+            mark = '◉';
+            main = '$1.00';
+            sub = 'CASH';
+        } else if (upper.indexOf('$3') !== -1) {
+            mark = '◉';
+            main = '$3.00';
+            sub = 'MIN';
+        } else if (upper.indexOf('$5') !== -1) {
+            mark = '◉';
+            main = '$5.00';
+            sub = 'PRO';
+        }
+
+        return { mark: mark, main: main, sub: sub };
+    }
+
+    function polarPoint(cx, cy, radius, angleDeg) {
+        var angleRad = ((angleDeg - 90) * Math.PI) / 180;
+        return {
+            x: cx + (radius * Math.cos(angleRad)),
+            y: cy + (radius * Math.sin(angleRad))
+        };
+    }
+
+    function buildRouletteSegmentPath(cx, cy, radius, startAngle, endAngle) {
+        var start = polarPoint(cx, cy, radius, startAngle);
+        var end = polarPoint(cx, cy, radius, endAngle);
+        var largeArc = endAngle - startAngle > 180 ? 1 : 0;
+        return [
+            'M', cx, cy,
+            'L', start.x, start.y,
+            'A', radius, radius, 0, largeArc, 1, end.x, end.y,
+            'Z'
+        ].join(' ');
+    }
+
+    function buildRouletteWheelSvg(labels) {
+        var cx = 150;
+        var cy = 150;
+        var radius = 144;
+        var textRadius = 102;
+        var svg = '<svg class="roulette-wheel-svg" viewBox="0 0 300 300" aria-hidden="true">';
+        for (var i = 0; i < labels.length; i += 1) {
+            var startAngle = i * 36;
+            var endAngle = startAngle + 36;
+            var midAngle = startAngle + 18;
+            var isRed = i % 2 === 0;
+            var textColor = isRed ? 'red' : 'dark';
+            var labelParts = parseRouletteLabel(labels[i]);
+            var textPoint = polarPoint(cx, cy, textRadius, midAngle);
+            var textRotation = midAngle - 90;
+            svg += '<path class="' + (isRed ? 'roulette-segment-red' : 'roulette-segment-white') + '" d="' + buildRouletteSegmentPath(cx, cy, radius, startAngle, endAngle) + '"></path>';
+            svg += '<g transform="translate(' + textPoint.x.toFixed(2) + ' ' + textPoint.y.toFixed(2) + ') rotate(' + textRotation.toFixed(2) + ')">';
+            if (labelParts.mark) {
+                svg += '<text class="roulette-svg-text roulette-svg-mark" x="0" y="-14">' + escapeHtml(labelParts.mark) + '</text>';
+            }
+            svg += '<text class="roulette-svg-text roulette-svg-main ' + textColor + '" x="0" y="0">' + escapeHtml(labelParts.main) + '</text>';
+            if (labelParts.sub) {
+                svg += '<text class="roulette-svg-text roulette-svg-sub ' + textColor + '" x="0" y="14">' + escapeHtml(labelParts.sub) + '</text>';
+            }
+            svg += '</g>';
+        }
+        svg += '<circle class="roulette-segment-ring" cx="150" cy="150" r="134"></circle>';
+        svg += '</svg>';
+        return svg;
+    }
+
+    function buildStageHeader(opportunity) {
+        var label = opportunity && opportunity.selected_game_label ? opportunity.selected_game_label : 'Mini juego';
+        return '' +
+            '<div class="minigame-stage-header">' +
+                '<div>' +
+                    '<h3>' + escapeHtml(label) + '</h3>' +
+                    '<p>' + escapeHtml(getGameSubtitle(opportunity && opportunity.selected_game_key)) + '</p>' +
+                '</div>' +
+                '<span class="minigame-badge">1 sola oportunidad</span>' +
+            '</div>';
+    }
+
+    function buildSelectedTopupCard(selectedGame) {
+        if (!selectedGame) return '';
+        return '' +
+            '<div class="minigame-topup-grid">' +
+                '<div class="minigame-topup-card is-selected">' +
+                    '<span class="minigame-topup-tag">Seleccionado</span>' +
+                    '<div class="minigame-topup-icon">' + getGameSvg(selectedGame.key) + '</div>' +
+                    '<div class="minigame-topup-body"><strong>' + escapeHtml(selectedGame.label) + '</strong>' +
+                    '<span>' + escapeHtml(getGameSubtitle(selectedGame.key)) + '</span></div>' +
+                '</div>' +
+            '</div>';
+    }
+
+    function buildRouletteStage(opportunity) {
+        var payload = (opportunity && opportunity.result_payload) || {};
+        var labels = payload.segments || ['FAILED', 'Cupón', '$3.00', 'FAILED', '$5.00', 'Cupón', '$1.00', 'FAILED', 'FAILED', 'Cupón'];
+        return '' +
+            '<div class="minigame-stage">' + buildStageHeader(opportunity) +
+                '<div class="roulette-shell">' +
+                    '<div class="roulette-wheel-wrap">' +
+                        '<div class="roulette-pointer"></div>' +
+                        '<div class="roulette-wheel" id="rouletteWheel">' + buildRouletteWheelSvg(labels) + '</div>' +
+                        '<div class="roulette-center">GO</div>' +
+                    '</div>' +
+                    '<button type="button" class="order-minigame-btn" id="playRouletteBtn">¡GIRAR AHORA!</button>' +
+                '</div>' +
+            '</div>';
+    }
+
+    function getRouletteSegmentAngle(segmentCount) {
+        var safeCount = Number(segmentCount || 10);
+        if (!safeCount) return 36;
+        return 360 / safeCount;
+    }
+
+    function getRouletteLandingRotation(targetIndex, segmentCount, extraTurns) {
+        var segmentAngle = getRouletteSegmentAngle(segmentCount);
+        var safeIndex = Number(targetIndex || 0);
+        var turns = Number(extraTurns || 0) * 360;
+        return turns - ((safeIndex * segmentAngle) + (segmentAngle / 2));
+    }
+
+    function setRouletteWheelInstant(wheel, targetIndex, segmentCount) {
+        if (!wheel) return;
+        var previousTransition = wheel.style.transition;
+        wheel.style.transition = 'none';
+        wheel.style.transform = 'rotate(' + getRouletteLandingRotation(targetIndex, segmentCount, 0) + 'deg)';
+        wheel.offsetHeight;
+        wheel.style.transition = previousTransition;
+    }
+
+    function animateRouletteWheel(wheel, targetIndex, segmentCount) {
+        if (!wheel) return Promise.resolve();
+
+        var finalRotation = getRouletteLandingRotation(targetIndex, segmentCount, 7);
+        var overshootRotation = finalRotation + 8;
+        var settleRotation = finalRotation - 3;
+
+        wheel.classList.add('is-spinning');
+        wheel.style.transition = 'none';
+        wheel.style.transform = 'rotate(0deg)';
+        wheel.offsetHeight;
+
+        var animation = wheel.animate([
+            { transform: 'rotate(0deg)', offset: 0 },
+            { transform: 'rotate(' + Math.round(finalRotation * 0.72) + 'deg)', offset: 0.68 },
+            { transform: 'rotate(' + overshootRotation + 'deg)', offset: 0.88 },
+            { transform: 'rotate(' + settleRotation + 'deg)', offset: 0.95 },
+            { transform: 'rotate(' + finalRotation + 'deg)', offset: 1 }
+        ], {
+            duration: 4200,
+            easing: 'cubic-bezier(.1,.92,.16,1)',
+            fill: 'forwards'
+        });
+
+        return animation.finished.catch(function () {
+            return null;
+        }).then(function () {
+            wheel.classList.remove('is-spinning');
+            wheel.style.transform = 'rotate(' + finalRotation + 'deg)';
+        });
+    }
+
+    function buildSlotsStage(opportunity) {
+        var reels = ((opportunity && opportunity.result_payload) || {}).reels || [
+            {icon: '❓', label: 'READY'},
+            {icon: '❓', label: 'READY'},
+            {icon: '❓', label: 'READY'}
+        ];
+        return '' +
+            '<div class="minigame-stage">' + buildStageHeader(opportunity) +
+                '<div class="slot-machine-shell">' +
+                    '<div class="slot-reels" id="slotReels">' +
+                        reels.map(function (reel, index) {
+                            return '' +
+                                '<div class="slot-reel" data-slot-index="' + index + '">' +
+                                    '<div class="slot-reel-window">' +
+                                        '<div class="slot-reel-strip">' + buildSlotSymbolMarkup(reel, true) + '</div>' +
+                                    '</div>' +
+                                '</div>';
+                        }).join('') +
+                    '</div>' +
+                    '<button type="button" class="order-minigame-btn" id="playSlotsBtn">¡GIRAR YA!</button>' +
+                '</div>' +
+            '</div>';
+    }
+
+    function buildSurpriseStage(opportunity) {
+        var items = ((opportunity && opportunity.result_payload) || {}).items || [];
+        if (!items.length) {
+            items = new Array(9).fill(0).map(function () { return {icon: '?', label: ''}; });
+        }
+        return '' +
+            '<div class="minigame-stage">' + buildStageHeader(opportunity) +
+                '<div class="surprise-grid" id="surpriseGrid">' +
+                    items.map(function (item, index) {
+                        return '<button type="button" class="surprise-box" data-choice-index="' + index + '"><div>' + escapeHtml(item.icon || '?') + '</div><div class="surprise-box-label">' + escapeHtml(item.label || 'ELIGE') + '</div></button>';
+                    }).join('') +
+                '</div>' +
+            '</div>';
+    }
+
+    function buildResultCard(opportunity) {
+        if (!opportunity || !opportunity.played) return '';
+
+        var resultKind = opportunity.result_kind || 'miss';
+        var title = 'No hubo premio esta vez';
+        var body = 'Usaste tu oportunidad gratis en esta orden. Si vuelves a comprar y se confirma el pago, podrás obtener otra oportunidad nueva.';
+        var extra = '';
+
+        if (resultKind === 'coupon') {
+            title = 'Ganaste un cupón';
+            body = 'Tu código se entregó automáticamente y ya quedó vinculado a esta oportunidad.';
+            extra = '<div class="order-minigame-code"><strong id="minigameCouponCode">' + escapeHtml(opportunity.reward_discount_code || 'PENDIENTE') + '</strong><button type="button" class="order-minigame-btn" id="copyMinigameCouponBtn">Copiar cupón</button></div>';
+        } else if (resultKind === 'cash') {
+            title = 'Ganaste un premio en dólares';
+            body = 'Para reclamarlo, escríbenos por WhatsApp con tu número de orden y el premio ganado.';
+            extra = '<div class="order-minigame-actions"><button type="button" class="order-minigame-claim" id="claimMinigameCashBtn">Reclamar por WhatsApp</button></div>';
+        }
+
+        return '' +
+            '<div class="order-minigame-result">' +
+                '<h4>' + escapeHtml(title) + '</h4>' +
+                '<p>' + escapeHtml(body) + '</p>' +
+                extra +
+                '<p class="order-minigame-muted">Mini juego: ' + escapeHtml(opportunity.selected_game_label || '') + '</p>' +
+            '</div>';
+    }
+
+    function renderPlayedState(opportunity) {
+        content.innerHTML = '' +
+            '<div class="minigame-selected-state">' +
+                buildResultCard(opportunity) +
+            '</div>';
+
+        bindResultActions(opportunity);
+    }
+
+    function renderAvailableState(opportunity) {
+        if (!content) return;
+        var selectedGame = opportunity && opportunity.selected_game_key ? getGameDef(opportunity.selected_game_key) : null;
+
+        if (selectedGame) {
+            content.innerHTML = '' +
+                '<div class="minigame-selected-state">' +
+                    '<p class="minigame-selected-copy">Tu mini juego quedó listo. Continúa en el popup para jugar.</p>' +
+                    '<div class="order-minigame-actions"><button type="button" class="order-minigame-btn" id="resumeMinigameBtn">Continuar en popup</button></div>' +
+                '</div>';
+        } else {
+            content.innerHTML = '' +
+                '<div class="minigame-entry">' +
+                    '<div class="minigame-entry-glow">' +
+                        '<button type="button" class="order-minigame-btn" id="openMinigameChooserBtn">Abrir mini juegos</button>' +
+                    '</div>' +
+                '</div>';
+        }
+
+        var openBtn = document.getElementById('openMinigameChooserBtn');
+        if (openBtn) {
+            openBtn.addEventListener('click', function () {
+                openChooser();
+            });
+        }
+
+        var resumeBtn = document.getElementById('resumeMinigameBtn');
+        if (resumeBtn) {
+            resumeBtn.addEventListener('click', function () {
+                openChooser();
+            });
+        }
+
+        bindPlayableStage(opportunity);
+    }
+
+    function renderChooserState() {
+        if (!chooserContent) return;
+        var opportunity = state && state.opportunity ? state.opportunity : null;
+
+        if (!opportunity || !opportunity.selected_game_key) {
+            if (chooserTitle) chooserTitle.textContent = 'Elige tu mini juego';
+            if (chooserText) chooserText.textContent = 'Solo puedes usar esta oportunidad en uno de los tres.';
+            chooserContent.innerHTML = buildChoiceCards();
+            return;
+        }
+
+        var selectedGame = getGameDef(opportunity.selected_game_key) || {
+            key: opportunity.selected_game_key,
+            label: opportunity.selected_game_label || 'Mini juego'
+        };
+        var stageHtml = '';
+        if (selectedGame.key === 'ruleta') stageHtml = buildRouletteStage(opportunity);
+        else if (selectedGame.key === 'tragaperras') stageHtml = buildSlotsStage(opportunity);
+        else stageHtml = buildSurpriseStage(opportunity);
+
+        if (chooserTitle) chooserTitle.textContent = selectedGame.label;
+        if (chooserText) {
+            chooserText.textContent = opportunity.played
+                ? 'Tu resultado quedó guardado en esta orden.'
+                : 'Tu mini juego seleccionado ahora se juega aquí mismo.';
+        }
+
+        chooserContent.innerHTML = '' +
+            '<div class="minigame-chooser-stage">' +
+                stageHtml +
+                (opportunity.played ? buildResultCard(opportunity) : '') +
+            '</div>';
+
+        if (selectedGame.key === 'ruleta') {
+            var wheel = document.getElementById('rouletteWheel');
+            var payload = opportunity.result_payload || {};
+            if (wheel && opportunity.played && typeof payload.target_index === 'number') {
+                setRouletteWheelInstant(wheel, payload.target_index, (payload.segments || []).length || 10);
+            }
+            if (opportunity.played) {
+                var playRouletteBtn = document.getElementById('playRouletteBtn');
+                if (playRouletteBtn) playRouletteBtn.remove();
+            }
+        }
+
+        if (selectedGame.key === 'tragaperras' && opportunity.played) {
+            var playSlotsBtn = document.getElementById('playSlotsBtn');
+            if (playSlotsBtn) playSlotsBtn.remove();
+        }
+
+        if (selectedGame.key === 'caja_sorpresa' && opportunity.played) {
+            var payloadBox = opportunity.result_payload || {};
+            var boxes = chooserContent.querySelectorAll('#surpriseGrid .surprise-box');
+            boxes.forEach(function (box, index) {
+                var item = payloadBox.items && payloadBox.items[index] ? payloadBox.items[index] : null;
+                box.classList.add('is-revealed');
+                if (payloadBox.selected_index === index) {
+                    box.classList.add('is-selected');
+                }
+                if (item) {
+                    box.innerHTML = '<div>' + escapeHtml(item.icon || '?') + '</div><div class="surprise-box-label">' + escapeHtml(item.label || '') + '</div>';
+                }
+                box.disabled = true;
+            });
+        }
+
+        bindPlayableStage(opportunity);
+        if (opportunity.played) {
+            bindResultActions(opportunity);
+        }
+    }
+
+    function bindResultActions(opportunity) {
+        var copyBtn = document.getElementById('copyMinigameCouponBtn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function () {
+                var code = opportunity.reward_discount_code || '';
+                if (!code) return;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(code);
+                }
+                copyBtn.textContent = 'Copiado';
+            });
+        }
+
+        var claimBtn = document.getElementById('claimMinigameCashBtn');
+        if (claimBtn) {
+            claimBtn.addEventListener('click', function () {
+                var raw = String(window.SUPPORT_WHATSAPP_URL || '').trim();
+                var phone = raw.replace(/\D/g, '');
+                if (!phone) return;
+                var message = [
+                    'Hola, gané un premio del mini juego en 3S Recargas.',
+                    '',
+                    'Orden: #' + orderNumber,
+                    'Mini juego: ' + (opportunity.selected_game_label || ''),
+                    'Premio: ' + (opportunity.reward_label || '')
+                ].join('\n');
+                window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(message), '_blank', 'noopener');
+            });
+        }
+    }
+
+    function playSelectedGame(gameKey, choiceIndex) {
+        if (spinning) return;
+        spinning = true;
+        postJson('/order/' + encodeURIComponent(orderNumber) + '/minigame/play', {
+            game_key: gameKey,
+            choice_index: choiceIndex
+        }).then(function (data) {
+            state = data.state || {};
+            renderState();
+            renderChooserState();
+        }).catch(function (error) {
+            showError(error.message || 'No se pudo completar el juego.');
+        }).finally(function () {
+            spinning = false;
+        });
+    }
+
+    var SLOT_SYMBOL_POOL = [
+        { icon: '💎', label: 'BONUS' },
+        { icon: '🔥', label: 'HOT' },
+        { icon: '⚡', label: 'BOOST' },
+        { icon: '🪙', label: 'COIN' },
+        { icon: '🎁', label: 'PREMIO' },
+        { icon: '⭐', label: 'LUCKY' }
+    ];
+
+    function buildSlotSymbolMarkup(symbol, isFinal) {
+        var safeSymbol = symbol || { icon: '❓', label: 'READY' };
+        return '' +
+            '<div class="slot-symbol' + (isFinal ? ' is-final' : '') + '">' +
+                '<div class="slot-reel-icon">' + escapeHtml(safeSymbol.icon || '❓') + '</div>' +
+                '<div class="slot-reel-label">' + escapeHtml(safeSymbol.label || 'READY') + '</div>' +
+            '</div>';
+    }
+
+    function createSlotSpinSequence(finalReel, index) {
+        var sequence = [];
+        var total = 12 + (index * 3);
+        for (var i = 0; i < total; i += 1) {
+            sequence.push(SLOT_SYMBOL_POOL[(i + index) % SLOT_SYMBOL_POOL.length]);
+        }
+        sequence.push(finalReel || { icon: '❓', label: 'READY' });
+        return sequence;
+    }
+
+    function animateSlotReels() {
+        var reels = Array.prototype.slice.call(document.querySelectorAll('#slotReels .slot-reel'));
+        if (!reels.length) return Promise.resolve();
+
+        var animations = reels.map(function (reel, index) {
+            var strip = reel.querySelector('.slot-reel-strip');
+            if (!strip) return Promise.resolve();
+
+            var currentIcon = reel.querySelector('.slot-reel-icon');
+            var currentLabel = reel.querySelector('.slot-reel-label');
+            var finalReel = {
+                icon: currentIcon ? currentIcon.textContent.trim() : '❓',
+                label: currentLabel ? currentLabel.textContent.trim() : 'READY'
+            };
+            var sequence = createSlotSpinSequence(finalReel, index);
+
+            strip.innerHTML = sequence.map(function (symbol, symbolIndex) {
+                return buildSlotSymbolMarkup(symbol, symbolIndex === sequence.length - 1);
+            }).join('');
+
+            var firstSymbol = strip.querySelector('.slot-symbol');
+            var step = firstSymbol ? firstSymbol.offsetHeight + 10 : 140;
+            var targetOffset = -((sequence.length - 1) * step);
+            var overshoot = targetOffset + Math.round(step * 0.28);
+            var rebound = targetOffset - Math.round(step * 0.12);
+
+            reel.classList.add('is-spinning');
+            strip.style.transform = 'translateY(0px)';
+
+            var animation = strip.animate([
+                { transform: 'translateY(0px)' },
+                { transform: 'translateY(' + Math.round(targetOffset * 0.76) + 'px)', offset: 0.7 },
+                { transform: 'translateY(' + overshoot + 'px)', offset: 0.86 },
+                { transform: 'translateY(' + rebound + 'px)', offset: 0.94 },
+                { transform: 'translateY(' + targetOffset + 'px)' }
+            ], {
+                duration: 1450 + (index * 320),
+                easing: 'cubic-bezier(.14,.82,.2,1)',
+                fill: 'forwards'
+            });
+
+            return animation.finished.catch(function () {
+                return null;
+            }).then(function () {
+                reel.classList.remove('is-spinning');
+                reel.classList.add('is-stopping');
+                strip.style.transform = 'translateY(' + targetOffset + 'px)';
+                return new Promise(function (resolve) {
+                    window.setTimeout(function () {
+                        reel.classList.remove('is-stopping');
+                        resolve();
+                    }, 120);
+                });
+            });
+        });
+
+        return Promise.all(animations);
+    }
+
+    function bindPlayableStage(opportunity) {
+        if (!opportunity || !opportunity.selected_game_key || opportunity.played) return;
+
+        if (opportunity.selected_game_key === 'ruleta') {
+            var playRouletteBtn = document.getElementById('playRouletteBtn');
+            if (playRouletteBtn) {
+                playRouletteBtn.addEventListener('click', function () {
+                    if (spinning) return;
+                    var wheel = document.getElementById('rouletteWheel');
+                    spinning = true;
+                    playRouletteBtn.disabled = true;
+
+                    postJson('/order/' + encodeURIComponent(orderNumber) + '/minigame/play', {
+                        game_key: 'ruleta'
+                    }).then(function (data) {
+                        var nextState = data.state || {};
+                        var nextOpportunity = nextState.opportunity || {};
+                        var payload = nextOpportunity.result_payload || {};
+                        var targetIndex = typeof payload.target_index === 'number' ? payload.target_index : 0;
+                        var segmentCount = (payload.segments || []).length || 10;
+
+                        return animateRouletteWheel(wheel, targetIndex, segmentCount).then(function () {
+                            state = nextState;
+                            renderState();
+                            renderChooserState();
+                        });
+                    }).catch(function (error) {
+                        showError(error.message || 'No se pudo completar el juego.');
+                        playRouletteBtn.disabled = false;
+                    }).finally(function () {
+                        spinning = false;
+                    });
+                });
+            }
+            return;
+        }
+
+        if (opportunity.selected_game_key === 'tragaperras') {
+            var playSlotsBtn = document.getElementById('playSlotsBtn');
+            if (playSlotsBtn) {
+                playSlotsBtn.addEventListener('click', function () {
+                    if (spinning) return;
+                    spinning = true;
+                    playSlotsBtn.disabled = true;
+
+                    var nextState = null;
+                    var animationPromise = animateSlotReels();
+                    var requestPromise = postJson('/order/' + encodeURIComponent(orderNumber) + '/minigame/play', {
+                        game_key: 'tragaperras'
+                    }).then(function (data) {
+                        nextState = data.state || {};
+                    });
+
+                    Promise.all([animationPromise, requestPromise]).then(function () {
+                        state = nextState || state;
+                        renderState();
+                        renderChooserState();
+                    }).catch(function (error) {
+                        showError(error.message || 'No se pudo completar el juego.');
+                        playSlotsBtn.disabled = false;
+                    }).finally(function () {
+                        spinning = false;
+                    });
+                });
+            }
+            return;
+        }
+
+        document.querySelectorAll('#surpriseGrid .surprise-box').forEach(function (box) {
+            box.addEventListener('click', function () {
+                var choiceIndex = Number(box.getAttribute('data-choice-index') || 0);
+                playSelectedGame('caja_sorpresa', choiceIndex);
+            });
+        });
+    }
+
+    function renderState() {
+        if (!card || !content) return;
+
+        if (!state || !(state.eligible || state.qualifies)) {
+            syncCardVisibility();
+            return;
+        }
+
+        if (!syncCardVisibility()) {
+            return;
+        }
+        var opportunity = state.opportunity || null;
+        if (!opportunity) {
+            content.innerHTML = '<div class="minigame-entry"><div class="minigame-entry-glow"><button type="button" class="order-minigame-btn" id="openMinigameChooserBtn">Abrir mini juegos</button></div></div>';
+            var openBtn = document.getElementById('openMinigameChooserBtn');
+            if (openBtn) {
+                openBtn.addEventListener('click', function () {
+                    openChooser();
+                });
+            }
+            return;
+        }
+
+        if (opportunity.played) {
+            renderPlayedState(opportunity);
+            return;
+        }
+
+        renderAvailableState(opportunity);
+    }
+
+    function refreshState() {
+        return fetch('/order/' + encodeURIComponent(orderNumber) + '/minigame-state')
+            .then(function (response) { return response.json(); })
+            .then(function (data) {
+                state = data.state || {};
+                renderState();
+            });
+    }
+    
+    if (chooserModal) {
+        chooserModal.addEventListener('click', function (evt) {
+            var btn = evt.target && evt.target.closest('[data-minigame-key]');
+            if (!btn) return;
+            var gameKey = btn.getAttribute('data-minigame-key') || '';
+            if (!gameKey) return;
+            postJson('/order/' + encodeURIComponent(orderNumber) + '/minigame/select', {game_key: gameKey})
+                .then(function (data) {
+                    state = data.state || {};
+                    renderState();
+                    renderChooserState();
+                })
+                .catch(function (error) {
+                    showError(error.message || 'No se pudo seleccionar el mini juego.');
+                });
+        });
+    }
+
+    if (chooserCloseBtn && chooserModal) {
+        chooserCloseBtn.addEventListener('click', closeChooser);
+        chooserModal.addEventListener('click', function (evt) {
+            if (evt.target === chooserModal) closeChooser();
+        });
+    }
+
+    document.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Escape') closeChooser();
+    });
+    renderState();
+    window.refreshOrderMinigameState = refreshState;
+    window.syncOrderMinigameVisibility = renderState;
+})();
+</script>
 {% if order.status == 'completed' %}
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 <script>
@@ -299,15 +1823,18 @@
         if (manualFlow) {
             if (s === 'approved' || s === 'completed') {
                 ['search', 'confirm', 'validate'].forEach(function (k) { setStepState(k, 'done'); });
+                if (typeof window.syncOrderMinigameVisibility === 'function') window.syncOrderMinigameVisibility();
                 return;
             }
             setStepState('search', verified ? 'done' : 'active');
             setStepState('confirm', verified ? 'done' : 'pending');
             setStepState('validate', verified ? 'done' : 'pending');
+            if (typeof window.syncOrderMinigameVisibility === 'function') window.syncOrderMinigameVisibility();
             return;
         }
         if (s === 'completed') {
             ['search', 'confirm', 'validate', 'connect', 'deliver'].forEach(function (k) { setStepState(k, 'done'); });
+            if (typeof window.syncOrderMinigameVisibility === 'function') window.syncOrderMinigameVisibility();
             return;
         }
         if (s === 'approved') {
@@ -316,6 +1843,7 @@
             setStepState('validate', 'done');
             setStepState('connect', 'active');
             setStepState('deliver', 'pending');
+            if (typeof window.syncOrderMinigameVisibility === 'function') window.syncOrderMinigameVisibility();
             return;
         }
         setStepState('search', 'active');
@@ -323,6 +1851,7 @@
         setStepState('validate', verified ? 'active' : 'pending');
         setStepState('connect', 'pending');
         setStepState('deliver', 'pending');
+        if (typeof window.syncOrderMinigameVisibility === 'function') window.syncOrderMinigameVisibility();
     }
 
     function nextDelayFromMessage(message) {
@@ -342,6 +1871,9 @@
             .then(function (data) {
                 if (hint && data.message) {
                     hint.textContent = data.message;
+                }
+                if ((data.payment_verified || data.verified || data.status === 'completed') && typeof window.refreshOrderMinigameState === 'function') {
+                    window.refreshOrderMinigameState();
                 }
                 paintFlowByStatus(data.status, !!(data.payment_verified || data.verified));
                 if (data.status && data.status !== 'pending') {

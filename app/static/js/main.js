@@ -19,6 +19,8 @@
     var manualInfoCloseBtn = document.getElementById('manualInfoCloseBtn');
     var discountInfoPopup = document.getElementById('discountInfoPopup');
     var discountInfoCloseBtn = document.getElementById('discountInfoCloseBtn');
+    var gameSelectionPopup = document.getElementById('gameSelectionPopup');
+    var gameSelectionPopupCloseBtn = document.getElementById('gameSelectionPopupCloseBtn');
     var contactEmailInput = document.getElementById('email');
     var phoneFieldStack = document.getElementById('phoneFieldStack');
     var phoneCountryCodeInput = document.getElementById('phoneCountryCode');
@@ -422,10 +424,25 @@
             });
     }
 
+    function isRankingModalOpen() {
+        return !!(rankingModal && rankingModal.getAttribute('aria-hidden') === 'false');
+    }
+
+    function invalidateRankingLookup() {
+        rankingState.loaded = false;
+    }
+
+    function refreshRankingLookupIfVisible() {
+        invalidateRankingLookup();
+        if (isRankingModalOpen()) {
+            fetchRankings(true);
+        }
+    }
+
     function openRankingModal() {
         if (!rankingModal) return;
         openModal(rankingModal);
-        fetchRankings(false);
+        fetchRankings(true);
     }
 
     function closeRankingModal() {
@@ -662,6 +679,16 @@
                 console.log('Packages data:', data);
                 applyGameToSidebar(data.game);
                 renderPackages(data.packages);
+                if (data.game && data.game.requires_manual_login_popup) {
+                    openManualInfoPopup();
+                } else {
+                    closeManualInfoPopup();
+                }
+                if (data.game && data.game.show_selection_popup) {
+                    openGameSelectionPopup();
+                } else {
+                    closeGameSelectionPopup();
+                }
             })
             .catch(function (err) {
                 console.error('Error fetching packages:', err);
@@ -919,14 +946,17 @@
                 var uid = (input.value || '').trim();
                 if (!uid) { resetNickUI(); return; }
                 resetNickUI();
+                refreshRankingLookupIfVisible();
                 scheduleAutoVerify(900, false);
             });
             input.addEventListener('change', function() {
+                refreshRankingLookupIfVisible();
                 scheduleAutoVerify(0, false);
             });
             input.addEventListener('blur', function() {
                 var uid = (input.value || '').trim();
                 if (!uid || uid === verifyState.lastUidVerified) return;
+                refreshRankingLookupIfVisible();
                 scheduleAutoVerify(0, false);
             });
             input.dataset.verifyBound = '1';
@@ -960,6 +990,7 @@
     /* ── Update Sidebar with Game Info ───────────────────── */
     function applyGameToSidebar(game) {
         currentGame = game;
+        invalidateRankingLookup();
         var sidebarGameName = document.getElementById('sidebarGameName');
         var sidebarTitle = document.getElementById('sidebarTitle');
         
@@ -1377,6 +1408,15 @@
         });
     }
 
+    if (gameSelectionPopupCloseBtn && gameSelectionPopup) {
+        gameSelectionPopupCloseBtn.addEventListener('click', closeGameSelectionPopup);
+        gameSelectionPopup.addEventListener('click', function (evt) {
+            if (evt.target === gameSelectionPopup) {
+                closeGameSelectionPopup();
+            }
+        });
+    }
+
     if (rankingModalOpenBtn) {
         rankingModalOpenBtn.addEventListener('click', openRankingModal);
     }
@@ -1487,6 +1527,7 @@
             closePhoneCountryMenu();
             closeManualInfoPopup();
             closeDiscountInfoPopup();
+            closeGameSelectionPopup();
             closeRankingModal();
             closeSupportModal();
         }
@@ -1514,6 +1555,18 @@
         if (!discountInfoPopup) return;
         discountInfoPopup.style.display = 'none';
         discountInfoPopup.setAttribute('aria-hidden', 'true');
+    }
+
+    function openGameSelectionPopup() {
+        if (!gameSelectionPopup) return;
+        gameSelectionPopup.style.display = 'flex';
+        gameSelectionPopup.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeGameSelectionPopup() {
+        if (!gameSelectionPopup) return;
+        gameSelectionPopup.style.display = 'none';
+        gameSelectionPopup.setAttribute('aria-hidden', 'true');
     }
 
     /* ── Quick checkout form submit UX ───────────────────── */

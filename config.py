@@ -1,9 +1,8 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, '.env'), override=True)
 DEFAULT_DATA_DIR = os.environ.get('DATA_DIR', os.path.join(BASE_DIR, 'data'))
 
 
@@ -24,8 +23,12 @@ class Config:
     UPLOAD_FOLDER = os.path.join(BASE_DIR, 'app', 'static', 'uploads')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
     ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'webm', 'mov', 'm4v'}
     REVENDEDORES_BASE_URL = os.environ.get('REVENDEDORES_BASE_URL', '')
     REVENDEDORES_API_KEY = os.environ.get('REVENDEDORES_API_KEY', '')
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '').strip()
+    GEMINI_REFERENCE_MODEL = os.environ.get('GEMINI_REFERENCE_MODEL', 'gemini-2.0-flash').strip()
+    GEMINI_REFERENCE_TIMEOUT = int(os.environ.get('GEMINI_REFERENCE_TIMEOUT', 25))
     # Binance Pay auto-verification
     BINANCE_API_KEY = os.environ.get('BINANCE_API_KEY', '').strip()
     BINANCE_API_SECRET = os.environ.get('BINANCE_API_SECRET', '').strip()
@@ -45,3 +48,4 @@ class Config:
     SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'soporte@3srecargas.com')
     SUPPORT_WHATSAPP = os.environ.get('SUPPORT_WHATSAPP', 'https://wa.me/584120000000')
     ADMIN_NOTIFY_EMAIL = os.environ.get('ADMIN_NOTIFY_EMAIL', '')
+    MINIGAME_DEV_MODE = os.environ.get('MINIGAME_DEV_MODE', '').strip().lower() in {'1', 'true', 'yes', 'on', 'dev'}

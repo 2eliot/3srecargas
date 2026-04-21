@@ -10,19 +10,21 @@ from flask import (
     url_for, flash, session, current_app, jsonify
 )
 from flask_login import login_user, logout_user, login_required, current_user
-from sqlalchemy import or_
+from sqlalchemy import or_, false
 from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 from ..models import (
     db, AdminUser, Game, Package, Category, Order,
     Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting, Discount,
+    MiniGameCounter, OrderMiniGameOpportunity,
     RevendedoresCatalogItem, RevendedoresItemMapping,
 )
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
+from ..utils.minigames import MINIGAME_CYCLE_LENGTH, MINIGAME_REWARD_SCHEDULE, get_minigame_counter_scope_key, get_minigame_game_label, is_minigame_dev_mode
 from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
-from ..utils.order_processing import approve_order, get_revendedores_env, process_affiliate_commission
+from ..utils.order_processing import approve_order, get_revendedores_env, process_affiliate_commission, process_revendedores_queue
 from ..utils.auth_accounts import sync_env_admin_user
 from ..utils.payment_verification import (
     clear_pabilo_verification_state,
@@ -39,6 +41,7 @@ HOUSEKEEPING_INTERVAL_HOURS = 6
 _last_housekeeping_run = None
 
 ALLOWED_EXT = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+ALLOWED_VIDEO_EXT = {'mp4', 'webm', 'mov', 'm4v'}
 PROTECTED_CATEGORY_SLUGS = {'juegos', 'tarjetas', 'wallet'}
 RANKING_PRIZE_POSITIONS = [1, 2, 3, 4, 5]
 RANKING_PRIZE_LABELS = {
@@ -82,6 +85,31 @@ def save_image(file, subfolder=''):
     os.makedirs(folder, exist_ok=True)
     file.save(os.path.join(folder, filename))
     return (subfolder + '/' + filename) if subfolder else filename
+
+
+def allowed_video_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXT
+
+
+def save_video(file, subfolder=''):
+    if not file or not allowed_video_file(file.filename):
+        return None
+    filename = secure_filename(file.filename)
+    ts = now_ve_naive().strftime('%Y%m%d%H%M%S%f')
+    filename = f"{ts}_{filename}"
+    folder = current_app.config['UPLOAD_FOLDER']
+    if subfolder:
+        folder = os.path.join(folder, subfolder)
+    os.makedirs(folder, exist_ok=True)
+    file.save(os.path.join(folder, filename))
+    return (subfolder + '/' + filename) if subfolder else filename
+
+
+def order_supports_delivery_proof(order):
+    if not order or not order.package or not order.game:
+        return False
+    category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
+    return not (order.package.is_automated or category_slug == 'tarjetas')
 
 
 def cleanup_old_orders():
@@ -168,6 +196,10 @@ def _discount_value_label(discount):
     return f'${value:.2f}'.rstrip('0').rstrip('.')
 
 
+def _minigame_coupon_setting_key(tier):
+    return f'minigame_coupon_reward_{int(tier)}'
+
+
 @admin_bp.before_app_request
 def admin_housekeeping_hook():
     if not request.path.startswith('/admin'):
@@ -252,7 +284,7 @@ def dashboard():
         db.func.sum(Order.amount)
     ).filter(Order.status.in_(['approved', 'completed'])).scalar() or 0
 
-    recent_orders = Order.query.order_by(Order.created_at.desc()).limit(10).all()
+    recent_orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
 
     low_stock = (
         Package.query
@@ -379,6 +411,7 @@ def game_add():
     player_id_label = request.form.get('player_id_label', 'Player ID').strip()
     zone_id_label = request.form.get('zone_id_label', 'Zone ID').strip()
     is_automated = bool(request.form.get('is_automated'))
+    show_selection_popup = bool(request.form.get('show_selection_popup'))
     position = int(request.form.get('position', 100))
     description = request.form.get('description', '').strip()
 
@@ -396,6 +429,7 @@ def game_add():
         name=name, slug=slug, category_id=int(category_id),
         requires_zone_id=requires_zone_id, player_id_label=player_id_label,
         zone_id_label=zone_id_label, is_automated=is_automated,
+        show_selection_popup=show_selection_popup,
         position=position, description=description, image=image,
     )
     db.session.add(game)
@@ -414,6 +448,7 @@ def game_edit(game_id):
     game.player_id_label = request.form.get('player_id_label', game.player_id_label).strip()
     game.zone_id_label = request.form.get('zone_id_label', game.zone_id_label).strip()
     game.is_automated = bool(request.form.get('is_automated'))
+    game.show_selection_popup = bool(request.form.get('show_selection_popup'))
     game.position = int(request.form.get('position', game.position))
     game.description = request.form.get('description', game.description or '').strip()
     game.is_active = bool(request.form.get('is_active'))
@@ -516,21 +551,72 @@ def package_delete(pkg_id):
 
 # ─── Orders ──────────────────────────────────────────────────────────────────
 
-def _apply_order_filters(query, status_filter='', search_query=''):
+def _parse_order_filter_date(raw_value, end_of_day=False):
+    raw_value = (raw_value or '').strip()
+    if not raw_value:
+        return None
+
+    try:
+        parsed = datetime.strptime(raw_value, '%Y-%m-%d')
+    except ValueError:
+        return None
+
+    if end_of_day:
+        return parsed + timedelta(days=1)
+    return parsed
+
+
+def _apply_order_filters(
+    query,
+    status_filter='',
+    search_query='',
+    date_from='',
+    date_to='',
+    package_id=None,
+    service_id=None,
+):
     status_filter = (status_filter or '').strip()
     search_query = (search_query or '').strip()
+    date_from = (date_from or '').strip()
+    date_to = (date_to or '').strip()
+
+    try:
+        package_id = int(package_id) if package_id not in (None, '') else None
+    except (TypeError, ValueError):
+        package_id = None
+
+    try:
+        service_id = int(service_id) if service_id not in (None, '') else None
+    except (TypeError, ValueError):
+        service_id = None
 
     if status_filter:
         query = query.filter_by(status=status_filter)
 
     if search_query:
         like_term = f"%{search_query}%"
+        maybe_id = int(search_query) if search_query.isdigit() else None
         query = query.filter(
             or_(
+                Order.id == maybe_id if maybe_id is not None else false(),
                 Order.order_number.ilike(like_term),
                 Order.payment_reference.ilike(like_term),
             )
         )
+
+    parsed_from = _parse_order_filter_date(date_from)
+    if parsed_from:
+        query = query.filter(Order.created_at >= parsed_from)
+
+    parsed_to = _parse_order_filter_date(date_to, end_of_day=True)
+    if parsed_to:
+        query = query.filter(Order.created_at < parsed_to)
+
+    if package_id:
+        query = query.filter(Order.package_id == package_id)
+
+    if service_id:
+        query = query.join(Order.game).filter(Game.category_id == service_id)
 
     return query
 
@@ -539,14 +625,39 @@ def _apply_order_filters(query, status_filter='', search_query=''):
 def orders():
     status_filter = (request.args.get('status') or '').strip()
     search_query = (request.args.get('q') or '').strip()
+    date_from = (request.args.get('date_from') or '').strip()
+    date_to = (request.args.get('date_to') or '').strip()
+    package_id = request.args.get('package_id', type=int)
+    service_id = request.args.get('service_id', type=int)
     query = Order.query.order_by(Order.created_at.desc())
-    query = _apply_order_filters(query, status_filter=status_filter, search_query=search_query)
+    query = _apply_order_filters(
+        query,
+        status_filter=status_filter,
+        search_query=search_query,
+        date_from=date_from,
+        date_to=date_to,
+        package_id=package_id,
+        service_id=service_id,
+    )
     all_orders = query.all()
+    services = Category.query.order_by(Category.name.asc()).all()
+    packages = (
+        Package.query
+        .join(Game)
+        .order_by(Game.name.asc(), Package.sort_order.asc(), Package.name.asc())
+        .all()
+    )
     return render_template(
         'admin/orders.html',
         orders=all_orders,
         status_filter=status_filter,
         search_query=search_query,
+        date_from=date_from,
+        date_to=date_to,
+        package_id=package_id,
+        service_id=service_id,
+        services=services,
+        packages=packages,
     )
 
 
@@ -555,6 +666,10 @@ def orders():
 def orders_latest():
     status_filter = (request.args.get('status') or '').strip()
     search_query = (request.args.get('q') or '').strip()
+    date_from = (request.args.get('date_from') or '').strip()
+    date_to = (request.args.get('date_to') or '').strip()
+    package_id = request.args.get('package_id', type=int)
+    service_id = request.args.get('service_id', type=int)
     since_id_raw = (request.args.get('since_id') or '').strip()
     try:
         since_id = int(since_id_raw) if since_id_raw else 0
@@ -562,7 +677,15 @@ def orders_latest():
         since_id = 0
 
     query = Order.query
-    query = _apply_order_filters(query, status_filter=status_filter, search_query=search_query)
+    query = _apply_order_filters(
+        query,
+        status_filter=status_filter,
+        search_query=search_query,
+        date_from=date_from,
+        date_to=date_to,
+        package_id=package_id,
+        service_id=service_id,
+    )
     if since_id:
         query = query.filter(Order.id > since_id)
 
@@ -591,6 +714,7 @@ def orders_latest():
             'created_at': format_ve(o.created_at, '%d/%m/%Y %H:%M'),
             'automation_response': o.automation_response or '',
             'pin_delivered': o.pin_delivered or '',
+            'can_send_delivery_proof': order_supports_delivery_proof(o),
         })
 
     return jsonify({'ok': True, 'orders': payload})
@@ -600,7 +724,7 @@ def orders_latest():
 @login_required
 def order_detail(order_id):
     order = Order.query.get_or_404(order_id)
-    return render_template('admin/order_detail.html', order=order)
+    return render_template('admin/order_detail.html', order=order, can_send_delivery_proof=order_supports_delivery_proof(order))
 
 
 def _run_admin_pabilo_reverification(order, reference=None):
@@ -660,10 +784,25 @@ def order_reverify_payment(order_id):
 @login_required
 def order_approve(order_id):
     order = Order.query.get_or_404(order_id)
-    result = approve_order(order)
+    redirect_target = request.referrer or url_for('admin_bp.orders')
+    delivery_proof_path = None
+    delivery_proof_file = request.files.get('delivery_proof')
+
+    if delivery_proof_file and delivery_proof_file.filename:
+        if not order_supports_delivery_proof(order):
+            flash('El comprobante adjunto solo se usa en órdenes manuales sin entrega de PIN.', 'warning')
+        elif not allowed_file(delivery_proof_file.filename):
+            flash('El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.', 'danger')
+            return redirect(redirect_target)
+        else:
+            delivery_proof_path = save_image(delivery_proof_file, 'delivery_proofs')
+
+    result = approve_order(order, delivery_proof_path=delivery_proof_path)
+    if delivery_proof_path and getattr(order, 'delivery_proof', None) != delivery_proof_path:
+        delete_uploaded_file(delivery_proof_path)
     flash(result['message'], result['category'])
 
-    return redirect(url_for('admin_bp.orders'))
+    return redirect(redirect_target)
 
 
 @admin_bp.route('/orders/<int:order_id>/reject', methods=['POST'])
@@ -1140,6 +1279,16 @@ def settings():
     site_logo_value = site_logo_setting.value if site_logo_setting else ''
     order_status_image_setting = Setting.query.filter_by(key='order_status_image').first()
     order_status_image_value = order_status_image_setting.value if order_status_image_setting else ''
+    checkout_payment_video_method_setting = Setting.query.filter_by(key='checkout_payment_video_method').first()
+    checkout_payment_video_method_value = checkout_payment_video_method_setting.value if checkout_payment_video_method_setting else ''
+    checkout_payment_video_title_setting = Setting.query.filter_by(key='checkout_payment_video_title').first()
+    checkout_payment_video_title_value = checkout_payment_video_title_setting.value if checkout_payment_video_title_setting else ''
+    checkout_payment_video_message_setting = Setting.query.filter_by(key='checkout_payment_video_message').first()
+    checkout_payment_video_message_value = checkout_payment_video_message_setting.value if checkout_payment_video_message_setting else ''
+    checkout_payment_video_cta_setting = Setting.query.filter_by(key='checkout_payment_video_cta').first()
+    checkout_payment_video_cta_value = checkout_payment_video_cta_setting.value if checkout_payment_video_cta_setting else ''
+    checkout_payment_video_file_setting = Setting.query.filter_by(key='checkout_payment_video_file').first()
+    checkout_payment_video_file_value = checkout_payment_video_file_setting.value if checkout_payment_video_file_setting else ''
 
     social_keys = {
         'social_facebook': 'URL de Facebook',
@@ -1196,6 +1345,7 @@ def settings():
         ranking_settings[key] = setting.value if setting else ''
 
     ranking_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
+    active_payment_methods = PaymentMethod.query.filter_by(is_active=True).order_by(PaymentMethod.sort_order.asc(), PaymentMethod.name.asc()).all()
     ranking_packages = Package.query.filter_by(is_active=True).order_by(Package.game_id.asc(), Package.sort_order.asc(), Package.name.asc()).all()
     ranking_packages_by_game = {}
     for package in ranking_packages:
@@ -1225,6 +1375,12 @@ def settings():
         logo_file = request.files.get('site_logo')
         remove_order_status_image = request.form.get('remove_order_status_image')
         order_status_image_file = request.files.get('order_status_image')
+        checkout_payment_video_method = (request.form.get('checkout_payment_video_method', '') or '').strip().lower()
+        checkout_payment_video_title = (request.form.get('checkout_payment_video_title', '') or '').strip()
+        checkout_payment_video_message = (request.form.get('checkout_payment_video_message', '') or '').strip()
+        checkout_payment_video_cta = (request.form.get('checkout_payment_video_cta', '') or '').strip()
+        remove_checkout_payment_video_file = request.form.get('remove_checkout_payment_video_file')
+        checkout_payment_video_file = request.files.get('checkout_payment_video_file')
         social_payload = {k: (request.form.get(k, '') or '').strip() for k in social_keys}
         email_payload = {k: (request.form.get(k, '') or '').strip() for k in email_keys}
         payment_verify_payload = {
@@ -1307,6 +1463,50 @@ def settings():
                     db.session.add(order_status_image_setting)
                 else:
                     order_status_image_setting.value = saved_order_status_image
+
+        valid_video_method = ''
+        if checkout_payment_video_method:
+            matched_method = PaymentMethod.query.filter_by(code=checkout_payment_video_method, is_active=True).first()
+            if matched_method:
+                valid_video_method = matched_method.code
+
+        if remove_checkout_payment_video_file and checkout_payment_video_file_setting:
+            if checkout_payment_video_file_setting.value:
+                delete_uploaded_file(checkout_payment_video_file_setting.value)
+            checkout_payment_video_file_setting.value = ''
+
+        if checkout_payment_video_file and checkout_payment_video_file.filename:
+            saved_checkout_payment_video = save_video(checkout_payment_video_file, 'payments')
+            if not saved_checkout_payment_video:
+                flash('El video debe estar en formato mp4, webm, mov o m4v.', 'danger')
+                return redirect(url_for('admin_bp.settings'))
+            if checkout_payment_video_file_setting and checkout_payment_video_file_setting.value:
+                delete_uploaded_file(checkout_payment_video_file_setting.value)
+            if not checkout_payment_video_file_setting:
+                checkout_payment_video_file_setting = Setting(
+                    key='checkout_payment_video_file',
+                    value=saved_checkout_payment_video,
+                    description='Video tutorial mostrado solo para un método de pago específico en checkout',
+                )
+                db.session.add(checkout_payment_video_file_setting)
+            else:
+                checkout_payment_video_file_setting.value = saved_checkout_payment_video
+
+        checkout_video_settings_payload = {
+            'checkout_payment_video_method': (valid_video_method, 'Método de pago al que se le muestra el video tutorial del checkout.'),
+            'checkout_payment_video_title': (checkout_payment_video_title, 'Título del mensaje tutorial del checkout por método de pago.'),
+            'checkout_payment_video_message': (checkout_payment_video_message, 'Mensaje descriptivo del video tutorial del checkout por método de pago.'),
+            'checkout_payment_video_cta': (checkout_payment_video_cta, 'Texto del botón para cerrar o continuar luego de ver el video tutorial.'),
+        }
+
+        for key, payload in checkout_video_settings_payload.items():
+            val, desc = payload
+            current_setting = Setting.query.filter_by(key=key).first()
+            if not current_setting:
+                current_setting = Setting(key=key, value=val, description=desc)
+                db.session.add(current_setting)
+            else:
+                current_setting.value = val
 
         for key, desc in social_keys.items():
             val = social_payload.get(key, '')
@@ -1415,12 +1615,94 @@ def settings():
         email_settings=email_settings,
         payment_verify_settings=payment_verify_settings,
         binance_auto_settings=binance_auto_settings,
+        active_payment_methods=active_payment_methods,
+        checkout_payment_video_method=checkout_payment_video_method_value,
+        checkout_payment_video_title=checkout_payment_video_title_value,
+        checkout_payment_video_message=checkout_payment_video_message_value,
+        checkout_payment_video_cta=checkout_payment_video_cta_value,
+        checkout_payment_video_file=checkout_payment_video_file_value,
         ranking_settings=ranking_settings,
         ranking_games=ranking_games,
         ranking_prize_settings=ranking_prize_settings,
         ranking_prize_positions=RANKING_PRIZE_POSITIONS,
         ranking_prize_labels=RANKING_PRIZE_LABELS,
         ranking_packages_by_game=ranking_packages_by_game,
+    )
+
+
+@admin_bp.route('/minigames', methods=['GET', 'POST'])
+@login_required
+def minigames():
+    coupon_tiers = (1, 2, 3)
+    coupon_reward_settings = {}
+    for tier in coupon_tiers:
+        setting = Setting.query.filter_by(key=_minigame_coupon_setting_key(tier)).first()
+        coupon_reward_settings[tier] = setting.value if setting else ''
+
+    if request.method == 'POST':
+        for tier in coupon_tiers:
+            selected_discount_id = (request.form.get(_minigame_coupon_setting_key(tier), '') or '').strip()
+            setting = Setting.query.filter_by(key=_minigame_coupon_setting_key(tier)).first()
+            if not setting:
+                setting = Setting(
+                    key=_minigame_coupon_setting_key(tier),
+                    value='',
+                    description=f'Código de descuento que se entrega al premio de minijuego Cupón {tier}.',
+                )
+                db.session.add(setting)
+            setting.value = selected_discount_id if selected_discount_id.isdigit() else ''
+        db.session.commit()
+        flash('Premios de minijuegos actualizados.', 'success')
+        return redirect(url_for('admin_bp.minigames'))
+
+    counters_by_key = {counter.game_key: counter for counter in MiniGameCounter.query.all()}
+    counter_cards = []
+    tracked_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
+    for store_game in tracked_games:
+        counter = counters_by_key.get(get_minigame_counter_scope_key(store_game))
+        play_count = int(counter.play_count or 0) if counter else 0
+        current_position = play_count % MINIGAME_CYCLE_LENGTH
+        if current_position == 0 and play_count:
+            current_position = MINIGAME_CYCLE_LENGTH
+        next_rewards = []
+        for position, reward in sorted(MINIGAME_REWARD_SCHEDULE.items()):
+            if current_position and position <= current_position:
+                next_hit = play_count + (MINIGAME_CYCLE_LENGTH - current_position) + position
+            else:
+                next_hit = play_count + (position - current_position)
+            next_rewards.append({
+                'position': position,
+                'label': reward.get('label'),
+                'next_hit': next_hit,
+            })
+        counter_cards.append({
+            'key': str(store_game.id),
+            'label': store_game.name,
+            'icon': '🎮',
+            'play_count': play_count,
+            'current_position': current_position,
+            'next_rewards': next_rewards,
+        })
+
+    discounts = Discount.query.order_by(Discount.created_at.desc()).all()
+    winners = (
+        OrderMiniGameOpportunity.query
+        .filter(OrderMiniGameOpportunity.status == 'played')
+        .filter(OrderMiniGameOpportunity.result_kind.in_(['coupon', 'cash']))
+        .options(joinedload(OrderMiniGameOpportunity.order).joinedload(Order.game), joinedload(OrderMiniGameOpportunity.reward_discount))
+        .order_by(OrderMiniGameOpportunity.played_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    return render_template(
+        'admin/minigames.html',
+        counter_cards=counter_cards,
+        coupon_reward_settings=coupon_reward_settings,
+        discounts=discounts,
+        winners=winners,
+        get_minigame_game_label=get_minigame_game_label,
+        minigame_dev_mode=is_minigame_dev_mode(),
     )
 
 
@@ -1605,6 +1887,7 @@ def revendedores_mapping_data():
             {
                 'store_package_id': m.store_package_id,
                 'catalog_id': m.catalog_item_id,
+                'catalog_id_2': m.catalog_item_id_2,
                 'auto_enabled': m.auto_enabled,
             }
             for m in mappings
@@ -1624,6 +1907,7 @@ def revendedores_mappings_bulk():
         for entry in entries:
             store_pkg_id = int(entry.get('store_package_id', 0))
             catalog_id_str = str(entry.get('catalog_id', '')).strip()
+            catalog_id_2_str = str(entry.get('catalog_id_2', '')).strip()
             auto_enabled = bool(entry.get('auto_enabled'))
 
             if not store_pkg_id:
@@ -1631,21 +1915,32 @@ def revendedores_mappings_bulk():
 
             existing = RevendedoresItemMapping.query.filter_by(store_package_id=store_pkg_id).first()
 
-            if not catalog_id_str:
+            if not catalog_id_str and not catalog_id_2_str:
                 if existing:
                     db.session.delete(existing)
                     removed += 1
                 continue
 
-            catalog_id = int(catalog_id_str)
+            catalog_id = int(catalog_id_str) if catalog_id_str else None
+            catalog_id_2 = int(catalog_id_2_str) if catalog_id_2_str else None
+
+            if not catalog_id and catalog_id_2:
+                catalog_id = catalog_id_2
+                catalog_id_2 = None
+
+            if catalog_id and catalog_id_2 and catalog_id == catalog_id_2:
+                catalog_id_2 = None
+
             if existing:
                 existing.catalog_item_id = catalog_id
+                existing.catalog_item_id_2 = catalog_id_2
                 existing.auto_enabled = auto_enabled
                 existing.active = True
             else:
                 new_map = RevendedoresItemMapping(
                     store_package_id=store_pkg_id,
                     catalog_item_id=catalog_id,
+                    catalog_item_id_2=catalog_id_2,
                     active=True,
                     auto_enabled=auto_enabled,
                 )
@@ -1680,7 +1975,18 @@ def order_verify_recharge(order_id):
     if not auto_resp.get('pending_verification'):
         return jsonify({'ok': True, 'result': 'no_verification_needed', 'can_approve': True})
 
-    ext_order_id = auto_resp.get('external_order_id') or order.order_number
+    steps = auto_resp.get('steps') if isinstance(auto_resp.get('steps'), list) else []
+    try:
+        current_step_index = int(auto_resp.get('current_step_index') or 0)
+    except Exception:
+        current_step_index = 0
+    current_step = steps[current_step_index] if 0 <= current_step_index < len(steps) else {}
+
+    ext_order_id = (
+        current_step.get('external_order_id')
+        or auto_resp.get('external_order_id')
+        or order.order_number
+    )
     base_url, api_key, _, _ = get_revendedores_env()
 
     if not base_url or not api_key:
@@ -1707,36 +2013,60 @@ def order_verify_recharge(order_id):
     if found and rev_status == 'completada':
         player_name = rev_order.get('player_name', '')
         ref_no = rev_order.get('reference_no', '')
-        order.status = 'completed'
-        order.automation_response = json.dumps({
-            'source': 'revendedores_api',
-            'success': True,
-            'verified': True,
-            'player_name': player_name,
-            'reference_no': ref_no,
-        })
-        order.notes = (order.notes or '') + f'\n[Verificado] Recarga confirmada en Revendedores. Ref: {ref_no}, Player: {player_name}'
+        if current_step:
+            current_step.update({
+                'success': True,
+                'pending_verification': False,
+                'verified': True,
+                'player_name': player_name,
+                'reference_no': ref_no,
+                'error': '',
+            })
+            auto_resp['steps'] = steps
+        auto_resp['pending_verification'] = False
+        auto_resp['external_order_id'] = ''
+        order.automation_response = json.dumps(auto_resp)
+        order.notes = ((order.notes or '') + f'\n[Verificado][Paso {current_step_index + 1}] Recarga confirmada en Revendedores. Ref: {ref_no}, Player: {player_name}').strip()
         order.updated_at = datetime.utcnow()
-        process_affiliate_commission(order)
         db.session.commit()
-        try:
-            notify_order_completed(order, order.package, order.game)
-        except Exception:
-            pass
+
+        queue_result = process_revendedores_queue(order, base_state=auto_resp)
+        if queue_result and queue_result.get('ok'):
+            return jsonify({
+                'ok': True,
+                'result': 'completed',
+                'order_status': 'completed',
+                'player_name': player_name,
+                'reference_no': ref_no,
+            })
+
+        if queue_result and queue_result.get('pending_verification'):
+            return jsonify({
+                'ok': True,
+                'result': 'processing',
+                'order_status': 'pending',
+                'can_approve': False,
+                'message': queue_result.get('message') or 'Paso confirmado. Continuando con el siguiente mapeo...',
+            })
+
         return jsonify({
             'ok': True,
-            'result': 'completed',
-            'order_status': 'completed',
-            'player_name': player_name,
-            'reference_no': ref_no,
+            'result': 'processing',
+            'order_status': order.status,
+            'can_approve': False,
+            'message': 'Paso confirmado. Revisando si quedan más recargas en cola...',
         })
     elif found and rev_status == 'fallida':
-        order.automation_response = json.dumps({
-            'source': 'revendedores_api',
-            'pending_verification': False,
-            'verified_failed': True,
-            'error': rev_order.get('error', ''),
-        })
+        if current_step:
+            current_step.update({
+                'success': False,
+                'pending_verification': False,
+                'verified_failed': True,
+                'error': rev_order.get('error', ''),
+            })
+            auto_resp['steps'] = steps
+        auto_resp['pending_verification'] = False
+        order.automation_response = json.dumps(auto_resp)
         db.session.commit()
         return jsonify({
             'ok': True,
@@ -1754,10 +2084,14 @@ def order_verify_recharge(order_id):
             'message': 'La recarga aún se está procesando en Revendedores...',
         })
     else:
-        order.automation_response = json.dumps({
-            'source': 'revendedores_api',
-            'pending_verification': False,
-        })
+        if current_step:
+            current_step.update({
+                'success': False,
+                'pending_verification': False,
+            })
+            auto_resp['steps'] = steps
+        auto_resp['pending_verification'] = False
+        order.automation_response = json.dumps(auto_resp)
         db.session.commit()
         return jsonify({
             'ok': True,

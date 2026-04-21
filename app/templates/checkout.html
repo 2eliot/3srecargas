@@ -113,7 +113,32 @@
                     <button type="button" class="payment-warning-ack" id="paymentWarningAcknowledge">OK, ENTIENDO 🎮</button>
                 </div>
             </div>
-            {% if selected_method %}
+            {% if checkout_payment_video.enabled %}
+            <div class="payment-method-video-modal" id="paymentMethodVideoModal" aria-hidden="true">
+                <div class="payment-method-video-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="paymentMethodVideoTitle">
+                    <div class="payment-method-video-card" id="paymentMethodVideoCard">
+                        <button type="button" class="payment-method-video-card__close" id="paymentMethodVideoCloseBtn" aria-label="Cerrar tutorial">✕</button>
+                        <div class="payment-method-video-card__top">
+                            <p class="payment-method-video-card__kicker">Tutorial rápido</p>
+                            <h3 class="payment-method-video-card__title" id="paymentMethodVideoTitle">{{ checkout_payment_video.title }}</h3>
+                            {% if checkout_payment_video.message %}
+                            <p class="payment-method-video-card__message">{{ checkout_payment_video.message }}</p>
+                            {% endif %}
+                        </div>
+                        <div class="payment-method-video-card__media">
+                            <video controls preload="metadata" playsinline class="payment-method-video-card__player" id="paymentMethodVideoPlayer">
+                                <source src="{{ url_for('static', filename='uploads/' + checkout_payment_video.file) }}">
+                                Tu navegador no soporta la reproducción de este video.
+                            </video>
+                        </div>
+                        <button type="button" class="payment-method-video-card__cta" id="paymentMethodVideoContinueBtn">
+                            {{ checkout_payment_video.cta }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% if selected_method and not binance_auto %}
             <div class="form-section">
                 <div class="reference-card payment-info-card">
                     <div class="payment-info-headbar">
@@ -202,9 +227,10 @@
                 </div>
             </div>
             {% endif %}
-            <form method="POST" action="{{ url_for('checkout_bp.checkout', package_id=package.id) }}" id="checkoutForm" enctype="multipart/form-data" data-package="{{ package.id }}" data-binance-auto="{{ 'true' if binance_auto else 'false' }}">
+            <form method="POST" action="{{ url_for('checkout_bp.checkout', package_id=package.id) }}" id="checkoutForm" enctype="multipart/form-data" data-package="{{ package.id }}" data-binance-auto="{{ 'true' if binance_auto else 'false' }}" data-reference-extract-url="{{ url_for('checkout_bp.extract_payment_reference') }}">
                 <input type="hidden" name="stage" value="confirm">
                 <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
+                <input type="hidden" id="ai_extracted_reference" name="ai_extracted_reference" value="">
 
                 {% if binance_auto %}
                 <!-- ── Binance Pay Auto ─────────────────────────────────────── -->
@@ -275,6 +301,11 @@
                             <label for="payment_capture" class="proof-upload-btn">Seleccionar imagen</label>
                             <span class="proof-file-name" id="proofFileName">Ningún archivo seleccionado</span>
                         </div>
+                        <div class="proof-extracted-reference" id="proofExtractedReference" hidden>
+                            <p class="proof-extracted-reference-label">Referencia extraída del comprobante</p>
+                            <p class="proof-extracted-reference-value" id="proofExtractedReferenceValue">-</p>
+                            <p class="proof-extracted-reference-status" id="proofExtractedReferenceStatus"></p>
+                        </div>
                         <p class="proof-warning">
                             ⚠️ Subir comprobantes falsos o manipulados constituye fraude electrónico y será penalizado conforme a la ley. Nos reservamos el derecho de reportar ante las autoridades.
                         </p>
@@ -306,16 +337,6 @@
                     </div>
                 </div>
                 {% else %}
-                <div class="form-section reference-section">
-                    <div class="reference-card" style="padding:14px 18px;">
-                        <div class="reference-header" style="margin-bottom:0;">
-                            <div>
-                                <p class="reference-title">Tiempo restante para completar el pago</p>
-                                <p class="reference-timer" id="paymentTimer">30:00</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
                 {% endif %}
 
                 <button type="submit" class="submit-btn" id="submitBtn" disabled>
@@ -360,9 +381,129 @@
     var copyBtn = document.getElementById('checkoutCopyPaymentBtn');
     var paymentWarningModal = document.getElementById('paymentWarningModal');
     var paymentWarningAcknowledge = document.getElementById('paymentWarningAcknowledge');
+    var paymentMethodVideoModal = document.getElementById('paymentMethodVideoModal');
+    var paymentMethodVideoPlayer = document.getElementById('paymentMethodVideoPlayer');
+    var paymentMethodVideoCloseBtn = document.getElementById('paymentMethodVideoCloseBtn');
+    var paymentMethodVideoContinueBtn = document.getElementById('paymentMethodVideoContinueBtn');
+    var aiExtractedReferenceInput = document.getElementById('ai_extracted_reference');
+    var proofExtractedReference = document.getElementById('proofExtractedReference');
+    var proofExtractedReferenceValue = document.getElementById('proofExtractedReferenceValue');
+    var proofExtractedReferenceStatus = document.getElementById('proofExtractedReferenceStatus');
     var timerExpired = false;
     var inlineCopyButtons = document.querySelectorAll('.copy-inline-btn');
     var proofPreviewUrl = '';
+    var extractionRequestId = 0;
+
+    function showExtractedReferenceCard() {
+        if (!proofExtractedReference) return;
+        proofExtractedReference.hidden = false;
+    }
+
+    function hideExtractedReferenceCard() {
+        if (!proofExtractedReference) return;
+        proofExtractedReference.hidden = true;
+    }
+
+    function setExtractedReferenceState(reference, message, tone) {
+        if (!proofExtractedReferenceValue || !proofExtractedReferenceStatus) return;
+        if (!reference && !message) {
+            hideExtractedReferenceCard();
+            return;
+        }
+
+        showExtractedReferenceCard();
+        proofExtractedReferenceValue.textContent = reference || '-';
+        proofExtractedReferenceStatus.textContent = message || '';
+        proofExtractedReference.classList.remove('is-loading', 'is-success', 'is-warning', 'is-error');
+        if (tone) {
+            proofExtractedReference.classList.add(tone);
+        }
+    }
+
+    function clearExtractedReferenceState() {
+        if (aiExtractedReferenceInput) {
+            aiExtractedReferenceInput.value = '';
+        }
+        hideExtractedReferenceCard();
+    }
+
+    function runReferenceExtraction() {
+        if (binanceAuto || !proofInput || !proofInput.files || !proofInput.files.length) {
+            clearExtractedReferenceState();
+            return;
+        }
+
+        var file = proofInput.files[0];
+        if (!file) {
+            clearExtractedReferenceState();
+            return;
+        }
+
+        var extractUrl = checkoutForm.getAttribute('data-reference-extract-url') || '';
+        if (!extractUrl) {
+            clearExtractedReferenceState();
+            return;
+        }
+
+        var currentRequestId = ++extractionRequestId;
+        setExtractedReferenceState('', 'Analizando comprobante...', 'is-loading');
+
+        var formData = new FormData();
+        formData.append('payment_capture', file);
+
+        fetch(extractUrl, {
+            method: 'POST',
+            body: formData
+        })
+            .then(function (response) {
+                return response.json().catch(function () {
+                    return {
+                        ok: false,
+                        reference: '',
+                        message: 'No se pudo leer la respuesta del extractor.'
+                    };
+                });
+            })
+            .then(function (data) {
+                if (currentRequestId !== extractionRequestId) {
+                    return;
+                }
+
+                var extractedReference = String(data.reference || '').trim();
+                if (aiExtractedReferenceInput) {
+                    aiExtractedReferenceInput.value = extractedReference;
+                }
+
+                if (extractedReference) {
+                    setExtractedReferenceState(
+                        extractedReference,
+                        data.message || 'Si la referencia manual está mal escrita, el sistema intentará validar con esta referencia extraída.',
+                        'is-success'
+                    );
+                    if (referenceInput && !referenceInput.value.trim()) {
+                        referenceInput.value = extractedReference;
+                        renderDots(referenceInput.value.trim().length);
+                    }
+                } else {
+                    setExtractedReferenceState(
+                        '-',
+                        data.message || 'No se pudo extraer una referencia clara del comprobante.',
+                        data.ok ? 'is-warning' : 'is-error'
+                    );
+                }
+
+                updateSubmitState();
+            })
+            .catch(function () {
+                if (currentRequestId !== extractionRequestId) {
+                    return;
+                }
+                if (aiExtractedReferenceInput) {
+                    aiExtractedReferenceInput.value = '';
+                }
+                setExtractedReferenceState('-', 'No se pudo analizar el comprobante en este momento.', 'is-error');
+            });
+    }
 
     function openPaymentWarning() {
         if (!paymentWarningModal) return;
@@ -371,11 +512,31 @@
         document.body.classList.add('modal-open');
     }
 
+    function openPaymentMethodVideoModal() {
+        if (!paymentMethodVideoModal) return;
+        paymentMethodVideoModal.style.display = 'flex';
+        paymentMethodVideoModal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('modal-open');
+    }
+
+    function closePaymentMethodVideoModal() {
+        if (!paymentMethodVideoModal) return;
+        paymentMethodVideoModal.style.display = 'none';
+        paymentMethodVideoModal.setAttribute('aria-hidden', 'true');
+        if (paymentMethodVideoPlayer && typeof paymentMethodVideoPlayer.pause === 'function') {
+            paymentMethodVideoPlayer.pause();
+        }
+        document.body.classList.remove('modal-open');
+    }
+
     function closePaymentWarning() {
         if (!paymentWarningModal) return;
         paymentWarningModal.style.display = 'none';
         paymentWarningModal.setAttribute('aria-hidden', 'true');
         document.body.classList.remove('modal-open');
+        if (paymentMethodVideoModal) {
+            openPaymentMethodVideoModal();
+        }
     }
 
     // ── Binance copy buttons ─────────────────────────────────────
@@ -438,6 +599,27 @@
         paymentWarningAcknowledge.addEventListener('click', closePaymentWarning);
     }
 
+    if (paymentMethodVideoContinueBtn) {
+        paymentMethodVideoContinueBtn.addEventListener('click', function () {
+            closePaymentMethodVideoModal();
+            if (checkoutForm && typeof checkoutForm.scrollIntoView === 'function') {
+                checkoutForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    }
+
+    if (paymentMethodVideoCloseBtn) {
+        paymentMethodVideoCloseBtn.addEventListener('click', closePaymentMethodVideoModal);
+    }
+
+    if (paymentMethodVideoModal) {
+        paymentMethodVideoModal.addEventListener('click', function (evt) {
+            if (evt.target === paymentMethodVideoModal) {
+                closePaymentMethodVideoModal();
+            }
+        });
+    }
+
     function updateSubmitState() {
         var hasFile = binanceAuto || (proofInput && proofInput.files && proofInput.files.length > 0);
         var hasReference = (referenceInput && referenceInput.value.trim().length >= (binanceAuto ? 6 : 4));
@@ -464,6 +646,7 @@
             if (proofFileName) {
                 proofFileName.textContent = 'Ningún archivo seleccionado';
             }
+            clearExtractedReferenceState();
             return;
         }
 
@@ -485,6 +668,7 @@
     if (proofInput) {
         proofInput.addEventListener('change', function () {
             updateProofPreview();
+            runReferenceExtraction();
             updateSubmitState();
         });
     }

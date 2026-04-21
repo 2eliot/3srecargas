@@ -13,11 +13,19 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 from ..models import db, Game, Package, Order, Affiliate, AffiliateCommission, Pin, PaymentMethod, User, Discount
 from ..models import Setting
+from ..models import OrderMiniGameOpportunity
 from ..utils.order_processing import approve_order, get_order_auto_mapping
+from ..utils.minigames import (
+    ensure_minigame_opportunity,
+    get_order_minigame_state,
+    play_order_minigame,
+    select_order_minigame,
+)
 from ..utils.payment_verification import (
     find_reference_conflict,
     is_auto_verify_enabled,
     normalize_bs_integer_amount,
+    normalize_reference_key,
     normalize_reference_last5,
     stamp_verified_payment,
     verify_order_payment,
@@ -30,6 +38,7 @@ from ..utils.binance_pay import (
 )
 from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
+from ..utils.reference_extraction import extract_reference_from_image_bytes, extract_reference_from_image_path
 from ..utils.auth_accounts import attach_matching_orders_to_customer, extract_customer_identifier_for_game, get_or_create_scoped_customer
 
 checkout_bp = Blueprint('checkout_bp', __name__)
@@ -64,6 +73,19 @@ def save_capture(file):
     os.makedirs(folder, exist_ok=True)
     file.save(os.path.join(folder, filename))
     return 'captures/' + filename
+
+
+def is_allowed_capture_file(filename):
+    allowed_extensions = current_app.config.get('ALLOWED_IMAGE_EXTENSIONS') or set()
+    return '.' in str(filename or '') and filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+
+def extract_reference_from_saved_capture(relative_capture_path):
+    if not relative_capture_path:
+        return {'ok': False, 'reference': '', 'message': 'No hay comprobante para analizar.'}
+
+    absolute_path = os.path.join(current_app.config['UPLOAD_FOLDER'], relative_capture_path)
+    return extract_reference_from_image_path(absolute_path)
 
 
 def order_qualifies_for_auto_verify(order):
@@ -157,6 +179,7 @@ def auto_verify_and_process_order(order, force=False):
                 order.notes = (existing_notes + '\n' + pabilo_note).strip()
 
             if not auto_approve_allowed:
+                ensure_minigame_opportunity(order)
                 manual_note = '[Pabilo] Orden manual: pago verificado sin aprobación automática.'
                 if manual_note not in (order.notes or ''):
                     order.notes = ((order.notes or '') + '\n' + manual_note).strip()
@@ -225,6 +248,96 @@ def find_existing_pending_order(package_id, payment_method, user_id=None, player
         return None
 
     return query.filter(or_(*identity_filters)).order_by(Order.id.desc()).first()
+
+
+def resolve_discount_code(code):
+    normalized_code = (code or '').strip().upper()
+    if not normalized_code:
+        return None, None
+
+    discount = Discount.query.filter_by(code=normalized_code, is_active=True).first()
+    affiliate = Affiliate.query.filter_by(code=normalized_code, is_active=True).first()
+    return discount, affiliate
+
+
+def get_checkout_discount_result(code, package_price):
+    discount, affiliate = resolve_discount_code(code)
+    original_amount = float(package_price or 0)
+
+    result = {
+        'discount': None,
+        'affiliate': None,
+        'discount_amount': 0.0,
+        'error': '',
+    }
+
+    if not code:
+        return result
+
+    if discount:
+        if not discount.is_valid_for_amount(package_price):
+            result['error'] = 'Este código de descuento ya no está disponible, expiró o no aplica para este monto.'
+            return result
+
+        result['discount'] = discount
+        result['discount_amount'] = float(discount.calculate_discount(package_price))
+        return result
+
+    if affiliate:
+        rate = float(affiliate.client_discount_rate or 0)
+        if rate <= 0:
+            rate = float(affiliate.commission_rate or 0)
+        if rate > 0:
+            raw_discount = original_amount * rate / 100.0
+            discount_amount = round(raw_discount, 2)
+            if raw_discount > 0 and discount_amount <= 0:
+                discount_amount = 0.01
+            if discount_amount > original_amount:
+                discount_amount = round(original_amount, 2)
+            result['affiliate'] = affiliate
+            result['discount_amount'] = discount_amount
+            return result
+
+    result['error'] = 'Este código no es válido o ya no está activo.'
+    return result
+
+
+def order_matches_checkout_attempt(order, package, payment_method, payment_reference, checkout_data, is_wallet=False):
+    if not order or not package:
+        return False
+
+    expected_method = (payment_method or '').strip().lower()
+    actual_method = (order.payment_method or '').strip().lower()
+    if expected_method != actual_method:
+        return False
+
+    if int(order.package_id or 0) != int(package.id):
+        return False
+
+    expected_reference = normalize_reference_key(payment_reference)
+    actual_reference = normalize_reference_key(order.payment_reference)
+    if expected_reference and actual_reference != expected_reference:
+        return False
+
+    expected_player_id = '' if is_wallet else (checkout_data.get('player_id') or '').strip()
+    actual_player_id = (order.player_id or '').strip()
+    if expected_player_id != actual_player_id:
+        return False
+
+    expected_email = ((checkout_data.get('player_id') if is_wallet else checkout_data.get('email')) or '').strip().lower()
+    actual_email = (order.email or '').strip().lower()
+    if expected_email != actual_email:
+        return False
+
+    expected_zone_id = ''
+    if not is_wallet and package.game and package.game.requires_zone_id:
+        expected_zone_id = (checkout_data.get('zone_id') or '').strip()
+
+    actual_zone_id = (order.zone_id or '').strip()
+    if expected_zone_id != actual_zone_id:
+        return False
+
+    return True
 
 
 @checkout_bp.route('/checkout/<int:package_id>', methods=['GET', 'POST'])
@@ -324,10 +437,6 @@ def checkout(package_id):
             flash('La confirmación de pago expiró o ya fue usada. Recarga la página e intenta de nuevo.', 'danger')
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
-        existing_by_token = Order.query.filter_by(idempotency_key=submitted_confirm_token).first()
-        if existing_by_token:
-            return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
-
         data = checkout_data.get(pkg_key) or {}
         payment_method = (data.get('payment_method') or '').strip()
         if not payment_method:
@@ -358,6 +467,10 @@ def checkout(package_id):
                 flash('Debes adjuntar el comprobante de pago antes de confirmar la orden.', 'danger')
                 return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
+            if not is_allowed_capture_file(capture_file.filename):
+                flash('El comprobante debe ser una imagen valida (png, jpg, jpeg, gif o webp).', 'danger')
+                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+
             capture_path = save_capture(capture_file)
             if not capture_path:
                 flash('Hubo un problema al subir el comprobante. Intenta nuevamente.', 'danger')
@@ -367,6 +480,30 @@ def checkout(package_id):
             if not payment_reference_input:
                 flash('Debes ingresar la referencia del pago.', 'danger')
                 return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+
+        ai_extracted_reference = ''
+        if not _binance_auto and capture_path:
+            extraction_result = extract_reference_from_saved_capture(capture_path)
+            ai_extracted_reference = str(extraction_result.get('reference') or '').strip()[:255]
+            if not ai_extracted_reference:
+                ai_extracted_reference = str(request.form.get('ai_extracted_reference') or '').strip()[:255]
+
+        existing_by_token = Order.query.filter_by(idempotency_key=submitted_confirm_token).first()
+        if existing_by_token:
+            if order_matches_checkout_attempt(
+                existing_by_token,
+                package,
+                payment_method,
+                payment_reference_input,
+                data,
+                is_wallet=is_wallet,
+            ):
+                return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
+
+            checkout_confirm_tokens.pop(pkg_key, None)
+            session['checkout_confirm_tokens'] = checkout_confirm_tokens
+            flash('La confirmación anterior ya fue usada para otra orden. Recarga la página y confirma nuevamente para generar una orden nueva.', 'warning')
+            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
         existing_ref = find_reference_conflict(
             reference=payment_reference_input,
@@ -381,8 +518,6 @@ def checkout(package_id):
         if not aff_code:
             aff_code = (session.get('affiliate_code', '') or '').strip()
         affiliate = None
-        if aff_code:
-            affiliate = Affiliate.query.filter_by(code=aff_code, is_active=True).first()
 
         payment_reference = payment_reference_input[:255]
         payment_reference_last5 = normalize_reference_last5(payment_reference)
@@ -411,28 +546,18 @@ def checkout(package_id):
 
         # Procesar descuento si hay código (descuento explícito o código de afiliado)
         discount_code = ((data.get('affiliate_code') or aff_code or '').strip()).upper()
-        discount = None
-        discount_amount = 0.0
         original_amount = float(package.price)
-        
-        if discount_code:
-            discount = Discount.query.filter_by(code=discount_code, is_active=True).first()
-            if discount and discount.is_valid_for_amount(package.price):
-                discount_amount = float(discount.calculate_discount(package.price))
-                # Incrementar contador de uso
-                discount.used_count += 1
-            elif affiliate:
-                # Usar % de descuento al cliente; fallback para afiliados antiguos
-                rate = float(affiliate.client_discount_rate or 0)
-                if rate <= 0:
-                    rate = float(affiliate.commission_rate or 0)
-                if rate > 0:
-                    raw_discount = original_amount * rate / 100.0
-                    discount_amount = round(raw_discount, 2)
-                    if raw_discount > 0 and discount_amount <= 0:
-                        discount_amount = 0.01
-                    if discount_amount > original_amount:
-                        discount_amount = round(original_amount, 2)
+        discount_result = get_checkout_discount_result(discount_code, package.price)
+        discount = discount_result['discount']
+        affiliate = discount_result['affiliate']
+        discount_amount = discount_result['discount_amount']
+
+        if discount_code and discount_result['error']:
+            flash(discount_result['error'], 'danger')
+            return redirect(url_for('main_bp.index'))
+
+        if discount:
+            discount.used_count = int(discount.used_count or 0) + 1
         
         final_amount = max(original_amount - discount_amount, 0.0)
 
@@ -460,6 +585,7 @@ def checkout(package_id):
             payment_method=payment_method,
             payment_reference=payment_reference,
             payment_reference_last5=payment_reference_last5 or None,
+            ai_extracted_reference=ai_extracted_reference or None,
             payment_amount=payment_amount,
             payment_currency=payment_currency,
             amount=final_amount,
@@ -478,7 +604,20 @@ def checkout(package_id):
             db.session.rollback()
             existing_by_token = Order.query.filter_by(idempotency_key=submitted_confirm_token).first()
             if existing_by_token:
-                return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
+                if order_matches_checkout_attempt(
+                    existing_by_token,
+                    package,
+                    payment_method,
+                    payment_reference_input,
+                    data,
+                    is_wallet=is_wallet,
+                ):
+                    return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
+
+                checkout_confirm_tokens.pop(pkg_key, None)
+                session['checkout_confirm_tokens'] = checkout_confirm_tokens
+                flash('La confirmación anterior ya fue usada para otra orden. Recarga la página y confirma nuevamente para generar una orden nueva.', 'warning')
+                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
             flash('No se pudo confirmar la orden. Intenta nuevamente.', 'danger')
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
@@ -519,6 +658,31 @@ def checkout(package_id):
     if selected_method_code:
         selected_method = PaymentMethod.query.filter_by(code=selected_method_code).first()
 
+    checkout_payment_video = {
+        'enabled': False,
+        'title': '',
+        'message': '',
+        'cta': '',
+        'file': '',
+    }
+    if selected_method_code:
+        configured_method_setting = Setting.query.filter_by(key='checkout_payment_video_method').first()
+        configured_method_code = (configured_method_setting.value if configured_method_setting else '').strip().lower()
+        if configured_method_code and configured_method_code == selected_method_code:
+            video_file_setting = Setting.query.filter_by(key='checkout_payment_video_file').first()
+            video_file_value = (video_file_setting.value if video_file_setting else '').strip()
+            if video_file_value:
+                title_setting = Setting.query.filter_by(key='checkout_payment_video_title').first()
+                message_setting = Setting.query.filter_by(key='checkout_payment_video_message').first()
+                cta_setting = Setting.query.filter_by(key='checkout_payment_video_cta').first()
+                checkout_payment_video = {
+                    'enabled': True,
+                    'title': (title_setting.value if title_setting and title_setting.value else 'Mira cómo pagar con este método'),
+                    'message': (message_setting.value if message_setting and message_setting.value else 'Reproduce este video corto antes de continuar para evitar errores al pagar.'),
+                    'cta': (cta_setting.value if cta_setting and cta_setting.value else 'Entendido, continuar'),
+                    'file': video_file_value,
+                }
+
     # ── Binance Pay auto-verification ──────────────────────────────────────────
     _app = current_app._get_current_object()
     binance_auto = (
@@ -538,26 +702,8 @@ def checkout(package_id):
     
     # Calcular descuento si hay código (descuento explícito o afiliado)
     discount_code = ((affiliate_code or session.get('affiliate_code', '') or '').strip()).upper()
-    discount = None
-    discount_amount = 0.0
-    
-    if discount_code:
-        discount = Discount.query.filter_by(code=discount_code, is_active=True).first()
-        if discount and discount.is_valid_for_amount(package.price):
-            discount_amount = float(discount.calculate_discount(package.price))
-        else:
-            affiliate = Affiliate.query.filter_by(code=discount_code, is_active=True).first()
-            if affiliate:
-                rate = float(affiliate.client_discount_rate or 0)
-                if rate <= 0:
-                    rate = float(affiliate.commission_rate or 0)
-                if rate > 0:
-                    raw_discount = original_amount * rate / 100.0
-                    discount_amount = round(raw_discount, 2)
-                    if raw_discount > 0 and discount_amount <= 0:
-                        discount_amount = 0.01
-                    if discount_amount > original_amount:
-                        discount_amount = round(original_amount, 2)
+    discount_result = get_checkout_discount_result(discount_code, package.price)
+    discount_amount = discount_result['discount_amount']
     
     final_amount = max(original_amount - discount_amount, 0.0)
     
@@ -624,6 +770,7 @@ def checkout(package_id):
         binance_auto=binance_auto,
         binance_code=binance_code,
         binance_wallet=binance_wallet,
+        checkout_payment_video=checkout_payment_video,
     )
 
 
@@ -662,6 +809,7 @@ def order_status(order_number):
         and order_qualifies_for_auto_verify(order)
         and not is_binance_auto_order
     )
+    minigame_state = get_order_minigame_state(order)
 
     return render_template(
         'order_status.html',
@@ -675,6 +823,7 @@ def order_status(order_number):
         is_manual_order=not auto_process_allowed and not is_binance_auto_order,
         is_binance_auto_order=is_binance_auto_order,
         order_status_image=order_status_image,
+        minigame_state=minigame_state,
     )
 
 
@@ -721,3 +870,66 @@ def order_status_json(order_number):
     """Lightweight endpoint used by Binance auto-verify polling on the order status page."""
     order = Order.query.filter_by(order_number=order_number).first_or_404()
     return jsonify({'status': order.status, 'status_label': order.status_label})
+
+
+@checkout_bp.route('/order/<order_number>/minigame-state')
+def order_minigame_state(order_number):
+    order = Order.query.filter_by(order_number=order_number).first_or_404()
+    state = get_order_minigame_state(order)
+    return jsonify({'ok': True, 'state': state})
+
+
+@checkout_bp.route('/order/<order_number>/minigame/select', methods=['POST'])
+def order_minigame_select(order_number):
+    order = Order.query.filter_by(order_number=order_number).first_or_404()
+    payload = request.get_json(silent=True) or {}
+    game_key = (payload.get('game_key') or '').strip().lower()
+
+    try:
+        select_order_minigame(order, game_key)
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': str(exc), 'state': get_order_minigame_state(order, create_if_needed=False)}), 400
+
+    return jsonify({'ok': True, 'state': get_order_minigame_state(order)})
+
+
+@checkout_bp.route('/order/<order_number>/minigame/play', methods=['POST'])
+def order_minigame_play(order_number):
+    order = Order.query.filter_by(order_number=order_number).first_or_404()
+    payload = request.get_json(silent=True) or {}
+    game_key = (payload.get('game_key') or '').strip().lower()
+    choice_index = payload.get('choice_index')
+
+    try:
+        play_order_minigame(order, game_key, choice_index=choice_index)
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': str(exc), 'state': get_order_minigame_state(order, create_if_needed=False)}), 400
+
+    return jsonify({'ok': True, 'state': get_order_minigame_state(order)})
+
+
+@checkout_bp.route('/api/extract-payment-reference', methods=['POST'])
+def extract_payment_reference():
+    capture_file = request.files.get('payment_capture')
+    if not capture_file or not capture_file.filename:
+        return jsonify({'ok': False, 'reference': '', 'message': 'Debes adjuntar un comprobante.'}), 400
+
+    if not is_allowed_capture_file(capture_file.filename):
+        return jsonify({'ok': False, 'reference': '', 'message': 'Solo se aceptan imagenes png, jpg, jpeg, gif o webp.'}), 400
+
+    extraction_result = extract_reference_from_image_bytes(
+        capture_file.read(),
+        mime_type=capture_file.mimetype or 'image/jpeg',
+        filename=capture_file.filename,
+    )
+
+    status_code = 200 if extraction_result.get('ok') else 503
+    return jsonify({
+        'ok': extraction_result.get('ok', False),
+        'reference': extraction_result.get('reference', ''),
+        'message': extraction_result.get('message', ''),
+    }), status_code

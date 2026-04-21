@@ -6,34 +6,66 @@
 <!-- Filters -->
 <div class="filters-bar">
     <div class="filter-tabs">
-        <a href="{{ url_for('admin_bp.orders', q=search_query or None) }}"
+        <a href="{{ url_for('admin_bp.orders', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
            class="filter-tab {% if not status_filter %}active{% endif %}">Todas</a>
-        <a href="{{ url_for('admin_bp.orders', status='pending', q=search_query or None) }}"
+        <a href="{{ url_for('admin_bp.orders', status='pending', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
            class="filter-tab {% if status_filter == 'pending' %}active{% endif %}">Pendientes</a>
-        <a href="{{ url_for('admin_bp.orders', status='approved', q=search_query or None) }}"
+        <a href="{{ url_for('admin_bp.orders', status='approved', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
            class="filter-tab {% if status_filter == 'approved' %}active{% endif %}">Aprobadas</a>
-        <a href="{{ url_for('admin_bp.orders', status='completed', q=search_query or None) }}"
+        <a href="{{ url_for('admin_bp.orders', status='completed', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
            class="filter-tab {% if status_filter == 'completed' %}active{% endif %}">Completadas</a>
-        <a href="{{ url_for('admin_bp.orders', status='rejected', q=search_query or None) }}"
+        <a href="{{ url_for('admin_bp.orders', status='rejected', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
            class="filter-tab {% if status_filter == 'rejected' %}active{% endif %}">Rechazadas</a>
     </div>
     <form method="GET" action="{{ url_for('admin_bp.orders') }}" class="orders-search-form">
         {% if status_filter %}
         <input type="hidden" name="status" value="{{ status_filter }}">
         {% endif %}
+        <div class="orders-filter-grid">
+            <div class="orders-filter-field orders-filter-field--search">
+                <label for="ordersSearchInput">Buscar</label>
+                <input
+                    type="search"
+                    id="ordersSearchInput"
+                    name="q"
+                    value="{{ search_query or '' }}"
+                    class="orders-search-input"
+                    placeholder="Buscar por ID, referencia o numero de orden"
+                    autocomplete="off"
+                >
+            </div>
+            <div class="orders-filter-field">
+                <label for="ordersDateFrom">Desde</label>
+                <input type="date" id="ordersDateFrom" name="date_from" value="{{ date_from or '' }}">
+            </div>
+            <div class="orders-filter-field">
+                <label for="ordersDateTo">Hasta</label>
+                <input type="date" id="ordersDateTo" name="date_to" value="{{ date_to or '' }}">
+            </div>
+            <div class="orders-filter-field">
+                <label for="ordersServiceFilter">Servicio</label>
+                <select id="ordersServiceFilter" name="service_id">
+                    <option value="">Todos los servicios</option>
+                    {% for service in services %}
+                    <option value="{{ service.id }}" {% if service_id == service.id %}selected{% endif %}>{{ service.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="orders-filter-field">
+                <label for="ordersPackageFilter">Paquete</label>
+                <select id="ordersPackageFilter" name="package_id">
+                    <option value="">Todos los paquetes</option>
+                    {% for package in packages %}
+                    <option value="{{ package.id }}" {% if package_id == package.id %}selected{% endif %}>{{ package.game.name }} - {{ package.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
         <div class="orders-search-input-wrap">
-            <input
-                type="search"
-                name="q"
-                value="{{ search_query or '' }}"
-                class="orders-search-input"
-                placeholder="Buscar por referencia o numero de orden"
-                autocomplete="off"
-            >
-            {% if search_query %}
+            <button type="submit" class="btn-primary orders-search-submit">Aplicar filtros</button>
+            {% if search_query or date_from or date_to or package_id or service_id %}
             <a href="{{ url_for('admin_bp.orders', status=status_filter or None) }}" class="btn-secondary orders-search-clear">Limpiar</a>
             {% endif %}
-            <button type="submit" class="btn-primary orders-search-submit">Buscar</button>
         </div>
     </form>
 </div>
@@ -55,10 +87,15 @@
                     <th>Acciones</th>
                 </tr>
             </thead>
-            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}">
+            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}" data-date-from="{{ date_from or '' }}" data-date-to="{{ date_to or '' }}" data-package-id="{{ package_id or '' }}" data-service-id="{{ service_id or '' }}">
                 {% for order in orders %}
                 <tr data-order-id="{{ order.id }}">
-                    <td data-label="#Orden"><span class="order-num">#{{ order.order_number }}</span></td>
+                    <td data-label="#Orden">
+                        <div class="cell-stack">
+                            <span class="order-num">#{{ order.order_number }}</span>
+                            <small>ID {{ order.id }}</small>
+                        </div>
+                    </td>
                     <td data-label="Juego / Paquete">
                         <div class="cell-stack">
                             <span>{{ order.game.name }}</span>
@@ -91,11 +128,15 @@
                     <td data-label="Fecha">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
                     <td data-label="Acciones">
                         {% if order.status == 'pending' %}
+                        {% set can_send_delivery_proof = not order.package.is_automated and (order.game.category.slug|lower != 'tarjetas') %}
                         <div class="action-btns" id="actions-{{ order.id }}"
                              data-order-id="{{ order.id }}"
                              data-auto-resp="{{ order.automation_response|default('',true)|e }}">
                             <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline" title="Gestionar">Gestionar</a>
-                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline" class="approve-form">
+                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap" class="approve-form" enctype="multipart/form-data">
+                                {% if can_send_delivery_proof %}
+                                <input type="file" name="delivery_proof" accept="image/*" title="Adjuntar comprobante para el correo" style="max-width:180px;font-size:11px">
+                                {% endif %}
                                 <button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>
                             </form>
                             <button type="button" class="btn-sm btn-danger reject-order-btn" data-order-id="{{ order.id }}" title="Rechazar">✗</button>
@@ -111,7 +152,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="10" class="empty-row">{% if search_query %}No hay órdenes que coincidan con la búsqueda.{% else %}No hay órdenes.{% endif %}</td></tr>
+                <tr><td colspan="10" class="empty-row">{% if search_query or date_from or date_to or package_id or service_id %}No hay órdenes que coincidan con los filtros aplicados.{% else %}No hay órdenes.{% endif %}</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -255,7 +296,8 @@ function _renderOrderRow(o) {
     if (o.status === 'pending') {
         actions = '<div class="action-btns" id="actions-' + o.id + '" data-order-id="' + o.id + '" data-auto-resp="' + _escapeHtml(o.automation_response || '') + '">' +
             '<a href="/admin/orders/' + o.id + '" class="btn-sm btn-outline" title="Gestionar">Gestionar</a>' +
-            '<form method="POST" action="/admin/orders/' + o.id + '/approve" style="display:inline" class="approve-form">' +
+            '<form method="POST" action="/admin/orders/' + o.id + '/approve" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap" class="approve-form" enctype="multipart/form-data">' +
+                (o.can_send_delivery_proof ? '<input type="file" name="delivery_proof" accept="image/*" title="Adjuntar comprobante para el correo" style="max-width:180px;font-size:11px">' : '') +
                 '<button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>' +
             '</form>' +
             '<button type="button" class="btn-sm btn-danger reject-order-btn" data-order-id="' + o.id + '" title="Rechazar">✗</button>' +
@@ -271,7 +313,7 @@ function _renderOrderRow(o) {
 
     var html = '';
     html += '<tr data-order-id="' + o.id + '">';
-    html += '<td><span class="order-num">#' + _escapeHtml(o.order_number) + '</span></td>';
+    html += '<td><div class="cell-stack"><span class="order-num">#' + _escapeHtml(o.order_number) + '</span><small>ID ' + _escapeHtml(o.id) + '</small></div></td>';
     html += '<td><div class="cell-stack"><span>' + _escapeHtml(o.game) + '</span><small>' + _escapeHtml(o.package) + '</small></div></td>';
     html += '<td><div class="cell-stack">' + playerBits + '</div></td>';
     html += '<td>' + _escapeHtml(o.payment_method) + '</td>';
@@ -371,6 +413,10 @@ function _kickAutoVerification(scopeEl) {
     if (!tbody) return;
     var statusFilter = tbody.getAttribute('data-status-filter') || '';
     var searchQuery = tbody.getAttribute('data-search-query') || '';
+    var dateFrom = tbody.getAttribute('data-date-from') || '';
+    var dateTo = tbody.getAttribute('data-date-to') || '';
+    var packageId = tbody.getAttribute('data-package-id') || '';
+    var serviceId = tbody.getAttribute('data-service-id') || '';
 
     function getMaxId() {
         var max = 0;
@@ -386,6 +432,10 @@ function _kickAutoVerification(scopeEl) {
         var url = '/admin/orders/latest?since_id=' + encodeURIComponent(String(sinceId));
         if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
         if (searchQuery) url += '&q=' + encodeURIComponent(searchQuery);
+        if (dateFrom) url += '&date_from=' + encodeURIComponent(dateFrom);
+        if (dateTo) url += '&date_to=' + encodeURIComponent(dateTo);
+        if (packageId) url += '&package_id=' + encodeURIComponent(packageId);
+        if (serviceId) url += '&service_id=' + encodeURIComponent(serviceId);
         fetch(url)
             .then(function(r) { return r.json(); })
             .then(function(data) {

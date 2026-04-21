@@ -201,12 +201,24 @@ Estamos verificando tu pago. Te notificaremos cuando sea procesada.
 # ORDEN APROBADA — se envía al cliente (sin PIN)
 # ──────────────────────────────────────────────────────────────────────
 
-def build_order_approved_email(order, package, game):
+def build_order_approved_email(order, package, game, has_delivery_proof=False):
     """Construye HTML + texto para notificación de 'orden aprobada' al cliente (sin PIN)."""
     s = _base_style()
     brand = _brand_name()
     amount_str = _format_order_amount(order)
     game_description = _game_description(game)
+    delivery_note_html = ''
+    delivery_note_text = ''
+
+    if has_delivery_proof:
+        delivery_note_html = f"""
+<div style="margin-top:20px;padding:16px;border-radius:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);">
+    <p style="margin:0;font-size:14px;color:{s['text']};line-height:1.6;">
+        Adjuntamos en este correo el comprobante de la recarga o servicio realizado para tu orden.
+    </p>
+</div>
+"""
+        delivery_note_text = '\nAdjuntamos en este correo el comprobante de la recarga o servicio realizado para tu orden.\n'
 
     body = f"""
 <h2 style="margin:0 0 8px 0; font-size:20px; color:{s['white']};">¡Tu orden fue aprobada! ✅</h2>
@@ -226,6 +238,8 @@ def build_order_approved_email(order, package, game):
 {f'{_detail_row("Jugador", order.player_nickname or order.player_id or "N/A")}' if order.player_id else ''}
 </table>
 
+{delivery_note_html}
+
 <p style="margin:24px 0 0 0; font-size:14px; color:{s['text']}; line-height:1.5;">
     ¡Gracias por tu compra! Si tienes alguna duda, no dudes en contactarnos.
 </p>
@@ -240,6 +254,7 @@ Juego: {game.name if game else 'N/A'}
 {f'Descripción: {game_description}' if game_description else ''}
 Paquete: {package.name if package else 'N/A'}
 Monto: {amount_str}
+{delivery_note_text}
 
 ¡Gracias por tu compra!
 

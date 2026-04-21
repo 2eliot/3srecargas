@@ -84,6 +84,7 @@
     packages.forEach(pkg => {
       const mapping = mappingMap[pkg.id];
       const mappedCatalogId = mapping ? mapping.catalog_id : null;
+      const mappedCatalogId2 = mapping ? mapping.catalog_id_2 : null;
       const autoEnabled = mapping ? mapping.auto_enabled : false;
 
       // Build optgroup-based dropdown
@@ -105,6 +106,18 @@
         optionsHtml += '</optgroup>';
       });
 
+      let optionsHtml2 = '<option value="">Sin segundo item</option>';
+      Object.keys(groups).sort().forEach(gName => {
+        optionsHtml2 += `<optgroup label="${gName}">`;
+        groups[gName].forEach(rc => {
+          const selected = mappedCatalogId2 && parseInt(mappedCatalogId2, 10) === parseInt(rc.catalog_id, 10) ? 'selected' : '';
+          const pkgName = (rc.remote_package_name || '').trim() || ('Paquete ' + rc.remote_package_id);
+          const priceTag = rc.price != null ? ` ($${Number(rc.price).toFixed(2)})` : '';
+          optionsHtml2 += `<option value="${rc.catalog_id}" ${selected}>${pkgName}${priceTag}</option>`;
+        });
+        optionsHtml2 += '</optgroup>';
+      });
+
       html += `
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:14px; background:#1e293b; border-radius:10px; border:1px solid #334155; align-items:center;">
           <div>
@@ -112,12 +125,21 @@
             <div style="font-size:12px; color:#94a3b8;">ID ${pkg.id} · USD ${Number(pkg.price).toFixed(2)}</div>
           </div>
           <div style="display:grid; gap:8px;">
-            <select class="rev-catalog-select" data-pkg-id="${pkg.id}" style="padding:6px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;">
-              ${optionsHtml}
-            </select>
+            <label style="display:grid; gap:6px; font-size:12px; color:#94a3b8;">
+              <span>Item remoto 1</span>
+              <select class="rev-catalog-select" data-pkg-id="${pkg.id}" style="padding:6px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;">
+                ${optionsHtml}
+              </select>
+            </label>
+            <label style="display:grid; gap:6px; font-size:12px; color:#94a3b8;">
+              <span>Item remoto 2</span>
+              <select class="rev-catalog-select-2" data-pkg-id="${pkg.id}" style="padding:6px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;">
+                ${optionsHtml2}
+              </select>
+            </label>
             <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd5e1;">
               <input type="checkbox" class="rev-auto-chk" data-pkg-id="${pkg.id}" ${autoEnabled ? 'checked' : ''}>
-              Recarga automática
+              Recarga automática secuencial
             </label>
           </div>
         </div>
@@ -138,10 +160,12 @@
     const entries = [];
     rows.forEach(sel => {
       const pkgId = parseInt(sel.getAttribute('data-pkg-id'), 10);
+      const sel2 = mapList.querySelector(`.rev-catalog-select-2[data-pkg-id="${pkgId}"]`);
       const chk = mapList.querySelector(`.rev-auto-chk[data-pkg-id="${pkgId}"]`);
       entries.push({
         store_package_id: pkgId,
         catalog_id: sel.value || '',
+        catalog_id_2: sel2 ? (sel2.value || '') : '',
         auto_enabled: !!(chk && chk.checked),
       });
     });

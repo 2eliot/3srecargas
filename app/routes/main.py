@@ -512,12 +512,17 @@ def api_packages(game_id):
     ) if pkg_ids else set()
 
     is_tarjetas = (game.category and game.category.slug == 'tarjetas')
+    has_stock_delivery = any(bool(p.is_automated and int(p.pin_count or 0) > 0) for p in packages)
 
     pkg_list = []
     for p in packages:
         d = p.to_dict()
         d['is_auto'] = bool(p.is_automated or is_tarjetas or (p.id in auto_mapped_ids))
         pkg_list.append(d)
+
+    game_dict['requires_manual_login_popup'] = bool(
+        pkg_list and not is_tarjetas and not has_stock_delivery and not any(pkg.get('is_auto') for pkg in pkg_list)
+    )
 
     return jsonify({
         'game': game_dict,
@@ -538,7 +543,9 @@ def get_discounts():
             'min_amount': str(d.min_amount) if d.min_amount else None,
             'max_discount': str(d.max_discount) if d.max_discount else None,
             'source': 'discount',
-        } for d in discounts
+        }
+        for d in discounts
+        if d.is_valid_for_amount(float(d.min_amount or 1))
     }
 
     affiliates = Affiliate.query.filter_by(is_active=True).all()

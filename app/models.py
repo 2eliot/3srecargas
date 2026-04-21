@@ -32,6 +32,7 @@ class Game(db.Model):
     player_id_label = db.Column(db.String(50), default='Player ID')
     zone_id_label = db.Column(db.String(50), default='Zone ID')
     is_automated = db.Column(db.Boolean, default=False)
+    show_selection_popup = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
     packages = db.relationship(
         'Package', backref='game', lazy='dynamic',
@@ -52,6 +53,7 @@ class Game(db.Model):
             'player_id_label': self.player_id_label,
             'zone_id_label': self.zone_id_label,
             'is_automated': self.is_automated,
+            'show_selection_popup': self.show_selection_popup,
             'is_active': self.is_active,
             'position': self.position,
         }
@@ -118,7 +120,9 @@ class Order(db.Model):
     payment_method = db.Column(db.String(50), nullable=False)
     payment_reference = db.Column(db.String(255), nullable=False)
     payment_reference_last5 = db.Column(db.String(6))
+    ai_extracted_reference = db.Column(db.String(255))
     payment_capture = db.Column(db.String(255))
+    delivery_proof = db.Column(db.String(255))
     payment_amount = db.Column(db.Numeric(10, 2))
     payment_currency = db.Column(db.String(3))
     payer_dni_type = db.Column(db.String(2))
@@ -165,6 +169,43 @@ class Order(db.Model):
     @property
     def status_class(self):
         return self.STATUS_LABELS.get(self.status, (self.status, ''))[1]
+
+
+class MiniGameCounter(db.Model):
+    __tablename__ = 'minigame_counters'
+
+    id = db.Column(db.Integer, primary_key=True)
+    game_key = db.Column(db.String(50), unique=True, nullable=False)
+    play_count = db.Column(db.Integer, default=0)
+    last_position = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class OrderMiniGameOpportunity(db.Model):
+    __tablename__ = 'order_minigame_opportunities'
+
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False, unique=True)
+    status = db.Column(db.String(20), default='available')
+    selected_game_key = db.Column(db.String(50))
+    selected_choice_index = db.Column(db.Integer)
+    result_kind = db.Column(db.String(30))
+    reward_tier = db.Column(db.Integer)
+    reward_label = db.Column(db.String(120))
+    reward_amount = db.Column(db.Numeric(10, 2))
+    reward_discount_id = db.Column(db.Integer, db.ForeignKey('discounts.id'))
+    reward_discount_code = db.Column(db.String(50))
+    counter_position = db.Column(db.Integer)
+    counter_cycle = db.Column(db.Integer)
+    result_payload = db.Column(db.Text)
+    unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
+    played_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    order = db.relationship('Order', backref=db.backref('minigame_opportunity', uselist=False))
+    reward_discount = db.relationship('Discount')
 
 
 class Discount(db.Model):
@@ -383,11 +424,13 @@ class RevendedoresItemMapping(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     store_package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
     catalog_item_id = db.Column(db.Integer, db.ForeignKey('revendedores_catalog.id'), nullable=False)
+    catalog_item_id_2 = db.Column(db.Integer, db.ForeignKey('revendedores_catalog.id'), nullable=True)
     active = db.Column(db.Boolean, default=True)
     auto_enabled = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    catalog_item = db.relationship('RevendedoresCatalogItem')
+    catalog_item = db.relationship('RevendedoresCatalogItem', foreign_keys=[catalog_item_id])
+    catalog_item_2 = db.relationship('RevendedoresCatalogItem', foreign_keys=[catalog_item_id_2])
     package = db.relationship('Package')
 
     __table_args__ = (
