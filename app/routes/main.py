@@ -511,7 +511,9 @@ def api_packages(game_id):
         ).all()
     ) if pkg_ids else set()
 
-    is_tarjetas = (game.category and game.category.slug == 'tarjetas')
+    category_slug = (game.category.slug if game.category else '').lower()
+    is_tarjetas = (category_slug == 'tarjetas')
+    is_wallet = (category_slug == 'wallet')
     has_stock_delivery = any(bool(p.is_automated and int(p.pin_count or 0) > 0) for p in packages)
 
     pkg_list = []
@@ -521,7 +523,7 @@ def api_packages(game_id):
         pkg_list.append(d)
 
     game_dict['requires_manual_login_popup'] = bool(
-        pkg_list and not is_tarjetas and not has_stock_delivery and not any(pkg.get('is_auto') for pkg in pkg_list)
+        pkg_list and not is_tarjetas and not is_wallet and not has_stock_delivery and not any(pkg.get('is_auto') for pkg in pkg_list)
     )
 
     return jsonify({
