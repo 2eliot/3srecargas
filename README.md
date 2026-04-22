@@ -136,7 +136,6 @@ Si `success` es `false`, el PIN **no** se marca como usado y la orden permanece 
 | `VPS_FULL_NAME` | `Usuario Recarga` | Nombre completo para el formulario |
 | `VPS_BIRTH_DATE` | `01/01/1995` | Fecha de nacimiento para el formulario |
 | `GEMINI_API_KEY` | *(vacío)* | API key para extraer referencias desde comprobantes con Gemini |
-| `GEMINI_REFERENCE_MODEL` | `gemini-2.0-flash` | Modelo Gemini usado para leer comprobantes |
 | `GEMINI_REFERENCE_TIMEOUT` | `25` | Segundos máximos para la extracción IA |
 
 ### Correo electrónico (SMTP)

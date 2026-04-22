@@ -27,7 +27,6 @@ class Config:
     REVENDEDORES_BASE_URL = os.environ.get('REVENDEDORES_BASE_URL', '')
     REVENDEDORES_API_KEY = os.environ.get('REVENDEDORES_API_KEY', '')
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '').strip()
-    GEMINI_REFERENCE_MODEL = os.environ.get('GEMINI_REFERENCE_MODEL', 'gemini-2.0-flash').strip()
     GEMINI_REFERENCE_TIMEOUT = int(os.environ.get('GEMINI_REFERENCE_TIMEOUT', 25))
     # Binance Pay auto-verification
     BINANCE_API_KEY = os.environ.get('BINANCE_API_KEY', '').strip()

@@ -1928,9 +1928,6 @@ def revendedores_mappings_bulk():
                 catalog_id = catalog_id_2
                 catalog_id_2 = None
 
-            if catalog_id and catalog_id_2 and catalog_id == catalog_id_2:
-                catalog_id_2 = None
-
             if existing:
                 existing.catalog_item_id = catalog_id
                 existing.catalog_item_id_2 = catalog_id_2

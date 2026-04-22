@@ -934,6 +934,11 @@
     function setupVerifyListeners() {
         var btn = document.getElementById('btnVerifyPlayer');
         var input = document.getElementById('playerId');
+
+        function sanitizePlayerIdValue(value) {
+            return String(value || '').replace(/\D+/g, '');
+        }
+
         if (btn && !btn.dataset.verifyBound) {
             btn.setAttribute('aria-hidden', 'false');
             btn.dataset.verifyBound = '1';
@@ -943,7 +948,16 @@
                 if (e.key === 'Enter') { e.preventDefault(); doVerifyPlayer({ silent: false }); }
             });
             input.addEventListener('input', function() {
-                var uid = (input.value || '').trim();
+                if (input.dataset.digitsOnly === '1') {
+                    var sanitized = sanitizePlayerIdValue(input.value);
+                    if (input.value !== sanitized) {
+                        input.value = sanitized;
+                    }
+                }
+
+                var uid = input.dataset.digitsOnly === '1'
+                    ? (input.value || '')
+                    : (input.value || '').trim();
                 if (!uid) { resetNickUI(); return; }
                 resetNickUI();
                 refreshRankingLookupIfVisible();
@@ -1018,6 +1032,9 @@
             if (playerInput) {
                 playerInput.type = 'email';
                 playerInput.placeholder = 'correo@ejemplo.com';
+                playerInput.inputMode = 'email';
+                playerInput.removeAttribute('pattern');
+                playerInput.dataset.digitsOnly = '0';
             }
             if (playerHint) playerHint.textContent = 'Ingresa tu correo electrónico para recibir la recarga.';
             if (zoneGroup) zoneGroup.style.display = 'none';
@@ -1029,6 +1046,10 @@
             if (playerInput) {
                 playerInput.type = 'text';
                 playerInput.placeholder = 'Ingresa tu ID';
+                playerInput.inputMode = 'numeric';
+                playerInput.pattern = '[0-9]*';
+                playerInput.dataset.digitsOnly = '1';
+                playerInput.value = String(playerInput.value || '').replace(/\D+/g, '');
             }
             if (playerHint) {
                 playerHint.textContent = 'Ingresa correctamente tu ' + (game.player_id_label || 'ID') + ' para evitar errores en la recarga.';

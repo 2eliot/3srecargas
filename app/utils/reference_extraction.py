@@ -8,7 +8,10 @@ import requests
 from flask import current_app
 
 
-DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
+GEMINI_MODEL_CANDIDATES = (
+    'gemini-flash-latest',
+    'gemini-2.5-flash',
+)
 
 
 def _normalize_reference_value(value):
@@ -106,6 +109,9 @@ def _build_gemini_error_message(status_code, remote_message=''):
     remote_message = str(remote_message or '').strip()
     lowered = remote_message.lower()
 
+    if 'not available to new users' in lowered or 'deprecated' in lowered or 'decommissioned' in lowered:
+        return 'La lectura automática de referencias no está disponible en este momento. Ingresa la referencia manualmente.'
+
     if 'quota exceeded' in lowered or 'rate limit' in lowered or 'too many requests' in lowered:
         return 'La lectura automática de referencias no está disponible en este momento. Ingresa la referencia manualmente.'
 
@@ -118,6 +124,45 @@ def _build_gemini_error_message(status_code, remote_message=''):
     return remote_message or f'Gemini devolvió HTTP {status_code}.'
 
 
+def _should_retry_with_fallback(status_code, remote_message=''):
+    if status_code < 400:
+        return False
+
+    lowered = str(remote_message or '').strip().lower()
+    retry_markers = (
+        'not available to new users',
+        'deprecated',
+        'decommissioned',
+        'not found',
+        'is not found',
+        'unsupported',
+    )
+    return any(marker in lowered for marker in retry_markers)
+
+
+def _extract_gemini_remote_error(data):
+    if not isinstance(data, dict):
+        return ''
+    error_data = data.get('error') or {}
+    if isinstance(error_data, dict):
+        return str(error_data.get('message') or '').strip()
+    return ''
+
+
+def _build_gemini_model_candidates():
+    candidates = []
+    for model_name in GEMINI_MODEL_CANDIDATES:
+        normalized = str(model_name or '').strip()
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+    return candidates
+
+
+def _post_gemini_generate_content(model, api_key, payload, timeout):
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
+    return requests.post(url, json=payload, timeout=timeout)
+
+
 def extract_reference_from_image_bytes(image_bytes, mime_type='image/jpeg', filename='capture.jpg'):
     if not image_bytes:
         return {'ok': False, 'reference': '', 'message': 'No se recibieron bytes del comprobante.'}
@@ -126,7 +171,6 @@ def extract_reference_from_image_bytes(image_bytes, mime_type='image/jpeg', file
     if not api_key:
         return {'ok': False, 'reference': '', 'message': 'La API key de Gemini no está configurada.'}
 
-    model = str(current_app.config.get('GEMINI_REFERENCE_MODEL') or DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
     prompt = (
         'Analiza este comprobante de pago y extrae unicamente la referencia bancaria o numero de operacion del pago. '
         'Ignora montos, telefonos, cedulas, numeros de cuenta, fecha, hora y nombres del beneficiario. '
@@ -135,7 +179,6 @@ def extract_reference_from_image_bytes(image_bytes, mime_type='image/jpeg', file
         '{"found":true,"reference":"123456","reason":"texto corto"}.'
     )
 
-    url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}'
     payload = {
         'contents': [
             {
@@ -156,27 +199,40 @@ def extract_reference_from_image_bytes(image_bytes, mime_type='image/jpeg', file
         },
     }
 
-    try:
-        response = requests.post(url, json=payload, timeout=current_app.config.get('GEMINI_REFERENCE_TIMEOUT', 25))
-    except requests.exceptions.Timeout:
-        return {'ok': False, 'reference': '', 'message': 'Gemini no respondió a tiempo.'}
-    except requests.exceptions.ConnectionError:
-        return {'ok': False, 'reference': '', 'message': 'No se pudo conectar con Gemini.'}
-    except Exception as exc:
-        return {'ok': False, 'reference': '', 'message': f'Error consultando Gemini: {exc}'}
+    timeout = current_app.config.get('GEMINI_REFERENCE_TIMEOUT', 25)
+    response = None
+    data = {}
+    model = GEMINI_MODEL_CANDIDATES[0]
+    remote_message = ''
 
-    try:
-        data = response.json()
-    except Exception:
-        data = {}
+    for candidate_model in _build_gemini_model_candidates():
+        model = candidate_model
+        try:
+            response = _post_gemini_generate_content(candidate_model, api_key, payload, timeout)
+        except requests.exceptions.Timeout:
+            return {'ok': False, 'reference': '', 'message': 'Gemini no respondió a tiempo.'}
+        except requests.exceptions.ConnectionError:
+            return {'ok': False, 'reference': '', 'message': 'No se pudo conectar con Gemini.'}
+        except Exception as exc:
+            return {'ok': False, 'reference': '', 'message': f'Error consultando Gemini: {exc}'}
 
-    if response.status_code >= 400:
-        message = ''
-        if isinstance(data, dict):
-            error_data = data.get('error') or {}
-            if isinstance(error_data, dict):
-                message = str(error_data.get('message') or '').strip()
-        message = _build_gemini_error_message(response.status_code, message)
+        try:
+            data = response.json()
+        except Exception:
+            data = {}
+
+        if response.status_code < 400:
+            break
+
+        remote_message = _extract_gemini_remote_error(data)
+        if _should_retry_with_fallback(response.status_code, remote_message) and candidate_model != GEMINI_MODEL_CANDIDATES[-1]:
+            continue
+
+        message = _build_gemini_error_message(response.status_code, remote_message)
+        return {'ok': False, 'reference': '', 'message': message}
+
+    if not response or response.status_code >= 400:
+        message = _build_gemini_error_message(getattr(response, 'status_code', 500), remote_message)
         return {'ok': False, 'reference': '', 'message': message}
 
     raw_text = _extract_text_from_gemini_response(data)

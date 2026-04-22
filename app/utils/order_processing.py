@@ -44,12 +44,10 @@ def get_order_auto_mappings(order_obj):
             return []
 
         items = []
-        seen_catalog_ids = set()
         for attr_name in ('catalog_item', 'catalog_item_2'):
             item = getattr(mapping, attr_name, None)
-            if not item or item.id in seen_catalog_ids:
+            if not item:
                 continue
-            seen_catalog_ids.add(item.id)
             items.append(item)
 
         return items

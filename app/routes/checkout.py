@@ -38,6 +38,10 @@ from ..utils.binance_pay import (
 )
 from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
+
+
+def _digits_only(value):
+    return ''.join(ch for ch in str(value or '') if ch.isdigit())
 from ..utils.reference_extraction import extract_reference_from_image_bytes, extract_reference_from_image_path
 from ..utils.auth_accounts import attach_matching_orders_to_customer, extract_customer_identifier_for_game, get_or_create_scoped_customer
 
@@ -386,6 +390,9 @@ def checkout(package_id):
             category_slug = (game.category.slug if game.category else '').lower()
             tarjetas_without_id = category_slug == 'tarjetas'
 
+            if not is_wallet and not tarjetas_without_id:
+                player_id = _digits_only(player_id)
+
             if is_wallet:
                 if not player_id:
                     flash('Debes ingresar tu correo electrónico.', 'danger')
@@ -518,6 +525,9 @@ def checkout(package_id):
         if not aff_code:
             aff_code = (session.get('affiliate_code', '') or '').strip()
         affiliate = None
+        player_id_value = (data.get('player_id') or '').strip()
+        if not is_wallet:
+            player_id_value = _digits_only(player_id_value)
 
         payment_reference = payment_reference_input[:255]
         payment_reference_last5 = normalize_reference_last5(payment_reference)
@@ -537,8 +547,8 @@ def checkout(package_id):
             package_id=package.id,
             payment_method=payment_method,
             user_id=user_id,
-            player_id=(data.get('player_id') or '').strip() if not is_wallet else None,
-            email=(data.get('player_id') or '').strip() if is_wallet else (data.get('email') or '').strip(),
+            player_id=player_id_value if not is_wallet else None,
+            email=player_id_value if is_wallet else (data.get('email') or '').strip(),
         )
         if existing_pending:
             flash('Ya tienes una orden pendiente para esta compra. Te llevamos a su estado.', 'info')
@@ -577,10 +587,10 @@ def checkout(package_id):
             package_id=package.id,
             user_id=user_id,
             discount_id=discount.id if discount else None,
-            player_id=(data.get('player_id') or '').strip() if not is_wallet else None,
+            player_id=player_id_value if not is_wallet else None,
             player_nickname=(data.get('player_nickname') or '').strip() or None,
             zone_id=(data.get('zone_id') or '').strip() if (not is_wallet and game.requires_zone_id) else None,
-            email=(data.get('player_id') or '').strip() if is_wallet else (data.get('email') or '').strip(),
+            email=player_id_value if is_wallet else (data.get('email') or '').strip(),
             phone=customer_phone or None,
             payment_method=payment_method,
             payment_reference=payment_reference,
