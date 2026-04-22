@@ -601,6 +601,10 @@ def _apply_order_filters(
                 Order.id == maybe_id if maybe_id is not None else false(),
                 Order.order_number.ilike(like_term),
                 Order.payment_reference.ilike(like_term),
+                Order.player_id.ilike(like_term),
+                Order.player_nickname.ilike(like_term),
+                Order.email.ilike(like_term),
+                Order.phone.ilike(like_term),
             )
         )
 
