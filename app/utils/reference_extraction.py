@@ -9,7 +9,6 @@ from flask import current_app
 
 
 GEMINI_MODEL_CANDIDATES = (
-    'gemini-flash-latest',
     'gemini-2.5-flash',
 )
 

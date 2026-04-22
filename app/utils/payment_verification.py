@@ -340,6 +340,24 @@ def _is_rate_limited_response(status_code, data):
     return False
 
 
+def _is_not_found_response(status_code, data):
+    if status_code == 404:
+        return True
+
+    msg = f"{data.get('message') or ''} {data.get('error') or ''}".strip().lower()
+    if not msg:
+        return False
+
+    not_found_markers = (
+        'payment not found',
+        'movement not found',
+        'movimiento no encontrado',
+        'referencia no encontrada',
+        'not found with bank reference',
+    )
+    return any(marker in msg for marker in not_found_markers)
+
+
 def _extract_pabilo_payload(data):
     if not isinstance(data, dict):
         return {}, {}
@@ -417,7 +435,7 @@ def verify_order_payment(order):
 
         payload_data, full_data = _extract_pabilo_payload(data)
 
-        if response.status_code == 404:
+        if _is_not_found_response(response.status_code, data):
             last_soft_result = {
                 'ok': True,
                 'verified': False,

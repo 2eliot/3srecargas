@@ -192,7 +192,7 @@
                         placeholder="Ej: 02792"
                     >
                     <small style="display:block;margin-top:6px;color:var(--text-muted)">
-                        Al guardar, se limpia el estado previo de Pabilo y se re-verifica usando solo la referencia; la recarga se acepta si el monto reportado por Pabilo cubre el total de la orden o queda hasta 1% por debajo.
+                        Al guardar, se limpia el estado previo de Pabilo y se re-verifica intentando primero esta referencia. Si no aparece en Pabilo, el sistema prueba también la referencia extraída del comprobante. La recarga se acepta si el monto reportado por Pabilo cubre el total de la orden o queda hasta 1% por debajo.
                     </small>
                 </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
