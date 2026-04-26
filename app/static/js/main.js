@@ -51,7 +51,8 @@
         startX: 0,
         startScrollLeft: 0,
         dragged: false,
-        suppressClickUntil: 0
+        suppressClickUntil: 0,
+        pressedCard: null
     };
     var gamesGridResizeObserver = null;
     var rankingState = {
@@ -103,6 +104,7 @@
 
         gamesCarouselState.pointerId = null;
         gamesCarouselState.dragged = false;
+        gamesCarouselState.pressedCard = null;
         gamesViewportEl.classList.remove('is-dragging');
         updateGamesCarouselNav();
     }
@@ -123,6 +125,7 @@
             gamesCarouselState.startX = event.clientX;
             gamesCarouselState.startScrollLeft = gamesViewportEl.scrollLeft;
             gamesCarouselState.dragged = false;
+            gamesCarouselState.pressedCard = event.target && event.target.closest ? event.target.closest('.game-card') : null;
             gamesViewportEl.classList.add('is-dragging');
         });
 
@@ -143,6 +146,12 @@
         ['pointerup', 'pointercancel', 'lostpointercapture', 'pointerleave'].forEach(function (eventName) {
             gamesViewportEl.addEventListener(eventName, function (event) {
                 if (gamesCarouselState.pointerId !== null && event.pointerId !== gamesCarouselState.pointerId) return;
+
+                if (eventName === 'pointerup' && !gamesCarouselState.dragged && gamesCarouselState.pressedCard) {
+                    handleGameClick(gamesCarouselState.pressedCard);
+                    event.preventDefault();
+                }
+
                 endGamesCarouselDrag();
             });
         });
@@ -796,11 +805,7 @@
                 console.log('Packages data:', data);
                 applyGameToSidebar(data.game);
                 renderPackages(data.packages);
-                if (data.game && data.game.requires_manual_login_popup) {
-                    openManualInfoPopup();
-                } else {
-                    closeManualInfoPopup();
-                }
+                closeManualInfoPopup();
                 if (data.game && data.game.show_selection_popup) {
                     openGameSelectionPopup();
                 } else {
