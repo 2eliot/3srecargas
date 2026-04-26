@@ -1195,7 +1195,15 @@
             playerSection.style.display = 'none';
         } else {
             playerSection.style.display = 'block';
-            if (playerIdLabel) playerIdLabel.textContent = game.player_id_label || 'ID del jugador';
+            if (playerIdLabel) {
+                if (playerInputType === 'email') {
+                    playerIdLabel.textContent = 'Correo electrónico';
+                } else if (playerInputType === 'text') {
+                    playerIdLabel.textContent = game.player_id_label || 'Dato del jugador';
+                } else {
+                    playerIdLabel.textContent = game.player_id_label || 'ID del jugador';
+                }
+            }
             if (playerInput) {
                 playerInput.dataset.playerInputType = playerInputType;
                 if (playerInputType === 'email') {
