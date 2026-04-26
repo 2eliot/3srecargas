@@ -1017,10 +1017,21 @@ body.modal-open {
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
+    touch-action: pan-y;
+    scrollbar-width: none;
     padding: 20px 36px 12px;
     margin: 0;
 }
 .games-grid::-webkit-scrollbar { height: 0; }
+.games-grid.is-dragging {
+    cursor: grabbing;
+    scroll-behavior: auto;
+    user-select: none;
+}
+.games-grid.is-dragging .game-card,
+.games-grid.is-dragging .game-card * {
+    pointer-events: none;
+}
 @media (min-width: 1025px) {
     .games-grid {
         gap: 12px;
@@ -1053,6 +1064,7 @@ body.modal-open {
 .carousel-nav.prev { left: 8px; }
 .carousel-nav.next { right: 8px; }
 .carousel-nav:disabled { opacity: .3; pointer-events: none; }
+.carousel-nav.is-hidden { opacity: 0; pointer-events: none; }
 
 
 /* ── Game Card ──────────────────────────────────────────── */
@@ -3092,6 +3104,7 @@ body.modal-open {
         overflow-x: auto !important;
         scroll-behavior: smooth;
         scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
         gap: 8px !important;
         justify-content: flex-start !important;
         padding: 8px 16px !important;
@@ -3107,8 +3120,13 @@ body.modal-open {
         aspect-ratio: 1 / 1.2;
     }
     .carousel-nav {
-        display: none !important;
+        display: flex !important;
+        width: 32px;
+        height: 32px;
+        font-size: 20px;
     }
+    .carousel-nav.prev { left: 4px; }
+    .carousel-nav.next { right: 4px; }
     .game-title {
         height: 28px;
         font-size: 10px;

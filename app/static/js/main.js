@@ -45,6 +45,13 @@
     var supportIdentityInput = document.getElementById('supportOrderIdentity');
     var supportGameInput = document.getElementById('supportGame');
     var supportReasonInput = document.getElementById('supportReason');
+    var gamesCarouselState = {
+        pointerId: null,
+        startX: 0,
+        startScrollLeft: 0,
+        dragged: false,
+        suppressClickUntil: 0
+    };
     var rankingState = {
         loading: false,
         loaded: false,
@@ -52,11 +59,100 @@
         items: []
     };
 
+    function gamesGridHasOverflow() {
+        if (!gamesGridEl) return false;
+        return (gamesGridEl.scrollWidth - gamesGridEl.clientWidth) > 4;
+    }
+
+    function updateGamesCarouselNav() {
+        if (!gamesGridEl) return;
+
+        var maxScrollLeft = Math.max(0, gamesGridEl.scrollWidth - gamesGridEl.clientWidth);
+        var currentScrollLeft = Math.max(0, gamesGridEl.scrollLeft);
+        var canScroll = maxScrollLeft > 4;
+
+        if (gamesPrevBtn) {
+            gamesPrevBtn.disabled = !canScroll || currentScrollLeft <= 4;
+            gamesPrevBtn.classList.toggle('is-hidden', !canScroll);
+        }
+
+        if (gamesNextBtn) {
+            gamesNextBtn.disabled = !canScroll || currentScrollLeft >= (maxScrollLeft - 4);
+            gamesNextBtn.classList.toggle('is-hidden', !canScroll);
+        }
+    }
+
     function scrollGames(direction) {
         if (!gamesGridEl) return;
         var firstCard = gamesGridEl.querySelector('.game-card');
-        var cardWidth = firstCard ? firstCard.offsetWidth + 8 : 180;
+        var computedStyle = firstCard ? window.getComputedStyle(firstCard) : null;
+        var gap = computedStyle ? parseFloat(computedStyle.marginRight || '0') : 0;
+        var cardWidth = firstCard ? firstCard.offsetWidth + gap + 12 : 180;
         gamesGridEl.scrollBy({ left: direction * cardWidth * 3, behavior: 'smooth' });
+        window.setTimeout(updateGamesCarouselNav, 220);
+    }
+
+    function endGamesCarouselDrag() {
+        if (!gamesGridEl) return;
+
+        if (gamesCarouselState.dragged) {
+            gamesCarouselState.suppressClickUntil = Date.now() + 250;
+        }
+
+        gamesCarouselState.pointerId = null;
+        gamesCarouselState.dragged = false;
+        gamesGridEl.classList.remove('is-dragging');
+        updateGamesCarouselNav();
+    }
+
+    function initGamesCarouselInteractions() {
+        if (!gamesGridEl || gamesGridEl.dataset.carouselReady === '1') return;
+
+        gamesGridEl.addEventListener('scroll', updateGamesCarouselNav, { passive: true });
+        gamesGridEl.addEventListener('dragstart', function (event) {
+            event.preventDefault();
+        });
+
+        gamesGridEl.addEventListener('pointerdown', function (event) {
+            if (!gamesGridHasOverflow()) return;
+            if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+            gamesCarouselState.pointerId = event.pointerId;
+            gamesCarouselState.startX = event.clientX;
+            gamesCarouselState.startScrollLeft = gamesGridEl.scrollLeft;
+            gamesCarouselState.dragged = false;
+            gamesGridEl.classList.add('is-dragging');
+        });
+
+        gamesGridEl.addEventListener('pointermove', function (event) {
+            if (gamesCarouselState.pointerId !== event.pointerId) return;
+
+            var deltaX = event.clientX - gamesCarouselState.startX;
+            if (Math.abs(deltaX) > 6) {
+                gamesCarouselState.dragged = true;
+            }
+
+            if (!gamesCarouselState.dragged) return;
+
+            gamesGridEl.scrollLeft = gamesCarouselState.startScrollLeft - deltaX;
+            event.preventDefault();
+        });
+
+        ['pointerup', 'pointercancel', 'lostpointercapture', 'pointerleave'].forEach(function (eventName) {
+            gamesGridEl.addEventListener(eventName, function (event) {
+                if (gamesCarouselState.pointerId !== null && event.pointerId !== gamesCarouselState.pointerId) return;
+                endGamesCarouselDrag();
+            });
+        });
+
+        gamesGridEl.addEventListener('click', function (event) {
+            if (Date.now() >= gamesCarouselState.suppressClickUntil) return;
+            event.preventDefault();
+            event.stopPropagation();
+        }, true);
+
+        gamesGridEl.dataset.carouselReady = '1';
+        updateGamesCarouselNav();
     }
 
     if (gamesPrevBtn) {
@@ -65,6 +161,9 @@
     if (gamesNextBtn) {
         gamesNextBtn.addEventListener('click', function () { scrollGames(1); });
     }
+
+    initGamesCarouselInteractions();
+    window.addEventListener('resize', updateGamesCarouselNav);
 
     initRememberedContact();
 
@@ -89,12 +188,14 @@
     function loadGames(category) {
         var grid = document.getElementById('gamesGrid');
         grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Cargando...</div>';
+        updateGamesCarouselNav();
 
         fetch('/api/games?category=' + encodeURIComponent(category))
             .then(function (r) { return r.json(); })
             .then(function (data) { renderGames(data.games); })
             .catch(function () {
                 grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Error al cargar juegos.</div>';
+                updateGamesCarouselNav();
             });
     }
 
@@ -573,6 +674,7 @@
 
         if (!games || games.length === 0) {
             grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">No hay productos en esta categoría aún.</div>';
+            updateGamesCarouselNav();
             return;
         }
 
@@ -593,6 +695,8 @@
             card.addEventListener('click', function () { handleGameClick(card); });
             grid.appendChild(card);
         });
+
+        updateGamesCarouselNav();
     }
 
     /* ── Handle Game Card Click ───────────────────────────── */
@@ -852,6 +956,13 @@
     function scheduleAutoVerify(delayMs, silent) {
         var input = document.getElementById('playerId');
         if (!input) return;
+        if (input.dataset.digitsOnly !== '1') {
+            if (verifyState.verifyTimer) {
+                clearTimeout(verifyState.verifyTimer);
+                verifyState.verifyTimer = null;
+            }
+            return;
+        }
         var uid = (input.value || '').trim();
         if (verifyState.verifyTimer) {
             clearTimeout(verifyState.verifyTimer);
@@ -874,6 +985,9 @@
         var silent = !!(opts && opts.silent);
         var input = document.getElementById('playerId');
         if (!input) return;
+        if (input.dataset.digitsOnly !== '1') {
+            return;
+        }
         var uid = (input.value || '').trim();
         if (!uid) { if (!silent) setNickUIErr('Ingresa tu ID'); return; }
         if (input.dataset.digitsOnly === '1' && !/^\d+$/.test(uid)) { if (!silent) setNickUIErr('El ID debe ser numérico'); return; }
@@ -1010,6 +1124,17 @@
             resetNickUI();
             setupVerifyListeners();
         } else {
+            if (verifyState.verifyTimer) {
+                clearTimeout(verifyState.verifyTimer);
+                verifyState.verifyTimer = null;
+            }
+            if (verifyState.inflightController) {
+                try { verifyState.inflightController.abort(); } catch (_) {}
+                verifyState.inflightController = null;
+            }
+            verifyState.verifying = false;
+            verifyState.lastUidRequested = '';
+            verifyState.lastUidVerified = '';
             if (btn) btn.style.display = 'none';
             if (nicknameEl) { nicknameEl.textContent = ''; nicknameEl.style.display = 'none'; }
         }
