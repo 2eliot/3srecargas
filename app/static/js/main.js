@@ -52,6 +52,7 @@
         dragged: false,
         suppressClickUntil: 0
     };
+    var gamesGridResizeObserver = null;
     var rankingState = {
         loading: false,
         loaded: false,
@@ -153,6 +154,16 @@
 
         gamesGridEl.dataset.carouselReady = '1';
         updateGamesCarouselNav();
+
+        if ('ResizeObserver' in window) {
+            gamesGridResizeObserver = new ResizeObserver(function () {
+                updateGamesCarouselNav();
+            });
+            gamesGridResizeObserver.observe(gamesGridEl);
+        }
+
+        window.requestAnimationFrame(updateGamesCarouselNav);
+        window.setTimeout(updateGamesCarouselNav, 250);
     }
 
     if (gamesPrevBtn) {
