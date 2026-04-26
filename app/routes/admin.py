@@ -48,6 +48,7 @@ RANKING_PRIZE_LABELS = {
     'free_fire': ['6160 diamantes', '2398 diamantes', '1166 diamantes', '572 diamantes', '341 diamantes'],
     'blood_strike': ['1500 oro', '700 oro', '350 oro', '200 oro', '120 oro'],
 }
+GAME_PLAYER_INPUT_TYPES = {'numeric', 'text', 'email'}
 
 
 def slugify_category(value):
@@ -55,6 +56,11 @@ def slugify_category(value):
     value = re.sub(r'[^a-z0-9]+', '-', value)
     value = re.sub(r'-{2,}', '-', value).strip('-')
     return value
+
+
+def normalize_game_player_input_type(value):
+    normalized = (value or '').strip().lower()
+    return normalized if normalized in GAME_PLAYER_INPUT_TYPES else 'numeric'
 
 
 def allowed_file(filename):
@@ -409,6 +415,7 @@ def game_add():
     category_id = request.form.get('category_id')
     requires_zone_id = bool(request.form.get('requires_zone_id'))
     player_id_label = request.form.get('player_id_label', 'Player ID').strip()
+    player_id_input_type = normalize_game_player_input_type(request.form.get('player_id_input_type'))
     zone_id_label = request.form.get('zone_id_label', 'Zone ID').strip()
     is_automated = bool(request.form.get('is_automated'))
     show_selection_popup = bool(request.form.get('show_selection_popup'))
@@ -428,6 +435,7 @@ def game_add():
     game = Game(
         name=name, slug=slug, category_id=int(category_id),
         requires_zone_id=requires_zone_id, player_id_label=player_id_label,
+        player_id_input_type=player_id_input_type,
         zone_id_label=zone_id_label, is_automated=is_automated,
         show_selection_popup=show_selection_popup,
         position=position, description=description, image=image,
@@ -446,6 +454,9 @@ def game_edit(game_id):
     game.category_id = int(request.form.get('category_id', game.category_id))
     game.requires_zone_id = bool(request.form.get('requires_zone_id'))
     game.player_id_label = request.form.get('player_id_label', game.player_id_label).strip()
+    game.player_id_input_type = normalize_game_player_input_type(
+        request.form.get('player_id_input_type', game.player_id_input_type)
+    )
     game.zone_id_label = request.form.get('zone_id_label', game.zone_id_label).strip()
     game.is_automated = bool(request.form.get('is_automated'))
     game.show_selection_popup = bool(request.form.get('show_selection_popup'))

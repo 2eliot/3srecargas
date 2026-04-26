@@ -9,6 +9,11 @@ from ..models import db, AdminUser, User, Order
 EMAIL_ACCOUNT_KINDS = {'wallet_email', 'delivery_email', 'binance_account', 'email'}
 
 
+def _get_game_player_input_type(game):
+    value = (getattr(game, 'player_id_input_type', '') or '').strip().lower()
+    return value if value in {'numeric', 'text', 'email'} else 'numeric'
+
+
 def normalize_customer_identifier(raw_identifier, account_kind='generic'):
     value = ' '.join(str(raw_identifier or '').strip().split())
     if not value:
@@ -27,7 +32,7 @@ def get_game_account_meta(game):
     category_slug = ((game.category.slug if game and game.category else '') or '').lower()
     game_name = (game.name or '').strip() if game else 'Servicio'
     account_kind = 'player_id'
-    identifier_label = 'ID del jugador'
+    identifier_label = (getattr(game, 'player_id_label', '') or 'ID del jugador').strip()
 
     if category_slug == 'tarjetas':
         account_kind = 'delivery_email'
@@ -39,6 +44,8 @@ def get_game_account_meta(game):
         else:
             account_kind = 'wallet_email'
             identifier_label = 'Correo o cuenta del servicio'
+    elif _get_game_player_input_type(game) == 'email':
+        account_kind = 'email'
 
     return {
         'scope_key': f'game:{game.id}' if game and game.id is not None else 'game:unknown',
@@ -143,6 +150,8 @@ def attach_matching_orders_to_customer(user, game_id, raw_identifier, account_ki
     query = Order.query.filter(Order.game_id == game_id)
     if account_kind == 'delivery_email':
         query = query.filter(func.lower(Order.email) == normalized_identifier)
+    elif account_kind == 'email':
+        query = query.filter(func.lower(Order.player_id) == normalized_identifier)
     elif account_kind in {'wallet_email', 'binance_account'}:
         query = query.filter(
             or_(
@@ -175,6 +184,8 @@ def hydrate_scoped_customer_from_orders(game, raw_identifier):
     query = Order.query.filter(Order.game_id == game.id)
     if meta['account_kind'] == 'delivery_email':
         query = query.filter(func.lower(Order.email) == normalized_identifier)
+    elif meta['account_kind'] == 'email':
+        query = query.filter(func.lower(Order.player_id) == normalized_identifier)
     elif meta['account_kind'] in {'wallet_email', 'binance_account'}:
         query = query.filter(
             or_(

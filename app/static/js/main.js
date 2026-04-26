@@ -876,7 +876,7 @@
         if (!input) return;
         var uid = (input.value || '').trim();
         if (!uid) { if (!silent) setNickUIErr('Ingresa tu ID'); return; }
-        if (!/^\d+$/.test(uid)) { if (!silent) setNickUIErr('El ID debe ser numérico'); return; }
+        if (input.dataset.digitsOnly === '1' && !/^\d+$/.test(uid)) { if (!silent) setNickUIErr('El ID debe ser numérico'); return; }
         if (uid === verifyState.lastUidRequested && verifyState.verifying) return;
 
         if (uid === verifyState.lastUidVerified) {
@@ -931,6 +931,20 @@
             });
     }
 
+    function getPlayerInputType(game) {
+        if (!game) return 'numeric';
+        if (game.category_slug === 'wallet') return 'email';
+        if (game.category_slug === 'tarjetas') return 'none';
+
+        var inputType = String(game.player_id_input_type || '').toLowerCase();
+        return ['numeric', 'email', 'text'].indexOf(inputType) >= 0 ? inputType : 'numeric';
+    }
+
+    function getPlayerInputRequiredMessage(game) {
+        if (getPlayerInputType(game) === 'email') return 'Por favor ingresa tu correo electrónico.';
+        return 'Por favor ingresa tu ' + (game.player_id_label || 'ID del jugador') + '.';
+    }
+
     function setupVerifyListeners() {
         var btn = document.getElementById('btnVerifyPlayer');
         var input = document.getElementById('playerId');
@@ -980,7 +994,7 @@
     function updateVerifyUI(game) {
         var btn = document.getElementById('btnVerifyPlayer');
         var nicknameEl = document.getElementById('playerNickname');
-        var hasVerify = game && game.scrape_enabled && (game.is_ff_verify || game.is_bs_verify);
+        var hasVerify = game && getPlayerInputType(game) === 'numeric' && game.scrape_enabled && (game.is_ff_verify || game.is_bs_verify);
 
         verifyState.scrapeEnabled = !!(game && game.scrape_enabled);
         verifyState.isFFVerify = !!(game && game.is_ff_verify);
@@ -1023,6 +1037,7 @@
         var zoneIdLabel = document.getElementById('zoneIdLabel');
         var playerHint = document.getElementById('playerHint');
         var playerInput = document.getElementById('playerId');
+        var playerInputType = getPlayerInputType(game);
 
         if (!playerSection) return;
 
@@ -1044,15 +1059,35 @@
             playerSection.style.display = 'block';
             if (playerIdLabel) playerIdLabel.textContent = game.player_id_label || 'ID del jugador';
             if (playerInput) {
-                playerInput.type = 'text';
-                playerInput.placeholder = 'Ingresa tu ID';
-                playerInput.inputMode = 'numeric';
-                playerInput.pattern = '[0-9]*';
-                playerInput.dataset.digitsOnly = '1';
-                playerInput.value = String(playerInput.value || '').replace(/\D+/g, '');
+                playerInput.dataset.playerInputType = playerInputType;
+                if (playerInputType === 'email') {
+                    playerInput.type = 'email';
+                    playerInput.placeholder = 'correo@ejemplo.com';
+                    playerInput.inputMode = 'email';
+                    playerInput.removeAttribute('pattern');
+                    playerInput.dataset.digitsOnly = '0';
+                } else if (playerInputType === 'text') {
+                    playerInput.type = 'text';
+                    playerInput.placeholder = 'Ingresa tu dato';
+                    playerInput.inputMode = 'text';
+                    playerInput.removeAttribute('pattern');
+                    playerInput.dataset.digitsOnly = '0';
+                    playerInput.value = String(playerInput.value || '').trim();
+                } else {
+                    playerInput.type = 'text';
+                    playerInput.placeholder = 'Ingresa tu ID';
+                    playerInput.inputMode = 'numeric';
+                    playerInput.pattern = '[0-9]*';
+                    playerInput.dataset.digitsOnly = '1';
+                    playerInput.value = String(playerInput.value || '').replace(/\D+/g, '');
+                }
             }
             if (playerHint) {
-                playerHint.textContent = 'Ingresa correctamente tu ' + (game.player_id_label || 'ID') + ' para evitar errores en la recarga.';
+                if (playerInputType === 'email') {
+                    playerHint.textContent = 'Ingresa correctamente tu correo electrónico para evitar errores en la recarga.';
+                } else {
+                    playerHint.textContent = 'Ingresa correctamente tu ' + (game.player_id_label || 'ID') + ' para evitar errores en la recarga.';
+                }
             }
 
             if (game.requires_zone_id) {
@@ -1603,24 +1638,12 @@
                 return;
             }
             
-            // Validar player ID solo si no es wallet ni tarjetas
-            if (currentGame && currentGame.category_slug !== 'wallet' && currentGame.category_slug !== 'tarjetas') {
+            if (currentGame && currentGame.category_slug !== 'tarjetas') {
                 var playerIdInput = document.getElementById('playerId');
                 if (playerIdInput && !playerIdInput.value.trim()) {
                     e.preventDefault();
-                    alert('Por favor ingresa tu ID del jugador.');
+                    alert(getPlayerInputRequiredMessage(currentGame));
                     playerIdInput.focus();
-                    return;
-                }
-            }
-            
-            // Validar correo/teléfono en wallet
-            if (currentGame && currentGame.category_slug === 'wallet') {
-                var walletInput = document.getElementById('playerId');
-                if (walletInput && !walletInput.value.trim()) {
-                    e.preventDefault();
-                    alert('Por favor ingresa tu correo electrónico.');
-                    walletInput.focus();
                     return;
                 }
             }

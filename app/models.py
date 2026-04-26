@@ -30,6 +30,7 @@ class Game(db.Model):
     position = db.Column(db.Integer, default=100)
     requires_zone_id = db.Column(db.Boolean, default=False)
     player_id_label = db.Column(db.String(50), default='Player ID')
+    player_id_input_type = db.Column(db.String(20), default='numeric')
     zone_id_label = db.Column(db.String(50), default='Zone ID')
     is_automated = db.Column(db.Boolean, default=False)
     show_selection_popup = db.Column(db.Boolean, default=False)
@@ -51,6 +52,7 @@ class Game(db.Model):
             'category_slug': self.category.slug if self.category else None,
             'requires_zone_id': self.requires_zone_id,
             'player_id_label': self.player_id_label,
+            'player_id_input_type': self.player_id_input_type,
             'zone_id_label': self.zone_id_label,
             'is_automated': self.is_automated,
             'show_selection_popup': self.show_selection_popup,

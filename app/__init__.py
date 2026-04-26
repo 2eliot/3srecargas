@@ -263,7 +263,9 @@ def _ensure_game_columns():
         existing = {r[1] for r in rows}
         if 'show_selection_popup' not in existing:
             db.session.execute(text('ALTER TABLE games ADD COLUMN show_selection_popup BOOLEAN DEFAULT 0'))
-            db.session.commit()
+        if 'player_id_input_type' not in existing:
+            db.session.execute(text("ALTER TABLE games ADD COLUMN player_id_input_type VARCHAR(20) DEFAULT 'numeric'"))
+        db.session.commit()
     except Exception:
         db.session.rollback()
 

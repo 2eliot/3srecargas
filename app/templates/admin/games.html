@@ -109,6 +109,14 @@
                     <input type="text" name="player_id_label" value="Player ID" placeholder="Player ID, UID, Nick...">
                 </div>
                 <div class="form-group">
+                    <label>Tipo de campo principal</label>
+                    <select name="player_id_input_type">
+                        <option value="numeric" selected>Solo numeros</option>
+                        <option value="email">Correo electronico</option>
+                        <option value="text">Texto libre</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Label Zone ID</label>
                     <input type="text" name="zone_id_label" value="Zone ID" placeholder="Zone ID, Server...">
                 </div>
@@ -170,6 +178,14 @@
                     <input type="text" name="player_id_label" id="editPlayerLabel">
                 </div>
                 <div class="form-group">
+                    <label>Tipo de campo principal</label>
+                    <select name="player_id_input_type" id="editPlayerInputType">
+                        <option value="numeric">Solo numeros</option>
+                        <option value="email">Correo electronico</option>
+                        <option value="text">Texto libre</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Label Zone ID</label>
                     <input type="text" name="zone_id_label" id="editZoneLabel">
                 </div>
@@ -221,6 +237,7 @@ function openEditGame(btn) {
     document.getElementById('editGameCategory').value = game.category_id || '';
     document.getElementById('editGamePosition').value = game.position;
     document.getElementById('editPlayerLabel').value = game.player_id_label;
+    document.getElementById('editPlayerInputType').value = game.player_id_input_type || 'numeric';
     document.getElementById('editZoneLabel').value = game.zone_id_label;
     document.getElementById('editGameDesc').value = game.description || '';
     document.getElementById('editRequiresZone').checked = game.requires_zone_id;

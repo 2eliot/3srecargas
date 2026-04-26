@@ -42,6 +42,24 @@ from ..utils.notifications import notify_order_created
 
 def _digits_only(value):
     return ''.join(ch for ch in str(value or '') if ch.isdigit())
+
+
+def _get_game_player_input_type(game):
+    category_slug = ((game.category.slug if game and game.category else '') or '').lower()
+    if category_slug == 'wallet':
+        return 'email'
+    if category_slug == 'tarjetas':
+        return 'none'
+
+    value = (getattr(game, 'player_id_input_type', '') or '').strip().lower()
+    return value if value in {'numeric', 'text', 'email'} else 'numeric'
+
+
+def _normalize_game_player_id(game, value):
+    cleaned = str(value or '').strip()
+    if _get_game_player_input_type(game) == 'numeric':
+        return _digits_only(cleaned)
+    return cleaned
 from ..utils.reference_extraction import extract_reference_from_image_bytes, extract_reference_from_image_path
 from ..utils.auth_accounts import attach_matching_orders_to_customer, extract_customer_identifier_for_game, get_or_create_scoped_customer
 
@@ -390,8 +408,8 @@ def checkout(package_id):
             category_slug = (game.category.slug if game.category else '').lower()
             tarjetas_without_id = category_slug == 'tarjetas'
 
-            if not is_wallet and not tarjetas_without_id:
-                player_id = _digits_only(player_id)
+            if not tarjetas_without_id:
+                player_id = _normalize_game_player_id(game, player_id)
 
             if is_wallet:
                 if not player_id:
@@ -526,8 +544,8 @@ def checkout(package_id):
             aff_code = (session.get('affiliate_code', '') or '').strip()
         affiliate = None
         player_id_value = (data.get('player_id') or '').strip()
-        if not is_wallet:
-            player_id_value = _digits_only(player_id_value)
+        if _get_game_player_input_type(game) != 'none':
+            player_id_value = _normalize_game_player_id(game, player_id_value)
 
         payment_reference = payment_reference_input[:255]
         payment_reference_last5 = normalize_reference_last5(payment_reference)
