@@ -10,6 +10,7 @@
     var appliedDiscountCode = '';
     var usdRate = typeof window.USD_RATE_BS === 'number' ? window.USD_RATE_BS : 0;
     var defaultPackageId = (typeof window.DEFAULT_PACKAGE_ID === 'number' ? window.DEFAULT_PACKAGE_ID : null);
+    var gamesViewportEl = document.getElementById('gamesViewport');
     var gamesGridEl = document.getElementById('gamesGrid');
     var gamesPrevBtn = document.getElementById('gamesPrev');
     var gamesNextBtn = document.getElementById('gamesNext');
@@ -61,15 +62,15 @@
     };
 
     function gamesGridHasOverflow() {
-        if (!gamesGridEl) return false;
-        return (gamesGridEl.scrollWidth - gamesGridEl.clientWidth) > 4;
+        if (!gamesViewportEl) return false;
+        return (gamesViewportEl.scrollWidth - gamesViewportEl.clientWidth) > 4;
     }
 
     function updateGamesCarouselNav() {
-        if (!gamesGridEl) return;
+        if (!gamesViewportEl) return;
 
-        var maxScrollLeft = Math.max(0, gamesGridEl.scrollWidth - gamesGridEl.clientWidth);
-        var currentScrollLeft = Math.max(0, gamesGridEl.scrollLeft);
+        var maxScrollLeft = Math.max(0, gamesViewportEl.scrollWidth - gamesViewportEl.clientWidth);
+        var currentScrollLeft = Math.max(0, gamesViewportEl.scrollLeft);
         var canScroll = maxScrollLeft > 4;
 
         if (gamesPrevBtn) {
@@ -84,17 +85,17 @@
     }
 
     function scrollGames(direction) {
-        if (!gamesGridEl) return;
+        if (!gamesViewportEl) return;
         var firstCard = gamesGridEl.querySelector('.game-card');
         var computedStyle = firstCard ? window.getComputedStyle(firstCard) : null;
         var gap = computedStyle ? parseFloat(computedStyle.marginRight || '0') : 0;
         var cardWidth = firstCard ? firstCard.offsetWidth + gap + 12 : 180;
-        gamesGridEl.scrollBy({ left: direction * cardWidth * 3, behavior: 'smooth' });
+        gamesViewportEl.scrollBy({ left: direction * cardWidth * 3, behavior: 'smooth' });
         window.setTimeout(updateGamesCarouselNav, 220);
     }
 
     function endGamesCarouselDrag() {
-        if (!gamesGridEl) return;
+        if (!gamesViewportEl) return;
 
         if (gamesCarouselState.dragged) {
             gamesCarouselState.suppressClickUntil = Date.now() + 250;
@@ -102,30 +103,30 @@
 
         gamesCarouselState.pointerId = null;
         gamesCarouselState.dragged = false;
-        gamesGridEl.classList.remove('is-dragging');
+        gamesViewportEl.classList.remove('is-dragging');
         updateGamesCarouselNav();
     }
 
     function initGamesCarouselInteractions() {
-        if (!gamesGridEl || gamesGridEl.dataset.carouselReady === '1') return;
+        if (!gamesViewportEl || !gamesGridEl || gamesViewportEl.dataset.carouselReady === '1') return;
 
-        gamesGridEl.addEventListener('scroll', updateGamesCarouselNav, { passive: true });
-        gamesGridEl.addEventListener('dragstart', function (event) {
+        gamesViewportEl.addEventListener('scroll', updateGamesCarouselNav, { passive: true });
+        gamesViewportEl.addEventListener('dragstart', function (event) {
             event.preventDefault();
         });
 
-        gamesGridEl.addEventListener('pointerdown', function (event) {
+        gamesViewportEl.addEventListener('pointerdown', function (event) {
             if (!gamesGridHasOverflow()) return;
             if (event.pointerType === 'mouse' && event.button !== 0) return;
 
             gamesCarouselState.pointerId = event.pointerId;
             gamesCarouselState.startX = event.clientX;
-            gamesCarouselState.startScrollLeft = gamesGridEl.scrollLeft;
+            gamesCarouselState.startScrollLeft = gamesViewportEl.scrollLeft;
             gamesCarouselState.dragged = false;
-            gamesGridEl.classList.add('is-dragging');
+            gamesViewportEl.classList.add('is-dragging');
         });
 
-        gamesGridEl.addEventListener('pointermove', function (event) {
+        gamesViewportEl.addEventListener('pointermove', function (event) {
             if (gamesCarouselState.pointerId !== event.pointerId) return;
 
             var deltaX = event.clientX - gamesCarouselState.startX;
@@ -135,30 +136,31 @@
 
             if (!gamesCarouselState.dragged) return;
 
-            gamesGridEl.scrollLeft = gamesCarouselState.startScrollLeft - deltaX;
+            gamesViewportEl.scrollLeft = gamesCarouselState.startScrollLeft - deltaX;
             event.preventDefault();
         });
 
         ['pointerup', 'pointercancel', 'lostpointercapture', 'pointerleave'].forEach(function (eventName) {
-            gamesGridEl.addEventListener(eventName, function (event) {
+            gamesViewportEl.addEventListener(eventName, function (event) {
                 if (gamesCarouselState.pointerId !== null && event.pointerId !== gamesCarouselState.pointerId) return;
                 endGamesCarouselDrag();
             });
         });
 
-        gamesGridEl.addEventListener('click', function (event) {
+        gamesViewportEl.addEventListener('click', function (event) {
             if (Date.now() >= gamesCarouselState.suppressClickUntil) return;
             event.preventDefault();
             event.stopPropagation();
         }, true);
 
-        gamesGridEl.dataset.carouselReady = '1';
+        gamesViewportEl.dataset.carouselReady = '1';
         updateGamesCarouselNav();
 
         if ('ResizeObserver' in window) {
             gamesGridResizeObserver = new ResizeObserver(function () {
                 updateGamesCarouselNav();
             });
+            gamesGridResizeObserver.observe(gamesViewportEl);
             gamesGridResizeObserver.observe(gamesGridEl);
         }
 

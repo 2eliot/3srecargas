@@ -1008,29 +1008,34 @@ body.modal-open {
     }
 }
 
-.games-grid {
-    display: flex;
-    gap: 12px;
+.games-viewport {
     overflow-x: auto;
-    justify-content: flex-start;
+    overflow-y: hidden;
     scroll-behavior: smooth;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
     touch-action: pan-y;
     scrollbar-width: none;
-    padding: 20px 36px 12px;
-    margin: 0;
 }
-.games-grid::-webkit-scrollbar { height: 0; }
-.games-grid.is-dragging {
+.games-viewport::-webkit-scrollbar { height: 0; }
+.games-viewport.is-dragging {
     cursor: grabbing;
     scroll-behavior: auto;
     user-select: none;
 }
-.games-grid.is-dragging .game-card,
-.games-grid.is-dragging .game-card * {
+.games-viewport.is-dragging .game-card,
+.games-viewport.is-dragging .game-card * {
     pointer-events: none;
+}
+
+.games-grid {
+    display: flex;
+    gap: 12px;
+    width: max-content;
+    overflow-x: auto;
+    padding: 20px 36px 12px;
+    margin: 0;
 }
 @media (min-width: 1025px) {
     .games-grid {
@@ -3101,18 +3106,17 @@ body.modal-open {
     }
     .games-grid {
         display: flex !important;
+        gap: 8px !important;
+        padding: 8px 16px !important;
+        margin: 0 !important;
+        width: max-content !important;
+    }
+    .games-viewport {
         overflow-x: auto !important;
         scroll-behavior: smooth;
         scroll-snap-type: x mandatory;
         -webkit-overflow-scrolling: touch;
-        gap: 8px !important;
-        justify-content: flex-start !important;
-        padding: 8px 16px !important;
-        margin: 0 !important;
-        width: max-content !important;
-        min-width: 100% !important;
     }
-    .games-grid::-webkit-scrollbar { height: 0; }
     .game-card {
         flex: 0 0 94px;
         width: 94px;

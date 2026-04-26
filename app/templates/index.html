@@ -32,29 +32,31 @@
                     <span>‹</span>
                 </button>
 
-                <div class="games-grid" id="gamesGrid">
+                <div class="games-viewport" id="gamesViewport">
+                    <div class="games-grid" id="gamesGrid">
 
-                    {% for game in games %}
-                    <div class="game-card {% if game.is_automated %}is-automated{% endif %}"
-                         data-game-id="{{ game.id }}"
-                         data-game-name="{{ game.name }}">
-                        <div class="game-img-wrapper">
-                            {% if game.image %}
-                            <img src="{{ url_for('static', filename='uploads/' + game.image) }}"
-                                 alt="{{ game.name }}" loading="lazy">
-                            {% else %}
-                            <div class="game-img-placeholder">
-                                <span>{{ game.name[0] | upper }}</span>
+                        {% for game in games %}
+                        <div class="game-card {% if game.is_automated %}is-automated{% endif %}"
+                             data-game-id="{{ game.id }}"
+                             data-game-name="{{ game.name }}">
+                            <div class="game-img-wrapper">
+                                {% if game.image %}
+                                <img src="{{ url_for('static', filename='uploads/' + game.image) }}"
+                                     alt="{{ game.name }}" loading="lazy">
+                                {% else %}
+                                <div class="game-img-placeholder">
+                                    <span>{{ game.name[0] | upper }}</span>
+                                </div>
+                                {% endif %}
                             </div>
-                            {% endif %}
+                            <div class="game-title">{{ game.name }}</div>
                         </div>
-                        <div class="game-title">{{ game.name }}</div>
+                        {% else %}
+                        <div class="empty-state">
+                            <p>No hay productos en esta categoría aún.</p>
+                        </div>
+                        {% endfor %}
                     </div>
-                    {% else %}
-                    <div class="empty-state">
-                        <p>No hay productos en esta categoría aún.</p>
-                    </div>
-                    {% endfor %}
 
                 </div>
 
