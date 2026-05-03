@@ -526,6 +526,7 @@
     gap: 10px;
     transform: translateY(0);
     will-change: transform;
+    filter: blur(0px);
 }
 
 .slot-symbol {
@@ -558,11 +559,11 @@
 }
 
 .slot-reel.is-spinning .slot-reel-strip {
-    filter: blur(.7px);
+    filter: blur(var(--slot-blur, 0px));
 }
 
 .slot-reel.is-stopping .slot-reel-strip {
-    filter: blur(.18px);
+    filter: blur(var(--slot-blur, .18px));
 }
 
 .surprise-grid {
@@ -1048,23 +1049,52 @@
             main = 'FAILED';
         } else if (upper.indexOf('CUP') !== -1) {
             mark = '◻';
-            main = 'CUPON';
-            sub = '%';
-        } else if (upper.indexOf('$1') !== -1) {
-            mark = '◉';
-            main = '$1.00';
-            sub = 'CASH';
-        } else if (upper.indexOf('$3') !== -1) {
-            mark = '◉';
-            main = '$3.00';
-            sub = 'MIN';
-        } else if (upper.indexOf('$5') !== -1) {
-            mark = '◉';
-            main = '$5.00';
-            sub = 'PRO';
+            main = raw.replace(/^cup[oó]n\s*/i, '').trim() || 'CUPON';
+            sub = 'CUPON';
+        } else {
+            mark = '◻';
+            main = raw;
+            sub = 'PREMIO';
         }
 
         return { mark: mark, main: main, sub: sub };
+    }
+
+    function getMinigameRewardCatalog() {
+        return (state && Array.isArray(state.reward_catalog) && state.reward_catalog.length)
+            ? state.reward_catalog
+            : [
+                { label: 'Cupón 5%' },
+                { label: 'Cupón 10%' },
+                { label: 'Cupón 15%' },
+                { label: 'Cupón $1' },
+                { label: 'Cupón $3' },
+                { label: 'Cupón $5' }
+            ];
+    }
+
+    function buildRouletteSegmentsFromCatalog() {
+        var labels = [];
+        getMinigameRewardCatalog().forEach(function (reward) {
+            labels.push('FAILED');
+            labels.push((reward && reward.label) || 'Cupón');
+        });
+        return labels;
+    }
+
+    function buildSurpriseItemsFromCatalog() {
+        var items = [
+            { icon: '❌', label: 'FALLASTE' },
+            { icon: '❌', label: 'FALLASTE' },
+            { icon: '❌', label: 'FALLASTE' }
+        ];
+        getMinigameRewardCatalog().forEach(function (reward) {
+            items.push({
+                icon: '🎟️',
+                label: (reward && reward.label) || 'Cupón'
+            });
+        });
+        return items.slice(0, 9);
     }
 
     function polarPoint(cx, cy, radius, angleDeg) {
@@ -1145,7 +1175,7 @@
 
     function buildRouletteStage(opportunity) {
         var payload = (opportunity && opportunity.result_payload) || {};
-        var labels = payload.segments || ['FAILED', 'Cupón', '$3.00', 'FAILED', '$5.00', 'Cupón', '$1.00', 'FAILED', 'FAILED', 'Cupón'];
+        var labels = payload.segments || buildRouletteSegmentsFromCatalog();
         return '' +
             '<div class="minigame-stage">' + buildStageHeader(opportunity) +
                 '<div class="roulette-shell">' +
@@ -1240,7 +1270,7 @@
     function buildSurpriseStage(opportunity) {
         var items = ((opportunity && opportunity.result_payload) || {}).items || [];
         if (!items.length) {
-            items = new Array(9).fill(0).map(function () { return {icon: '?', label: ''}; });
+            items = buildSurpriseItemsFromCatalog();
         }
         return '' +
             '<div class="minigame-stage">' + buildStageHeader(opportunity) +
@@ -1462,70 +1492,94 @@
             '</div>';
     }
 
+    function getSlotSymbolKey(symbol) {
+        var safeSymbol = symbol || {};
+        return (safeSymbol.icon || '') + '|' + (safeSymbol.label || '');
+    }
+
+    function getSlotStarterSymbol(index) {
+        return SLOT_SYMBOL_POOL[index % SLOT_SYMBOL_POOL.length] || { icon: '❓', label: 'READY' };
+    }
+
+    function getFallbackSlotReels() {
+        return [0, 1, 2].map(function (index) {
+            return getSlotStarterSymbol(index);
+        });
+    }
+
     function createSlotSpinSequence(finalReel, index) {
         var sequence = [];
-        var total = 12 + (index * 3);
+        var total = 18 + (index * 5);
+        var finalKey = getSlotSymbolKey(finalReel);
         for (var i = 0; i < total; i += 1) {
-            sequence.push(SLOT_SYMBOL_POOL[(i + index) % SLOT_SYMBOL_POOL.length]);
+            var symbol = SLOT_SYMBOL_POOL[(i + index) % SLOT_SYMBOL_POOL.length];
+            if (getSlotSymbolKey(symbol) === finalKey) {
+                symbol = SLOT_SYMBOL_POOL[(i + index + 2) % SLOT_SYMBOL_POOL.length];
+            }
+            sequence.push(symbol);
         }
         sequence.push(finalReel || { icon: '❓', label: 'READY' });
         return sequence;
     }
 
-    function animateSlotReels() {
+    function animateSingleSlotReel(reel, finalReel, index) {
+        var strip = reel.querySelector('.slot-reel-strip');
+        if (!strip) return Promise.resolve();
+
+        var sequence = createSlotSpinSequence(finalReel, index);
+        strip.innerHTML = sequence.map(function (symbol, symbolIndex) {
+            return buildSlotSymbolMarkup(symbol, symbolIndex === sequence.length - 1);
+        }).join('');
+
+        var firstSymbol = strip.querySelector('.slot-symbol');
+        var step = firstSymbol ? firstSymbol.offsetHeight + 10 : 140;
+        var targetOffset = -((sequence.length - 1) * step);
+        var overshoot = targetOffset + Math.round(step * 0.34);
+        var rebound = targetOffset - Math.round(step * 0.14);
+        var fastOffset = Math.round(targetOffset * 0.64);
+        var slowOffset = Math.round(targetOffset * 0.88);
+
+        reel.classList.add('is-spinning');
+        reel.style.setProperty('--slot-blur', '0px');
+        strip.style.transform = 'translateY(0px)';
+
+        var animation = strip.animate([
+            { transform: 'translateY(0px)', filter: 'blur(0px)', offset: 0 },
+            { transform: 'translateY(' + fastOffset + 'px)', filter: 'blur(2.8px)', offset: 0.18 },
+            { transform: 'translateY(' + slowOffset + 'px)', filter: 'blur(6px)', offset: 0.76 },
+            { transform: 'translateY(' + overshoot + 'px)', filter: 'blur(1.2px)', offset: 0.9 },
+            { transform: 'translateY(' + rebound + 'px)', filter: 'blur(.45px)', offset: 0.96 },
+            { transform: 'translateY(' + targetOffset + 'px)', filter: 'blur(0px)', offset: 1 }
+        ], {
+            duration: 1850 + (index * 420),
+            easing: 'cubic-bezier(.16,.84,.24,1)',
+            fill: 'forwards'
+        });
+
+        return animation.finished.catch(function () {
+            return null;
+        }).then(function () {
+            reel.classList.remove('is-spinning');
+            reel.classList.add('is-stopping');
+            reel.style.setProperty('--slot-blur', '0px');
+            strip.style.transform = 'translateY(' + targetOffset + 'px)';
+            strip.style.filter = 'blur(0px)';
+            return new Promise(function (resolve) {
+                window.setTimeout(function () {
+                    reel.classList.remove('is-stopping');
+                    resolve();
+                }, 110);
+            });
+        });
+    }
+
+    function animateSlotReels(finalReels) {
         var reels = Array.prototype.slice.call(document.querySelectorAll('#slotReels .slot-reel'));
         if (!reels.length) return Promise.resolve();
+        var resolvedReels = Array.isArray(finalReels) && finalReels.length ? finalReels : getFallbackSlotReels();
 
         var animations = reels.map(function (reel, index) {
-            var strip = reel.querySelector('.slot-reel-strip');
-            if (!strip) return Promise.resolve();
-
-            var currentIcon = reel.querySelector('.slot-reel-icon');
-            var currentLabel = reel.querySelector('.slot-reel-label');
-            var finalReel = {
-                icon: currentIcon ? currentIcon.textContent.trim() : '❓',
-                label: currentLabel ? currentLabel.textContent.trim() : 'READY'
-            };
-            var sequence = createSlotSpinSequence(finalReel, index);
-
-            strip.innerHTML = sequence.map(function (symbol, symbolIndex) {
-                return buildSlotSymbolMarkup(symbol, symbolIndex === sequence.length - 1);
-            }).join('');
-
-            var firstSymbol = strip.querySelector('.slot-symbol');
-            var step = firstSymbol ? firstSymbol.offsetHeight + 10 : 140;
-            var targetOffset = -((sequence.length - 1) * step);
-            var overshoot = targetOffset + Math.round(step * 0.28);
-            var rebound = targetOffset - Math.round(step * 0.12);
-
-            reel.classList.add('is-spinning');
-            strip.style.transform = 'translateY(0px)';
-
-            var animation = strip.animate([
-                { transform: 'translateY(0px)' },
-                { transform: 'translateY(' + Math.round(targetOffset * 0.76) + 'px)', offset: 0.7 },
-                { transform: 'translateY(' + overshoot + 'px)', offset: 0.86 },
-                { transform: 'translateY(' + rebound + 'px)', offset: 0.94 },
-                { transform: 'translateY(' + targetOffset + 'px)' }
-            ], {
-                duration: 1450 + (index * 320),
-                easing: 'cubic-bezier(.14,.82,.2,1)',
-                fill: 'forwards'
-            });
-
-            return animation.finished.catch(function () {
-                return null;
-            }).then(function () {
-                reel.classList.remove('is-spinning');
-                reel.classList.add('is-stopping');
-                strip.style.transform = 'translateY(' + targetOffset + 'px)';
-                return new Promise(function (resolve) {
-                    window.setTimeout(function () {
-                        reel.classList.remove('is-stopping');
-                        resolve();
-                    }, 120);
-                });
-            });
+            return animateSingleSlotReel(reel, resolvedReels[index] || getSlotStarterSymbol(index), index);
         });
 
         return Promise.all(animations);
@@ -1577,17 +1631,17 @@
                     playSlotsBtn.disabled = true;
 
                     var nextState = null;
-                    var animationPromise = animateSlotReels();
-                    var requestPromise = postJson('/order/' + encodeURIComponent(orderNumber) + '/minigame/play', {
+                    postJson('/order/' + encodeURIComponent(orderNumber) + '/minigame/play', {
                         game_key: 'tragaperras'
                     }).then(function (data) {
                         nextState = data.state || {};
-                    });
-
-                    Promise.all([animationPromise, requestPromise]).then(function () {
-                        state = nextState || state;
-                        renderState();
-                        renderChooserState();
+                        var nextOpportunity = nextState.opportunity || {};
+                        var payload = nextOpportunity.result_payload || {};
+                        return animateSlotReels(payload.reels).then(function () {
+                            state = nextState || state;
+                            renderState();
+                            renderChooserState();
+                        });
                     }).catch(function (error) {
                         showError(error.message || 'No se pudo completar el juego.');
                         playSlotsBtn.disabled = false;

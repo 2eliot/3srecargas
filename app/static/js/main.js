@@ -498,8 +498,10 @@
 
             if (activeItem.current_position.missing_units > 0) {
                 html += '<div class="ranking-current-hint">Te faltan ' + escHtml(activeItem.current_position.missing_units) + ' ' + escHtml(activeItem.units_label || '') + ' para el siguiente puesto.</div>';
-            } else {
+            } else if (Number(activeItem.current_position.position) === 1) {
                 html += '<div class="ranking-current-hint">Ya estás en el primer puesto de este ranking.</div>';
+            } else {
+                html += '<div class="ranking-current-hint">Ya alcanzaste el puntaje del siguiente puesto. La tabla se reordenará cuando se actualice el ranking.</div>';
             }
 
             html += '</div>';
@@ -805,7 +807,11 @@
                 console.log('Packages data:', data);
                 applyGameToSidebar(data.game);
                 renderPackages(data.packages);
-                closeManualInfoPopup();
+                if (data.game && data.game.requires_manual_login_popup) {
+                    openManualInfoPopup();
+                } else {
+                    closeManualInfoPopup();
+                }
                 if (data.game && data.game.show_selection_popup) {
                     openGameSelectionPopup();
                 } else {

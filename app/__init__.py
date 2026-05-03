@@ -86,8 +86,17 @@ def create_app(config_class=Config):
             val_setting = Setting.query.filter_by(key=key).first()
             social_links[key.upper()] = val_setting.value if val_setting and val_setting.value else ''
 
+        support_email_setting = Setting.query.filter_by(key='support_email').first()
+        support_email = support_email_setting.value if support_email_setting and support_email_setting.value else 'soporte@3srecargas.com'
+
         support_whatsapp_setting = Setting.query.filter_by(key='support_whatsapp').first()
         support_whatsapp_url = support_whatsapp_setting.value if support_whatsapp_setting and support_whatsapp_setting.value else 'https://wa.me/19543789224'
+
+        support_schedule_setting = Setting.query.filter_by(key='support_schedule').first()
+        support_schedule = support_schedule_setting.value if support_schedule_setting and support_schedule_setting.value else 'Lunes a Domingo: 8:00 AM - 10:00 PM'
+
+        support_location_setting = Setting.query.filter_by(key='support_location').first()
+        support_location = support_location_setting.value if support_location_setting and support_location_setting.value else 'Valencia, Carabobo, Venezuela'
 
         ranking_keys = [
             'ranking_free_fire_enabled',
@@ -105,7 +114,10 @@ def create_app(config_class=Config):
         return {
             'SITE_LOGO': site_logo,
             'SOCIAL_LINKS': social_links,
+            'SUPPORT_EMAIL': support_email,
             'SUPPORT_WHATSAPP_URL': support_whatsapp_url,
+            'SUPPORT_SCHEDULE': support_schedule,
+            'SUPPORT_LOCATION': support_location,
             'RANKING_SETTINGS': ranking_settings,
             'HAS_ACTIVE_RANKING': has_active_ranking,
             'APP_TIMEZONE': 'GMT-4',

@@ -10,7 +10,7 @@
         <div class="stat-info">
             <span class="stat-value">{{ card.play_count }}</span>
             <span class="stat-label">{{ card.label }}</span>
-            <small style="color:#94a3b8;display:block;margin-top:6px;">Posición actual: {{ card.current_position or 0 }}/200</small>
+            <small style="color:#94a3b8;display:block;margin-top:6px;">Posición actual: {{ card.current_position or 0 }}/{{ minigame_cycle_length }}</small>
         </div>
     </div>
     {% endfor %}
@@ -27,17 +27,25 @@
     <div class="card-header">
         <h2>Premios de cupones</h2>
     </div>
-    <form method="POST" class="form-grid-2">
-        {% for tier in [1, 2, 3] %}
-        <div class="form-group">
-            <label for="minigame_coupon_reward_{{ tier }}">Cupón {{ tier }}</label>
-            <select id="minigame_coupon_reward_{{ tier }}" name="minigame_coupon_reward_{{ tier }}">
-                <option value="">No asignado</option>
-                {% for discount in discounts %}
-                <option value="{{ discount.id }}" {% if coupon_reward_settings[tier] == discount.id|string %}selected{% endif %}>{{ discount.code }} · {{ discount.description or 'Sin descripción' }}</option>
-                {% endfor %}
-            </select>
-            <p class="form-hint">Este código se entrega automáticamente cuando salga el premio Cupón {{ tier }}.</p>
+    <form method="POST" class="minigame-reward-stock-grid">
+        {% for reward in reward_definitions %}
+        <div class="admin-card minigame-reward-stock-card">
+            <div class="card-header">
+                <h3>{{ reward.label }}</h3>
+                <span class="badge {% if reward.visible_only %}badge-inactive{% else %}badge-active{% endif %}">{% if reward.visible_only %}0%{% else %}Giro {{ reward.position }}{% endif %}</span>
+            </div>
+            <div class="minigame-reward-stock-body">
+            <label for="minigame_coupon_reward_{{ reward.tier }}">{{ reward.label }}</label>
+            <textarea id="minigame_coupon_reward_{{ reward.tier }}" name="minigame_coupon_reward_{{ reward.tier }}" rows="5" placeholder="CODIGO10&#10;CODIGO11&#10;CODIGO12">{{ coupon_reward_code_lines[reward.tier] }}</textarea>
+            <p class="form-hint">
+                {% if reward.visible_only %}
+                Premio visible con probabilidad 0%. Se mostrará en los mini juegos, pero no se entregará automáticamente.
+                {% else %}
+                Pega un código por línea, igual que en stock. Cuando salga este premio, el sistema entregará el siguiente código disponible del pool.
+                {% endif %}
+            </p>
+            <p class="form-hint">También puedes pegar IDs numéricos si lo prefieres.</p>
+            </div>
         </div>
         {% endfor %}
         <div class="form-group" style="grid-column:1/-1;">
@@ -48,12 +56,10 @@
         <table class="admin-table">
             <thead>
                 <tr>
-                    <th>Juego</th>
-                    <th>Siguiente Cupón 1</th>
-                    <th>Siguiente Cupón 2</th>
-                    <th>Siguiente $1</th>
-                    <th>Siguiente Cupón 3</th>
-                    <th>Siguiente $3</th>
+                    <th>Contador</th>
+                    {% for reward in reward_definitions %}
+                    <th>{{ reward.label }}</th>
+                    {% endfor %}
                 </tr>
             </thead>
             <tbody>
@@ -61,7 +67,7 @@
                 <tr>
                     <td>{{ card.label }}</td>
                     {% for reward in card.next_rewards %}
-                    <td>#{{ reward.next_hit }}</td>
+                    <td>{{ reward.next_hit_label }}</td>
                     {% endfor %}
                 </tr>
                 {% endfor %}
@@ -73,7 +79,7 @@
 <div class="admin-card">
     <div class="card-header">
         <h2>Ganadores recientes</h2>
-        <p class="form-hint">Control de premios reales entregados por orden, con contador independiente por cada juego de la tienda.</p>
+        <p class="form-hint">Control de premios reales entregados por orden, usando un contador global compartido entre todos los juegos de la tienda.</p>
     </div>
     <div class="table-wrap">
         <table class="admin-table">
@@ -99,7 +105,7 @@
                     <td><a href="{{ url_for('admin_bp.order_detail', order_id=item.order.id) }}">#{{ item.order.order_number }}</a></td>
                     <td>{{ item.order.game.name if item.order and item.order.game else '—' }}</td>
                     <td>{{ item.order.email or item.order.player_id or '—' }}</td>
-                    <td>{{ item.counter_position or 0 }}/200</td>
+                    <td>{{ item.counter_position or 0 }}/{{ minigame_cycle_length }}</td>
                 </tr>
                 {% else %}
                 <tr><td colspan="8" class="empty-row">Todavía no hay premios ganados.</td></tr>

@@ -939,6 +939,36 @@ input[type="file"] {
 .pkg-sel-count { font-size: 12px; font-weight: 600; color: var(--success); }
 .pkg-sel-count.low { color: var(--danger); }
 
+/* ── Minigame reward stock ─────────────────────────────── */
+.minigame-reward-stock-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    padding: 16px;
+}
+
+.minigame-reward-stock-card {
+    margin-bottom: 0;
+}
+
+.minigame-reward-stock-card .card-header {
+    padding: 12px 14px;
+}
+
+.minigame-reward-stock-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+}
+
+.minigame-reward-stock-body textarea {
+    min-height: 120px;
+    resize: vertical;
+    font-family: 'Courier New', monospace;
+    line-height: 1.45;
+}
+
 /* ── Order Detail ───────────────────────────────────────── */
 .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .detail-section { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; }
@@ -983,6 +1013,7 @@ input[type="file"] {
     .card-header { padding: 12px 14px; }
     .stats-grid { display: none; }
     .form-grid-2 { grid-template-columns: 1fr; }
+    .minigame-reward-stock-grid { grid-template-columns: 1fr; padding: 12px; }
     .detail-grid { grid-template-columns: 1fr; }
     .detail-section { padding: 16px; }
     .detail-row {

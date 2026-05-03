@@ -201,6 +201,16 @@
                        value="{{ email_settings.support_whatsapp }}">
             </div>
             <div class="form-group">
+                <label for="support_schedule">Horario visible en footer</label>
+                <input type="text" id="support_schedule" name="support_schedule" placeholder="Lunes a Domingo: 8:00 AM - 10:00 PM"
+                       value="{{ email_settings.support_schedule }}">
+            </div>
+            <div class="form-group">
+                <label for="support_location">Ubicación visible en footer</label>
+                <input type="text" id="support_location" name="support_location" placeholder="Valencia, Carabobo, Venezuela"
+                       value="{{ email_settings.support_location }}">
+            </div>
+            <div class="form-group">
                 <label for="support_site_url">URL del sitio / centro de ayuda</label>
                 <input type="url" id="support_site_url" name="support_site_url" placeholder="https://3srecargas.com"
                        value="{{ email_settings.support_site_url }}">

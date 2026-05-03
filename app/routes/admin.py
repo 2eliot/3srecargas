@@ -20,7 +20,14 @@ from ..models import (
     RevendedoresCatalogItem, RevendedoresItemMapping,
 )
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
-from ..utils.minigames import MINIGAME_CYCLE_LENGTH, MINIGAME_REWARD_SCHEDULE, get_minigame_counter_scope_key, get_minigame_game_label, is_minigame_dev_mode
+from ..utils.minigames import (
+    MINIGAME_CYCLE_LENGTH,
+    get_minigame_reward_definitions,
+    get_minigame_reward_discount_ids,
+    get_minigame_counter_scope_key,
+    get_minigame_game_label,
+    is_minigame_dev_mode,
+)
 from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
@@ -197,13 +204,54 @@ def _discount_kind_label(discount):
 
 def _discount_value_label(discount):
     if discount.discount_type == 'percentage':
-        return f'{float(discount.discount_value or 0):.0f}%'
+        label = f'{float(discount.discount_value or 0):.0f}%'
+        if discount.max_discount is not None:
+            max_discount = float(discount.max_discount or 0)
+            label = f'{label} (max. ${max_discount:.2f})'.rstrip('0').rstrip('.')
+        if discount.min_amount is not None:
+            min_amount = float(discount.min_amount or 0)
+            label = f'{label} | min. ${min_amount:.2f}'.rstrip('0').rstrip('.')
+        return label
     value = float(discount.discount_value or 0)
     return f'${value:.2f}'.rstrip('0').rstrip('.')
 
 
 def _minigame_coupon_setting_key(tier):
     return f'minigame_coupon_reward_{int(tier)}'
+
+
+def _minigame_setting_values(raw_values):
+    values = []
+    for item in raw_values or []:
+        item = str(item or '').strip()
+        if item.isdigit() and item not in values:
+            values.append(item)
+    return values
+
+
+def _parse_minigame_reward_codes(raw_value, discounts_by_code, discounts_by_id):
+    selected_ids = []
+    unknown_codes = []
+
+    for line in str(raw_value or '').splitlines():
+        item = line.strip()
+        if not item:
+            continue
+
+        discount = None
+        if item.isdigit():
+            discount = discounts_by_id.get(int(item))
+        if not discount:
+            discount = discounts_by_code.get(item.upper())
+
+        if discount:
+            discount_id = str(discount.id)
+            if discount_id not in selected_ids:
+                selected_ids.append(discount_id)
+        else:
+            unknown_codes.append(item)
+
+    return selected_ids, unknown_codes
 
 
 @admin_bp.before_app_request
@@ -1033,6 +1081,21 @@ def discount_code_add():
         flash('El valor del descuento debe ser mayor a 0.', 'danger')
         return redirect(url_for('admin_bp.affiliates'))
 
+    if discount_type == 'percentage' and discount_value > 100:
+        flash('Un descuento porcentual no puede ser mayor a 100%.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if max_discount is not None and max_discount <= 0:
+        flash('El tope máximo debe ser mayor a 0.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if min_amount is not None and min_amount < 0:
+        flash('El monto mínimo no puede ser negativo.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if discount_type == 'fixed':
+        max_discount = None
+
     if usage_limit is not None and usage_limit < 1:
         flash('El límite de usos debe ser mayor o igual a 1.', 'danger')
         return redirect(url_for('admin_bp.affiliates'))
@@ -1088,6 +1151,21 @@ def discount_code_edit(discount_id):
     if discount_value <= 0:
         flash('El valor del descuento debe ser mayor a 0.', 'danger')
         return redirect(url_for('admin_bp.affiliates'))
+
+    if discount_type == 'percentage' and discount_value > 100:
+        flash('Un descuento porcentual no puede ser mayor a 100%.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if max_discount is not None and max_discount <= 0:
+        flash('El tope máximo debe ser mayor a 0.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if min_amount is not None and min_amount < 0:
+        flash('El monto mínimo no puede ser negativo.', 'danger')
+        return redirect(url_for('admin_bp.affiliates'))
+
+    if discount_type == 'fixed':
+        max_discount = None
 
     if usage_limit is not None and usage_limit < 1:
         flash('El límite de usos debe ser mayor o igual a 1.', 'danger')
@@ -1320,6 +1398,8 @@ def settings():
         'email_brand_name': 'Nombre de la marca para correos',
         'support_email': 'Correo de soporte',
         'support_whatsapp': 'Link directo a WhatsApp soporte',
+        'support_schedule': 'Horario visible en el footer',
+        'support_location': 'Ubicación visible en el footer',
         'support_site_url': 'URL del sitio o centro de ayuda',
         'privacy_url': 'URL de política de privacidad',
         'unsubscribe_url': 'URL para darse de baja',
@@ -1648,58 +1728,80 @@ def settings():
 @admin_bp.route('/minigames', methods=['GET', 'POST'])
 @login_required
 def minigames():
-    coupon_tiers = (1, 2, 3)
+    reward_definitions = get_minigame_reward_definitions()
+    coupon_tiers = tuple(item['tier'] for item in reward_definitions)
     coupon_reward_settings = {}
+    coupon_reward_code_lines = {}
+    discounts = Discount.query.order_by(Discount.created_at.desc()).all()
+    discounts_by_id = {discount.id: discount for discount in discounts}
+    discounts_by_code = {str(discount.code or '').strip().upper(): discount for discount in discounts}
     for tier in coupon_tiers:
-        setting = Setting.query.filter_by(key=_minigame_coupon_setting_key(tier)).first()
-        coupon_reward_settings[tier] = setting.value if setting else ''
+        coupon_reward_settings[tier] = [str(value) for value in get_minigame_reward_discount_ids(tier)]
+        coupon_reward_code_lines[tier] = '\n'.join(
+            discounts_by_id[int(value)].code
+            for value in coupon_reward_settings[tier]
+            if str(value).isdigit() and int(value) in discounts_by_id
+        )
 
     if request.method == 'POST':
+        unknown_rewards = []
         for tier in coupon_tiers:
-            selected_discount_id = (request.form.get(_minigame_coupon_setting_key(tier), '') or '').strip()
+            raw_codes = request.form.get(_minigame_coupon_setting_key(tier), '')
+            selected_discount_ids, unknown_codes = _parse_minigame_reward_codes(
+                raw_codes,
+                discounts_by_code,
+                discounts_by_id,
+            )
+            if unknown_codes:
+                unknown_rewards.append(
+                    f"{next((item['label'] for item in reward_definitions if item['tier'] == tier), 'Premio ' + str(tier))}: {', '.join(unknown_codes)}"
+                )
             setting = Setting.query.filter_by(key=_minigame_coupon_setting_key(tier)).first()
             if not setting:
                 setting = Setting(
                     key=_minigame_coupon_setting_key(tier),
                     value='',
-                    description=f'Código de descuento que se entrega al premio de minijuego Cupón {tier}.',
+                    description=f'Pool de códigos de descuento que se entrega al premio de minijuego {tier}.',
                 )
                 db.session.add(setting)
-            setting.value = selected_discount_id if selected_discount_id.isdigit() else ''
+            setting.value = ','.join(selected_discount_ids)
         db.session.commit()
+        if unknown_rewards:
+            flash('Algunos códigos no existen y fueron ignorados: ' + ' | '.join(unknown_rewards), 'warning')
         flash('Premios de minijuegos actualizados.', 'success')
         return redirect(url_for('admin_bp.minigames'))
 
     counters_by_key = {counter.game_key: counter for counter in MiniGameCounter.query.all()}
-    counter_cards = []
-    tracked_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
-    for store_game in tracked_games:
-        counter = counters_by_key.get(get_minigame_counter_scope_key(store_game))
-        play_count = int(counter.play_count or 0) if counter else 0
-        current_position = play_count % MINIGAME_CYCLE_LENGTH
-        if current_position == 0 and play_count:
-            current_position = MINIGAME_CYCLE_LENGTH
-        next_rewards = []
-        for position, reward in sorted(MINIGAME_REWARD_SCHEDULE.items()):
+    counter = counters_by_key.get(get_minigame_counter_scope_key(None))
+    play_count = int(counter.play_count or 0) if counter else 0
+    current_position = play_count % MINIGAME_CYCLE_LENGTH
+    if current_position == 0 and play_count:
+        current_position = MINIGAME_CYCLE_LENGTH
+    next_rewards = []
+    for reward in reward_definitions:
+        position = reward.get('position')
+        if position:
             if current_position and position <= current_position:
                 next_hit = play_count + (MINIGAME_CYCLE_LENGTH - current_position) + position
             else:
                 next_hit = play_count + (position - current_position)
-            next_rewards.append({
-                'position': position,
-                'label': reward.get('label'),
-                'next_hit': next_hit,
-            })
-        counter_cards.append({
-            'key': str(store_game.id),
-            'label': store_game.name,
-            'icon': '🎮',
-            'play_count': play_count,
-            'current_position': current_position,
-            'next_rewards': next_rewards,
+            next_hit_label = '#' + str(next_hit)
+        else:
+            next_hit_label = '0%'
+        next_rewards.append({
+            'position': position,
+            'label': reward.get('label'),
+            'next_hit_label': next_hit_label,
         })
+    counter_cards = [{
+        'key': 'global',
+        'label': 'Contador global',
+        'icon': '🌐',
+        'play_count': play_count,
+        'current_position': current_position,
+        'next_rewards': next_rewards,
+    }]
 
-    discounts = Discount.query.order_by(Discount.created_at.desc()).all()
     winners = (
         OrderMiniGameOpportunity.query
         .filter(OrderMiniGameOpportunity.status == 'played')
@@ -1714,9 +1816,12 @@ def minigames():
         'admin/minigames.html',
         counter_cards=counter_cards,
         coupon_reward_settings=coupon_reward_settings,
+        coupon_reward_code_lines=coupon_reward_code_lines,
+        reward_definitions=reward_definitions,
         discounts=discounts,
         winners=winners,
         get_minigame_game_label=get_minigame_game_label,
+        minigame_cycle_length=MINIGAME_CYCLE_LENGTH,
         minigame_dev_mode=is_minigame_dev_mode(),
     )
 
