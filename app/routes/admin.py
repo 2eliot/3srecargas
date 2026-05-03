@@ -686,6 +686,10 @@ def _apply_order_filters(
 @admin_bp.route('/orders')
 @login_required
 def orders():
+    page = request.args.get('page', type=int) or 1
+    if page < 1:
+        page = 1
+
     status_filter = (request.args.get('status') or '').strip()
     search_query = (request.args.get('q') or '').strip()
     date_from = (request.args.get('date_from') or '').strip()
@@ -702,7 +706,24 @@ def orders():
         package_id=package_id,
         service_id=service_id,
     )
-    all_orders = query.all()
+    page_size = 50
+    total_orders = query.count()
+    total_pages = max(1, (total_orders + page_size - 1) // page_size)
+    if page > total_pages:
+        page = total_pages
+
+    all_orders = (
+        query
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    page_window_start = max(1, page - 2)
+    page_window_end = min(total_pages, page + 2)
+    page_numbers = list(range(page_window_start, page_window_end + 1))
+    start_order_index = ((page - 1) * page_size) + 1 if total_orders else 0
+    end_order_index = min(page * page_size, total_orders) if total_orders else 0
+
     services = Category.query.order_by(Category.name.asc()).all()
     packages = (
         Package.query
@@ -719,6 +740,13 @@ def orders():
         date_to=date_to,
         package_id=package_id,
         service_id=service_id,
+        current_page=page,
+        page_size=page_size,
+        total_orders=total_orders,
+        total_pages=total_pages,
+        page_numbers=page_numbers,
+        start_order_index=start_order_index,
+        end_order_index=end_order_index,
         services=services,
         packages=packages,
     )

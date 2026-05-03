@@ -71,6 +71,21 @@
 </div>
 
 <div class="admin-card">
+    <div class="card-header-inline orders-card-header-inline">
+        <div>
+            <h3>Listado de órdenes</h3>
+            <p class="card-subtext">
+                {% if total_orders %}
+                Mostrando {{ start_order_index }}-{{ end_order_index }} de {{ total_orders }} órdenes.
+                {% else %}
+                No hay órdenes para mostrar.
+                {% endif %}
+            </p>
+        </div>
+        {% if total_pages > 1 %}
+        <div class="orders-page-chip">Página {{ current_page }} de {{ total_pages }}</div>
+        {% endif %}
+    </div>
     <div class="table-wrap">
         <table class="admin-table">
             <thead>
@@ -87,7 +102,7 @@
                     <th>Acciones</th>
                 </tr>
             </thead>
-            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}" data-date-from="{{ date_from or '' }}" data-date-to="{{ date_to or '' }}" data-package-id="{{ package_id or '' }}" data-service-id="{{ service_id or '' }}">
+            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}" data-date-from="{{ date_from or '' }}" data-date-to="{{ date_to or '' }}" data-package-id="{{ package_id or '' }}" data-service-id="{{ service_id or '' }}" data-current-page="{{ current_page }}" data-page-size="{{ page_size }}">
                 {% for order in orders %}
                 <tr data-order-id="{{ order.id }}">
                     <td data-label="#Orden">
@@ -157,6 +172,35 @@
             </tbody>
         </table>
     </div>
+
+    {% if total_pages > 1 %}
+    <div class="orders-pagination">
+        <a class="orders-pagination-link {% if current_page == 1 %}is-disabled{% endif %}"
+           href="{% if current_page > 1 %}{{ url_for('admin_bp.orders', page=current_page - 1, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}{% else %}#{% endif %}">Anterior</a>
+
+        {% if page_numbers[0] > 1 %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.orders', page=1, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}">1</a>
+        {% if page_numbers[0] > 2 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        {% endif %}
+
+        {% for page_number in page_numbers %}
+        <a class="orders-pagination-link {% if page_number == current_page %}is-active{% endif %}"
+           href="{{ url_for('admin_bp.orders', page=page_number, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}">{{ page_number }}</a>
+        {% endfor %}
+
+        {% if page_numbers[-1] < total_pages %}
+        {% if page_numbers[-1] < total_pages - 1 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.orders', page=total_pages, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}">{{ total_pages }}</a>
+        {% endif %}
+
+        <a class="orders-pagination-link {% if current_page == total_pages %}is-disabled{% endif %}"
+           href="{% if current_page < total_pages %}{{ url_for('admin_bp.orders', page=current_page + 1, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}{% else %}#{% endif %}">Siguiente</a>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Reject Modal -->
@@ -411,6 +455,10 @@ function _kickAutoVerification(scopeEl) {
 (function() {
     var tbody = document.getElementById('ordersTbody');
     if (!tbody) return;
+    var currentPage = parseInt(tbody.getAttribute('data-current-page') || '1', 10);
+    if (currentPage !== 1) return;
+
+    var pageSize = parseInt(tbody.getAttribute('data-page-size') || '50', 10);
     var statusFilter = tbody.getAttribute('data-status-filter') || '';
     var searchQuery = tbody.getAttribute('data-search-query') || '';
     var dateFrom = tbody.getAttribute('data-date-from') || '';
@@ -441,6 +489,12 @@ function _kickAutoVerification(scopeEl) {
             .then(function(data) {
                 if (!data || !data.ok || !Array.isArray(data.orders) || data.orders.length === 0) return;
 
+                var emptyRow = tbody.querySelector('.empty-row');
+                if (emptyRow) {
+                    var emptyParent = emptyRow.closest('tr');
+                    if (emptyParent) emptyParent.remove();
+                }
+
                 var html = '';
                 data.orders.forEach(function(o) {
                     if (tbody.querySelector('tr[data-order-id="' + o.id + '"]')) return;
@@ -449,6 +503,10 @@ function _kickAutoVerification(scopeEl) {
                 if (!html) return;
 
                 tbody.insertAdjacentHTML('afterbegin', html);
+                var rows = tbody.querySelectorAll('tr[data-order-id]');
+                for (var index = rows.length - 1; index >= pageSize; index -= 1) {
+                    rows[index].remove();
+                }
                 _rebindApproveSubmitHandlers(tbody);
                 _kickAutoVerification(tbody);
             })

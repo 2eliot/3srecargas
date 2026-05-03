@@ -268,6 +268,71 @@ input[type="file"] {
     margin-top: 4px;
 }
 
+.orders-card-header-inline {
+    padding-bottom: 6px;
+}
+
+.orders-page-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: rgba(255,255,255,.03);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.orders-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 16px 18px 18px;
+}
+
+.orders-pagination-link,
+.orders-pagination-ellipsis {
+    min-width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.orders-pagination-link:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.orders-pagination-link.is-active {
+    background: linear-gradient(135deg, var(--accent-dark), var(--accent2));
+    border-color: transparent;
+    color: #fff;
+}
+
+.orders-pagination-link.is-disabled {
+    opacity: .45;
+    pointer-events: none;
+}
+
+.orders-pagination-ellipsis {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+    min-width: auto;
+    padding: 0 4px;
+}
+
 .form-row {
     display: grid;
     gap: 12px;
@@ -1016,6 +1081,7 @@ input[type="file"] {
     .minigame-reward-stock-grid { grid-template-columns: 1fr; padding: 12px; }
     .detail-grid { grid-template-columns: 1fr; }
     .detail-section { padding: 16px; }
+    .orders-card-header-inline { align-items: flex-start; }
     .detail-row {
         flex-direction: column;
         align-items: flex-start;
