@@ -29,6 +29,10 @@ def get_pabilo_api_key():
     return get_setting_value(PABILO_API_KEY_SETTING_KEY, '').strip()
 
 
+def payment_method_uses_payer_identity_verification(payment_method):
+    return bool(payment_method and getattr(payment_method, 'pabilo_requires_phone_dni', False))
+
+
 def normalize_reference_last5(reference):
     raw = ''.join(ch for ch in str(reference or '') if ch.isdigit())
     if not raw:
@@ -203,13 +207,39 @@ def _normalize_pabilo_amount(order):
     return normalized_amount, None
 
 
-def build_pabilo_payload(reference):
+def build_pabilo_reference_payload(reference):
     reference = str(reference or '').strip()
     if not reference:
         return None, 'La orden no tiene una referencia bancaria válida para consultar en Pabilo.'
 
     payload = {
         'bank_reference': reference,
+    }
+
+    return payload, None
+
+
+def build_pabilo_phone_dni_payload(order):
+    payer_phone = ''.join(ch for ch in str(order.payer_phone or '') if ch.isdigit())[:20]
+    if not payer_phone:
+        return None, 'La orden no tiene un telefono del pagador valido para consultar en Pabilo.'
+
+    payer_dni_number = ''.join(ch for ch in str(order.payer_dni_number or '') if ch.isdigit())[:20]
+    if not payer_dni_number:
+        return None, 'La orden no tiene una cedula del pagador valida para consultar en Pabilo.'
+
+    payer_dni_type = (str(order.payer_dni_type or 'V').strip().upper() or 'V')[:2]
+    if payer_dni_type not in {'V', 'E', 'J', 'G', 'P'}:
+        payer_dni_type = 'V'
+
+    normalized_amount, amount_error = _normalize_pabilo_amount(order)
+    if amount_error:
+        return None, amount_error
+
+    payload = {
+        'phone': payer_phone,
+        'dni': f'{payer_dni_type}{payer_dni_number}',
+        'amount': normalized_amount,
     }
 
     return payload, None
@@ -373,18 +403,32 @@ def verify_order_payment(order):
     if not order:
         return {'ok': False, 'verified': False, 'message': 'Orden inválida.'}
 
-    reference_candidates = get_order_reference_candidates(order)
-    if not reference_candidates:
-        return {
-            'ok': False,
-            'verified': False,
-            'requestable': False,
-            'message': 'La orden no tiene una referencia bancaria válida para consultar en Pabilo.',
-        }
-
     payment_method = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
     if not payment_method:
         return {'ok': False, 'verified': False, 'message': 'Método de pago no encontrado.'}
+
+    uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method)
+
+    reference_candidates = []
+    identity_payload = None
+    if uses_payer_identity:
+        identity_payload, payload_error = build_pabilo_phone_dni_payload(order)
+        if payload_error:
+            return {
+                'ok': False,
+                'verified': False,
+                'requestable': False,
+                'message': payload_error,
+            }
+    else:
+        reference_candidates = get_order_reference_candidates(order)
+        if not reference_candidates:
+            return {
+                'ok': False,
+                'verified': False,
+                'requestable': False,
+                'message': 'La orden no tiene una referencia bancaria válida para consultar en Pabilo.',
+            }
 
     api_key = get_pabilo_api_key()
     if not api_key:
@@ -405,29 +449,47 @@ def verify_order_payment(order):
     last_soft_result = None
     duplicate_hit = None
 
-    for candidate in reference_candidates:
-        reference = candidate['reference']
-        payload, payload_error = build_pabilo_payload(reference)
-        if payload_error:
-            continue
+    verification_candidates = []
+    if uses_payer_identity:
+        verification_candidates.append({
+            'payload': identity_payload,
+            'reference': str(order.payment_reference or '').strip(),
+            'source': 'payer_identity',
+        })
+    else:
+        for candidate in reference_candidates:
+            reference = candidate['reference']
+            payload, payload_error = build_pabilo_reference_payload(reference)
+            if payload_error:
+                continue
+            verification_candidates.append({
+                'payload': payload,
+                'reference': reference,
+                'source': candidate['source'],
+            })
 
-        duplicate = find_reference_conflict(
-            reference=reference,
-            payment_method_code=order.payment_method,
-            exclude_order_id=order.id,
-        )
-        if duplicate:
-            duplicate_hit = duplicate
-            last_soft_result = {
-                'ok': False,
-                'verified': False,
-                'message': (
-                    'Se detectó otra orden con la misma referencia bancaria. '
-                    'La aprobación automática fue bloqueada.'
-                ),
-                'duplicate_order_id': duplicate.id,
-            }
-            continue
+    for candidate in verification_candidates:
+        reference = candidate['reference']
+        payload = candidate['payload']
+
+        if not uses_payer_identity:
+            duplicate = find_reference_conflict(
+                reference=reference,
+                payment_method_code=order.payment_method,
+                exclude_order_id=order.id,
+            )
+            if duplicate:
+                duplicate_hit = duplicate
+                last_soft_result = {
+                    'ok': False,
+                    'verified': False,
+                    'message': (
+                        'Se detectó otra orden con la misma referencia bancaria. '
+                        'La aprobación automática fue bloqueada.'
+                    ),
+                    'duplicate_order_id': duplicate.id,
+                }
+                continue
 
         response, data = _request_pabilo_verify(url, api_key, payload, timeout)
         if response is None:
@@ -497,11 +559,13 @@ def verify_order_payment(order):
             return amount_validation
 
         if not verification_id:
-            verification_id = f"fallback:{payment_method.id}:{reference}"
+            verification_id = f"fallback:{payment_method.id}:{reference or candidate['source']}"
 
         source_message = ''
         if candidate['source'] == 'ai':
             source_message = ' Se usó la referencia extraída del comprobante.'
+        elif candidate['source'] == 'payer_identity':
+            source_message = ' Se validó con el telefono y la cedula del pagador.'
 
         return {
             'ok': True,

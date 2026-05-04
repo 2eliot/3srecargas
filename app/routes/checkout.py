@@ -27,6 +27,7 @@ from ..utils.payment_verification import (
     normalize_bs_integer_amount,
     normalize_reference_key,
     normalize_reference_last5,
+    payment_method_uses_payer_identity_verification,
     stamp_verified_payment,
     verify_order_payment,
 )
@@ -468,6 +469,9 @@ def checkout(package_id):
             flash('Tu sesión expiró. Por favor repite el proceso desde la tienda.', 'danger')
             return redirect(url_for('main_bp.index'))
 
+        method_config = PaymentMethod.query.filter_by(code=payment_method.lower()).first()
+        uses_payer_identity_verification = payment_method_uses_payer_identity_verification(method_config)
+
         # ── Detect Binance Pay auto-verification flow ──────────────────────────
         _binance_auto = (
             payment_method.lower() == 'binance'
@@ -475,6 +479,9 @@ def checkout(package_id):
         )
 
         capture_path = None
+        payer_dni_type = None
+        payer_dni_number = None
+        payer_phone = None
         if _binance_auto:
             # For Binance auto, capture is not required.
             # The payment_reference is the 6-char code stored in the session.
@@ -501,10 +508,27 @@ def checkout(package_id):
                 flash('Hubo un problema al subir el comprobante. Intenta nuevamente.', 'danger')
                 return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
-            payment_reference_input = (request.form.get('payment_reference') or '').strip()
-            if not payment_reference_input:
-                flash('Debes ingresar la referencia del pago.', 'danger')
-                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+            if uses_payer_identity_verification:
+                payer_dni_type = (request.form.get('payer_dni_type') or 'V').strip().upper()[:2]
+                if payer_dni_type not in {'V', 'E', 'J', 'G', 'P'}:
+                    payer_dni_type = 'V'
+                payer_dni_number = _digits_only(request.form.get('payer_dni_number') or '')[:20]
+                payer_phone = _digits_only(request.form.get('payer_phone') or '')[:20]
+
+                if not payer_phone:
+                    flash('Debes ingresar el telefono del cliente para validar el pago.', 'danger')
+                    return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+
+                if not payer_dni_number:
+                    flash('Debes ingresar la cedula del cliente para validar el pago.', 'danger')
+                    return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+
+                payment_reference_input = f'{payer_dni_type}-{payer_dni_number}-{payer_phone}'
+            else:
+                payment_reference_input = (request.form.get('payment_reference') or '').strip()
+                if not payment_reference_input:
+                    flash('Debes ingresar la referencia del pago.', 'danger')
+                    return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
         ai_extracted_reference = ''
         if not _binance_auto and capture_path:
@@ -530,14 +554,15 @@ def checkout(package_id):
             flash('La confirmación anterior ya fue usada para otra orden. Recarga la página y confirma nuevamente para generar una orden nueva.', 'warning')
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
-        existing_ref = find_reference_conflict(
-            reference=payment_reference_input,
-            payment_method_code=payment_method,
-            statuses=['pending', 'approved', 'completed'],
-        )
-        if existing_ref:
-            flash('Esta referencia ya fue registrada en otra orden activa o ya aprobada. Verifica tu pago e intenta nuevamente.', 'danger')
-            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+        if not uses_payer_identity_verification:
+            existing_ref = find_reference_conflict(
+                reference=payment_reference_input,
+                payment_method_code=payment_method,
+                statuses=['pending', 'approved', 'completed'],
+            )
+            if existing_ref:
+                flash('Esta referencia ya fue registrada en otra orden activa o ya aprobada. Verifica tu pago e intenta nuevamente.', 'danger')
+                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
         aff_code = (data.get('affiliate_code') or '').strip()
         if not aff_code:
@@ -589,7 +614,6 @@ def checkout(package_id):
         
         final_amount = max(original_amount - discount_amount, 0.0)
 
-        method_config = PaymentMethod.query.filter_by(code=payment_method.lower()).first()
         payment_currency = 'usd'
         payment_amount = round(final_amount, 2)
         # Binance auto siempre se maneja en USD/USDT.
@@ -616,6 +640,9 @@ def checkout(package_id):
             ai_extracted_reference=ai_extracted_reference or None,
             payment_amount=payment_amount,
             payment_currency=payment_currency,
+            payer_dni_type=payer_dni_type,
+            payer_dni_number=payer_dni_number,
+            payer_phone=payer_phone,
             amount=final_amount,
             original_amount=original_amount,
             discount_amount=discount_amount,

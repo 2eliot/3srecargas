@@ -36,6 +36,7 @@ from ..utils.auth_accounts import sync_env_admin_user
 from ..utils.payment_verification import (
     clear_pabilo_verification_state,
     normalize_reference_last5,
+    payment_method_uses_payer_identity_verification,
     stamp_verified_payment,
     verify_order_payment,
 )
@@ -815,19 +816,29 @@ def orders_latest():
 @login_required
 def order_detail(order_id):
     order = Order.query.get_or_404(order_id)
-    return render_template('admin/order_detail.html', order=order, can_send_delivery_proof=order_supports_delivery_proof(order))
+    payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
+    return render_template(
+        'admin/order_detail.html',
+        order=order,
+        payment_method_config=payment_method_config,
+        can_send_delivery_proof=order_supports_delivery_proof(order),
+    )
 
 
 def _run_admin_pabilo_reverification(order, reference=None):
+    payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
+    uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method_config)
+
     reference = str(reference if reference is not None else order.payment_reference or '').strip()
-    if not reference:
+    if not uses_payer_identity and not reference:
         flash('La referencia bancaria es obligatoria.', 'danger')
         return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
     previous_reference = str(order.payment_reference or '').strip()
     clear_pabilo_verification_state(order)
-    order.payment_reference = reference
-    order.payment_reference_last5 = normalize_reference_last5(reference)
+    if not uses_payer_identity:
+        order.payment_reference = reference
+        order.payment_reference_last5 = normalize_reference_last5(reference)
     order.updated_at = datetime.utcnow()
 
     verification = verify_order_payment(order)
@@ -837,7 +848,9 @@ def _run_admin_pabilo_reverification(order, reference=None):
     if verification.get('verified'):
         stamp_verified_payment(order, verification)
         note = '[Admin] Pago re-verificado manualmente en Pabilo.'
-        if previous_reference and previous_reference != reference:
+        if uses_payer_identity:
+            note = '[Admin] Pago re-verificado manualmente en Pabilo con telefono y cedula del pagador.'
+        elif previous_reference and previous_reference != reference:
             note = f'[Admin] Referencia bancaria actualizada de {previous_reference} a {reference} y pago re-verificado en Pabilo.'
         existing_notes = order.notes or ''
         if note not in existing_notes:
@@ -1240,6 +1253,7 @@ def payment_method_add():
     id_number = request.form.get('id_number', '').strip() or None
     account_currency = (request.form.get('account_currency', 'bs') or 'bs').strip().lower()
     pabilo_user_bank_id = request.form.get('pabilo_user_bank_id', '').strip() or None
+    pabilo_requires_phone_dni = bool(request.form.get('pabilo_requires_phone_dni'))
     show_contact_email = bool(request.form.get('show_contact_email'))
     show_pay_id = bool(request.form.get('show_pay_id'))
     show_contact_phone = bool(request.form.get('show_contact_phone'))
@@ -1267,6 +1281,7 @@ def payment_method_add():
         id_number=id_number,
         account_currency=account_currency,
         pabilo_user_bank_id=pabilo_user_bank_id,
+        pabilo_requires_phone_dni=pabilo_requires_phone_dni,
         show_contact_email=show_contact_email,
         show_pay_id=show_pay_id,
         show_contact_phone=show_contact_phone,
@@ -1293,6 +1308,7 @@ def payment_method_edit(method_id):
     method.id_number = request.form.get('id_number', '').strip() or None
     method.account_currency = (request.form.get('account_currency', method.account_currency or 'bs') or 'bs').strip().lower()
     method.pabilo_user_bank_id = request.form.get('pabilo_user_bank_id', '').strip() or None
+    method.pabilo_requires_phone_dni = bool(request.form.get('pabilo_requires_phone_dni'))
     method.show_contact_email = bool(request.form.get('show_contact_email'))
     method.show_pay_id = bool(request.form.get('show_pay_id'))
     method.show_contact_phone = bool(request.form.get('show_contact_phone'))

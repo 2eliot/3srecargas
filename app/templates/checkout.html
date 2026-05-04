@@ -227,7 +227,7 @@
                 </div>
             </div>
             {% endif %}
-            <form method="POST" action="{{ url_for('checkout_bp.checkout', package_id=package.id) }}" id="checkoutForm" enctype="multipart/form-data" data-package="{{ package.id }}" data-binance-auto="{{ 'true' if binance_auto else 'false' }}" data-reference-extract-url="{{ url_for('checkout_bp.extract_payment_reference') }}">
+            <form method="POST" action="{{ url_for('checkout_bp.checkout', package_id=package.id) }}" id="checkoutForm" enctype="multipart/form-data" data-package="{{ package.id }}" data-binance-auto="{{ 'true' if binance_auto else 'false' }}" data-payer-verification="{{ 'true' if selected_method and selected_method.pabilo_requires_phone_dni else 'false' }}" data-reference-extract-url="{{ url_for('checkout_bp.extract_payment_reference') }}">
                 <input type="hidden" name="stage" value="confirm">
                 <input type="hidden" name="confirm_token" value="{{ confirm_token }}">
                 <input type="hidden" id="ai_extracted_reference" name="ai_extracted_reference" value="">
@@ -313,7 +313,57 @@
                 </div>
                 {% endif %}
 
-                {% if not binance_auto %}
+                {% if not binance_auto and selected_method and selected_method.pabilo_requires_phone_dni %}
+                <div class="form-section reference-section">
+                    <div class="reference-card">
+                        <div class="reference-header">
+                            <div>
+                                <p class="reference-title">Datos para validar tu pago</p>
+                                <p class="reference-timer" id="paymentTimer">30:00</p>
+                            </div>
+                        </div>
+
+                        <label for="payer_phone" class="reference-label">Telefono del cliente</label>
+                        <div class="reference-input-row">
+                            <input type="text"
+                                   id="payer_phone"
+                                   name="payer_phone"
+                                   placeholder="Ingresa el telefono del cliente"
+                                   maxlength="20"
+                                   autocomplete="tel"
+                                   required>
+                        </div>
+
+                        <label for="payer_dni_number" class="reference-label">DNI del cliente</label>
+                        <div class="reference-input-row" style="gap:10px;">
+                            <select id="payer_dni_type" name="payer_dni_type" style="max-width:100px;">
+                                <option value="V">V</option>
+                                <option value="E">E</option>
+                                <option value="J">J</option>
+                                <option value="G">G</option>
+                                <option value="P">P</option>
+                            </select>
+                            <input type="text"
+                                   id="payer_dni_number"
+                                   name="payer_dni_number"
+                                   placeholder="Ingresa el DNI del cliente"
+                                   maxlength="20"
+                                   autocomplete="off"
+                                   required>
+                        </div>
+
+                        <label for="payer_amount_display" class="reference-label">Monto</label>
+                        <div class="reference-input-row">
+                            <input type="text"
+                                   id="payer_amount_display"
+                                   value="{% if display_currency == 'usd' %}${{ '%.2f'|format(display_amount) }}{% else %}Bs {{ '%.0f'|format(display_amount) }}{% endif %}"
+                                   readonly>
+                        </div>
+
+                        <p class="ref-hint">Este metodo valida la orden con telefono, cedula y el monto exacto de la compra. No necesitas escribir referencia bancaria.</p>
+                    </div>
+                </div>
+                {% elif not binance_auto %}
                 <div class="form-section reference-section">
                     <div class="reference-card">
                         <div class="reference-header">
@@ -368,6 +418,7 @@
     if (!checkoutForm) return;
 
     var binanceAuto = checkoutForm.getAttribute('data-binance-auto') === 'true';
+    var payerVerification = checkoutForm.getAttribute('data-payer-verification') === 'true';
     var submitBtn = document.getElementById('submitBtn');
     var proofInput = document.getElementById('payment_capture');
     var proofDropzone = document.getElementById('proofDropzone');
@@ -376,6 +427,8 @@
     var proofPreview = document.getElementById('proofPreview');
     var proofPreviewImage = document.getElementById('proofPreviewImage');
     var referenceInput = document.getElementById('payment_reference');
+    var payerPhoneInput = document.getElementById('payer_phone');
+    var payerDniInput = document.getElementById('payer_dni_number');
     var referenceDots = document.getElementById('referenceDots');
     var paymentTimerEl = document.getElementById('paymentTimer');
     var copyBtn = document.getElementById('checkoutCopyPaymentBtn');
@@ -622,8 +675,20 @@
 
     function updateSubmitState() {
         var hasFile = binanceAuto || (proofInput && proofInput.files && proofInput.files.length > 0);
-        var hasReference = (referenceInput && referenceInput.value.trim().length >= (binanceAuto ? 6 : 4));
-        var enabled = hasFile && hasReference && !timerExpired;
+        var hasVerificationData = false;
+
+        if (binanceAuto) {
+            hasVerificationData = !!(referenceInput && referenceInput.value.trim().length >= 6);
+        } else if (payerVerification) {
+            hasVerificationData = !!(
+                payerPhoneInput && payerPhoneInput.value.trim().length >= 10 &&
+                payerDniInput && payerDniInput.value.trim().length >= 5
+            );
+        } else {
+            hasVerificationData = !!(referenceInput && referenceInput.value.trim().length >= 4);
+        }
+
+        var enabled = hasFile && hasVerificationData && !timerExpired;
         if (submitBtn) submitBtn.disabled = !enabled;
     }
 
@@ -715,6 +780,14 @@
             updateSubmitState();
         });
         renderDots(referenceInput.value.trim().length);
+    }
+
+    if (payerPhoneInput) {
+        payerPhoneInput.addEventListener('input', updateSubmitState);
+    }
+
+    if (payerDniInput) {
+        payerDniInput.addEventListener('input', updateSubmitState);
     }
 
     var countdownMinutes = 30;

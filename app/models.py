@@ -308,6 +308,7 @@ class PaymentMethod(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     uses_rate = db.Column(db.Boolean, default=True)
     pabilo_user_bank_id = db.Column(db.String(100))
+    pabilo_requires_phone_dni = db.Column(db.Boolean, default=False)
 
     def to_dict(self):
         return {
@@ -325,6 +326,7 @@ class PaymentMethod(db.Model):
             'show_pay_id': self.show_pay_id,
             'show_contact_phone': self.show_contact_phone,
             'pabilo_user_bank_id': self.pabilo_user_bank_id,
+            'pabilo_requires_phone_dni': self.pabilo_requires_phone_dni,
         }
 
 

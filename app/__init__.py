@@ -181,6 +181,8 @@ def _ensure_payment_method_columns():
             db.session.execute(text('ALTER TABLE payment_methods ADD COLUMN uses_rate BOOLEAN DEFAULT 1'))
         if 'pabilo_user_bank_id' not in existing:
             db.session.execute(text('ALTER TABLE payment_methods ADD COLUMN pabilo_user_bank_id VARCHAR(100)'))
+        if 'pabilo_requires_phone_dni' not in existing:
+            db.session.execute(text('ALTER TABLE payment_methods ADD COLUMN pabilo_requires_phone_dni BOOLEAN DEFAULT 0'))
         db.session.commit()
     except Exception:
         db.session.rollback()
