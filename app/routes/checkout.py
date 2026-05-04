@@ -482,6 +482,7 @@ def checkout(package_id):
         payer_dni_type = None
         payer_dni_number = None
         payer_phone = None
+        manual_payment_reference = ''
         if _binance_auto:
             # For Binance auto, capture is not required.
             # The payment_reference is the 6-char code stored in the session.
@@ -514,6 +515,7 @@ def checkout(package_id):
                     payer_dni_type = 'V'
                 payer_dni_number = _digits_only(request.form.get('payer_dni_number') or '')[:20]
                 payer_phone = _digits_only(request.form.get('payer_phone') or '')[:20]
+                manual_payment_reference = (request.form.get('payment_reference') or '').strip()
 
                 if not payer_phone:
                     flash('Debes ingresar el telefono del cliente para validar el pago.', 'danger')
@@ -523,7 +525,7 @@ def checkout(package_id):
                     flash('Debes ingresar la cedula del cliente para validar el pago.', 'danger')
                     return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
-                payment_reference_input = f'{payer_dni_type}-{payer_dni_number}-{payer_phone}'
+                payment_reference_input = manual_payment_reference
             else:
                 payment_reference_input = (request.form.get('payment_reference') or '').strip()
                 if not payment_reference_input:
@@ -573,7 +575,7 @@ def checkout(package_id):
             player_id_value = _normalize_game_player_id(game, player_id_value)
 
         payment_reference = payment_reference_input[:255]
-        payment_reference_last5 = normalize_reference_last5(payment_reference)
+        payment_reference_last5 = normalize_reference_last5(payment_reference) if payment_reference else None
 
         # Asociar usuario si está autenticado y es un cliente (no admin)
         user_id = None

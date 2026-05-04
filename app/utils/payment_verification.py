@@ -399,7 +399,7 @@ def _extract_pabilo_payload(data):
     return data, data
 
 
-def verify_order_payment(order):
+def verify_order_payment(order, force_reference=False):
     if not order:
         return {'ok': False, 'verified': False, 'message': 'Orden inválida.'}
 
@@ -407,7 +407,7 @@ def verify_order_payment(order):
     if not payment_method:
         return {'ok': False, 'verified': False, 'message': 'Método de pago no encontrado.'}
 
-    uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method)
+    uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method) and not force_reference
 
     reference_candidates = []
     identity_payload = None

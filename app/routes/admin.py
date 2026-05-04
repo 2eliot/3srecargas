@@ -825,9 +825,9 @@ def order_detail(order_id):
     )
 
 
-def _run_admin_pabilo_reverification(order, reference=None):
+def _run_admin_pabilo_reverification(order, reference=None, force_reference=False):
     payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
-    uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method_config)
+    uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method_config) and not force_reference
 
     reference = str(reference if reference is not None else order.payment_reference or '').strip()
     if not uses_payer_identity and not reference:
@@ -841,7 +841,7 @@ def _run_admin_pabilo_reverification(order, reference=None):
         order.payment_reference_last5 = normalize_reference_last5(reference)
     order.updated_at = datetime.utcnow()
 
-    verification = verify_order_payment(order)
+    verification = verify_order_payment(order, force_reference=force_reference)
     order.payment_verification_attempts = int(order.payment_verification_attempts or 0) + 1
     order.payment_last_verification_at = datetime.utcnow()
 
@@ -874,7 +874,7 @@ def _run_admin_pabilo_reverification(order, reference=None):
 def order_update_payment_reference(order_id):
     order = Order.query.get_or_404(order_id)
     reference = request.form.get('payment_reference', '').strip()
-    return _run_admin_pabilo_reverification(order, reference=reference)
+    return _run_admin_pabilo_reverification(order, reference=reference, force_reference=True)
 
 
 @admin_bp.route('/orders/<int:order_id>/reverify-payment', methods=['POST'])
