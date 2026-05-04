@@ -148,6 +148,7 @@
                 if (gamesCarouselState.pointerId !== null && event.pointerId !== gamesCarouselState.pointerId) return;
 
                 if (eventName === 'pointerup' && !gamesCarouselState.dragged && gamesCarouselState.pressedCard) {
+                    gamesCarouselState.suppressClickUntil = Date.now() + 350;
                     handleGameClick(gamesCarouselState.pressedCard);
                     event.preventDefault();
                 }
@@ -796,15 +797,26 @@
     }
 
     function scrollPackagesPanelIntoView(delayMs) {
-        if (window.innerWidth > 768) return;
-
         var run = function () {
             var panel = document.getElementById('packagesPanel');
             if (!panel || panel.style.display === 'none') return;
 
-            panel.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
+            var rect = panel.getBoundingClientRect();
+            var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+
+            if (rect.top >= 16 && rect.bottom <= viewportHeight) {
+                return;
+            }
+
+            var targetTop = window.scrollY + rect.top - 16;
+
+            if (targetTop < 0) {
+                targetTop = 0;
+            }
+
+            window.scrollTo({
+                top: targetTop,
+                behavior: 'smooth'
             });
         };
 
