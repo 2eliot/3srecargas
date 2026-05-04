@@ -45,6 +45,10 @@ def _digits_only(value):
     return ''.join(ch for ch in str(value or '') if ch.isdigit())
 
 
+def _normalize_payer_phone(value):
+    return _digits_only(value)[:20]
+
+
 def _get_game_player_input_type(game):
     category_slug = ((game.category.slug if game and game.category else '') or '').lower()
     if category_slug == 'wallet':
@@ -514,10 +518,10 @@ def checkout(package_id):
                 if payer_dni_type not in {'V', 'E', 'J', 'G', 'P'}:
                     payer_dni_type = 'V'
                 payer_dni_number = _digits_only(request.form.get('payer_dni_number') or '')[:20]
-                payer_phone = _digits_only(request.form.get('payer_phone') or '')[:20]
+                payer_phone = _normalize_payer_phone(request.form.get('payer_phone') or '')
                 manual_payment_reference = (request.form.get('payment_reference') or '').strip()
 
-                if not payer_phone:
+                if len(payer_phone) < 10:
                     flash('Debes ingresar el telefono del cliente para validar el pago.', 'danger')
                     return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 

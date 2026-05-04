@@ -340,7 +340,8 @@
                                    name="payer_phone"
                                    placeholder="Ingresa el telefono del cliente"
                                    maxlength="20"
-                                   autocomplete="tel"
+                                   inputmode="numeric"
+                                   autocomplete="off"
                                    required>
                         </div>
 
@@ -454,6 +455,18 @@
     var inlineCopyButtons = document.querySelectorAll('.copy-inline-btn');
     var proofPreviewUrl = '';
     var extractionRequestId = 0;
+
+    function normalizeDigitsInput(input, maxLength) {
+        if (!input) return '';
+        var normalized = String(input.value || '').replace(/\D/g, '');
+        if (maxLength && normalized.length > maxLength) {
+            normalized = normalized.slice(0, maxLength);
+        }
+        if (input.value !== normalized) {
+            input.value = normalized;
+        }
+        return normalized;
+    }
 
     function showExtractedReferenceCard() {
         if (!proofExtractedReference) return;
@@ -689,8 +702,8 @@
             hasVerificationData = !!(referenceInput && referenceInput.value.trim().length >= 6);
         } else if (payerVerification) {
             hasVerificationData = !!(
-                payerPhoneInput && payerPhoneInput.value.trim().length >= 10 &&
-                payerDniInput && payerDniInput.value.trim().length >= 5
+                payerPhoneInput && normalizeDigitsInput(payerPhoneInput, 20).length >= 10 &&
+                payerDniInput && normalizeDigitsInput(payerDniInput, 20).length >= 5
             );
         } else {
             hasVerificationData = !!(referenceInput && referenceInput.value.trim().length >= 4);
@@ -791,11 +804,17 @@
     }
 
     if (payerPhoneInput) {
-        payerPhoneInput.addEventListener('input', updateSubmitState);
+        payerPhoneInput.addEventListener('input', function () {
+            normalizeDigitsInput(payerPhoneInput, 20);
+            updateSubmitState();
+        });
     }
 
     if (payerDniInput) {
-        payerDniInput.addEventListener('input', updateSubmitState);
+        payerDniInput.addEventListener('input', function () {
+            normalizeDigitsInput(payerDniInput, 20);
+            updateSubmitState();
+        });
     }
 
     var countdownMinutes = 30;
@@ -833,6 +852,8 @@
     updateTimer();
 
     checkoutForm.addEventListener('submit', function () {
+        normalizeDigitsInput(payerPhoneInput, 20);
+        normalizeDigitsInput(payerDniInput, 20);
         if (submitBtn) {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<div class="spinner-sm"></div> Procesando...';

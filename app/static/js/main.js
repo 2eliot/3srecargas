@@ -795,6 +795,27 @@
         panel.style.display = 'block';
     }
 
+    function scrollPackagesPanelIntoView(delayMs) {
+        if (window.innerWidth > 768) return;
+
+        var run = function () {
+            var panel = document.getElementById('packagesPanel');
+            if (!panel || panel.style.display === 'none') return;
+
+            panel.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        };
+
+        if (delayMs && delayMs > 0) {
+            window.setTimeout(run, delayMs);
+            return;
+        }
+
+        window.requestAnimationFrame(run);
+    }
+
     /* ── Fetch Packages via AJAX ──────────────────────────── */
     function fetchPackages(gameId) {
         console.log('Fetching packages for gameId:', gameId);
@@ -896,6 +917,7 @@
         selectedPackage = null;
         updateSidebarForPackage(null);
         refreshPackagePriceViews();
+        scrollPackagesPanelIntoView(120);
     }
 
     /* ── Player ID Verification (replicated from Inefablestore) ── */
@@ -1756,6 +1778,7 @@
         if (!manualInfoPopup) return;
         manualInfoPopup.style.display = 'none';
         manualInfoPopup.setAttribute('aria-hidden', 'true');
+        scrollPackagesPanelIntoView(80);
     }
 
     function openDiscountInfoPopup() {
@@ -1780,6 +1803,7 @@
         if (!gameSelectionPopup) return;
         gameSelectionPopup.style.display = 'none';
         gameSelectionPopup.setAttribute('aria-hidden', 'true');
+        scrollPackagesPanelIntoView(80);
     }
 
     /* ── Quick checkout form submit UX ───────────────────── */

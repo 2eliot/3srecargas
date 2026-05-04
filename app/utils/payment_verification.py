@@ -221,7 +221,7 @@ def build_pabilo_reference_payload(reference):
 
 def build_pabilo_phone_dni_payload(order):
     payer_phone = ''.join(ch for ch in str(order.payer_phone or '') if ch.isdigit())[:20]
-    if not payer_phone:
+    if len(payer_phone) < 10:
         return None, 'La orden no tiene un telefono del pagador valido para consultar en Pabilo.'
 
     payer_dni_number = ''.join(ch for ch in str(order.payer_dni_number or '') if ch.isdigit())[:20]

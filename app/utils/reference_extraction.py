@@ -10,6 +10,9 @@ from flask import current_app
 
 GEMINI_MODEL_CANDIDATES = (
     'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-flash',
 )
 
 
@@ -108,7 +111,16 @@ def _build_gemini_error_message(status_code, remote_message=''):
     remote_message = str(remote_message or '').strip()
     lowered = remote_message.lower()
 
-    if 'not available to new users' in lowered or 'deprecated' in lowered or 'decommissioned' in lowered:
+    if (
+        'not available to new users' in lowered
+        or 'deprecated' in lowered
+        or 'decommissioned' in lowered
+        or 'extension not available' in lowered
+        or 'extension no disponible' in lowered
+        or 'extensions are not available' in lowered
+        or 'model not found' in lowered
+        or 'not supported' in lowered
+    ):
         return 'La lectura automática de referencias no está disponible en este momento. Ingresa la referencia manualmente.'
 
     if 'quota exceeded' in lowered or 'rate limit' in lowered or 'too many requests' in lowered:
@@ -132,9 +144,14 @@ def _should_retry_with_fallback(status_code, remote_message=''):
         'not available to new users',
         'deprecated',
         'decommissioned',
+        'extension not available',
+        'extension no disponible',
+        'extensions are not available',
         'not found',
         'is not found',
         'unsupported',
+        'not supported',
+        'model not found',
     )
     return any(marker in lowered for marker in retry_markers)
 
