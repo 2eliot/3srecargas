@@ -323,6 +323,16 @@
                             </div>
                         </div>
 
+                        <label for="payment_reference" class="reference-label">Referencia de pago</label>
+                        <div class="reference-input-row">
+                            <input type="text"
+                                   id="payment_reference"
+                                   name="payment_reference"
+                                   placeholder="Ingresa la referencia de pago"
+                                   maxlength="30"
+                                   autocomplete="off">
+                        </div>
+
                         <label for="payer_phone" class="reference-label">Telefono del cliente</label>
                         <div class="reference-input-row">
                             <input type="text"
@@ -359,18 +369,6 @@
                                    value="{% if display_currency == 'usd' %}${{ '%.2f'|format(display_amount) }}{% else %}Bs {{ '%.0f'|format(display_amount) }}{% endif %}"
                                    readonly>
                         </div>
-
-                        <label for="payment_reference" class="reference-label">Referencia del pago</label>
-                        <div class="reference-input-row">
-                            <input type="text"
-                                   id="payment_reference"
-                                   name="payment_reference"
-                                   placeholder="Opcional: sirve para registro y validacion manual"
-                                   maxlength="30"
-                                   autocomplete="off">
-                        </div>
-
-                        <p class="ref-hint">Este metodo valida la orden con telefono, cedula y el monto exacto de la compra. La referencia es opcional: no se usa para la validacion automatica, pero queda guardada para registro y respaldo manual.</p>
                     </div>
                 </div>
                 {% elif not binance_auto %}
