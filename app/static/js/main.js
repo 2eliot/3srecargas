@@ -873,6 +873,14 @@
         var autoPkgs   = packages.filter(function (p) { return p.is_auto; });
         var manualPkgs = packages.filter(function (p) { return !p.is_auto; });
 
+        function getPackageUsdPrice(pkg) {
+            var exclusiveUsd = parseFloat(pkg.usd_price);
+            if (!isNaN(exclusiveUsd)) {
+                return exclusiveUsd;
+            }
+            return parseFloat(pkg.price);
+        }
+
         function buildItem(pkg) {
             var item = document.createElement('button');
             item.type      = 'button';
@@ -883,8 +891,9 @@
                 ? '<img src="/static/uploads/' + escHtml(pkg.image) + '" alt="' + escHtml(pkg.name) + '">'
                 : '<div class="pkg-img-placeholder">' + escHtml(pkg.name.charAt(0).toUpperCase()) + '</div>';
 
-            var priceUsd = parseFloat(pkg.price);
+            var priceUsd = getPackageUsdPrice(pkg);
             item.dataset.priceUsd = String(priceUsd);
+            item.dataset.priceBase = String(parseFloat(pkg.price));
 
             item.innerHTML =
                 imgHtml +
@@ -1327,7 +1336,7 @@
         form.action = '/checkout/' + pkg.id;
         if (hiddenInput) hiddenInput.value = String(pkg.id);
         submitBtn.disabled = false;
-        var priceNum = getEffectivePackagePrice(pkg.price);
+        var priceNum = getEffectivePackagePrice(getSelectedPackageBasePrice(pkg));
         var currency = getSelectedPaymentCurrency();
 
         if (currency === 'usd') {
@@ -1339,7 +1348,15 @@
             }
             submitLabel.textContent = 'Comprar — Bs ' + (isNaN(bs) ? '0' : Math.round(bs).toLocaleString('es-VE'));
         }
-        updateTotals(pkg.price);
+        updateTotals(getSelectedPackageBasePrice(pkg));
+    }
+
+    function getSelectedPackageBasePrice(pkg) {
+        if (!pkg) return NaN;
+        if (getSelectedPaymentCurrency() === 'usd' && pkg.usd_price !== null && pkg.usd_price !== undefined && pkg.usd_price !== '') {
+            return parseFloat(pkg.usd_price);
+        }
+        return parseFloat(pkg.price);
     }
 
     function getSelectedPaymentMethodUsesRate() {
@@ -1490,7 +1507,7 @@
             return;
         }
 
-        var packagePrice = selectedPackage ? parseFloat(selectedPackage.price) : NaN;
+        var packagePrice = selectedPackage ? getSelectedPackageBasePrice(selectedPackage) : NaN;
         var knownCode = !!(window.validDiscounts && window.validDiscounts[code]);
         var discountMeta = getValidDiscountMeta(code, packagePrice);
 
@@ -1549,7 +1566,7 @@
         });
 
         if (selectedPackage) {
-            updateTotals(selectedPackage.price);
+            updateTotals(getSelectedPackageBasePrice(selectedPackage));
         }
     }
 

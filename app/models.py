@@ -68,6 +68,7 @@ class Package(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
     price = db.Column(db.Numeric(10, 2), nullable=False)
+    usd_price = db.Column(db.Numeric(10, 2))
     image = db.Column(db.String(255))
     is_automated = db.Column(db.Boolean, default=False)
     sort_order = db.Column(db.Integer, default=100)
@@ -86,6 +87,7 @@ class Package(db.Model):
             'name': self.name,
             'description': self.description,
             'price': str(self.price),
+            'usd_price': str(self.usd_price) if self.usd_price is not None else None,
             'image': self.image,
             'is_automated': self.is_automated,
             'pin_count': self.pin_count if self.is_automated else None,

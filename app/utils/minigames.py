@@ -154,10 +154,10 @@ def get_minigame_reward_discount_pool(tier):
     return ordered
 
 
-def get_minigame_reward_discount(tier):
+def get_minigame_available_reward_discount_pool(tier):
     pool = get_minigame_reward_discount_pool(tier)
     if not pool:
-        return None
+        return []
 
     pool_ids = [discount.id for discount in pool]
     assigned_ids = {
@@ -171,16 +171,26 @@ def get_minigame_reward_discount(tier):
     }
 
     now = datetime.utcnow()
+    available = []
     for discount in pool:
         if not discount.is_active:
             continue
         if discount.expires_at and discount.expires_at < now:
             continue
+        if discount.usage_limit and int(discount.used_count or 0) >= int(discount.usage_limit):
+            continue
         if discount.id in assigned_ids:
             continue
-        return discount
+        available.append(discount)
 
-    return None
+    return available
+
+
+def get_minigame_reward_discount(tier):
+    pool = get_minigame_available_reward_discount_pool(tier)
+    if not pool:
+        return None
+    return pool[0]
 
 
 def get_minigame_reward_label(tier, fallback=''):

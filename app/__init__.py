@@ -10,6 +10,16 @@ from config import Config
 login_manager = LoginManager()
 
 
+def _ensure_postgres_columns(table_name, column_defs):
+    if db.engine.dialect.name != 'postgresql':
+        return False
+
+    for column_def in column_defs:
+        db.session.execute(text(f'ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_def}'))
+    db.session.commit()
+    return True
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -87,16 +97,16 @@ def create_app(config_class=Config):
             social_links[key.upper()] = val_setting.value if val_setting and val_setting.value else ''
 
         support_email_setting = Setting.query.filter_by(key='support_email').first()
-        support_email = support_email_setting.value if support_email_setting and support_email_setting.value else 'soporte@3srecargas.com'
+        support_email = support_email_setting.value if support_email_setting and support_email_setting.value else '3srecargas@gmail.com'
 
         support_whatsapp_setting = Setting.query.filter_by(key='support_whatsapp').first()
         support_whatsapp_url = support_whatsapp_setting.value if support_whatsapp_setting and support_whatsapp_setting.value else 'https://wa.me/19543789224'
 
         support_schedule_setting = Setting.query.filter_by(key='support_schedule').first()
-        support_schedule = support_schedule_setting.value if support_schedule_setting and support_schedule_setting.value else 'Lunes a Domingo: 8:00 AM - 10:00 PM'
+        support_schedule = support_schedule_setting.value if support_schedule_setting and support_schedule_setting.value else 'Lunes a Domingo 10:00 AM a 8:00 PM'
 
         support_location_setting = Setting.query.filter_by(key='support_location').first()
-        support_location = support_location_setting.value if support_location_setting and support_location_setting.value else 'Valencia, Carabobo, Venezuela'
+        support_location = support_location_setting.value if support_location_setting and support_location_setting.value else 'Puerto Ordaz, Bolívar, Venezuela'
 
         ranking_keys = [
             'ranking_free_fire_enabled',
@@ -139,6 +149,7 @@ def create_app(config_class=Config):
         _ensure_order_nickname_column()
         _ensure_order_delivery_proof_column()
         _ensure_game_columns()
+        _ensure_package_pricing_columns()
         _ensure_affiliate_columns()
         _ensure_payment_verification_columns()
         _ensure_ai_reference_columns()
@@ -154,6 +165,22 @@ def create_app(config_class=Config):
 
 def _ensure_payment_method_columns():
     try:
+        if _ensure_postgres_columns('payment_methods', [
+            'contact_email VARCHAR(255)',
+            'pay_id VARCHAR(255)',
+            'contact_phone VARCHAR(50)',
+            'bank_name VARCHAR(100)',
+            'id_number VARCHAR(30)',
+            "account_currency VARCHAR(3) DEFAULT 'bs'",
+            'show_contact_email BOOLEAN DEFAULT FALSE',
+            'show_pay_id BOOLEAN DEFAULT FALSE',
+            'show_contact_phone BOOLEAN DEFAULT FALSE',
+            'uses_rate BOOLEAN DEFAULT TRUE',
+            'pabilo_user_bank_id VARCHAR(100)',
+            'pabilo_requires_phone_dni BOOLEAN DEFAULT FALSE',
+        ]):
+            return
+
         if db.engine.dialect.name != 'sqlite':
             return
 
@@ -224,6 +251,13 @@ def _ensure_user_columns():
 
 def _ensure_discount_columns():
     try:
+        if _ensure_postgres_columns('orders', [
+            'discount_id INTEGER',
+            'original_amount NUMERIC(10, 2)',
+            'discount_amount NUMERIC(10, 2) DEFAULT 0',
+        ]):
+            return
+
         if db.engine.dialect.name != 'sqlite':
             return
 
@@ -244,6 +278,11 @@ def _ensure_discount_columns():
 
 def _ensure_order_nickname_column():
     try:
+        if _ensure_postgres_columns('orders', [
+            'player_nickname VARCHAR(200)',
+        ]):
+            return
+
         if db.engine.dialect.name != 'sqlite':
             return
         rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
@@ -257,12 +296,36 @@ def _ensure_order_nickname_column():
 
 def _ensure_order_delivery_proof_column():
     try:
+        if _ensure_postgres_columns('orders', [
+            'delivery_proof VARCHAR(255)',
+        ]):
+            return
+
         if db.engine.dialect.name != 'sqlite':
             return
         rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
         existing = {r[1] for r in rows}
         if 'delivery_proof' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN delivery_proof VARCHAR(255)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_package_pricing_columns():
+    try:
+        if _ensure_postgres_columns('packages', [
+            'usd_price NUMERIC(10, 2)',
+        ]):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(packages)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'usd_price' not in existing:
+            db.session.execute(text('ALTER TABLE packages ADD COLUMN usd_price NUMERIC(10, 2)'))
             db.session.commit()
     except Exception:
         db.session.rollback()
@@ -299,6 +362,23 @@ def _ensure_affiliate_columns():
 
 def _ensure_payment_verification_columns():
     try:
+        if _ensure_postgres_columns('orders', [
+            'payment_reference_last5 VARCHAR(6)',
+            'payment_amount NUMERIC(10, 2)',
+            'payment_currency VARCHAR(3)',
+            'payer_dni_type VARCHAR(2)',
+            'payer_dni_number VARCHAR(20)',
+            'payer_bank_origin VARCHAR(20)',
+            'payer_phone VARCHAR(20)',
+            'payer_payment_date DATE',
+            'payer_movement_type VARCHAR(20)',
+            'payment_verification_id VARCHAR(100)',
+            'payment_verified_at TIMESTAMP',
+            'payment_verification_attempts INTEGER DEFAULT 0',
+            'payment_last_verification_at TIMESTAMP',
+        ]):
+            return
+
         if db.engine.dialect.name != 'sqlite':
             return
 
@@ -338,6 +418,11 @@ def _ensure_payment_verification_columns():
 
 def _ensure_ai_reference_columns():
     try:
+        if _ensure_postgres_columns('orders', [
+            'ai_extracted_reference VARCHAR(255)',
+        ]):
+            return
+
         if db.engine.dialect.name != 'sqlite':
             return
 
@@ -352,6 +437,13 @@ def _ensure_ai_reference_columns():
 
 def _ensure_order_idempotency_column():
     try:
+        if _ensure_postgres_columns('orders', [
+            'idempotency_key VARCHAR(64)',
+        ]):
+            db.session.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_idempotency_key ON orders(idempotency_key)'))
+            db.session.commit()
+            return
+
         if db.engine.dialect.name != 'sqlite':
             return
 

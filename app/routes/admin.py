@@ -22,6 +22,7 @@ from ..models import (
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
 from ..utils.minigames import (
     MINIGAME_CYCLE_LENGTH,
+    get_minigame_available_reward_discount_pool,
     get_minigame_reward_definitions,
     get_minigame_reward_discount_ids,
     get_minigame_counter_scope_key,
@@ -558,6 +559,7 @@ def package_add():
     game_id = request.form.get('game_id')
     name = request.form.get('name', '').strip()
     price = request.form.get('price', '0').strip()
+    usd_price_raw = request.form.get('usd_price', '').strip()
     description = request.form.get('description', '').strip()
     is_automated = bool(request.form.get('is_automated'))
     sort_order = int(request.form.get('sort_order', 100))
@@ -566,9 +568,20 @@ def package_add():
         flash('Juego, nombre y precio son obligatorios.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
+    try:
+        base_price = float(price)
+        usd_price = float(usd_price_raw) if usd_price_raw else None
+    except ValueError:
+        flash('Los precios deben ser números válidos.', 'danger')
+        return redirect(url_for('admin_bp.packages'))
+
+    if base_price <= 0 or (usd_price is not None and usd_price <= 0):
+        flash('Los precios deben ser mayores a 0.', 'danger')
+        return redirect(url_for('admin_bp.packages'))
+
     image = save_image(request.files.get('image'), 'packages')
     pkg = Package(
-        game_id=int(game_id), name=name, price=float(price),
+        game_id=int(game_id), name=name, price=base_price, usd_price=usd_price,
         description=description, is_automated=is_automated,
         sort_order=sort_order, image=image,
     )
@@ -583,7 +596,19 @@ def package_add():
 def package_edit(pkg_id):
     pkg = Package.query.get_or_404(pkg_id)
     pkg.name = request.form.get('name', pkg.name).strip()
-    pkg.price = float(request.form.get('price', pkg.price))
+    price_raw = request.form.get('price', pkg.price)
+    usd_price_raw = request.form.get('usd_price', '')
+    try:
+        pkg.price = float(price_raw)
+        pkg.usd_price = float(usd_price_raw) if str(usd_price_raw).strip() else None
+    except ValueError:
+        flash('Los precios deben ser números válidos.', 'danger')
+        return redirect(url_for('admin_bp.packages'))
+
+    if float(pkg.price or 0) <= 0 or (pkg.usd_price is not None and float(pkg.usd_price) <= 0):
+        flash('Los precios deben ser mayores a 0.', 'danger')
+        return redirect(url_for('admin_bp.packages'))
+
     pkg.description = request.form.get('description', pkg.description or '').strip()
     pkg.is_automated = bool(request.form.get('is_automated'))
     pkg.sort_order = int(request.form.get('sort_order', pkg.sort_order))
@@ -826,47 +851,56 @@ def order_detail(order_id):
 
 
 def _run_admin_pabilo_reverification(order, reference=None, force_reference=False):
-    payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
-    uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method_config) and not force_reference
+    try:
+        payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
+        uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method_config) and not force_reference
 
-    reference = str(reference if reference is not None else order.payment_reference or '').strip()
-    if not uses_payer_identity and not reference:
-        flash('La referencia bancaria es obligatoria.', 'danger')
-        return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+        reference = str(reference if reference is not None else order.payment_reference or '').strip()
+        if not uses_payer_identity and not reference:
+            flash('La referencia bancaria es obligatoria.', 'danger')
+            return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
-    previous_reference = str(order.payment_reference or '').strip()
-    clear_pabilo_verification_state(order)
-    if not uses_payer_identity:
-        order.payment_reference = reference
-        order.payment_reference_last5 = normalize_reference_last5(reference)
-    order.updated_at = datetime.utcnow()
+        previous_reference = str(order.payment_reference or '').strip()
+        clear_pabilo_verification_state(order)
+        if not uses_payer_identity:
+            order.payment_reference = reference
+            order.payment_reference_last5 = normalize_reference_last5(reference)
+        order.updated_at = datetime.utcnow()
 
-    verification = verify_order_payment(order, force_reference=force_reference)
-    order.payment_verification_attempts = int(order.payment_verification_attempts or 0) + 1
-    order.payment_last_verification_at = datetime.utcnow()
+        verification = verify_order_payment(order, force_reference=force_reference)
+        order.payment_verification_attempts = int(order.payment_verification_attempts or 0) + 1
+        order.payment_last_verification_at = datetime.utcnow()
 
-    if verification.get('verified'):
-        stamp_verified_payment(order, verification)
-        note = '[Admin] Pago re-verificado manualmente en Pabilo.'
-        if uses_payer_identity:
-            note = '[Admin] Pago re-verificado manualmente en Pabilo con telefono y cedula del pagador.'
-        elif previous_reference and previous_reference != reference:
-            note = f'[Admin] Referencia bancaria actualizada de {previous_reference} a {reference} y pago re-verificado en Pabilo.'
+        if verification.get('verified'):
+            stamp_verified_payment(order, verification)
+            note = '[Admin] Pago re-verificado manualmente en Pabilo.'
+            if uses_payer_identity:
+                note = '[Admin] Pago re-verificado manualmente en Pabilo con telefono y cedula del pagador.'
+            elif previous_reference and previous_reference != reference:
+                note = f'[Admin] Referencia bancaria actualizada de {previous_reference} a {reference} y pago re-verificado en Pabilo.'
+            existing_notes = order.notes or ''
+            if note not in existing_notes:
+                order.notes = (existing_notes + '\n' + note).strip()
+            db.session.commit()
+            flash(verification.get('message') or 'Pago re-verificado correctamente en Pabilo.', 'success')
+            return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
+        note = verification.get('message') or 'No se pudo re-verificar el pago en Pabilo.'
+        audit_note = f'[Admin] {note}'
         existing_notes = order.notes or ''
-        if note not in existing_notes:
-            order.notes = (existing_notes + '\n' + note).strip()
+        if audit_note not in existing_notes:
+            order.notes = (existing_notes + '\n' + audit_note).strip()
         db.session.commit()
-        flash(verification.get('message') or 'Pago re-verificado correctamente en Pabilo.', 'success')
+        flash(note, 'warning' if verification.get('ok') else 'danger')
         return redirect(url_for('admin_bp.order_detail', order_id=order.id))
-
-    note = verification.get('message') or 'No se pudo re-verificar el pago en Pabilo.'
-    audit_note = f'[Admin] {note}'
-    existing_notes = order.notes or ''
-    if audit_note not in existing_notes:
-        order.notes = (existing_notes + '\n' + audit_note).strip()
-    db.session.commit()
-    flash(note, 'warning' if verification.get('ok') else 'danger')
-    return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            'Error al re-verificar manualmente el pago de la orden %s',
+            getattr(order, 'id', None),
+        )
+        flash('Ocurrió un error interno al re-verificar el pago. Revisa el log del servidor para el detalle.', 'danger')
+        return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
 
 @admin_bp.route('/orders/<int:order_id>/payment-reference', methods=['POST'])
@@ -892,21 +926,31 @@ def order_approve(order_id):
     delivery_proof_path = None
     delivery_proof_file = request.files.get('delivery_proof')
 
-    if delivery_proof_file and delivery_proof_file.filename:
-        if not order_supports_delivery_proof(order):
-            flash('El comprobante adjunto solo se usa en órdenes manuales sin entrega de PIN.', 'warning')
-        elif not allowed_file(delivery_proof_file.filename):
-            flash('El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.', 'danger')
-            return redirect(redirect_target)
-        else:
-            delivery_proof_path = save_image(delivery_proof_file, 'delivery_proofs')
+    try:
+        if delivery_proof_file and delivery_proof_file.filename:
+            if not order_supports_delivery_proof(order):
+                flash('El comprobante adjunto solo se usa en órdenes manuales sin entrega de PIN.', 'warning')
+            elif not allowed_file(delivery_proof_file.filename):
+                flash('El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.', 'danger')
+                return redirect(redirect_target)
+            else:
+                delivery_proof_path = save_image(delivery_proof_file, 'delivery_proofs')
 
-    result = approve_order(order, delivery_proof_path=delivery_proof_path)
-    if delivery_proof_path and getattr(order, 'delivery_proof', None) != delivery_proof_path:
-        delete_uploaded_file(delivery_proof_path)
-    flash(result['message'], result['category'])
-
-    return redirect(redirect_target)
+        result = approve_order(order, delivery_proof_path=delivery_proof_path)
+        if delivery_proof_path and getattr(order, 'delivery_proof', None) != delivery_proof_path:
+            delete_uploaded_file(delivery_proof_path)
+        flash(result['message'], result['category'])
+        return redirect(redirect_target)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            'Error al aprobar manualmente la orden %s',
+            getattr(order, 'id', None),
+        )
+        if delivery_proof_path:
+            delete_uploaded_file(delivery_proof_path)
+        flash('Ocurrió un error interno al aprobar la orden. Revisa el log del servidor para el detalle.', 'danger')
+        return redirect(redirect_target)
 
 
 @admin_bp.route('/orders/<int:order_id>/reject', methods=['POST'])
@@ -1782,9 +1826,8 @@ def minigames():
     for tier in coupon_tiers:
         coupon_reward_settings[tier] = [str(value) for value in get_minigame_reward_discount_ids(tier)]
         coupon_reward_code_lines[tier] = '\n'.join(
-            discounts_by_id[int(value)].code
-            for value in coupon_reward_settings[tier]
-            if str(value).isdigit() and int(value) in discounts_by_id
+            discount.code
+            for discount in get_minigame_available_reward_discount_pool(tier)
         )
 
     if request.method == 'POST':

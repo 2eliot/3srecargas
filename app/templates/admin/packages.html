@@ -49,7 +49,12 @@
                         </div>
                     </td>
                     <td>{{ pkg.game.name }}</td>
-                    <td><strong>${{ "%.2f"|format(pkg.price) }}</strong></td>
+                    <td>
+                        <div class="cell-stack">
+                            <strong>Base Bs/tasa: ${{ "%.2f"|format(pkg.price) }}</strong>
+                            {% if pkg.usd_price is not none %}<small>USD exclusivo: ${{ "%.2f"|format(pkg.usd_price) }}</small>{% endif %}
+                        </div>
+                    </td>
                     <td>{{ pkg.sort_order }}</td>
                     <td>{% if pkg.is_automated %}<span class="badge badge-auto">⚡ Sí</span>{% else %}—{% endif %}</td>
                     <td>
@@ -68,7 +73,7 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-outline"
-                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name }}', '{{ pkg.price }}', '{{ pkg.description or '' }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }})">
+                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }})">
                                 Editar
                             </button>
                             <form method="POST" action="{{ url_for('admin_bp.package_delete', pkg_id=pkg.id) }}" style="display:inline">
@@ -109,8 +114,12 @@
                     <input type="text" name="name" required placeholder="100 Diamantes">
                 </div>
                 <div class="form-group">
-                    <label>Precio (USD) *</label>
+                    <label>Precio base Bs por tasa (USD) *</label>
                     <input type="number" name="price" step="0.01" min="0.01" required placeholder="9.99">
+                </div>
+                <div class="form-group">
+                    <label>Precio exclusivo para métodos USD</label>
+                    <input type="number" name="usd_price" step="0.01" min="0.01" placeholder="Opcional: 1.49">
                 </div>
                 <div class="form-group">
                     <label>Orden</label>
@@ -152,8 +161,12 @@
                     <input type="text" name="name" id="editPkgName" required>
                 </div>
                 <div class="form-group">
-                    <label>Precio (USD) *</label>
+                    <label>Precio base Bs por tasa (USD) *</label>
                     <input type="number" name="price" id="editPkgPrice" step="0.01" min="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Precio exclusivo para métodos USD</label>
+                    <input type="number" name="usd_price" id="editPkgUsdPrice" step="0.01" min="0.01">
                 </div>
                 <div class="form-group">
                     <label>Orden</label>
@@ -190,10 +203,11 @@
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function openEditPkg(id, name, price, desc, order, isAuto, isActive) {
+function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive) {
     document.getElementById('editPkgForm').action = '/admin/packages/' + id + '/edit';
     document.getElementById('editPkgName').value = name;
     document.getElementById('editPkgPrice').value = price;
+    document.getElementById('editPkgUsdPrice').value = usdPrice || '';
     document.getElementById('editPkgDesc').value = desc;
     document.getElementById('editPkgOrder').value = order;
     document.getElementById('editPkgAuto').checked = isAuto;

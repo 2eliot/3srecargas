@@ -367,6 +367,18 @@ def order_matches_checkout_attempt(order, package, payment_method, payment_refer
     return True
 
 
+def get_package_checkout_price(package, payment_method_config):
+    if not package:
+        return 0.0
+
+    if payment_method_config and (payment_method_config.account_currency or '').strip().lower() == 'usd':
+        usd_price = getattr(package, 'usd_price', None)
+        if usd_price is not None:
+            return float(usd_price)
+
+    return float(package.price or 0)
+
+
 @checkout_bp.route('/checkout/<int:package_id>', methods=['GET', 'POST'])
 def checkout(package_id):
     package = Package.query.filter_by(id=package_id, is_active=True).first_or_404()
@@ -605,8 +617,9 @@ def checkout(package_id):
 
         # Procesar descuento si hay código (descuento explícito o código de afiliado)
         discount_code = ((data.get('affiliate_code') or aff_code or '').strip()).upper()
-        original_amount = float(package.price)
-        discount_result = get_checkout_discount_result(discount_code, package.price)
+        package_checkout_price = get_package_checkout_price(package, method_config)
+        original_amount = float(package_checkout_price)
+        discount_result = get_checkout_discount_result(discount_code, package_checkout_price)
         discount = discount_result['discount']
         affiliate = discount_result['affiliate']
         discount_amount = discount_result['discount_amount']

@@ -570,9 +570,13 @@ def get_discounts():
             'source': 'affiliate',
         }
 
-    return jsonify({
+    response = jsonify({
         'discounts': payload
     })
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 @main_bp.route('/api/rankings')

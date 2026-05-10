@@ -353,7 +353,7 @@
     };
     
     // Cargar descuentos válidos
-    fetch('/api/discounts')
+    fetch('/api/discounts?ts=' + Date.now(), { cache: 'no-store' })
         .then(r => r.json())
         .then(data => {
             window.validDiscounts = data.discounts;
