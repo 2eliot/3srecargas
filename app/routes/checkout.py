@@ -379,10 +379,10 @@ def get_package_checkout_price(package, payment_method_config):
     return float(package.price or 0)
 
 
-def get_package_bs_rate(package, fallback_rate=0.0):
-    if not package:
+def get_game_bs_rate(game, fallback_rate=0.0):
+    if not game:
         return float(fallback_rate or 0.0)
-    return package.get_bs_rate(fallback_rate)
+    return game.get_bs_rate(fallback_rate)
 
 
 def _get_active_session_affiliate_code():
@@ -637,7 +637,7 @@ def checkout(package_id):
         # Procesar descuento si hay código (descuento explícito o código de afiliado)
         discount_code = ((data.get('affiliate_code') or aff_code or '').strip()).upper()
         package_checkout_price = get_package_checkout_price(package, method_config)
-        package_bs_rate = get_package_bs_rate(package, usd_rate)
+        package_bs_rate = get_game_bs_rate(game, usd_rate)
         original_amount = float(package_checkout_price)
         discount_result = get_checkout_discount_result(discount_code, package_checkout_price)
         discount = discount_result['discount']
@@ -799,7 +799,7 @@ def checkout(package_id):
         display_currency = 'usd'
 
     package_checkout_price = get_package_checkout_price(package, selected_method)
-    package_bs_rate = get_package_bs_rate(package, usd_rate)
+    package_bs_rate = get_game_bs_rate(game, usd_rate)
     usd_amount = float(package_checkout_price)
     original_amount = usd_amount
     
@@ -882,7 +882,7 @@ def order_status(order_number):
     order = Order.query.filter_by(order_number=order_number).first_or_404()
     usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
     usd_rate = float(usd_rate_setting.value) if usd_rate_setting else 0.0
-    package_bs_rate = get_package_bs_rate(order.package, usd_rate)
+    package_bs_rate = get_game_bs_rate(order.game, usd_rate)
     order_status_image_setting = Setting.query.filter_by(key='order_status_image').first()
     order_status_image = order_status_image_setting.value if order_status_image_setting else ''
     method = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()

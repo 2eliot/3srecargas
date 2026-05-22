@@ -32,6 +32,7 @@ class Game(db.Model):
     player_id_label = db.Column(db.String(50), default='Player ID')
     player_id_input_type = db.Column(db.String(20), default='numeric')
     zone_id_label = db.Column(db.String(50), default='Zone ID')
+    bs_rate_override = db.Column(db.Numeric(10, 4))
     is_automated = db.Column(db.Boolean, default=False)
     show_selection_popup = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
@@ -40,6 +41,11 @@ class Game(db.Model):
         order_by='Package.sort_order'
     )
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def get_bs_rate(self, fallback_rate=0.0):
+        if self.bs_rate_override is not None:
+            return float(self.bs_rate_override)
+        return float(fallback_rate or 0.0)
 
     def to_dict(self):
         return {
@@ -54,6 +60,7 @@ class Game(db.Model):
             'player_id_label': self.player_id_label,
             'player_id_input_type': self.player_id_input_type,
             'zone_id_label': self.zone_id_label,
+            'bs_rate_override': str(self.bs_rate_override) if self.bs_rate_override is not None else None,
             'is_automated': self.is_automated,
             'show_selection_popup': self.show_selection_popup,
             'is_active': self.is_active,
@@ -69,7 +76,6 @@ class Package(db.Model):
     description = db.Column(db.Text)
     price = db.Column(db.Numeric(10, 2), nullable=False)
     usd_price = db.Column(db.Numeric(10, 2))
-    bs_rate_override = db.Column(db.Numeric(10, 4))
     image = db.Column(db.String(255))
     is_automated = db.Column(db.Boolean, default=False)
     sort_order = db.Column(db.Integer, default=100)
@@ -81,11 +87,6 @@ class Package(db.Model):
     def pin_count(self):
         return self.pins.filter_by(is_used=False).count()
 
-    def get_bs_rate(self, fallback_rate=0.0):
-        if self.bs_rate_override is not None:
-            return float(self.bs_rate_override)
-        return float(fallback_rate or 0.0)
-
     def to_dict(self):
         return {
             'id': self.id,
@@ -94,7 +95,6 @@ class Package(db.Model):
             'description': self.description,
             'price': str(self.price),
             'usd_price': str(self.usd_price) if self.usd_price is not None else None,
-            'bs_rate_override': str(self.bs_rate_override) if self.bs_rate_override is not None else None,
             'image': self.image,
             'is_automated': self.is_automated,
             'pin_count': self.pin_count if self.is_automated else None,

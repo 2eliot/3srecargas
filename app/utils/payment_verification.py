@@ -137,9 +137,9 @@ def _get_bs_amount(order):
     except Exception:
         usd_rate = 0.0
 
-    package = getattr(order, 'package', None)
-    if package is not None:
-        usd_rate = package.get_bs_rate(usd_rate)
+    game = getattr(order, 'game', None)
+    if game is not None:
+        usd_rate = game.get_bs_rate(usd_rate)
 
     if usd_rate > 0 and order.amount:
         return round(float(order.amount) * usd_rate, 2)

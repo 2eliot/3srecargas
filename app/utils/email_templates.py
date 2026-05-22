@@ -35,9 +35,9 @@ def _format_order_amount(order):
         amt_bs = amt_usd.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         return f"Bs {int(amt_bs)}"
 
-    package = getattr(order, 'package', None)
-    if package is not None:
-        usd_rate = Decimal(str(package.get_bs_rate(float(usd_rate or Decimal('0')))))
+    game = getattr(order, 'game', None)
+    if game is not None:
+        usd_rate = Decimal(str(game.get_bs_rate(float(usd_rate or Decimal('0')))))
 
     amt_bs = (amt_usd * (usd_rate or Decimal('0'))).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
     try:

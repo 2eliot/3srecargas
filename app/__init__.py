@@ -316,7 +316,6 @@ def _ensure_package_pricing_columns():
     try:
         if _ensure_postgres_columns('packages', [
             'usd_price NUMERIC(10, 2)',
-            'bs_rate_override NUMERIC(10, 4)',
         ]):
             return
 
@@ -327,8 +326,6 @@ def _ensure_package_pricing_columns():
         existing = {r[1] for r in rows}
         if 'usd_price' not in existing:
             db.session.execute(text('ALTER TABLE packages ADD COLUMN usd_price NUMERIC(10, 2)'))
-        if 'bs_rate_override' not in existing:
-            db.session.execute(text('ALTER TABLE packages ADD COLUMN bs_rate_override NUMERIC(10, 4)'))
             db.session.commit()
     except Exception:
         db.session.rollback()
@@ -336,6 +333,13 @@ def _ensure_package_pricing_columns():
 
 def _ensure_game_columns():
     try:
+        if _ensure_postgres_columns('games', [
+            'show_selection_popup BOOLEAN DEFAULT FALSE',
+            "player_id_input_type VARCHAR(20) DEFAULT 'numeric'",
+            'bs_rate_override NUMERIC(10, 4)',
+        ]):
+            return
+
         if db.engine.dialect.name != 'sqlite':
             return
 
@@ -345,6 +349,8 @@ def _ensure_game_columns():
             db.session.execute(text('ALTER TABLE games ADD COLUMN show_selection_popup BOOLEAN DEFAULT 0'))
         if 'player_id_input_type' not in existing:
             db.session.execute(text("ALTER TABLE games ADD COLUMN player_id_input_type VARCHAR(20) DEFAULT 'numeric'"))
+        if 'bs_rate_override' not in existing:
+            db.session.execute(text('ALTER TABLE games ADD COLUMN bs_rate_override NUMERIC(10, 4)'))
         db.session.commit()
     except Exception:
         db.session.rollback()

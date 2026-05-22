@@ -488,6 +488,7 @@ def game_add():
     player_id_label = request.form.get('player_id_label', 'Player ID').strip()
     player_id_input_type = normalize_game_player_input_type(request.form.get('player_id_input_type'))
     zone_id_label = request.form.get('zone_id_label', 'Zone ID').strip()
+    bs_rate_override_raw = request.form.get('bs_rate_override', '').strip()
     is_automated = bool(request.form.get('is_automated'))
     show_selection_popup = bool(request.form.get('show_selection_popup'))
     position = int(request.form.get('position', 100))
@@ -495,6 +496,16 @@ def game_add():
 
     if not name or not category_id:
         flash('Nombre y categoría son obligatorios.', 'danger')
+        return redirect(url_for('admin_bp.games'))
+
+    try:
+        bs_rate_override = float(bs_rate_override_raw) if bs_rate_override_raw else None
+    except ValueError:
+        flash('La tasa Bs del juego debe ser un número válido.', 'danger')
+        return redirect(url_for('admin_bp.games'))
+
+    if bs_rate_override is not None and bs_rate_override <= 0:
+        flash('La tasa Bs del juego debe ser mayor a 0.', 'danger')
         return redirect(url_for('admin_bp.games'))
 
     slug = name.lower().replace(' ', '-').replace('/', '-')
@@ -508,6 +519,7 @@ def game_add():
         requires_zone_id=requires_zone_id, player_id_label=player_id_label,
         player_id_input_type=player_id_input_type,
         zone_id_label=zone_id_label, is_automated=is_automated,
+        bs_rate_override=bs_rate_override,
         show_selection_popup=show_selection_popup,
         position=position, description=description, image=image,
     )
@@ -529,11 +541,22 @@ def game_edit(game_id):
         request.form.get('player_id_input_type', game.player_id_input_type)
     )
     game.zone_id_label = request.form.get('zone_id_label', game.zone_id_label).strip()
+    bs_rate_override_raw = request.form.get('bs_rate_override', '')
     game.is_automated = bool(request.form.get('is_automated'))
     game.show_selection_popup = bool(request.form.get('show_selection_popup'))
     game.position = int(request.form.get('position', game.position))
     game.description = request.form.get('description', game.description or '').strip()
     game.is_active = bool(request.form.get('is_active'))
+
+    try:
+        game.bs_rate_override = float(bs_rate_override_raw) if str(bs_rate_override_raw).strip() else None
+    except ValueError:
+        flash('La tasa Bs del juego debe ser un número válido.', 'danger')
+        return redirect(url_for('admin_bp.games'))
+
+    if game.bs_rate_override is not None and float(game.bs_rate_override) <= 0:
+        flash('La tasa Bs del juego debe ser mayor a 0.', 'danger')
+        return redirect(url_for('admin_bp.games'))
 
     new_image = save_image(request.files.get('image'), 'games')
     if new_image:
@@ -581,7 +604,6 @@ def package_add():
     name = request.form.get('name', '').strip()
     price = request.form.get('price', '0').strip()
     usd_price_raw = request.form.get('usd_price', '').strip()
-    bs_rate_override_raw = request.form.get('bs_rate_override', '').strip()
     description = request.form.get('description', '').strip()
     is_automated = bool(request.form.get('is_automated'))
     sort_order = int(request.form.get('sort_order', 100))
@@ -593,18 +615,17 @@ def package_add():
     try:
         base_price = float(price)
         usd_price = float(usd_price_raw) if usd_price_raw else None
-        bs_rate_override = float(bs_rate_override_raw) if bs_rate_override_raw else None
     except ValueError:
-        flash('Los precios y la tasa deben ser números válidos.', 'danger')
+        flash('Los precios deben ser números válidos.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
-    if base_price <= 0 or (usd_price is not None and usd_price <= 0) or (bs_rate_override is not None and bs_rate_override <= 0):
-        flash('Los precios y la tasa deben ser mayores a 0.', 'danger')
+    if base_price <= 0 or (usd_price is not None and usd_price <= 0):
+        flash('Los precios deben ser mayores a 0.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
     image = save_image(request.files.get('image'), 'packages')
     pkg = Package(
-        game_id=int(game_id), name=name, price=base_price, usd_price=usd_price, bs_rate_override=bs_rate_override,
+        game_id=int(game_id), name=name, price=base_price, usd_price=usd_price,
         description=description, is_automated=is_automated,
         sort_order=sort_order, image=image,
     )
@@ -621,17 +642,15 @@ def package_edit(pkg_id):
     pkg.name = request.form.get('name', pkg.name).strip()
     price_raw = request.form.get('price', pkg.price)
     usd_price_raw = request.form.get('usd_price', '')
-    bs_rate_override_raw = request.form.get('bs_rate_override', '')
     try:
         pkg.price = float(price_raw)
         pkg.usd_price = float(usd_price_raw) if str(usd_price_raw).strip() else None
-        pkg.bs_rate_override = float(bs_rate_override_raw) if str(bs_rate_override_raw).strip() else None
     except ValueError:
-        flash('Los precios y la tasa deben ser números válidos.', 'danger')
+        flash('Los precios deben ser números válidos.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
-    if float(pkg.price or 0) <= 0 or (pkg.usd_price is not None and float(pkg.usd_price) <= 0) or (pkg.bs_rate_override is not None and float(pkg.bs_rate_override) <= 0):
-        flash('Los precios y la tasa deben ser mayores a 0.', 'danger')
+    if float(pkg.price or 0) <= 0 or (pkg.usd_price is not None and float(pkg.usd_price) <= 0):
+        flash('Los precios deben ser mayores a 0.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
     pkg.description = request.form.get('description', pkg.description or '').strip()

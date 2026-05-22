@@ -894,7 +894,6 @@
             var priceUsd = getPackageUsdPrice(pkg);
             item.dataset.priceUsd = String(priceUsd);
             item.dataset.priceBase = String(parseFloat(pkg.price));
-            item.dataset.bsRateOverride = pkg.bs_rate_override || '';
 
             item.innerHTML =
                 imgHtml +
@@ -1345,7 +1344,7 @@
         } else {
             var bs = NaN;
             if (!isNaN(priceNum)) {
-                bs = getSelectedPaymentMethodUsesRate() ? (priceNum * getPackageBsRate(pkg)) : priceNum;
+                bs = getSelectedPaymentMethodUsesRate() ? (priceNum * getGameBsRate()) : priceNum;
             }
             submitLabel.textContent = 'Comprar — Bs ' + (isNaN(bs) ? '0' : Math.round(bs).toLocaleString('es-VE'));
         }
@@ -1360,19 +1359,9 @@
         return parseFloat(pkg.price);
     }
 
-    function getPackageBsRate(pkg) {
-        if (pkg && pkg.bs_rate_override !== null && pkg.bs_rate_override !== undefined && pkg.bs_rate_override !== '') {
-            var overrideRate = parseFloat(pkg.bs_rate_override);
-            if (!isNaN(overrideRate) && overrideRate > 0) {
-                return overrideRate;
-            }
-        }
-        return usdRate;
-    }
-
-    function getPackageBsRateFromNode(node) {
-        if (node && node.dataset && node.dataset.bsRateOverride) {
-            var overrideRate = parseFloat(node.dataset.bsRateOverride);
+    function getGameBsRate() {
+        if (currentGame && currentGame.bs_rate_override !== null && currentGame.bs_rate_override !== undefined && currentGame.bs_rate_override !== '') {
+            var overrideRate = parseFloat(currentGame.bs_rate_override);
             if (!isNaN(overrideRate) && overrideRate > 0) {
                 return overrideRate;
             }
@@ -1448,7 +1437,7 @@
             totalEl.textContent = '$' + finalPrice.toFixed(2);
             if (totalBsEl) totalBsEl.classList.add('d-none');
         } else {
-            var bs = getSelectedPaymentMethodUsesRate() ? (finalPrice * getPackageBsRate(selectedPackage)) : finalPrice;
+            var bs = getSelectedPaymentMethodUsesRate() ? (finalPrice * getGameBsRate()) : finalPrice;
 
             if (!isNaN(bs)) {
                 totalEl.textContent = 'Bs ' + Math.round(bs).toLocaleString('es-VE');
@@ -1572,11 +1561,11 @@
             var discountMeta = getValidDiscountMeta(activeCode, usd);
             var finalUsd = discountMeta ? Math.max(usd - discountMeta.amount, 0) : usd;
 
-            priceSpan.textContent = formatPackageAmount(finalUsd, currency, getPackageBsRateFromNode(item));
+            priceSpan.textContent = formatPackageAmount(finalUsd, currency, getGameBsRate());
 
             if (priceUsdSpan) {
                 if (discountMeta) {
-                    priceUsdSpan.textContent = formatPackageAmount(usd, currency, getPackageBsRateFromNode(item));
+                    priceUsdSpan.textContent = formatPackageAmount(usd, currency, getGameBsRate());
                     priceUsdSpan.style.display = 'block';
                     item.classList.add('has-discount');
                 } else {

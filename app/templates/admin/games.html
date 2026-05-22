@@ -44,7 +44,10 @@
                     <td>{{ game.category.icon }} {{ game.category.name }}</td>
                     <td>{{ game.position }}</td>
                     <td>
-                        <small>{{ game.player_id_label }}{% if game.requires_zone_id %} + {{ game.zone_id_label }}{% endif %}</small>
+                        <div class="cell-stack">
+                            <small>{{ game.player_id_label }}{% if game.requires_zone_id %} + {{ game.zone_id_label }}{% endif %}</small>
+                            {% if game.bs_rate_override is not none %}<small>Tasa Bs propia: {{ "%.4f"|format(game.bs_rate_override) }}</small>{% endif %}
+                        </div>
                     </td>
                     <td>{% if game.is_automated %}<span class="badge badge-auto">⚡ Sí</span>{% else %}—{% endif %}</td>
                     <td>{% if game.show_selection_popup %}<span class="badge badge-active">Sí</span>{% else %}—{% endif %}</td>
@@ -120,6 +123,10 @@
                     <label>Label Zone ID</label>
                     <input type="text" name="zone_id_label" value="Zone ID" placeholder="Zone ID, Server...">
                 </div>
+                <div class="form-group">
+                    <label>Tasa Bs propia del juego</label>
+                    <input type="number" name="bs_rate_override" step="0.0001" min="0.0001" placeholder="Opcional: usa la global si queda vacío">
+                </div>
             </div>
             <div class="form-group">
                 <label>Descripción</label>
@@ -189,6 +196,10 @@
                     <label>Label Zone ID</label>
                     <input type="text" name="zone_id_label" id="editZoneLabel">
                 </div>
+                <div class="form-group">
+                    <label>Tasa Bs propia del juego</label>
+                    <input type="number" name="bs_rate_override" id="editGameBsRateOverride" step="0.0001" min="0.0001">
+                </div>
             </div>
             <div class="form-group">
                 <label>Descripción</label>
@@ -239,6 +250,7 @@ function openEditGame(btn) {
     document.getElementById('editPlayerLabel').value = game.player_id_label;
     document.getElementById('editPlayerInputType').value = game.player_id_input_type || 'numeric';
     document.getElementById('editZoneLabel').value = game.zone_id_label;
+    document.getElementById('editGameBsRateOverride').value = game.bs_rate_override || '';
     document.getElementById('editGameDesc').value = game.description || '';
     document.getElementById('editRequiresZone').checked = game.requires_zone_id;
     document.getElementById('editIsAutomated').checked = game.is_automated;
