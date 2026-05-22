@@ -125,12 +125,21 @@ def _get_bs_amount(order):
         if amt > 0:
             return amt
 
-    # Calcular desde el precio base en USD usando la tasa configurada
+    method_code = (getattr(order, 'payment_method', '') or '').strip().lower()
+    method = PaymentMethod.query.filter_by(code=method_code).first() if method_code else None
+    if method and not bool(method.uses_rate) and order.amount is not None:
+        return round(float(order.amount), 2)
+
+    # Calcular desde el precio base en USD usando la tasa del paquete o la global
     try:
         rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
         usd_rate = float(rate_setting.value) if rate_setting and rate_setting.value else 0.0
     except Exception:
         usd_rate = 0.0
+
+    package = getattr(order, 'package', None)
+    if package is not None:
+        usd_rate = package.get_bs_rate(usd_rate)
 
     if usd_rate > 0 and order.amount:
         return round(float(order.amount) * usd_rate, 2)

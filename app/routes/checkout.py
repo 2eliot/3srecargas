@@ -379,6 +379,25 @@ def get_package_checkout_price(package, payment_method_config):
     return float(package.price or 0)
 
 
+def get_package_bs_rate(package, fallback_rate=0.0):
+    if not package:
+        return float(fallback_rate or 0.0)
+    return package.get_bs_rate(fallback_rate)
+
+
+def _get_active_session_affiliate_code():
+    code = (session.get('affiliate_code', '') or '').strip().upper()
+    if not code:
+        return ''
+
+    affiliate = Affiliate.query.filter_by(code=code, is_active=True).first()
+    if affiliate:
+        return affiliate.code
+
+    session.pop('affiliate_code', None)
+    return ''
+
+
 @checkout_bp.route('/checkout/<int:package_id>', methods=['GET', 'POST'])
 def checkout(package_id):
     package = Package.query.filter_by(id=package_id, is_active=True).first_or_404()
@@ -401,7 +420,7 @@ def checkout(package_id):
     # El código se guarda por paquete en checkout_data cuando vienes desde index
     affiliate_code = ((checkout_data.get(pkg_key) or {}).get('affiliate_code') or '').strip()
     if not affiliate_code:
-        affiliate_code = (session.get('affiliate_code', '') or '').strip()
+        affiliate_code = _get_active_session_affiliate_code()
 
     if request.method == 'POST':
         stage = request.form.get('stage', '').strip()
@@ -416,7 +435,7 @@ def checkout(package_id):
             payment_method = request.form.get('payment_method', '').strip()
             aff_code = request.form.get('affiliate_code', '').strip()
             if not aff_code:
-                aff_code = (session.get('affiliate_code', '') or '').strip()
+                aff_code = _get_active_session_affiliate_code()
 
             if not payment_method:
                 flash('Debes seleccionar un método de pago.', 'danger')
@@ -584,7 +603,7 @@ def checkout(package_id):
 
         aff_code = (data.get('affiliate_code') or '').strip()
         if not aff_code:
-            aff_code = (session.get('affiliate_code', '') or '').strip()
+            aff_code = _get_active_session_affiliate_code()
         affiliate = None
         player_id_value = (data.get('player_id') or '').strip()
         if _get_game_player_input_type(game) != 'none':
@@ -618,6 +637,7 @@ def checkout(package_id):
         # Procesar descuento si hay código (descuento explícito o código de afiliado)
         discount_code = ((data.get('affiliate_code') or aff_code or '').strip()).upper()
         package_checkout_price = get_package_checkout_price(package, method_config)
+        package_bs_rate = get_package_bs_rate(package, usd_rate)
         original_amount = float(package_checkout_price)
         discount_result = get_checkout_discount_result(discount_code, package_checkout_price)
         discount = discount_result['discount']
@@ -625,6 +645,13 @@ def checkout(package_id):
         discount_amount = discount_result['discount_amount']
 
         if discount_code and discount_result['error']:
+            if pkg_key in checkout_data:
+                checkout_data[pkg_key] = {
+                    **checkout_data.get(pkg_key, {}),
+                    'affiliate_code': '',
+                }
+                session['checkout_data'] = checkout_data
+            session.pop('affiliate_code', None)
             flash(discount_result['error'], 'danger')
             return redirect(url_for('main_bp.index'))
 
@@ -639,7 +666,7 @@ def checkout(package_id):
         if not _binance_auto and method_config and (method_config.account_currency or '').lower() == 'bs':
             payment_currency = 'bs'
             if bool(method_config.uses_rate):
-                payment_amount = _normalize_bs_checkout_amount(final_amount * (usd_rate or 0.0))
+                payment_amount = _normalize_bs_checkout_amount(final_amount * package_bs_rate)
             else:
                 payment_amount = _normalize_bs_checkout_amount(final_amount)
 
@@ -771,12 +798,14 @@ def checkout(package_id):
     elif selected_method and (selected_method.account_currency or '').lower() == 'usd':
         display_currency = 'usd'
 
-    usd_amount = float(package.price)
+    package_checkout_price = get_package_checkout_price(package, selected_method)
+    package_bs_rate = get_package_bs_rate(package, usd_rate)
+    usd_amount = float(package_checkout_price)
     original_amount = usd_amount
     
     # Calcular descuento si hay código (descuento explícito o afiliado)
-    discount_code = ((affiliate_code or session.get('affiliate_code', '') or '').strip()).upper()
-    discount_result = get_checkout_discount_result(discount_code, package.price)
+    discount_code = ((affiliate_code or _get_active_session_affiliate_code() or '').strip()).upper()
+    discount_result = get_checkout_discount_result(discount_code, package_checkout_price)
     discount_amount = discount_result['discount_amount']
     
     final_amount = max(original_amount - discount_amount, 0.0)
@@ -793,9 +822,9 @@ def checkout(package_id):
         else:
             # Mantener consistente el monto mostrado con el monto que se guarda en la orden
             # para evitar discrepancias al verificar en Pabilo.
-            display_amount = _normalize_bs_checkout_amount(final_amount * (usd_rate or 0.0))
-            original_display = _normalize_bs_checkout_amount(original_amount * (usd_rate or 0.0))
-            discount_display = _normalize_bs_checkout_amount(discount_amount * (usd_rate or 0.0))
+            display_amount = _normalize_bs_checkout_amount(final_amount * package_bs_rate)
+            original_display = _normalize_bs_checkout_amount(original_amount * package_bs_rate)
+            discount_display = _normalize_bs_checkout_amount(discount_amount * package_bs_rate)
 
     pkg_data = checkout_data.get(pkg_key) or {}
     player_nickname = (pkg_data.get('player_nickname') or '').strip()
@@ -853,6 +882,7 @@ def order_status(order_number):
     order = Order.query.filter_by(order_number=order_number).first_or_404()
     usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
     usd_rate = float(usd_rate_setting.value) if usd_rate_setting else 0.0
+    package_bs_rate = get_package_bs_rate(order.package, usd_rate)
     order_status_image_setting = Setting.query.filter_by(key='order_status_image').first()
     order_status_image = order_status_image_setting.value if order_status_image_setting else ''
     method = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
@@ -862,8 +892,13 @@ def order_status(order_number):
     if order.payment_amount is not None and (order.payment_currency or '').lower() == display_currency:
         display_amount = float(order.payment_amount)
     else:
-        usd_amount = float(order.amount)
-        display_amount = usd_amount if display_currency == 'usd' else (usd_amount * (usd_rate or 0.0))
+        base_amount = float(order.amount)
+        if display_currency == 'usd':
+            display_amount = base_amount
+        elif method and not bool(method.uses_rate):
+            display_amount = base_amount
+        else:
+            display_amount = base_amount * package_bs_rate
 
     # Binance auto order: has a 6-digit numeric reference
     is_binance_auto_order = (

@@ -33,7 +33,12 @@ from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
 from ..utils.order_processing import approve_order, get_revendedores_env, process_affiliate_commission, process_revendedores_queue
-from ..utils.auth_accounts import sync_env_admin_user
+from ..utils.auth_accounts import (
+    attach_matching_orders_to_customer,
+    extract_customer_identifier_for_game,
+    get_or_create_scoped_customer,
+    sync_env_admin_user,
+)
 from ..utils.payment_verification import (
     clear_pabilo_verification_state,
     normalize_reference_last5,
@@ -70,6 +75,22 @@ def slugify_category(value):
 def normalize_game_player_input_type(value):
     normalized = (value or '').strip().lower()
     return normalized if normalized in GAME_PLAYER_INPUT_TYPES else 'numeric'
+
+
+def normalize_order_player_id(order, raw_value):
+    value = ' '.join(str(raw_value or '').strip().split())
+    if not order or not order.game:
+        return value
+
+    category_slug = ((order.game.category.slug if order.game.category else '') or '').lower()
+    if category_slug == 'tarjetas':
+        return ''
+
+    player_input_type = normalize_game_player_input_type(getattr(order.game, 'player_id_input_type', 'numeric'))
+    if player_input_type == 'numeric':
+        return ''.join(ch for ch in value if ch.isdigit())
+
+    return value
 
 
 def allowed_file(filename):
@@ -560,6 +581,7 @@ def package_add():
     name = request.form.get('name', '').strip()
     price = request.form.get('price', '0').strip()
     usd_price_raw = request.form.get('usd_price', '').strip()
+    bs_rate_override_raw = request.form.get('bs_rate_override', '').strip()
     description = request.form.get('description', '').strip()
     is_automated = bool(request.form.get('is_automated'))
     sort_order = int(request.form.get('sort_order', 100))
@@ -571,17 +593,18 @@ def package_add():
     try:
         base_price = float(price)
         usd_price = float(usd_price_raw) if usd_price_raw else None
+        bs_rate_override = float(bs_rate_override_raw) if bs_rate_override_raw else None
     except ValueError:
-        flash('Los precios deben ser números válidos.', 'danger')
+        flash('Los precios y la tasa deben ser números válidos.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
-    if base_price <= 0 or (usd_price is not None and usd_price <= 0):
-        flash('Los precios deben ser mayores a 0.', 'danger')
+    if base_price <= 0 or (usd_price is not None and usd_price <= 0) or (bs_rate_override is not None and bs_rate_override <= 0):
+        flash('Los precios y la tasa deben ser mayores a 0.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
     image = save_image(request.files.get('image'), 'packages')
     pkg = Package(
-        game_id=int(game_id), name=name, price=base_price, usd_price=usd_price,
+        game_id=int(game_id), name=name, price=base_price, usd_price=usd_price, bs_rate_override=bs_rate_override,
         description=description, is_automated=is_automated,
         sort_order=sort_order, image=image,
     )
@@ -598,15 +621,17 @@ def package_edit(pkg_id):
     pkg.name = request.form.get('name', pkg.name).strip()
     price_raw = request.form.get('price', pkg.price)
     usd_price_raw = request.form.get('usd_price', '')
+    bs_rate_override_raw = request.form.get('bs_rate_override', '')
     try:
         pkg.price = float(price_raw)
         pkg.usd_price = float(usd_price_raw) if str(usd_price_raw).strip() else None
+        pkg.bs_rate_override = float(bs_rate_override_raw) if str(bs_rate_override_raw).strip() else None
     except ValueError:
-        flash('Los precios deben ser números válidos.', 'danger')
+        flash('Los precios y la tasa deben ser números válidos.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
-    if float(pkg.price or 0) <= 0 or (pkg.usd_price is not None and float(pkg.usd_price) <= 0):
-        flash('Los precios deben ser mayores a 0.', 'danger')
+    if float(pkg.price or 0) <= 0 or (pkg.usd_price is not None and float(pkg.usd_price) <= 0) or (pkg.bs_rate_override is not None and float(pkg.bs_rate_override) <= 0):
+        flash('Los precios y la tasa deben ser mayores a 0.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
     pkg.description = request.form.get('description', pkg.description or '').strip()
@@ -848,6 +873,78 @@ def order_detail(order_id):
         payment_method_config=payment_method_config,
         can_send_delivery_proof=order_supports_delivery_proof(order),
     )
+
+
+@admin_bp.route('/orders/<int:order_id>/player-id', methods=['POST'])
+@login_required
+def order_update_player_id(order_id):
+    order = Order.query.get_or_404(order_id)
+    redirect_target = url_for('admin_bp.order_detail', order_id=order.id)
+
+    if order.status != 'pending':
+        flash('Solo puedes editar el ID del jugador en órdenes pendientes.', 'warning')
+        return redirect(redirect_target)
+
+    original_player_id = (order.player_id or '').strip()
+    updated_player_id = normalize_order_player_id(order, request.form.get('player_id', ''))
+    should_reprocess = request.form.get('reprocess') == '1'
+
+    if not updated_player_id:
+        flash('Debes ingresar un ID de jugador válido para esta orden.', 'danger')
+        return redirect(redirect_target)
+
+    if updated_player_id == original_player_id and not should_reprocess:
+        flash('El ID del jugador no cambió.', 'info')
+        return redirect(redirect_target)
+
+    try:
+        if updated_player_id != original_player_id:
+            order.player_id = updated_player_id
+            order.player_nickname = None
+            order.automation_response = None
+            order.updated_at = datetime.utcnow()
+
+            note = f'[Admin] {order.game.player_id_label or "ID del jugador"} actualizado de {original_player_id or "(vacío)"} a {updated_player_id}.'
+            existing_notes = order.notes or ''
+            if note not in existing_notes:
+                order.notes = (existing_notes + '\n' + note).strip()
+
+            identity_meta = extract_customer_identifier_for_game(order.game, player_id=updated_player_id, email=order.email or '')
+            identifier_value = (identity_meta.get('identifier') or '').strip()
+            if identifier_value:
+                scoped_user = get_or_create_scoped_customer(
+                    scope_key=identity_meta['scope_key'],
+                    scope_label=identity_meta['scope_label'],
+                    raw_identifier=identifier_value,
+                    account_kind=identity_meta['account_kind'],
+                    contact_email=(order.email or '').strip(),
+                    phone=(order.phone or '').strip(),
+                )
+                if scoped_user:
+                    order.user_id = scoped_user.id
+                    attach_matching_orders_to_customer(
+                        scoped_user,
+                        order.game.id,
+                        identifier_value,
+                        identity_meta['account_kind'],
+                    )
+
+            db.session.commit()
+            flash(f'{order.game.player_id_label or "ID del jugador"} actualizado correctamente.', 'success')
+
+        if should_reprocess:
+            result = approve_order(order)
+            flash(result['message'], result['category'])
+
+        return redirect(redirect_target)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            'Error al actualizar el ID del jugador de la orden %s',
+            getattr(order, 'id', None),
+        )
+        flash('Ocurrió un error al actualizar el ID del jugador.', 'danger')
+        return redirect(redirect_target)
 
 
 def _run_admin_pabilo_reverification(order, reference=None, force_reference=False):

@@ -23,6 +23,22 @@ def _format_order_amount(order):
     if currency == 'usd':
         return f"${float(amt_usd):.2f} USD"
 
+    stored_bs_amount = getattr(order, 'payment_amount', None)
+    if (getattr(order, 'payment_currency', '') or '').strip().lower() == 'bs' and stored_bs_amount is not None:
+        try:
+            amt_bs = Decimal(str(stored_bs_amount)).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+            return f"Bs {int(amt_bs)}"
+        except Exception:
+            pass
+
+    if method and not bool(method.uses_rate):
+        amt_bs = amt_usd.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        return f"Bs {int(amt_bs)}"
+
+    package = getattr(order, 'package', None)
+    if package is not None:
+        usd_rate = Decimal(str(package.get_bs_rate(float(usd_rate or Decimal('0')))))
+
     amt_bs = (amt_usd * (usd_rate or Decimal('0'))).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
     try:
         amt_bs_int = int(amt_bs)

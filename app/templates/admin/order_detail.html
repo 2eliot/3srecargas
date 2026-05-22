@@ -56,6 +56,31 @@
             <span class="detail-value">{{ order.player_id }}</span>
         </div>
         {% endif %}
+        {% if order.status == 'pending' and order.game.category.slug != 'tarjetas' %}
+        <div style="margin:12px 0 18px;padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--bg-secondary)">
+            <form method="POST" action="{{ url_for('admin_bp.order_update_player_id', order_id=order.id) }}">
+                <div class="form-group" style="margin-bottom:12px">
+                    <label for="player_id_edit">Editar {{ order.game.player_id_label }}</label>
+                    <input
+                        id="player_id_edit"
+                        name="player_id"
+                        type="text"
+                        value="{{ order.player_id or '' }}"
+                        required
+                        autocomplete="off"
+                        placeholder="Corrige el ID del jugador"
+                    >
+                    <small style="display:block;margin-top:6px;color:var(--text-muted)">
+                        Si el ID vino incorrecto, puedes corregirlo aquí. Al cambiarlo se limpia el nickname guardado y cualquier intento automático previo para reprocesar la orden manualmente.
+                    </small>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button type="submit" class="btn-secondary">Guardar ID</button>
+                    <button type="submit" name="reprocess" value="1" class="btn-primary">Guardar ID y reprocesar</button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
         {% if order.player_nickname %}
         <div class="detail-row">
             <span class="detail-label">Nickname</span>

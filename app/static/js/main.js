@@ -894,6 +894,7 @@
             var priceUsd = getPackageUsdPrice(pkg);
             item.dataset.priceUsd = String(priceUsd);
             item.dataset.priceBase = String(parseFloat(pkg.price));
+            item.dataset.bsRateOverride = pkg.bs_rate_override || '';
 
             item.innerHTML =
                 imgHtml +
@@ -1344,7 +1345,7 @@
         } else {
             var bs = NaN;
             if (!isNaN(priceNum)) {
-                bs = getSelectedPaymentMethodUsesRate() ? (priceNum * usdRate) : priceNum;
+                bs = getSelectedPaymentMethodUsesRate() ? (priceNum * getPackageBsRate(pkg)) : priceNum;
             }
             submitLabel.textContent = 'Comprar — Bs ' + (isNaN(bs) ? '0' : Math.round(bs).toLocaleString('es-VE'));
         }
@@ -1357,6 +1358,26 @@
             return parseFloat(pkg.usd_price);
         }
         return parseFloat(pkg.price);
+    }
+
+    function getPackageBsRate(pkg) {
+        if (pkg && pkg.bs_rate_override !== null && pkg.bs_rate_override !== undefined && pkg.bs_rate_override !== '') {
+            var overrideRate = parseFloat(pkg.bs_rate_override);
+            if (!isNaN(overrideRate) && overrideRate > 0) {
+                return overrideRate;
+            }
+        }
+        return usdRate;
+    }
+
+    function getPackageBsRateFromNode(node) {
+        if (node && node.dataset && node.dataset.bsRateOverride) {
+            var overrideRate = parseFloat(node.dataset.bsRateOverride);
+            if (!isNaN(overrideRate) && overrideRate > 0) {
+                return overrideRate;
+            }
+        }
+        return usdRate;
     }
 
     function getSelectedPaymentMethodUsesRate() {
@@ -1381,7 +1402,7 @@
         return Math.max(numericPrice - discountMeta.amount, 0);
     }
 
-    function formatPackageAmount(amount, currency) {
+    function formatPackageAmount(amount, currency, rateOverride) {
         if (isNaN(amount)) {
             return currency === 'usd' ? '$0.00' : 'Bs 0';
         }
@@ -1390,7 +1411,8 @@
             return '$' + amount.toFixed(2);
         }
 
-        var bsAmount = getSelectedPaymentMethodUsesRate() ? (amount * usdRate) : amount;
+        var packageRate = (!isNaN(rateOverride) && rateOverride > 0) ? rateOverride : usdRate;
+        var bsAmount = getSelectedPaymentMethodUsesRate() ? (amount * packageRate) : amount;
         return 'Bs ' + (isNaN(bsAmount) ? '0' : Math.round(bsAmount).toLocaleString('es-VE'));
     }
 
@@ -1426,7 +1448,7 @@
             totalEl.textContent = '$' + finalPrice.toFixed(2);
             if (totalBsEl) totalBsEl.classList.add('d-none');
         } else {
-            var bs = getSelectedPaymentMethodUsesRate() ? (finalPrice * usdRate) : finalPrice;
+            var bs = getSelectedPaymentMethodUsesRate() ? (finalPrice * getPackageBsRate(selectedPackage)) : finalPrice;
 
             if (!isNaN(bs)) {
                 totalEl.textContent = 'Bs ' + Math.round(bs).toLocaleString('es-VE');
@@ -1550,11 +1572,11 @@
             var discountMeta = getValidDiscountMeta(activeCode, usd);
             var finalUsd = discountMeta ? Math.max(usd - discountMeta.amount, 0) : usd;
 
-            priceSpan.textContent = formatPackageAmount(finalUsd, currency);
+            priceSpan.textContent = formatPackageAmount(finalUsd, currency, getPackageBsRateFromNode(item));
 
             if (priceUsdSpan) {
                 if (discountMeta) {
-                    priceUsdSpan.textContent = formatPackageAmount(usd, currency);
+                    priceUsdSpan.textContent = formatPackageAmount(usd, currency, getPackageBsRateFromNode(item));
                     priceUsdSpan.style.display = 'block';
                     item.classList.add('has-discount');
                 } else {

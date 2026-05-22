@@ -53,6 +53,7 @@
                         <div class="cell-stack">
                             <strong>Base Bs/tasa: ${{ "%.2f"|format(pkg.price) }}</strong>
                             {% if pkg.usd_price is not none %}<small>USD exclusivo: ${{ "%.2f"|format(pkg.usd_price) }}</small>{% endif %}
+                            {% if pkg.bs_rate_override is not none %}<small>Tasa Bs propia: {{ "%.4f"|format(pkg.bs_rate_override) }}</small>{% endif %}
                         </div>
                     </td>
                     <td>{{ pkg.sort_order }}</td>
@@ -73,7 +74,7 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-outline"
-                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }})">
+                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ pkg.bs_rate_override if pkg.bs_rate_override is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }})">
                                 Editar
                             </button>
                             <form method="POST" action="{{ url_for('admin_bp.package_delete', pkg_id=pkg.id) }}" style="display:inline">
@@ -120,6 +121,10 @@
                 <div class="form-group">
                     <label>Precio exclusivo para métodos USD</label>
                     <input type="number" name="usd_price" step="0.01" min="0.01" placeholder="Opcional: 1.49">
+                </div>
+                <div class="form-group">
+                    <label>Tasa Bs propia del paquete</label>
+                    <input type="number" name="bs_rate_override" step="0.0001" min="0.0001" placeholder="Opcional: usa la global si queda vacío">
                 </div>
                 <div class="form-group">
                     <label>Orden</label>
@@ -169,6 +174,10 @@
                     <input type="number" name="usd_price" id="editPkgUsdPrice" step="0.01" min="0.01">
                 </div>
                 <div class="form-group">
+                    <label>Tasa Bs propia del paquete</label>
+                    <input type="number" name="bs_rate_override" id="editPkgBsRateOverride" step="0.0001" min="0.0001">
+                </div>
+                <div class="form-group">
                     <label>Orden</label>
                     <input type="number" name="sort_order" id="editPkgOrder" min="1">
                 </div>
@@ -203,11 +212,12 @@
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive) {
+function openEditPkg(id, name, price, usdPrice, bsRateOverride, desc, order, isAuto, isActive) {
     document.getElementById('editPkgForm').action = '/admin/packages/' + id + '/edit';
     document.getElementById('editPkgName').value = name;
     document.getElementById('editPkgPrice').value = price;
     document.getElementById('editPkgUsdPrice').value = usdPrice || '';
+    document.getElementById('editPkgBsRateOverride').value = bsRateOverride || '';
     document.getElementById('editPkgDesc').value = desc;
     document.getElementById('editPkgOrder').value = order;
     document.getElementById('editPkgAuto').checked = isAuto;

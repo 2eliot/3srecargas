@@ -316,6 +316,7 @@ def _ensure_package_pricing_columns():
     try:
         if _ensure_postgres_columns('packages', [
             'usd_price NUMERIC(10, 2)',
+            'bs_rate_override NUMERIC(10, 4)',
         ]):
             return
 
@@ -326,6 +327,8 @@ def _ensure_package_pricing_columns():
         existing = {r[1] for r in rows}
         if 'usd_price' not in existing:
             db.session.execute(text('ALTER TABLE packages ADD COLUMN usd_price NUMERIC(10, 2)'))
+        if 'bs_rate_override' not in existing:
+            db.session.execute(text('ALTER TABLE packages ADD COLUMN bs_rate_override NUMERIC(10, 4)'))
             db.session.commit()
     except Exception:
         db.session.rollback()
