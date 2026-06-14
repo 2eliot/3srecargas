@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 
 import requests
@@ -134,96 +135,150 @@ def process_revendedores_queue(order, base_state=None):
             'category': 'warning',
         }
 
+    MAX_REV_RETRIES = 3
+    REV_RETRY_DELAY_SECONDS = 60  # espera antes del 3er intento
+
     for step_index, step in enumerate(steps):
         if step.get('success'):
             continue
 
-        rev_attempt = int(step.get('rev_attempt') or 0) + 1
-        ext_order_id = f'{order.order_number}-s{step_index + 1}-{rev_attempt}'
-        rev_payload = {
-            'product_id': step.get('remote_product_id'),
-            'package_id': step.get('remote_package_id'),
-            'player_id': str(order.player_id or '').strip(),
-            'external_order_id': ext_order_id,
-        }
-        if order.zone_id:
-            rev_payload['player_id2'] = str(order.zone_id).strip()
+        while True:
+            rev_attempt = int(step.get('rev_attempt') or 0) + 1
+            ext_order_id = f'{order.order_number}-s{step_index + 1}-{rev_attempt}'
 
-        try:
-            resp = requests.post(
-                f'{base_url}{recharge_path}',
-                json=rev_payload,
-                headers={'X-API-Key': api_key, 'Content-Type': 'application/json'},
-                timeout=120,
-            )
-            rev_data = resp.json() if resp.ok else {}
-            rev_ok = rev_data.get('ok', False)
+            # Tercer intento: esperar 1 minuto y enviar como orden nueva
+            if rev_attempt == 3:
+                time.sleep(REV_RETRY_DELAY_SECONDS)
 
-            if rev_ok:
-                player_name = rev_data.get('player_name', '')
-                ref_no = rev_data.get('reference_no', '')
-                step.update({
-                    'success': True,
-                    'pending_verification': False,
-                    'rev_attempt': rev_attempt,
-                    'external_order_id': ext_order_id,
-                    'player_name': player_name,
-                    'reference_no': ref_no,
-                    'order_id': rev_data.get('order_id'),
-                    'verified': True,
-                    'error': '',
-                })
-                note = f"[Revendedores API][Paso {step_index + 1}] Ref: {ref_no}, Player: {player_name}" if (ref_no or player_name) else f"[Revendedores API][Paso {step_index + 1}] Recarga completada."
-                order.notes = ((order.notes or '') + '\n' + note).strip()
+            rev_payload = {
+                'product_id': step.get('remote_product_id'),
+                'package_id': step.get('remote_package_id'),
+                'player_id': str(order.player_id or '').strip(),
+                'external_order_id': ext_order_id,
+            }
+            if order.zone_id:
+                rev_payload['player_id2'] = str(order.zone_id).strip()
+
+            try:
+                resp = requests.post(
+                    f'{base_url}{recharge_path}',
+                    json=rev_payload,
+                    headers={'X-API-Key': api_key, 'Content-Type': 'application/json'},
+                    timeout=120,
+                )
+                rev_data = resp.json() if resp.ok else {}
+                rev_ok = rev_data.get('ok', False)
+
+                if rev_ok:
+                    rev_status = (rev_data.get('status') or '').strip().lower()
+
+                    # ⚠️ rev_ok=True solo significa que Revendedores aceptó la solicitud.
+                    # La recarga puede estar en cola/procesando y fallar después.
+                    # Solo marcar como completado si el status es 'completada' explícitamente,
+                    # o si la API no devuelve campo status (retrocompatibilidad).
+                    if rev_status == 'procesando':
+                        player_name = rev_data.get('player_name', '')
+                        ref_no = rev_data.get('reference_no', '')
+                        step.update({
+                            'success': False,
+                            'pending_verification': True,
+                            'rev_attempt': rev_attempt,
+                            'external_order_id': ext_order_id,
+                            'player_name': player_name,
+                            'reference_no': ref_no,
+                            'order_id': rev_data.get('order_id'),
+                            'error': 'Recarga aceptada pero en estado "procesando" en Revendedores. Verificar manualmente.',
+                        })
+                        auto_resp['pending_verification'] = True
+                        auto_resp['current_step_index'] = step_index
+                        auto_resp['external_order_id'] = ext_order_id
+                        auto_resp['last_error'] = step['error']
+                        order.automation_response = json.dumps(auto_resp)
+                        order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Recarga en estado "procesando" (intento {rev_attempt}). Ref: {ref_no or "N/A"}, Player: {player_name or "N/A"}. Pendiente de verificación.').strip()
+                        db.session.commit()
+                        return {
+                            'ok': False,
+                            'changed': False,
+                            'pending_verification': True,
+                            'current_step_index': step_index,
+                            'message': f'Revendedores aceptó la recarga en el paso {step_index + 1} pero está en estado "procesando". Verifica manualmente antes de continuar.',
+                            'category': 'warning',
+                        }
+
+                    # rev_status vacío (API antigua) o 'completada' → éxito real
+                    player_name = rev_data.get('player_name', '')
+                    ref_no = rev_data.get('reference_no', '')
+                    step.update({
+                        'success': True,
+                        'pending_verification': False,
+                        'rev_attempt': rev_attempt,
+                        'external_order_id': ext_order_id,
+                        'player_name': player_name,
+                        'reference_no': ref_no,
+                        'order_id': rev_data.get('order_id'),
+                        'verified': True,
+                        'error': '',
+                    })
+                    retry_suffix = f' (intento {rev_attempt})' if rev_attempt > 1 else ''
+                    note = f"[Revendedores API][Paso {step_index + 1}] Ref: {ref_no}, Player: {player_name}{retry_suffix}" if (ref_no or player_name) else f"[Revendedores API][Paso {step_index + 1}] Recarga completada{retry_suffix}."
+                    order.notes = ((order.notes or '') + '\n' + note).strip()
+                    break  # éxito → pasar al siguiente paso
+
+                # Revendedores respondió con error → reintentar si quedan intentos
+                rev_error = rev_data.get('error', resp.text[:200] if not resp.ok else 'Error desconocido')
+                step['rev_attempt'] = rev_attempt
+                step['external_order_id'] = ext_order_id
+                step['error'] = rev_error
+                step['success'] = False
+
+                if rev_attempt >= MAX_REV_RETRIES:
+                    step['pending_verification'] = True
+                    auto_resp['pending_verification'] = True
+                    auto_resp['current_step_index'] = step_index
+                    auto_resp['external_order_id'] = ext_order_id
+                    auto_resp['last_error'] = rev_error
+                    order.automation_response = json.dumps(auto_resp)
+                    db.session.commit()
+                    return {
+                        'ok': False,
+                        'changed': False,
+                        'pending_verification': True,
+                        'current_step_index': step_index,
+                        'message': f'Revendedores reportó error en el paso {step_index + 1} tras {MAX_REV_RETRIES} intentos: {rev_error}. Verificando si se procesó para continuar con el siguiente.',
+                        'category': 'warning',
+                    }
+                # Quedan reintentos → reintentar con nuevo external_order_id
+                order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Intento {rev_attempt} falló: {rev_error}. Reintentando...').strip()
                 continue
 
-            rev_error = rev_data.get('error', resp.text[:200] if not resp.ok else 'Error desconocido')
-            step.update({
-                'success': False,
-                'pending_verification': True,
-                'rev_attempt': rev_attempt,
-                'external_order_id': ext_order_id,
-                'error': rev_error,
-            })
-            auto_resp['pending_verification'] = True
-            auto_resp['current_step_index'] = step_index
-            auto_resp['external_order_id'] = ext_order_id
-            auto_resp['last_error'] = rev_error
-            order.automation_response = json.dumps(auto_resp)
-            db.session.commit()
-            return {
-                'ok': False,
-                'changed': False,
-                'pending_verification': True,
-                'current_step_index': step_index,
-                'message': f'Revendedores reportó error en el paso {step_index + 1}: {rev_error}. Verificando si se procesó para continuar con el siguiente.',
-                'category': 'warning',
-            }
-        except Exception as exc:
-            step.update({
-                'success': False,
-                'pending_verification': True,
-                'rev_attempt': rev_attempt,
-                'external_order_id': ext_order_id,
-                'error': str(exc),
-            })
-            auto_resp['pending_verification'] = True
-            auto_resp['current_step_index'] = step_index
-            auto_resp['external_order_id'] = ext_order_id
-            auto_resp['last_error'] = str(exc)
-            order.automation_response = json.dumps(auto_resp)
-            try:
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-            return {
-                'ok': False,
-                'changed': False,
-                'pending_verification': True,
-                'current_step_index': step_index,
-                'message': f'Error contactando Revendedores API en el paso {step_index + 1}: {exc}. Verificando si se procesó para continuar con el siguiente.',
-                'category': 'warning',
-            }
+            except Exception as exc:
+                step['rev_attempt'] = rev_attempt
+                step['external_order_id'] = ext_order_id
+                step['error'] = str(exc)
+                step['success'] = False
+
+                if rev_attempt >= MAX_REV_RETRIES:
+                    step['pending_verification'] = True
+                    auto_resp['pending_verification'] = True
+                    auto_resp['current_step_index'] = step_index
+                    auto_resp['external_order_id'] = ext_order_id
+                    auto_resp['last_error'] = str(exc)
+                    order.automation_response = json.dumps(auto_resp)
+                    try:
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+                    return {
+                        'ok': False,
+                        'changed': False,
+                        'pending_verification': True,
+                        'current_step_index': step_index,
+                        'message': f'Error contactando Revendedores API en el paso {step_index + 1} tras {MAX_REV_RETRIES} intentos: {exc}. Verificando si se procesó para continuar con el siguiente.',
+                        'category': 'warning',
+                    }
+                # Quedan reintentos → reintentar con nuevo external_order_id
+                order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Intento {rev_attempt} falló (error de red): {exc}. Reintentando...').strip()
+                continue
 
     auto_resp['pending_verification'] = False
     auto_resp['current_step_index'] = None
