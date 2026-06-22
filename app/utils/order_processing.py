@@ -1,5 +1,4 @@
 import json
-import time
 from datetime import datetime
 
 import requests
@@ -136,7 +135,6 @@ def process_revendedores_queue(order, base_state=None):
         }
 
     MAX_REV_RETRIES = 3
-    REV_RETRY_DELAY_SECONDS = 60  # espera antes del 3er intento
 
     for step_index, step in enumerate(steps):
         if step.get('success'):
@@ -145,10 +143,6 @@ def process_revendedores_queue(order, base_state=None):
         while True:
             rev_attempt = int(step.get('rev_attempt') or 0) + 1
             ext_order_id = f'{order.order_number}-s{step_index + 1}-{rev_attempt}'
-
-            # Tercer intento: esperar 1 minuto y enviar como orden nueva
-            if rev_attempt == 3:
-                time.sleep(REV_RETRY_DELAY_SECONDS)
 
             rev_payload = {
                 'product_id': step.get('remote_product_id'),
