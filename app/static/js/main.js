@@ -930,7 +930,6 @@
                 sep.className = 'pkg-section-sep';
                 grid.appendChild(sep);
             }
-            addSectionLabel('Recarga manual', 'manual');
             manualPkgs.forEach(function (pkg) { grid.appendChild(buildItem(pkg)); });
         }
 
