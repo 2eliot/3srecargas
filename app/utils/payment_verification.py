@@ -40,6 +40,31 @@ def normalize_reference_last5(reference):
     return raw[-6:] if raw else ''
 
 
+def _generate_reference_variants(reference):
+    """Genera variantes de la referencia para probar contra Pabilo:
+    referencia completa, últimos 6, últimos 5, últimos 4 dígitos.
+    Elimina duplicados y solo incluye variantes >= 4 caracteres."""
+    ref = str(reference or '').strip()
+    if not ref:
+        return []
+
+    digits = ''.join(ch for ch in ref if ch.isdigit())
+    variants = []
+
+    # Siempre incluir la referencia original completa
+    if ref not in variants:
+        variants.append(ref)
+
+    # Si hay dígitos, agregar truncamientos (últimos N dígitos)
+    if digits:
+        for n in (6, 5, 4):
+            truncated = digits[-n:] if len(digits) >= n else None
+            if truncated and truncated not in variants and len(truncated) >= 4:
+                variants.append(truncated)
+
+    return variants
+
+
 def normalize_reference_key(reference):
     raw = str(reference or '').strip()
     if not raw:
@@ -478,120 +503,137 @@ def verify_order_payment(order, force_reference=False):
             })
 
     for candidate in verification_candidates:
-        reference = candidate['reference']
-        payload = candidate['payload']
+        original_reference = candidate['reference']
+        source = candidate['source']
 
-        if not uses_payer_identity:
-            duplicate = find_reference_conflict(
-                reference=reference,
-                payment_method_code=order.payment_method,
-                exclude_order_id=order.id,
-            )
-            if duplicate:
-                duplicate_hit = duplicate
+        # Generar variantes: referencia completa, últimos 6, 5, 4 dígitos
+        reference_variants = _generate_reference_variants(original_reference)
+
+        for variant_ref in reference_variants:
+            # Construir payload para esta variante
+            if uses_payer_identity:
+                variant_payload = candidate['payload']
+            else:
+                variant_payload, payload_error = build_pabilo_reference_payload(variant_ref)
+                if payload_error:
+                    continue
+
+            if not uses_payer_identity:
+                duplicate = find_reference_conflict(
+                    reference=variant_ref,
+                    payment_method_code=order.payment_method,
+                    exclude_order_id=order.id,
+                )
+                if duplicate:
+                    duplicate_hit = duplicate
+                    last_soft_result = {
+                        'ok': False,
+                        'verified': False,
+                        'message': (
+                            'Se detectó otra orden con la misma referencia bancaria. '
+                            'La aprobación automática fue bloqueada.'
+                        ),
+                        'duplicate_order_id': duplicate.id,
+                    }
+                    continue
+
+            response, data = _request_pabilo_verify(url, api_key, variant_payload, timeout)
+            if response is None:
+                return data
+
+            payload_data, full_data = _extract_pabilo_payload(data)
+
+            if _is_not_found_response(response.status_code, data):
                 last_soft_result = {
-                    'ok': False,
+                    'ok': True,
                     'verified': False,
-                    'message': (
-                        'Se detectó otra orden con la misma referencia bancaria. '
-                        'La aprobación automática fue bloqueada.'
-                    ),
-                    'duplicate_order_id': duplicate.id,
-                }
-                continue
-
-        response, data = _request_pabilo_verify(url, api_key, payload, timeout)
-        if response is None:
-            return data
-
-        payload_data, full_data = _extract_pabilo_payload(data)
-
-        if _is_not_found_response(response.status_code, data):
-            last_soft_result = {
-                'ok': True,
-                'verified': False,
-                'message': 'El pago todavía no aparece verificado en Pabilo.',
-                'response': full_data,
-            }
-            continue
-        if response.status_code == 401:
-            return {'ok': False, 'verified': False, 'message': 'La API key de Pabilo es inválida o está inactiva.', 'response': full_data}
-        if response.status_code == 402:
-            return {'ok': False, 'verified': False, 'message': 'La cuenta de Pabilo no tiene créditos suficientes.', 'response': full_data}
-        if _is_rate_limited_response(response.status_code, data):
-            return {
-                'ok': True,
-                'verified': False,
-                'message': 'Pabilo está recibiendo demasiadas solicitudes (429). Reintentaremos en unos segundos.',
-                'rate_limited': True,
-                'response': full_data,
-            }
-        if response.status_code >= 400:
-            message = full_data.get('message') or full_data.get('error') or f'Pabilo devolvió HTTP {response.status_code}.'
-            return {'ok': False, 'verified': False, 'message': message, 'response': full_data}
-
-        payment_data = payload_data.get('user_bank_payment') or {}
-        verification_id = str(payment_data.get('id') or '').strip()
-        payment_status = str(payment_data.get('status') or '').strip().lower()
-        is_new = bool(payload_data.get('is_new'))
-
-        if verification_id:
-            existing_by_verification = Order.query.filter(
-                Order.payment_verification_id == verification_id,
-                Order.id != order.id,
-                Order.status.in_(['approved', 'completed'])
-            ).first()
-            if existing_by_verification:
-                return {
-                    'ok': False,
-                    'verified': False,
-                    'message': 'Ese pago ya fue usado para aprobar otra orden.',
+                    'message': 'El pago todavía no aparece verificado en Pabilo.',
                     'response': full_data,
                 }
+                continue  # probar siguiente variante
+            if response.status_code == 401:
+                return {'ok': False, 'verified': False, 'message': 'La API key de Pabilo es inválida o está inactiva.', 'response': full_data}
+            if response.status_code == 402:
+                return {'ok': False, 'verified': False, 'message': 'La cuenta de Pabilo no tiene créditos suficientes.', 'response': full_data}
+            if _is_rate_limited_response(response.status_code, data):
+                return {
+                    'ok': True,
+                    'verified': False,
+                    'message': 'Pabilo está recibiendo demasiadas solicitudes (429). Reintentaremos en unos segundos.',
+                    'rate_limited': True,
+                    'response': full_data,
+                }
+            if response.status_code >= 400:
+                message = full_data.get('message') or full_data.get('error') or f'Pabilo devolvió HTTP {response.status_code}.'
+                return {'ok': False, 'verified': False, 'message': message, 'response': full_data}
 
-        root_status = str(data.get('status') or '').strip().lower()
-        is_verified_flag = bool(payload_data.get('verified') or full_data.get('verified'))
-        status_is_verified = payment_status in accepted_statuses or root_status in accepted_statuses or is_verified_flag
+            payment_data = payload_data.get('user_bank_payment') or {}
+            verification_id = str(payment_data.get('id') or '').strip()
+            payment_status = str(payment_data.get('status') or '').strip().lower()
+            is_new = bool(payload_data.get('is_new'))
 
-        if not status_is_verified:
-            last_soft_result = {
+            if verification_id:
+                existing_by_verification = Order.query.filter(
+                    Order.payment_verification_id == verification_id,
+                    Order.id != order.id,
+                    Order.status.in_(['approved', 'completed'])
+                ).first()
+                if existing_by_verification:
+                    return {
+                        'ok': False,
+                        'verified': False,
+                        'message': 'Ese pago ya fue usado para aprobar otra orden.',
+                        'response': full_data,
+                    }
+
+            root_status = str(data.get('status') or '').strip().lower()
+            is_verified_flag = bool(payload_data.get('verified') or full_data.get('verified'))
+            status_is_verified = payment_status in accepted_statuses or root_status in accepted_statuses or is_verified_flag
+
+            if not status_is_verified:
+                last_soft_result = {
+                    'ok': True,
+                    'verified': False,
+                    'message': 'La transacción aún no está marcada como verificada en Pabilo.',
+                    'response': full_data,
+                }
+                continue  # probar siguiente variante
+
+            amount_validation = _validate_verified_payment_amount(order, payload_data, full_data)
+            if not amount_validation.get('verified'):
+                amount_validation['response'] = full_data
+                return amount_validation
+
+            if not verification_id:
+                verification_id = f"fallback:{payment_method.id}:{variant_ref or source}"
+
+            source_message = ''
+            if source == 'ai':
+                source_message = ' Se usó la referencia extraída del comprobante.'
+            elif source == 'payer_identity':
+                source_message = ' Se validó con el telefono y la cedula del pagador.'
+
+            # Indicar si se usó una variante truncada
+            variant_message = ''
+            if variant_ref != original_reference:
+                variant_message = f' (verificada con últimos {len(variant_ref)} dígitos)'
+
+            return {
                 'ok': True,
-                'verified': False,
-                'message': 'La transacción aún no está marcada como verificada en Pabilo.',
+                'verified': True,
+                'message': (
+                    'Pago verificado correctamente en Pabilo. '
+                    f"Monto reportado: Bs {amount_validation['reported_amount']}.{source_message}{variant_message}"
+                ).strip(),
+                'verification_id': verification_id,
+                'is_new': is_new,
+                'expected_amount': amount_validation.get('expected_amount'),
+                'minimum_amount': amount_validation.get('minimum_amount'),
+                'reported_amount': amount_validation.get('reported_amount'),
+                'resolved_reference': variant_ref,
+                'resolved_reference_source': source,
                 'response': full_data,
             }
-            continue
-
-        amount_validation = _validate_verified_payment_amount(order, payload_data, full_data)
-        if not amount_validation.get('verified'):
-            amount_validation['response'] = full_data
-            return amount_validation
-
-        if not verification_id:
-            verification_id = f"fallback:{payment_method.id}:{reference or candidate['source']}"
-
-        source_message = ''
-        if candidate['source'] == 'ai':
-            source_message = ' Se usó la referencia extraída del comprobante.'
-        elif candidate['source'] == 'payer_identity':
-            source_message = ' Se validó con el telefono y la cedula del pagador.'
-
-        return {
-            'ok': True,
-            'verified': True,
-            'message': (
-                'Pago verificado correctamente en Pabilo. '
-                f"Monto reportado: Bs {amount_validation['reported_amount']}.{source_message}"
-            ).strip(),
-            'verification_id': verification_id,
-            'is_new': is_new,
-            'expected_amount': amount_validation.get('expected_amount'),
-            'minimum_amount': amount_validation.get('minimum_amount'),
-            'reported_amount': amount_validation.get('reported_amount'),
-            'resolved_reference': reference,
-            'resolved_reference_source': candidate['source'],
-            'response': full_data,
-        }
 
     if duplicate_hit and last_soft_result:
         return last_soft_result
