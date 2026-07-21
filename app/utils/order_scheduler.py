@@ -52,67 +52,73 @@ def start_order_recovery_scheduler(app):
 def _loop(app):
     time.sleep(_INITIAL_DELAY_SECONDS)
     while True:
-        holder = f'{threading.get_ident()}:{id(app)}'
-        try:
-            # TTL algo mayor al intervalo entre ticks: si este worker se
-            # cae a mitad de un tick, el lock expira solo y otro worker
-            # puede tomar el siguiente tick sin quedar bloqueado.
-            if acquire_lock(_LEADER_LOCK_KEY, _TICK_INTERVAL_SECONDS + 30, holder):
-                try:
-                    _run_tick(app)
-                finally:
-                    release_lock(_LEADER_LOCK_KEY, holder)
-        except Exception as exc:
-            print(f'[OrderScheduler] Error en tick: {exc}')
+        # Todo el ciclo (lock + tick) corre dentro de un único app_context:
+        # acquire_lock/release_lock usan db.session igual que cualquier otra
+        # consulta, así que necesitan un contexto de aplicación activo tanto
+        # como _run_tick. Sin esto, acquire_lock revienta con "Working
+        # outside of application context" en cada ciclo y el scheduler
+        # nunca llega a procesar nada.
+        with app.app_context():
+            holder = f'{threading.get_ident()}:{id(app)}'
+            try:
+                # TTL algo mayor al intervalo entre ticks: si este worker se
+                # cae a mitad de un tick, el lock expira solo y otro worker
+                # puede tomar el siguiente tick sin quedar bloqueado.
+                if acquire_lock(_LEADER_LOCK_KEY, _TICK_INTERVAL_SECONDS + 30, holder):
+                    try:
+                        _run_tick(app)
+                    finally:
+                        release_lock(_LEADER_LOCK_KEY, holder)
+            except Exception as exc:
+                print(f'[OrderScheduler] Error en tick: {exc}')
         time.sleep(_TICK_INTERVAL_SECONDS)
 
 
 def _run_tick(app):
-    with app.app_context():
-        from ..models import Order, db
-        from .payment_verification import is_auto_verify_enabled
+    from ..models import Order, db
+    from .payment_verification import is_auto_verify_enabled
 
-        if not is_auto_verify_enabled():
-            return
+    if not is_auto_verify_enabled():
+        return
 
-        # Imports diferidos: evitan depender del orden de carga de módulos
-        # al arrancar la app (routes.checkout ya importa de utils en su
-        # nivel superior).
-        from ..routes.checkout import (
-            auto_verify_and_process_order,
-            order_supports_background_payment_verification,
-        )
-        from .order_processing import process_revendedores_queue
+    # Imports diferidos: evitan depender del orden de carga de módulos
+    # al arrancar la app (routes.checkout ya importa de utils en su
+    # nivel superior).
+    from ..routes.checkout import (
+        auto_verify_and_process_order,
+        order_supports_background_payment_verification,
+    )
+    from .order_processing import process_revendedores_queue
 
-        pending_orders = (
-            Order.query
-            .filter(Order.status == 'pending')
-            .order_by(Order.id.asc())
-            .limit(200)
-            .all()
-        )
+    pending_orders = (
+        Order.query
+        .filter(Order.status == 'pending')
+        .order_by(Order.id.asc())
+        .limit(200)
+        .all()
+    )
 
-        processed = 0
-        for order in pending_orders:
-            if processed >= _MAX_ORDERS_PER_TICK:
-                break
+    processed = 0
+    for order in pending_orders:
+        if processed >= _MAX_ORDERS_PER_TICK:
+            break
 
+        try:
+            auto_resp = json.loads(order.automation_response or '{}')
+        except Exception:
+            auto_resp = {}
+
+        try:
+            if auto_resp.get('pending_verification'):
+                process_revendedores_queue(order, base_state=auto_resp, force=False)
+                processed += 1
+            elif order_supports_background_payment_verification(order):
+                auto_verify_and_process_order(order)
+                processed += 1
+        except Exception as exc:
+            order_number = getattr(order, 'order_number', order.id)
+            print(f'[OrderScheduler] Error procesando orden #{order_number}: {exc}')
             try:
-                auto_resp = json.loads(order.automation_response or '{}')
+                db.session.rollback()
             except Exception:
-                auto_resp = {}
-
-            try:
-                if auto_resp.get('pending_verification'):
-                    process_revendedores_queue(order, base_state=auto_resp, force=False)
-                    processed += 1
-                elif order_supports_background_payment_verification(order):
-                    auto_verify_and_process_order(order)
-                    processed += 1
-            except Exception as exc:
-                order_number = getattr(order, 'order_number', order.id)
-                print(f'[OrderScheduler] Error procesando orden #{order_number}: {exc}')
-                try:
-                    db.session.rollback()
-                except Exception:
-                    pass
+                pass
