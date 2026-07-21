@@ -468,3 +468,17 @@ class AdminUser(db.Model, UserMixin):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class ProcessLock(db.Model):
+    """Bloqueo distribuido respaldado por la BD.
+
+    Sustituye a los threading.Lock() en memoria, que solo sirven dentro de
+    un mismo proceso: con Gunicorn corriendo varios workers cada uno tiene
+    su propio Lock() y no se coordinan entre sí. Una fila aquí, con
+    expiración, funciona igual sin importar cuántos procesos haya.
+    """
+    __tablename__ = 'process_locks'
+    key = db.Column(db.String(100), primary_key=True)
+    holder = db.Column(db.String(100))
+    expires_at = db.Column(db.DateTime, nullable=False)

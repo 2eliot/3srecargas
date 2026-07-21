@@ -75,8 +75,13 @@ Abre `http://localhost:5000`
    ```
 4. **Servicio (ej. Gunicorn + systemd)**
    ```bash
-   gunicorn -w 3 -b 0.0.0.0:8001 'app:create_app()'
+   gunicorn -w 3 -b 0.0.0.0:8001 --timeout 180 'app:create_app()'
    ```
+   > `--timeout 180` es importante: las llamadas a Pabilo/Revendedores/VPS pueden tardar
+   > hasta 120s cada una. Con el timeout por defecto de Gunicorn (30s), el worker podía
+   > ser matado a mitad de una recarga — dejando la orden en un estado inconsistente sin
+   > que la app llegara a registrar si la recarga se completó o no.
+
    Configura Nginx como proxy → `https://tudominio.com` → Gunicorn.
 
 > Si usas PostgreSQL en producción, sustituye `DATABASE_URL` por la cadena correspondiente y omite `DATA_DIR`.
@@ -188,7 +193,9 @@ windsurf-project/
 │   ├── utils/
 │   │   ├── email.py         # SMTP send (TLS/SSL, async)
 │   │   ├── email_templates.py # HTML email builders
-│   │   └── notifications.py # High-level notification dispatcher
+│   │   ├── notifications.py # High-level notification dispatcher
+│   │   ├── locks.py         # Lock distribuido en BD (reemplaza threading.Lock entre workers)
+│   │   └── order_scheduler.py # Hilo de recuperación en 2do plano (pagos/recargas atascadas)
 │   ├── static/
 │   │   ├── css/main.css     # Estilos tienda (dark theme)
 │   │   ├── css/admin.css    # Estilos panel admin

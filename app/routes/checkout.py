@@ -1,7 +1,6 @@
 from decimal import Decimal
 from datetime import datetime, timedelta
 import os
-import threading
 from uuid import uuid4
 from flask import (
     Blueprint, render_template, request, redirect,
@@ -39,6 +38,7 @@ from ..utils.binance_pay import (
 )
 from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
+from ..utils.locks import acquire_lock, release_lock
 
 
 def _digits_only(value):
@@ -70,12 +70,19 @@ from ..utils.auth_accounts import attach_matching_orders_to_customer, extract_cu
 
 checkout_bp = Blueprint('checkout_bp', __name__)
 
-# 1 intento automático al crear la orden. El botón manual siempre puede reintentar (force=True).
-AUTO_VERIFY_MAX_ATTEMPTS = 1
+# Límite de intentos automáticos por orden (1 al crearla + reintentos del
+# scheduler de recuperación en segundo plano, espaciados por el cooldown de
+# abajo). El botón manual del admin siempre puede reintentar (force=True)
+# sin importar este límite.
+AUTO_VERIFY_MAX_ATTEMPTS = 30
 AUTO_VERIFY_COOLDOWN_SECONDS = 60
 
-# Cola simple en memoria: solo 1 solicitud a Pabilo al mismo tiempo.
-_PABILO_VERIFY_LOCK = threading.Lock()
+# Lock en base de datos: solo 1 solicitud a Pabilo al mismo tiempo. Un
+# threading.Lock() normal no alcanza porque en producción la app corre con
+# varios workers de Gunicorn (procesos separados, cada uno con su propio
+# Lock que no se coordina con los demás).
+PABILO_VERIFY_LOCK_KEY = 'pabilo_verify_global'
+PABILO_VERIFY_LOCK_TTL_SECONDS = 45
 
 PAYMENT_METHODS = [
     ('pago_movil', 'Pago Móvil'),
@@ -181,8 +188,10 @@ def auto_verify_and_process_order(order, force=False):
                 'next_retry_in_seconds': wait_seconds,
             }
 
-    # Si otro pedido ya está verificándose, este queda en cola para el siguiente ciclo.
-    if not _PABILO_VERIFY_LOCK.acquire(blocking=False):
+    # Si otro pedido ya está verificándose (en este worker o en otro), este
+    # queda en cola para el siguiente ciclo.
+    lock_holder = uuid4().hex
+    if not acquire_lock(PABILO_VERIFY_LOCK_KEY, PABILO_VERIFY_LOCK_TTL_SECONDS, lock_holder):
         return {
             'checked': False,
             'verified': False,
@@ -250,7 +259,7 @@ def auto_verify_and_process_order(order, force=False):
         db.session.commit()
         return verification
     finally:
-        _PABILO_VERIFY_LOCK.release()
+        release_lock(PABILO_VERIFY_LOCK_KEY, lock_holder)
 
 
 def find_existing_pending_order(package_id, payment_method, user_id=None, player_id=None, email=None):
@@ -736,8 +745,18 @@ def checkout(package_id):
             binance_codes = session.get('binance_codes') or {}
             binance_codes.pop(pkg_key, None)
             session['binance_codes'] = binance_codes
-        else:
-            auto_verify_and_process_order(order)
+        # No se llama a auto_verify_and_process_order aquí de forma síncrona
+        # a propósito: cuando Pabilo confirma el pago casi al instante, la
+        # verificación + recarga terminaban completándose ANTES del
+        # redirect, así que el cliente llegaba a la pestaña de estado con
+        # la orden ya en 'completed' y nunca veía la animación de pasos
+        # (buscando pago / confirmado / validando / conectando / entregado)
+        # — solo un salto directo a "completada". Dejar la orden en
+        # 'pending' al redirigir permite que esa pantalla anime los pasos
+        # de verdad: el propio JS de la página empieza a hacer polling a
+        # /order/<n>/auto-verify a los 6s, y el scheduler en segundo plano
+        # (utils/order_scheduler.py) también la recoge en un rato aunque
+        # el cliente cierre la pestaña.
 
         checkout_data.pop(pkg_key, None)
         session['checkout_data'] = checkout_data

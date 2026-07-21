@@ -2281,7 +2281,15 @@ def revendedores_mappings_bulk():
 @admin_bp.route('/orders/<int:order_id>/verify-recharge', methods=['POST'])
 @login_required
 def order_verify_recharge(order_id):
-    """Verifica en Revendedores51 si la recarga realmente se completó."""
+    """Revisa/continúa la cola de recargas de Revendedores para una orden.
+
+    Delega toda la lógica (confirmar el intento previo, decidir si hay que
+    reintentar, avanzar al siguiente paso o completar la orden) a
+    process_revendedores_queue, que es la misma función que usa el
+    scheduler de recuperación en segundo plano. Así este botón y la
+    recuperación automática nunca pueden quedar desincronizados ni disparar
+    una recarga duplicada.
+    """
     order = Order.query.get_or_404(order_id)
     if order.status != 'pending':
         return jsonify({'ok': True, 'result': 'already_processed', 'order_status': order.status})
@@ -2295,131 +2303,49 @@ def order_verify_recharge(order_id):
     if not auto_resp.get('pending_verification'):
         return jsonify({'ok': True, 'result': 'no_verification_needed', 'can_approve': True})
 
-    steps = auto_resp.get('steps') if isinstance(auto_resp.get('steps'), list) else []
     try:
-        current_step_index = int(auto_resp.get('current_step_index') or 0)
-    except Exception:
-        current_step_index = 0
-    current_step = steps[current_step_index] if 0 <= current_step_index < len(steps) else {}
+        # force=False: este botón hace polling pasivo (se dispara solo con
+        # la página abierta), así que respeta el límite de reintentos
+        # automáticos igual que el scheduler de recuperación. Una vez
+        # agotados, el flujo pasa al botón normal "✓ Aprobar", que sí
+        # fuerza un intento más de forma explícita.
+        result = process_revendedores_queue(order, base_state=auto_resp, force=False)
+    except Exception as exc:
+        current_app.logger.exception('Error verificando recarga de Revendedores para la orden %s', order_id)
+        return jsonify({'ok': False, 'error': f'No se pudo verificar: {exc}', 'can_approve': False})
 
-    ext_order_id = (
-        current_step.get('external_order_id')
-        or auto_resp.get('external_order_id')
-        or order.order_number
-    )
-    base_url, api_key, _, _ = get_revendedores_env()
+    db.session.refresh(order)
 
-    if not base_url or not api_key:
-        return jsonify({'ok': False, 'error': 'Revendedores API no configurada'})
+    if not result:
+        return jsonify({'ok': True, 'result': 'no_verification_needed', 'can_approve': True, 'order_status': order.status})
 
-    try:
-        resp = requests.get(
-            f'{base_url}/api/v1/order-status',
-            params={'external_order_id': ext_order_id},
-            headers={'X-API-Key': api_key},
-            timeout=15,
-        )
-        data = resp.json() if resp.ok else {}
-    except Exception as e:
-        return jsonify({'ok': False, 'error': f'No se pudo verificar: {e}', 'can_approve': False})
+    if result.get('ok') and not result.get('pending_verification'):
+        return jsonify({
+            'ok': True,
+            'result': 'completed',
+            'order_status': order.status,
+            'message': result.get('message'),
+        })
 
-    if not data.get('ok'):
-        return jsonify({'ok': False, 'error': data.get('error', 'Error consultando Revendedores'), 'can_approve': False})
-
-    found = data.get('found', False)
-    rev_status = data.get('status', '')
-    rev_order = data.get('order', {})
-
-    if found and rev_status == 'completada':
-        player_name = rev_order.get('player_name', '')
-        ref_no = rev_order.get('reference_no', '')
-        if current_step:
-            current_step.update({
-                'success': True,
-                'pending_verification': False,
-                'verified': True,
-                'player_name': player_name,
-                'reference_no': ref_no,
-                'error': '',
-            })
-            auto_resp['steps'] = steps
-        auto_resp['pending_verification'] = False
-        auto_resp['external_order_id'] = ''
-        order.automation_response = json.dumps(auto_resp)
-        order.notes = ((order.notes or '') + f'\n[Verificado][Paso {current_step_index + 1}] Recarga confirmada en Revendedores. Ref: {ref_no}, Player: {player_name}').strip()
-        order.updated_at = datetime.utcnow()
-        db.session.commit()
-
-        queue_result = process_revendedores_queue(order, base_state=auto_resp)
-        if queue_result and queue_result.get('ok'):
-            return jsonify({
-                'ok': True,
-                'result': 'completed',
-                'order_status': 'completed',
-                'player_name': player_name,
-                'reference_no': ref_no,
-            })
-
-        if queue_result and queue_result.get('pending_verification'):
-            return jsonify({
-                'ok': True,
-                'result': 'processing',
-                'order_status': 'pending',
-                'can_approve': False,
-                'message': queue_result.get('message') or 'Paso confirmado. Continuando con el siguiente mapeo...',
-            })
-
+    if result.get('pending_verification'):
         return jsonify({
             'ok': True,
             'result': 'processing',
             'order_status': order.status,
             'can_approve': False,
-            'message': 'Paso confirmado. Revisando si quedan más recargas en cola...',
+            'message': result.get('message') or 'Verificando en Revendedores...',
         })
-    elif found and rev_status == 'fallida':
-        if current_step:
-            current_step.update({
-                'success': False,
-                'pending_verification': False,
-                'verified_failed': True,
-                'error': rev_order.get('error', ''),
-            })
-            auto_resp['steps'] = steps
-        auto_resp['pending_verification'] = False
-        order.automation_response = json.dumps(auto_resp)
-        db.session.commit()
-        return jsonify({
-            'ok': True,
-            'result': 'failed',
-            'order_status': 'pending',
-            'can_approve': True,
-            'message': 'Recarga falló en Revendedores. Puedes reintentar.',
-        })
-    elif found and rev_status == 'procesando':
-        return jsonify({
-            'ok': True,
-            'result': 'processing',
-            'order_status': 'pending',
-            'can_approve': False,
-            'message': 'La recarga aún se está procesando en Revendedores...',
-        })
-    else:
-        if current_step:
-            current_step.update({
-                'success': False,
-                'pending_verification': False,
-            })
-            auto_resp['steps'] = steps
-        auto_resp['pending_verification'] = False
-        order.automation_response = json.dumps(auto_resp)
-        db.session.commit()
-        return jsonify({
-            'ok': True,
-            'result': 'not_found',
-            'order_status': 'pending',
-            'can_approve': True,
-            'message': 'No se encontró la recarga en Revendedores. Puedes reintentar.',
-        })
+
+    # ok=False y pending_verification=False → se confirmó que no se
+    # completó (o se agotaron los reintentos automáticos) y ahora se puede
+    # reintentar manualmente con el botón "✓ Aprobar".
+    return jsonify({
+        'ok': True,
+        'result': 'failed',
+        'order_status': order.status,
+        'can_approve': True,
+        'message': result.get('message') or 'No se pudo confirmar la recarga en Revendedores. Puedes reintentar.',
+    })
 
 
 # ─── Statistics ──────────────────────────────────────────────────────────────

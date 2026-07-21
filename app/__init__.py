@@ -160,6 +160,9 @@ def create_app(config_class=Config):
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+    from .utils.order_scheduler import start_order_recovery_scheduler
+    start_order_recovery_scheduler(app)
+
     return app
 
 
