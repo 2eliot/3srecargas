@@ -140,7 +140,7 @@ def _check_revendedores_attempt_status(base_url, api_key, external_order_id):
             headers={'X-API-Key': api_key},
             timeout=REV_STATUS_CHECK_TIMEOUT,
         )
-        data = resp.json() if resp.ok else {}
+        data = resp.json()
     except Exception:
         return None
     if not isinstance(data, dict) or not data.get('ok') or not data.get('found'):
@@ -236,8 +236,14 @@ def process_revendedores_queue(order, base_state=None, force=False):
                         'message': f'La recarga del paso {step_index + 1} sigue en estado "procesando" en Revendedores.',
                         'category': 'warning',
                     }
-                # 'fallida' u otro estado → confirmado que no se completó,
-                # es seguro generar un nuevo intento más abajo.
+
+                # 'fallida' u otro estado → confirmado que el intento
+                # anterior no se completó (y Revendedores ya reembolsó su
+                # saldo), así que es seguro generar un intento nuevo más
+                # abajo sin riesgo de duplicar la recarga. Si ese intento
+                # nuevo vuelve a salir 'fallida', el manejo de la respuesta
+                # del POST (más abajo) es el que decide detenerse en vez de
+                # seguir reintentando solo.
 
         prior_attempts = int(step.get('rev_attempt') or 0)
         if not force and prior_attempts >= MAX_REV_RETRIES:
@@ -280,7 +286,16 @@ def process_revendedores_queue(order, base_state=None, force=False):
                 headers={'X-API-Key': api_key, 'Content-Type': 'application/json'},
                 timeout=120,
             )
-            rev_data = resp.json() if resp.ok else {}
+            # Revendedores siempre responde JSON, incluso en 4xx/5xx (402
+            # saldo insuficiente, 422 recarga fallida, etc.) — hay que
+            # parsearlo siempre. Antes esto se saltaba cuando resp.ok era
+            # False, así que el campo 'status': 'fallida' nunca se leía y
+            # una recarga rechazada de forma definitiva (ID inválido, sin
+            # stock...) se trataba igual que un timeout de red ambiguo.
+            try:
+                rev_data = resp.json()
+            except Exception:
+                rev_data = {}
             rev_ok = rev_data.get('ok', False)
 
             if rev_ok:
@@ -338,8 +353,46 @@ def process_revendedores_queue(order, base_state=None, force=False):
                 order.notes = ((order.notes or '') + '\n' + note).strip()
                 continue  # éxito → pasar al siguiente paso
 
-            # Revendedores respondió con error explícito para este intento.
-            rev_error = rev_data.get('error', resp.text[:200] if not resp.ok else 'Error desconocido')
+            # Revendedores respondió con error para este intento. Cuando ya
+            # trae 'status': 'fallida' es un rechazo definitivo y
+            # sincrónico (Revendedores ya reembolsó su saldo del lado de
+            # ellos) — no ambiguo como un timeout, así que no vale la pena
+            # reintentar solo: el mismo player_id va a fallar otra vez.
+            rev_error = rev_data.get('error') or (resp.text[:200] if not rev_data else 'Error desconocido')
+            rev_reported_status = str(rev_data.get('status') or '').strip().lower()
+
+            # Se detiene aquí sin importar `force`: force solo debía saltar
+            # el LÍMITE de reintentos para fallas ambiguas, no hacer que
+            # ignoremos un rechazo que Revendedores mismo acaba de
+            # confirmar como definitivo. Si alguien quiere reintentar de
+            # todas formas (ID corregido u otro motivo), tendrá que
+            # disparar una nueva acción explícita — el próximo intento
+            # arrancará limpio porque este paso queda con external_order_id
+            # fijado, y el chequeo de arriba lo confirmará como 'fallida'
+            # antes de generar uno nuevo.
+            if rev_reported_status == 'fallida':
+                step.update({
+                    'rev_attempt': rev_attempt,
+                    'external_order_id': ext_order_id,
+                    'error': rev_error,
+                    'success': False,
+                    'pending_verification': False,
+                })
+                auto_resp['pending_verification'] = False
+                auto_resp['current_step_index'] = step_index
+                auto_resp['last_error'] = rev_error
+                order.automation_response = json.dumps(auto_resp)
+                order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Revendedores rechazó la recarga: {rev_error}. No se reintenta automáticamente.').strip()
+                db.session.commit()
+                return {
+                    'ok': False,
+                    'changed': False,
+                    'pending_verification': False,
+                    'current_step_index': step_index,
+                    'message': f'Revendedores rechazó la recarga en el paso {step_index + 1}: {rev_error}. Verifica el ID del jugador u otros datos y reintenta manualmente.',
+                    'category': 'danger',
+                }
+
             step['rev_attempt'] = rev_attempt
             step['external_order_id'] = ext_order_id
             step['error'] = rev_error
