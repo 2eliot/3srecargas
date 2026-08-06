@@ -155,6 +155,10 @@ def cleanup_old_orders():
     for order in old_orders:
         if order.payment_capture:
             delete_uploaded_file(order.payment_capture)
+        # Las oportunidades de minijuego referencian la orden, así que hay que
+        # borrarlas primero o el DELETE falla por la restricción de clave ajena.
+        for opp in OrderMiniGameOpportunity.query.filter_by(order_id=order.id).all():
+            db.session.delete(opp)
         db.session.delete(order)
         removed += 1
     if removed:
