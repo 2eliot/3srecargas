@@ -156,6 +156,10 @@ class Order(db.Model):
     payment_verification_attempts = db.Column(db.Integer, default=0)
     payment_last_verification_at = db.Column(db.DateTime)
     idempotency_key = db.Column(db.String(64), unique=True, index=True)
+    # ID de la transacción de Binance Pay que saldó esta orden. Es único: una
+    # misma transferencia no puede acreditarse a dos órdenes distintas (algo
+    # posible antes, cuando el emparejamiento por monto no dejaba rastro).
+    binance_tx_id = db.Column(db.String(120), unique=True, index=True)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

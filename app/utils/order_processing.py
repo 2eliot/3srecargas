@@ -120,6 +120,47 @@ def _load_revendedores_auto_response(order, catalog_items, base_state=None):
 MAX_REV_RETRIES = 3
 REV_STATUS_CHECK_TIMEOUT = 15
 
+# Errores de Revendedores que no tiene sentido reintentar: el problema no es
+# la red ni un pico de carga, es un dato que no va a cambiar solo. Antes todos
+# estos quemaban los 3 intentos automáticos (con su espera) antes de rendirse,
+# y al admin le llegaba un mensaje genérico de "reintentos agotados" en vez
+# del motivo real. Casos vistos en producción: mapeos que apuntan a paquetes
+# que Revendedores ya dio de baja, IDs de jugador inválidos y saldo agotado.
+_REV_NON_RETRYABLE_PATTERNS = (
+    ('no encontrado', 'mapping'),
+    ('inactivo', 'mapping'),
+    ('not found', 'mapping'),
+    ('id de jugador inválido', 'player'),
+    ('id de jugador invalido', 'player'),
+    ('invalid player', 'player'),
+    ('usuario no existe', 'player'),
+    ('user id não existe', 'player'),
+    ('user id nao existe', 'player'),
+    ('insufficient credits', 'balance'),
+    ('saldo insuficiente', 'balance'),
+    ('insufficient balance', 'balance'),
+)
+
+_REV_NON_RETRYABLE_HINTS = {
+    'mapping': (
+        'El paquete ya no existe en Revendedores. Vuelve a sincronizar el catálogo '
+        '(Admin → Revendedores → Sincronizar) y revisa el mapeo de este paquete.'
+    ),
+    'player': 'Verifica el ID del jugador con el cliente antes de reintentar.',
+    'balance': 'Recarga saldo en Revendedores y luego reintenta la orden.',
+}
+
+
+def classify_revendedores_error(message):
+    """Devuelve la causa si el error es definitivo, o None si vale reintentar."""
+    text = str(message or '').strip().lower()
+    if not text:
+        return None
+    for needle, cause in _REV_NON_RETRYABLE_PATTERNS:
+        if needle in text:
+            return cause
+    return None
+
 
 def _check_revendedores_attempt_status(base_url, api_key, external_order_id):
     """Consulta en Revendedores el estado real de un intento previo.
@@ -360,6 +401,7 @@ def process_revendedores_queue(order, base_state=None, force=False):
             # reintentar solo: el mismo player_id va a fallar otra vez.
             rev_error = rev_data.get('error') or (resp.text[:200] if not rev_data else 'Error desconocido')
             rev_reported_status = str(rev_data.get('status') or '').strip().lower()
+            non_retryable_cause = classify_revendedores_error(rev_error)
 
             # Se detiene aquí sin importar `force`: force solo debía saltar
             # el LÍMITE de reintentos para fallas ambiguas, no hacer que
@@ -370,26 +412,38 @@ def process_revendedores_queue(order, base_state=None, force=False):
             # arrancará limpio porque este paso queda con external_order_id
             # fijado, y el chequeo de arriba lo confirmará como 'fallida'
             # antes de generar uno nuevo.
-            if rev_reported_status == 'fallida':
+            #
+            # Además del 'fallida' explícito, se corta también cuando el texto
+            # del error identifica una causa que no se arregla reintentando
+            # (paquete dado de baja, ID inválido, saldo agotado): reintentar
+            # solo retrasaba el aviso al admin.
+            if rev_reported_status == 'fallida' or non_retryable_cause:
+                hint = _REV_NON_RETRYABLE_HINTS.get(non_retryable_cause, '')
                 step.update({
                     'rev_attempt': rev_attempt,
                     'external_order_id': ext_order_id,
                     'error': rev_error,
                     'success': False,
                     'pending_verification': False,
+                    'blocked_cause': non_retryable_cause or 'rejected',
                 })
                 auto_resp['pending_verification'] = False
                 auto_resp['current_step_index'] = step_index
                 auto_resp['last_error'] = rev_error
+                auto_resp['blocked_cause'] = non_retryable_cause or 'rejected'
                 order.automation_response = json.dumps(auto_resp)
-                order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Revendedores rechazó la recarga: {rev_error}. No se reintenta automáticamente.').strip()
+                order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Revendedores rechazó la recarga: {rev_error}. No se reintenta automáticamente.' + (f' {hint}' if hint else '')).strip()
                 db.session.commit()
                 return {
                     'ok': False,
                     'changed': False,
                     'pending_verification': False,
                     'current_step_index': step_index,
-                    'message': f'Revendedores rechazó la recarga en el paso {step_index + 1}: {rev_error}. Verifica el ID del jugador u otros datos y reintenta manualmente.',
+                    'blocked_cause': non_retryable_cause or 'rejected',
+                    'message': (
+                        f'Revendedores rechazó la recarga en el paso {step_index + 1}: {rev_error}. '
+                        + (hint or 'Verifica el ID del jugador u otros datos y reintenta manualmente.')
+                    ),
                     'category': 'danger',
                 }
 
@@ -517,25 +571,193 @@ def approve_order(order, delivery_proof_path=None):
         release_lock(lock_key, lock_holder)
 
 
+def _claim_pin_for_order(package, order):
+    """Reserva de forma atómica un PIN libre del stock para `order`.
+
+    El lock por orden de `approve_order` impide que la MISMA orden se
+    procese dos veces, pero no que dos órdenes distintas del mismo paquete
+    avancen a la vez (cliente + admin, o el scheduler y una aprobación
+    manual). Antes ambas leían el mismo "primer PIN sin usar" y se lo
+    llevaban las dos: el bot redimía el PIN para el primer jugador y la
+    segunda orden fallaba con un PIN ya quemado.
+
+    El UPDATE condicional (`order_id IS NULL AND is_used = 0`) es atómico
+    tanto en SQLite como en Postgres: solo una de las dos transacciones ve
+    filas afectadas y la otra vuelve a intentar con el siguiente PIN.
+    """
+    for _ in range(10):
+        candidate = (
+            Pin.query
+            .filter(
+                Pin.package_id == package.id,
+                Pin.is_used.is_(False),
+                Pin.order_id.is_(None),
+            )
+            .order_by(Pin.created_at.asc())
+            .first()
+        )
+        if candidate is None:
+            return None
+
+        try:
+            claimed = (
+                db.session.query(Pin)
+                .filter(
+                    Pin.id == candidate.id,
+                    Pin.is_used.is_(False),
+                    Pin.order_id.is_(None),
+                )
+                .update({'order_id': order.id}, synchronize_session=False)
+            )
+            if claimed:
+                db.session.commit()
+                return Pin.query.get(candidate.id)
+            db.session.rollback()
+        except Exception:
+            db.session.rollback()
+            return None
+    return None
+
+
+def _resolve_ambiguous_redeem(order, pin, reason):
+    """Resuelve un canje del que no sabemos si consumió el PIN.
+
+    El bot expone `POST /redeem/verify`, que consulta en el proveedor si un
+    PIN ya fue canjeado **sin** canjearlo, y responde
+    `{'status': 'used'|'available'|'unknown', ...}`. Preguntarle es la única
+    forma de no equivocarse en los dos sentidos: dar por perdida una recarga
+    que sí se hizo, o devolver al stock un PIN ya quemado que haría fallar a
+    la siguiente orden.
+    """
+    verify_url = current_app.config.get('VPS_VERIFY_URL')
+    status = 'unknown'
+    if verify_url:
+        try:
+            resp = requests.post(
+                verify_url,
+                json={
+                    'pin_key': str(pin.code).strip(),
+                    'player_id': str(order.player_id or '').strip(),
+                    'request_id': order.order_number,
+                    'verify_only': True,
+                },
+                timeout=current_app.config.get('VPS_VERIFY_TIMEOUT', 60),
+                headers={'Content-Type': 'application/json'},
+            )
+            data = resp.json() if resp.ok else {}
+            status = str(data.get('status') or '').strip().lower() or 'unknown'
+            if not status or status == 'unknown':
+                if data.get('already_redeemed') or data.get('used'):
+                    status = 'used'
+                elif data.get('pin_still_valid'):
+                    status = 'available'
+        except Exception as exc:
+            order.notes = ((order.notes or '') + f'\n[VPS] No se pudo verificar si el PIN se consumió: {exc}').strip()
+
+    if status == 'used':
+        # La recarga sí ocurrió: se consuma el PIN y se completa la orden en
+        # vez de dejar al cliente esperando algo que ya recibió.
+        pin.is_used = True
+        pin.used_at = datetime.utcnow()
+        pin.order_id = order.id
+        order.status = 'completed'
+        ensure_minigame_opportunity(order)
+        order.pin_id = pin.id
+        order.pin_delivered = pin.code
+        order.automation_response = json.dumps({
+            'success': True,
+            'message': f'{reason} Verificado después: el PIN sí fue canjeado.',
+        })
+        order.updated_at = datetime.utcnow()
+        order.notes = ((order.notes or '') + f'\n[VPS] {reason} La verificación posterior confirmó que el PIN sí se canjeó; orden completada.').strip()
+        process_affiliate_commission(order)
+        db.session.commit()
+        try:
+            notify_order_completed(order, order.package, order.game)
+        except Exception:
+            pass
+        return {
+            'ok': True,
+            'changed': True,
+            'message': f'Orden #{order.order_number} completada: el PIN sí se canjeó pese al error inicial.',
+            'category': 'success',
+        }
+
+    if status == 'available':
+        # Confirmado que el PIN sigue intacto: se puede devolver al stock.
+        _release_pin(pin)
+        order.notes = ((order.notes or '') + f'\n[VPS] {reason} El PIN sigue sin canjear y volvió al stock.').strip()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        return {
+            'ok': False,
+            'changed': False,
+            'message': f'{reason} El PIN no se consumió y volvió al stock. La orden sigue pendiente.',
+            'category': 'danger',
+        }
+
+    # No se pudo determinar: el PIN queda reservado a esta orden, nunca de
+    # vuelta al stock, para que nadie más se lo lleve.
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return {
+        'ok': False,
+        'changed': False,
+        'message': (
+            f'{reason} No se pudo confirmar si el PIN {pin.code} se canjeó, así que quedó '
+            f'reservado para la orden #{order.order_number}. Revísalo antes de reintentar.'
+        ),
+        'category': 'danger',
+    }
+
+
+def _release_pin(pin):
+    """Devuelve al stock un PIN reservado cuya redención no se completó."""
+    if pin is None or pin.is_used:
+        return
+    try:
+        pin.order_id = None
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _approve_order_locked(order, delivery_proof_path=None):
+    package = order.package
+    category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
     rev_mapping = get_order_auto_mapping(order)
-    if rev_mapping:
+
+    # Qué vía usa cada paquete lo decide el admin con el interruptor
+    # "Automatizado ⚡ (usa stock de PINs)". Antes esa elección no servía de
+    # nada: el mapeo de Revendedores se consultaba PRIMERO y siempre
+    # retornaba, así que un paquete marcado para stock y con PINs cargados
+    # se recargaba igual por Revendedores y el bot nunca se usaba.
+    #
+    # Ahora manda la configuración: con stock disponible se usa el bot, y si
+    # el stock se agotó Revendedores queda como respaldo para que la orden no
+    # se trabe (que es justamente lo que el mapeo permite cubrir).
+    pin = _claim_pin_for_order(package, order) if package.is_automated else None
+
+    if pin is None and rev_mapping:
         result = process_revendedores_queue(order, force=True)
         if result:
             return result
 
-    package = order.package
-    category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
-    needs_pin_delivery = package.is_automated or category_slug == 'tarjetas'
+    if package.is_automated and pin is None:
+        return {
+            'ok': False,
+            'changed': False,
+            'message': 'Sin stock de códigos para este paquete. Carga PINs primero.',
+            'category': 'danger',
+        }
 
-    pin = None
-    if needs_pin_delivery:
-        pin = (
-            Pin.query
-            .filter_by(package_id=package.id, is_used=False)
-            .order_by(Pin.created_at.asc())
-            .first()
-        )
+    needs_pin_delivery = package.is_automated or category_slug == 'tarjetas'
+    if needs_pin_delivery and pin is None:
+        pin = _claim_pin_for_order(package, order)
         if not pin:
             return {
                 'ok': False,
@@ -570,15 +792,29 @@ def _approve_order_locked(order, delivery_proof_path=None):
             except Exception:
                 data = {}
 
-            exito = data.get('success') or data.get('exito') or data.get('status') == 'ok'
             mensaje = data.get('message') or data.get('mensaje') or data.get('error') or ''
             player_name = data.get('player_name') or data.get('nombre_jugador') or ''
 
-            if not exito and resp.status_code != 200:
-                exito = False
-            elif resp.status_code == 200 and not data:
-                exito = True
-                mensaje = 'Recarga procesada (VPS)'
+            # Solo se da por buena una confirmación EXPLÍCITA del bot. Antes,
+            # un 200 cuyo cuerpo no fuera JSON (una página de error de nginx,
+            # un servicio equivocado escuchando en ese puerto, un proxy en
+            # medio) caía en la rama `not data` y se trataba como éxito: se
+            # quemaba el PIN y la orden se marcaba completada sin que nadie
+            # hubiera recargado nada.
+            exito = bool(
+                resp.ok
+                and (
+                    data.get('success') is True
+                    or data.get('exito') is True
+                    or str(data.get('status') or '').strip().lower() in ('ok', 'success', 'completed', 'completada')
+                )
+            )
+
+            if not exito and not data:
+                mensaje = mensaje or (
+                    f'El servicio de automatización respondió HTTP {resp.status_code} sin un JSON válido. '
+                    f'Verifica que VPS_REDEEM_URL ({vps_url}) apunte al bot de recargas.'
+                )
 
             if exito:
                 pin.is_used = True
@@ -608,6 +844,18 @@ def _approve_order_locked(order, delivery_proof_path=None):
                     'category': 'success',
                 }
 
+            # El bot distingue un rechazo limpio de un resultado AMBIGUO: con
+            # `manual_review: true` la validación ya se envió al proveedor y
+            # el PIN pudo consumirse igual. Devolver ese PIN al stock le
+            # entregaría un código quemado a la siguiente orden, así que se
+            # resuelve preguntándole al propio bot si se usó.
+            if data.get('manual_review'):
+                return _resolve_ambiguous_redeem(
+                    order, pin, mensaje or 'Resultado ambiguo del bot de recargas.'
+                )
+
+            # Rechazo limpio: el PIN nunca se usó, vuelve al stock.
+            _release_pin(pin)
             return {
                 'ok': False,
                 'changed': False,
@@ -618,24 +866,31 @@ def _approve_order_locked(order, delivery_proof_path=None):
                 'category': 'danger',
             }
         except requests.exceptions.Timeout:
-            return {
-                'ok': False,
-                'changed': False,
-                'message': f'El VPS no respondió en {vps_timeout}s. Reintenta más tarde. El PIN no fue consumido.',
-                'category': 'danger',
-            }
+            # También ambiguo: la petición llegó al bot y pudo haber redimido
+            # el PIN aunque no alcanzáramos a leer la respuesta.
+            return _resolve_ambiguous_redeem(
+                order, pin, f'El bot de recargas no respondió en {vps_timeout}s.'
+            )
         except requests.exceptions.ConnectionError:
+            # Nunca se estableció la conexión: el PIN con seguridad no se usó.
+            _release_pin(pin)
             return {
                 'ok': False,
                 'changed': False,
-                'message': 'No se pudo conectar al bot de recarga. Verifica que el servicio esté activo en el VPS.',
+                'message': (
+                    f'No se pudo conectar al bot de recarga en {vps_url}. '
+                    'Verifica que el servicio esté activo en el VPS y que VPS_REDEEM_URL apunte a él.'
+                ),
                 'category': 'danger',
             }
         except Exception as exc:
             return {
                 'ok': False,
                 'changed': False,
-                'message': f'Error inesperado al contactar el VPS: {exc}',
+                'message': (
+                    f'Error inesperado al contactar el VPS: {exc}. '
+                    f'El PIN {pin.code} quedó reservado para la orden #{order.order_number}.'
+                ),
                 'category': 'danger',
             }
 

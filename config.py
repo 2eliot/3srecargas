@@ -16,6 +16,10 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     AUTOMATION_SERVICE_URL = os.environ.get('AUTOMATION_SERVICE_URL', 'http://localhost:8000')
     VPS_REDEEM_URL = os.environ.get('VPS_REDEEM_URL', AUTOMATION_SERVICE_URL.rstrip('/') + '/redeem')
+    # Endpoint del bot que responde si un PIN ya fue canjeado SIN canjearlo.
+    # Es lo que permite resolver un timeout o un `manual_review` sin adivinar.
+    VPS_VERIFY_URL = os.environ.get('VPS_VERIFY_URL', AUTOMATION_SERVICE_URL.rstrip('/') + '/redeem/verify')
+    VPS_VERIFY_TIMEOUT = int(os.environ.get('VPS_VERIFY_TIMEOUT', 60))
     VPS_TIMEOUT = int(os.environ.get('VPS_TIMEOUT', 120))
     VPS_COUNTRY = os.environ.get('VPS_COUNTRY', 'Venezuela')
     VPS_FULL_NAME = os.environ.get('VPS_FULL_NAME', 'Usuario Recarga')
@@ -32,7 +36,20 @@ class Config:
     BINANCE_API_KEY = os.environ.get('BINANCE_API_KEY', '').strip()
     BINANCE_API_SECRET = os.environ.get('BINANCE_API_SECRET', '').strip()
     BINANCE_PROXY = os.environ.get('BINANCE_PROXY', '').strip()
-    BINANCE_REQUEST_TIMEOUT = float(os.environ.get('BINANCE_REQUEST_TIMEOUT_SECONDS', '4'))
+    BINANCE_REQUEST_TIMEOUT = float(os.environ.get('BINANCE_REQUEST_TIMEOUT_SECONDS', '15'))
+    # Cuánto tiempo ANTES de que se cree la orden se buscan transacciones. El
+    # cliente ve el código en el checkout, paga en la app de Binance y recién
+    # entonces vuelve a confirmar, así que el pago casi siempre es anterior a
+    # la orden. Con los 2 minutos que se usaban antes, cualquier cliente que
+    # tardara un poco en volver quedaba fuera de la ventana de búsqueda.
+    BINANCE_LOOKBACK_MINUTES = int(os.environ.get('BINANCE_LOOKBACK_MINUTES', '90'))
+    # Cuánto tiempo se sigue buscando el pago de una orden pendiente.
+    BINANCE_VERIFY_WINDOW_MINUTES = int(os.environ.get('BINANCE_VERIFY_WINDOW_MINUTES', '180'))
+    # Diferencia máxima aceptada por debajo del monto esperado (USDT).
+    BINANCE_AMOUNT_TOLERANCE = float(os.environ.get('BINANCE_AMOUNT_TOLERANCE', '0.02'))
+    # Permite acreditar un pago cuyo memo llegó vacío emparejando monto +
+    # ventana de tiempo, siempre que no haya ambigüedad (ver binance_pay.py).
+    BINANCE_MATCH_BY_AMOUNT = os.environ.get('BINANCE_MATCH_BY_AMOUNT', 'true').strip().lower() == 'true'
     PABILO_BASE_URL = os.environ.get('PABILO_BASE_URL', 'https://api.pabilo.app')
     PABILO_TIMEOUT = int(os.environ.get('PABILO_TIMEOUT', 30))
     SCRAPE_ENABLED = os.environ.get('SCRAPE_ENABLED', 'true').strip().lower() == 'true'

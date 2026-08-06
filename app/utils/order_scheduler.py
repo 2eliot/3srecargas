@@ -20,6 +20,7 @@ disparar la misma verificación varias veces en paralelo.
 import json
 import threading
 import time
+from datetime import datetime
 
 from .locks import acquire_lock, release_lock
 
@@ -27,6 +28,9 @@ _TICK_INTERVAL_SECONDS = 20
 _INITIAL_DELAY_SECONDS = 15
 _LEADER_LOCK_KEY = 'order_recovery_scheduler'
 _MAX_ORDERS_PER_TICK = 25
+# Peor caso de un tick: _MAX_ORDERS_PER_TICK órdenes, cada una con una
+# llamada externa de hasta 120s, más margen.
+_LEADER_LOCK_TTL_SECONDS = 15 * 60
 
 _scheduler_started = False
 _start_guard = threading.Lock()
@@ -61,10 +65,14 @@ def _loop(app):
         with app.app_context():
             holder = f'{threading.get_ident()}:{id(app)}'
             try:
-                # TTL algo mayor al intervalo entre ticks: si este worker se
-                # cae a mitad de un tick, el lock expira solo y otro worker
-                # puede tomar el siguiente tick sin quedar bloqueado.
-                if acquire_lock(_LEADER_LOCK_KEY, _TICK_INTERVAL_SECONDS + 30, holder):
+                # El TTL tiene que cubrir un tick COMPLETO en el peor caso, no
+                # solo el intervalo: un tick puede tocar varias órdenes y cada
+                # llamada a Pabilo/Revendedores tarda hasta 120s. Con el TTL
+                # corto que había antes, el lock caducaba a mitad del tick,
+                # otro worker se declaraba líder y ambos procesaban las mismas
+                # órdenes en paralelo. Si el worker muere de verdad, el lock
+                # igual se libera solo al vencer.
+                if acquire_lock(_LEADER_LOCK_KEY, _LEADER_LOCK_TTL_SECONDS, holder):
                     try:
                         _run_tick(app)
                     finally:
@@ -76,9 +84,17 @@ def _loop(app):
 
 def _run_tick(app):
     from ..models import Order, db
+    from .binance_pay import (
+        binance_verify_window_seconds,
+        is_binance_auto_enabled,
+        is_binance_auto_order,
+        try_verify_binance_order,
+    )
     from .payment_verification import is_auto_verify_enabled
 
-    if not is_auto_verify_enabled():
+    auto_verify_on = is_auto_verify_enabled()
+    binance_on = is_binance_auto_enabled(app)
+    if not auto_verify_on and not binance_on:
         return
 
     # Imports diferidos: evitan depender del orden de carga de módulos
@@ -97,6 +113,7 @@ def _run_tick(app):
         .limit(200)
         .all()
     )
+    binance_window = binance_verify_window_seconds(app) if binance_on else 0
 
     processed = 0
     for order in pending_orders:
@@ -110,9 +127,22 @@ def _run_tick(app):
 
         try:
             if auto_resp.get('pending_verification'):
-                process_revendedores_queue(order, base_state=auto_resp, force=False)
-                processed += 1
-            elif order_supports_background_payment_verification(order):
+                if auto_verify_on:
+                    process_revendedores_queue(order, base_state=auto_resp, force=False)
+                    processed += 1
+            elif binance_on and is_binance_auto_order(order):
+                # El hilo dedicado que se lanza al crear la orden vive dentro
+                # de un worker concreto: si ese worker se recicla o se
+                # despliega una versión nueva, el hilo desaparece y antes
+                # nadie retomaba la orden — el cliente había pagado con el
+                # código correcto y la orden se quedaba pendiente para
+                # siempre. Aquí se reintenta desde el scheduler, que sí
+                # sobrevive a los reinicios.
+                age = (datetime.utcnow() - (order.created_at or datetime.utcnow())).total_seconds()
+                if age <= binance_window:
+                    try_verify_binance_order(order, app)
+                    processed += 1
+            elif auto_verify_on and order_supports_background_payment_verification(order):
                 auto_verify_and_process_order(order)
                 processed += 1
         except Exception as exc:

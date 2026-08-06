@@ -105,6 +105,20 @@ Abre `http://localhost:5000`
 
 Cuando se aprueba una orden de un paquete **Automatizado ⚡**, la web envía el PIN del stock + el Player ID al bot de scraping que corre en el VPS. El bot ejecuta Playwright + captcha y redime el PIN en la cuenta del jugador.
 
+### Qué vía usa cada paquete
+
+El interruptor **"Automatizado ⚡ (usa stock de PINs)"** de cada paquete es el que decide, y tiene prioridad sobre el mapeo de Revendedores:
+
+| Paquete | Stock de PINs | Mapeo Revendedores | Vía usada |
+|---|---|---|---|
+| Automatizado ⚡ | Sí | Sí o no | **Bot VPS** (stock propio) |
+| Automatizado ⚡ | No | Sí | Revendedores (respaldo) |
+| Automatizado ⚡ | No | No | Error: "Sin stock de códigos" |
+| Normal | — | Sí | Revendedores |
+| Normal, categoría `tarjetas` | Sí | — | Entrega directa del PIN, sin bot |
+
+Es decir: marcar el paquete como automatizado y cargarle PINs es suficiente para que las recargas pasen a hacerse con tu propio stock. Si el stock se agota y el paquete tiene mapeo, las órdenes siguen saliendo por Revendedores en vez de quedarse trabadas.
+
 ### Payload enviado al bot (`POST /redeem`)
 
 ```json
@@ -130,6 +144,29 @@ Cuando se aprueba una orden de un paquete **Automatizado ⚡**, la web envía el
 
 Si `success` es `false`, el PIN **no** se marca como usado y la orden permanece pendiente para reintentar.
 
+El bot debe responder **JSON con `success` explícito**. Una respuesta HTTP 200 cuyo cuerpo no sea JSON válido se trata como fallo, no como éxito: si `VPS_REDEEM_URL` apunta por error a otro servicio (o a un proxy que devuelve HTML), la orden queda pendiente en vez de darse por entregada sin haber recargado nada.
+
+### Manejo del stock de PINs ante fallos
+
+El PIN se **reserva** (`pins.order_id`) antes de llamar al bot, de modo que dos órdenes del mismo paquete nunca reciben el mismo código. Qué pasa después depende de la respuesta:
+
+| Respuesta del bot | Qué se hace con el PIN |
+|---|---|
+| `success: true` | Se consume y la orden se completa |
+| `success: false` (rechazo limpio) | Vuelve al stock |
+| `success: false` + `manual_review: true` | **Ambiguo** — se consulta `/redeem/verify` |
+| Timeout | **Ambiguo** — se consulta `/redeem/verify` |
+| No se pudo conectar | Vuelve al stock (nunca llegó al bot) |
+
+`manual_review: true` significa que la validación ya se envió al proveedor y el PIN **pudo consumirse igual**. En ese caso se consulta `POST /redeem/verify`, que responde si el PIN ya fue canjeado *sin* canjearlo:
+
+- `status: 'used'` → la recarga sí ocurrió: se consume el PIN y la orden se completa.
+- `status: 'available'` → el PIN sigue intacto: vuelve al stock.
+- `status: 'unknown'` (o el bot no responde) → el PIN queda **reservado** a esa orden, nunca de vuelta al stock, para que no se le entregue un código quemado a otro cliente.
+
+> Comprueba el bot con `curl -s http://127.0.0.1:8000/health` → `{"status":"ok","browser_ready":true,...}`.
+> Un `GET` a `/redeem` devuelve 404 aunque el bot esté sano: esas rutas solo aceptan `POST`.
+
 ### Variables de entorno
 
 | Variable | Default | Descripción |
@@ -142,6 +179,27 @@ Si `success` es `false`, el PIN **no** se marca como usado y la orden permanece 
 | `VPS_BIRTH_DATE` | `01/01/1995` | Fecha de nacimiento para el formulario |
 | `GEMINI_API_KEY` | *(vacío)* | API key para extraer referencias desde comprobantes con Gemini |
 | `GEMINI_REFERENCE_TIMEOUT` | `25` | Segundos máximos para la extracción IA |
+
+### Binance Pay (verificación automática)
+
+El cliente recibe un código de 6 dígitos y lo escribe en la Nota del envío. **Binance no siempre propaga esa nota al historial del receptor**: en producción una parte de las transferencias entrantes reales llega con `note` vacío aunque el cliente sí lo escribió. Por eso el emparejamiento tiene dos vías:
+
+1. **Código en el memo** — vía normal.
+2. **Monto + ventana de tiempo** — respaldo para memos vacíos. Solo se acredita si no hay ambigüedad: si otra orden pendiente espera el mismo monto, o si hay más de un pago candidato, la orden se deja con una nota para revisión manual en vez de arriesgar acreditarla mal.
+
+Cada pago acreditado queda en `orders.binance_tx_id` (índice único), así que una misma transferencia nunca puede saldar dos órdenes.
+
+La verificación corre en un hilo por orden **y** en el scheduler de recuperación, de modo que sobrevive a un reinicio de worker o a un despliegue.
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `BINANCE_API_KEY` / `BINANCE_API_SECRET` | *(vacío)* | Credenciales con permiso de historial de Pay |
+| `BINANCE_PROXY` | *(vacío)* | Proxy de salida para las llamadas a Binance |
+| `BINANCE_REQUEST_TIMEOUT_SECONDS` | `15` | Timeout por endpoint |
+| `BINANCE_LOOKBACK_MINUTES` | `90` | Minutos hacia atrás que se buscan pagos (el cliente suele pagar **antes** de confirmar la orden) |
+| `BINANCE_VERIFY_WINDOW_MINUTES` | `180` | Cuánto se sigue buscando el pago de una orden pendiente |
+| `BINANCE_AMOUNT_TOLERANCE` | `0.02` | Margen bajo el monto esperado; el sobrepago siempre se acepta |
+| `BINANCE_MATCH_BY_AMOUNT` | `true` | Activa el respaldo por monto para memos vacíos |
 
 ### Correo electrónico (SMTP)
 

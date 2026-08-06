@@ -1,8 +1,10 @@
 import os
+import sqlite3
 from flask import Flask
 from flask_login import current_user
 from flask_login import LoginManager
-from sqlalchemy import text
+from sqlalchemy import event, text
+from sqlalchemy.engine import Engine
 from .models import db, AdminUser, User, Category, Discount, Setting
 from .utils.timezone import VENEZUELA_TIMEZONE, format_ve
 from config import Config
@@ -20,9 +22,47 @@ def _ensure_postgres_columns(table_name, column_defs):
     return True
 
 
+def _configure_sqlite_concurrency(app):
+    """Prepara SQLite para varios workers escribiendo a la vez.
+
+    Con `gunicorn -w 3` más el scheduler en segundo plano, las escrituras
+    coinciden y SQLite en modo rollback-journal bloquea toda la base durante
+    cada una. En producción eso se veía como `OperationalError: database is
+    locked` justo al aprobar órdenes — el peor momento posible, porque un
+    commit perdido después de una recarga real deja la orden pendiente
+    aunque el proveedor ya haya entregado.
+
+    WAL permite que los lectores no bloqueen al escritor, y `busy_timeout`
+    hace que un escritor espere su turno en vez de abortar al instante.
+    """
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    if not uri.startswith('sqlite'):
+        return
+
+    options = dict(app.config.get('SQLALCHEMY_ENGINE_OPTIONS') or {})
+    connect_args = dict(options.get('connect_args') or {})
+    connect_args.setdefault('timeout', 30)
+    options['connect_args'] = connect_args
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = options
+
+    @event.listens_for(Engine, 'connect')
+    def _set_sqlite_pragmas(dbapi_connection, connection_record):
+        if not isinstance(dbapi_connection, sqlite3.Connection):
+            return
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute('PRAGMA journal_mode=WAL')
+            cursor.execute('PRAGMA busy_timeout=30000')
+            cursor.execute('PRAGMA synchronous=NORMAL')
+        finally:
+            cursor.close()
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+
+    _configure_sqlite_concurrency(app)
 
     db.init_app(app)
     login_manager.init_app(app)
@@ -156,6 +196,7 @@ def create_app(config_class=Config):
         _ensure_order_idempotency_column()
         _ensure_ranking_archive_columns()
         _ensure_revendedores_mapping_columns()
+        _ensure_binance_columns()
         _init_default_data(app)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -484,6 +525,37 @@ def _ensure_ranking_archive_columns():
         if 'nickname' not in existing:
             db.session.execute(text('ALTER TABLE ranking_archives ADD COLUMN nickname VARCHAR(200)'))
 
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_binance_columns():
+    """Columna que ata una transacción de Binance Pay a la orden que saldó.
+
+    El índice único es la garantía de que una misma transferencia no se
+    acredite a dos órdenes distintas — imprescindible ahora que un pago sin
+    memo puede emparejarse por monto.
+    """
+    try:
+        if _ensure_postgres_columns('orders', [
+            'binance_tx_id VARCHAR(120)',
+        ]):
+            db.session.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_binance_tx_id ON orders(binance_tx_id)'))
+            db.session.commit()
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'binance_tx_id' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN binance_tx_id VARCHAR(120)'))
+
+        db.session.execute(
+            text('CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_binance_tx_id ON orders(binance_tx_id)')
+        )
         db.session.commit()
     except Exception:
         db.session.rollback()
