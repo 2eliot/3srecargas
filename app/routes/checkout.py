@@ -431,6 +431,19 @@ def checkout(package_id):
     if not affiliate_code:
         affiliate_code = _get_active_session_affiliate_code()
 
+    # El index integrado envía stage=init por fetch y espera JSON en vez de
+    # los redirects/flashes clásicos (que quedan como fallback sin JS).
+    wants_json = (
+        request.args.get('format') == 'json'
+        or request.form.get('ajax') == '1'
+    )
+
+    def _init_error(message):
+        if wants_json:
+            return jsonify({'ok': False, 'message': message}), 400
+        flash(message, 'danger')
+        return redirect(url_for('main_bp.index'))
+
     if request.method == 'POST':
         stage = request.form.get('stage', '').strip()
 
@@ -447,8 +460,7 @@ def checkout(package_id):
                 aff_code = _get_active_session_affiliate_code()
 
             if not payment_method:
-                flash('Debes seleccionar un método de pago.', 'danger')
-                return redirect(url_for('main_bp.index'))
+                return _init_error('Debes seleccionar un método de pago.')
 
             category_slug = (game.category.slug if game.category else '').lower()
             tarjetas_without_id = category_slug == 'tarjetas'
@@ -458,16 +470,13 @@ def checkout(package_id):
 
             if is_wallet:
                 if not player_id:
-                    flash('Debes ingresar tu correo electrónico.', 'danger')
-                    return redirect(url_for('main_bp.index'))
+                    return _init_error('Debes ingresar tu correo electrónico.')
             elif tarjetas_without_id:
                 if not email:
-                    flash('Debes ingresar el correo de entrega para esta tarjeta o gift card.', 'danger')
-                    return redirect(url_for('main_bp.index'))
+                    return _init_error('Debes ingresar el correo de entrega para esta tarjeta o gift card.')
             elif not tarjetas_without_id:
                 if not player_id:
-                    flash(f'{game.player_id_label} es obligatorio.', 'danger')
-                    return redirect(url_for('main_bp.index'))
+                    return _init_error(f'{game.player_id_label} es obligatorio.')
 
             checkout_data[pkg_key] = {
                 'player_id': player_id,
@@ -498,6 +507,8 @@ def checkout(package_id):
 
             session['checkout_data'] = checkout_data
             session['last_payment_method'] = payment_method
+            if wants_json:
+                return jsonify({'ok': True})
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
         # Paso 2: confirmación (solo capture) -> crea la orden
@@ -871,6 +882,30 @@ def checkout(package_id):
         # Wallet address to show to customer
         wallet_setting = Setting.query.filter_by(key='binance_wallet_address').first()
         binance_wallet = wallet_setting.value if wallet_setting else ''
+
+    if wants_json:
+        return jsonify({
+            'ok': True,
+            'package_id': package.id,
+            'package_name': package.name,
+            'game_name': game.name,
+            'is_wallet': is_wallet,
+            'display_currency': display_currency,
+            'display_amount': display_amount,
+            'original_amount': original_display,
+            'discount_amount': discount_display,
+            'has_discount': discount_amount > 0,
+            'confirm_token': confirm_token,
+            'binance_auto': binance_auto,
+            'binance_code': binance_code,
+            'binance_wallet': binance_wallet,
+            'payer_verification': bool(selected_method and selected_method.pabilo_requires_phone_dni),
+            'selected_method_code': selected_method_code,
+            'selected_method_name': selected_method.name if selected_method else '',
+            'payment_video': checkout_payment_video,
+            'confirm_url': url_for('checkout_bp.checkout', package_id=package.id),
+            'extract_url': url_for('checkout_bp.extract_payment_reference'),
+        })
 
     return render_template(
         'checkout.html',

@@ -464,6 +464,25 @@ def index():
     usd_rate = float(usd_rate_setting.value) if usd_rate_setting else 0.0
     default_pkg_setting = Setting.query.filter_by(key='default_auto_package_id').first()
     default_package_id = int(default_pkg_setting.value) if default_pkg_setting else None
+
+    from ..utils.binance_pay import is_binance_auto_enabled
+    binance_auto_enabled = is_binance_auto_enabled(current_app._get_current_object())
+    binance_wallet = _get_setting_val('binance_wallet_address', '')
+
+    video_method = (_get_setting_val('checkout_payment_video_method', '') or '').strip().lower()
+    video_file = (_get_setting_val('checkout_payment_video_file', '') or '').strip()
+    checkout_payment_video = {
+        'enabled': bool(video_method and video_file),
+        'method': video_method,
+        'file': video_file,
+        'title': _get_setting_val('checkout_payment_video_title', '') or 'Mira cómo pagar con este método',
+        'message': _get_setting_val('checkout_payment_video_message', '') or '',
+        'cta': _get_setting_val('checkout_payment_video_cta', '') or 'Entendido, continuar',
+    }
+
+    promo_banner = (_get_setting_val('promo_banner_image', '') or '').strip()
+    promo_banner_link = (_get_setting_val('promo_banner_link', '') or '').strip()
+
     return render_template(
         'index.html',
         games=games,
@@ -472,6 +491,11 @@ def index():
         payment_methods=payment_methods,
         usd_rate=usd_rate,
         default_package_id=default_package_id,
+        binance_auto_enabled=binance_auto_enabled,
+        binance_wallet=binance_wallet,
+        checkout_payment_video=checkout_payment_video,
+        promo_banner=promo_banner,
+        promo_banner_link=promo_banner_link,
     )
 
 

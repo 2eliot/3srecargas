@@ -714,91 +714,119 @@
 {% endblock %}
 
 {% block content %}
-<div class="order-status-wrap">
-    <div class="order-status-card">
+{# Estados iniciales del timeline pintados en el servidor #}
+{% set st = order.status %}
+{% set is_pin_order = order.game.category and order.game.category.slug == 'tarjetas' %}
+{% set done_all = st == 'completed' %}
+{% set done_three = st in ['approved', 'completed'] or (is_manual_order and order.payment_verified_at) %}
+<div class="nx-order-wrap nx-order">
+    <section class="glass-panel nx-order-card">
 
-        <div class="status-icon status-icon-{{ order.status }}">
-            {% if order.status == 'pending' %}
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-            </svg>
-            {% elif order.status in ['approved', 'completed'] %}
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                <polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-            {% else %}
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
-            </svg>
-            {% endif %}
-        </div>
-
-        <h1 class="status-title">
-            {% if order.status == 'pending' %}¡Orden Recibida!
-            {% elif order.status == 'approved' %}¡Orden Aprobada!
-            {% elif order.status == 'completed' %}¡Recarga Completada!
-            {% else %}Orden Rechazada{% endif %}
-        </h1>
-
-        <div class="order-status-order-number">
-            <span class="order-status-order-label">Numero de orden</span>
-            <strong class="order-status-order-value">#{{ order.order_number }}</strong>
-        </div>
-
-        <p class="status-subtitle">
-            {% if order.status == 'pending' %}
-                {% if is_manual_order and order.payment_verified_at %}
-                Tu pago fue verificado en Pabilo. La orden sigue pendiente de revisión manual.
-                {% else %}
-                Tu orden está siendo procesada. Te notificaremos pronto.
-                {% endif %}
-            {% elif order.status == 'approved' %}
-            Tu pago fue verificado. La recarga será procesada en breve.
-            {% elif order.status == 'completed' %}
-            Tu recarga fue procesada exitosamente.
-            {% else %}
-            Tu orden fue rechazada. {{ order.notes or '' }}
-            {% endif %}
-        </p>
-
-        {% if auto_verify_allowed and order.status in ['pending', 'approved', 'completed'] %}
-        <div class="order-status-showcase{% if order_status_image %} has-side-image{% endif %}">
-            <div class="processing-flow" id="processingFlow" data-status="{{ order.status }}" data-manual-flow="{{ 'true' if is_manual_order else 'false' }}" data-payment-verified="{{ 'true' if order.payment_verified_at else 'false' }}">
-                <h3 class="processing-title">Estado de procesamiento</h3>
-                <div class="processing-step" data-step="search">
-                    <span class="step-icon">✕</span>
-                    <span class="step-text">Buscando pago en el sistema</span>
-                </div>
-                <div class="processing-step" data-step="confirm">
-                    <span class="step-icon">✕</span>
-                    <span class="step-text">Pago confirmado</span>
-                </div>
-                <div class="processing-step" data-step="validate">
-                    <span class="step-icon">✕</span>
-                    <span class="step-text">Validando la orden</span>
-                </div>
-                {% if auto_process_allowed %}
-                <div class="processing-step" data-step="connect">
-                    <span class="step-icon">✕</span>
-                    <span class="step-text">Conectando con servidor de recargas</span>
-                </div>
-                <div class="processing-step" data-step="deliver">
-                    <span class="step-icon">✕</span>
-                    <span class="step-text">Recarga procesada correctamente</span>
-                </div>
-                {% endif %}
+        <!-- Barra superior: badge + modo -->
+        <div class="nx-order-topbar">
+            <div class="nx-order-badge {% if st == 'pending' and not done_three %}is-waiting{% elif st == 'rejected' %}is-rejected{% endif %}" id="orderStatusBadge">
+                <span class="dot"></span>
+                <span id="orderBadgeText">
+                    {% if st == 'completed' %}¡ORDEN COMPLETADA #{{ order.order_number }}!
+                    {% elif st == 'rejected' %}ORDEN RECHAZADA #{{ order.order_number }}
+                    {% else %}PROCESANDO ORDEN #{{ order.order_number }}{% endif %}
+                </span>
             </div>
-            {% if order_status_image %}
-            <aside class="order-status-side-media" aria-label="Imagen de seguimiento de la orden">
-                <div class="order-status-side-media__frame">
-                    <img src="{{ url_for('static', filename='uploads/' + order_status_image) }}" alt="Imagen decorativa del seguimiento de la orden">
-                </div>
-            </aside>
-            {% endif %}
+            <span class="nx-order-mode">{{ 'MANUAL' if is_manual_order and not is_pin_order else 'AUTOMÁTICO' }}</span>
+        </div>
+
+        <!-- Título -->
+        <h2 class="nx-order-heading" id="orderMainHeading">
+            {% if st == 'completed' %}
+                {% if is_pin_order and order.pin_delivered %}¡Tu código ya está listo!
+                {% elif is_manual_order %}¡ORDEN RECIBIDA!
+                {% else %}¡RECARGA EXITOSA!{% endif %}
+            {% elif st == 'approved' %}¡PAGO CONFIRMADO!
+            {% elif st == 'rejected' %}ORDEN RECHAZADA
+            {% else %}¡Tu pedido se está procesando!{% endif %}
+        </h2>
+
+        {% if st == 'rejected' %}
+        <div class="nx-reject-note">
+            Tu orden fue rechazada. {{ order.notes or 'Contacta a soporte si crees que es un error.' }}
         </div>
         {% endif %}
+
+        <!-- Timer / aviso de verificación -->
+        {% if st == 'pending' %}
+        <div class="nx-timer-box" id="nxOrderTimerBox">
+            <p class="l1">Espera mientras se procesa la solicitud (<span class="cnt" id="nxOrderTimer">0:00</span>)...</p>
+            <p class="l2">Puede tardar hasta 1 minuto en procesar la orden.</p>
+        </div>
+        {% endif %}
+
+        <!-- Resumen jugador / paquete (visible al completar) -->
+        {% if st in ['approved', 'completed'] or (is_manual_order and order.payment_verified_at) %}
+        <div class="nx-order-summary">
+            <div class="nx-sum-cell glass-subpanel">
+                {% if is_wallet_order or (order.game.category and order.game.category.slug == 'wallet') %}
+                <div class="h"><span class="ico">👛</span><span>WALLET</span></div>
+                <p class="v">{{ order.game.name }}</p>
+                {% elif is_pin_order %}
+                <div class="h"><span class="ico">✉</span><span>CORREO</span></div>
+                <p class="v" style="text-transform:none">{{ order.email or '—' }}</p>
+                {% else %}
+                <div class="h"><span class="ico">👤</span><span>JUGADOR</span></div>
+                <p class="v">{{ order.player_id or order.email or '—' }}</p>
+                {% endif %}
+            </div>
+            <div class="nx-sum-cell glass-subpanel">
+                <div class="h"><span class="ico">📦</span><span>PAQUETE</span></div>
+                <p class="v">{{ order.package.name }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Estado de la entrega en tiempo real -->
+        <div>
+            <div class="nx-track-title" style="margin-bottom:10px">
+                <span>⚡</span><span>Estado de la entrega en tiempo real</span>
+            </div>
+
+            <div class="processing-flow" id="processingFlow" data-status="{{ order.status }}" data-manual-flow="{{ 'true' if is_manual_order else 'false' }}" data-payment-verified="{{ 'true' if order.payment_verified_at else 'false' }}">
+                <h3 class="processing-title">Estado de procesamiento</h3>
+                <div class="nx-track">
+                    <div class="processing-step {% if done_three or done_all %}is-done{% elif st == 'rejected' %}is-error{% else %}is-active{% endif %}" data-step="search">
+                        <span class="step-icon">{% if done_three or done_all %}✓{% else %}✕{% endif %}</span>
+                        <span class="step-text">Buscando Pago</span>
+                        <span class="step-sub">Verificando comprobante transaccional</span>
+                    </div>
+                    <div class="processing-step {% if done_three %}is-done{% endif %}" data-step="confirm">
+                        <span class="step-icon">{% if done_three %}✓{% else %}✕{% endif %}</span>
+                        <span class="step-text">Pago Confirmado</span>
+                        <span class="step-sub">Monto verificado correctamente</span>
+                    </div>
+                    <div class="processing-step {% if done_three %}is-done{% endif %}" data-step="validate">
+                        <span class="step-icon">{% if done_three %}✓{% else %}✕{% endif %}</span>
+                        <span class="step-text">Validando la Orden</span>
+                        <span class="step-sub">{% if is_pin_order %}Generando tu código PIN{% else %}Asignando recursos al ID del jugador{% endif %}</span>
+                    </div>
+                    <div class="processing-step {% if done_all %}is-done{% elif st == 'approved' %}is-active{% endif %}" data-step="connect">
+                        <span class="step-icon">{% if done_all %}✓{% else %}✕{% endif %}</span>
+                        <span class="step-text">Conectando con Servidor</span>
+                        <span class="step-sub">Abriendo canal de transferencia seguro</span>
+                    </div>
+                    <div class="processing-step {% if done_all %}is-done{% endif %}" data-step="deliver">
+                        <span class="step-icon">{% if done_all %}✓{% else %}✕{% endif %}</span>
+                        {% if is_manual_order and not is_pin_order %}
+                        <span class="step-text">Recarga será procesada en breve</span>
+                        <span class="step-sub">Recibirás tu recarga en máximo 5 minutos</span>
+                        {% elif is_pin_order %}
+                        <span class="step-text">Recarga procesada correctamente</span>
+                        <span class="step-sub">¡Tu código PIN ya está listo!</span>
+                        {% else %}
+                        <span class="step-text">Recarga Procesada Correctamente</span>
+                        <span class="step-sub">¡Tu recarga ya está lista en el juego!</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="order-minigame-card" id="orderMinigameCard" data-order-number="{{ order.order_number }}" style="display:none">
             <div class="order-minigame-shell">
@@ -808,39 +836,39 @@
         </div>
 
         {% if is_binance_auto_order and order.status == 'pending' %}
-        <div id="binanceWaitBlock" style="margin:20px 0;padding:20px 22px;border:2px solid #f0b90b;border-radius:12px;background:rgba(240,185,11,.06);text-align:center;">
-            <div style="font-size:28px;margin-bottom:8px;animation:spin 1.5s linear infinite;display:inline-block;">⏳</div>
-            <h3 style="margin:0 0 6px;color:#f0b90b;">Esperando tu pago en Binance Pay</h3>
-            <p style="margin:0 0 14px;font-size:13px;color:#94a3b8;">
-                El sistema está escaneando tu transacción automáticamente.
-                Una vez que detecte tu pago, la orden se aprobará en segundos.
-            </p>
-            <div style="background:#0f172a;border:1px solid rgba(240,185,11,.3);border-radius:8px;padding:12px 16px;display:inline-block;min-width:180px;">
-                <p style="margin:0 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;">Tu código de pago</p>
-                <p style="margin:0;font-size:20px;font-weight:700;letter-spacing:.2em;color:#f0b90b;font-family:monospace;">{{ order.payment_reference }}</p>
+        <div class="nx-binance-wait" id="binanceWaitBlock">
+            <div class="hour">⏳</div>
+            <h3>Esperando tu pago en Binance Pay</h3>
+            <p class="desc">El sistema está escaneando tu transacción automáticamente. Una vez que detecte tu pago, la orden se aprobará en segundos.</p>
+            <div class="codebox">
+                <p class="lbl">Tu código de pago</p>
+                <p class="code">{{ order.payment_reference }}</p>
             </div>
-            <p style="margin:12px 0 0;font-size:11px;color:#64748b;">
-                Asegúrate de haber escrito este código exactamente en el campo <em>Memo / Nota</em> de tu pago.
-            </p>
+            <p class="note">Asegúrate de haber escrito este código exactamente en el campo <em>Memo / Nota</em> de tu pago.</p>
         </div>
-        <style>
-        @keyframes spin { to { transform: rotate(360deg); } }
-        </style>
         {% endif %}
 
-        {% if is_manual_order and order.status == 'pending' %}
-        <p class="refresh-hint">Esta orden será revisada manualmente por nuestro equipo.</p>
+        {% if order.pin_delivered and is_pin_order %}
+        <div class="nx-pin-section glass-subpanel">
+            <div>
+                <div class="nx-pin-label"><span class="k">🔑</span><span>TU PIN / CÓDIGO</span></div>
+                <div class="nx-pin-code" id="nxPinCode" title="Haz clic para copiar">{{ order.pin_delivered }}</div>
+            </div>
+            <div class="nx-pin-help">
+                <span class="q">¿No sabes cómo canjearlo?</span>
+                <a class="nx-pin-video-btn" href="https://www.youtube.com/shorts/egsS2oTnDYA" target="_blank" rel="noopener noreferrer">
+                    <span class="p">▶</span><span>VER VIDEO</span>
+                </a>
+            </div>
+        </div>
         {% endif %}
 
         {% if is_manual_order and order.status in ['pending', 'approved'] %}
-        <div class="manual-order-whatsapp-card">
-            <div class="manual-order-whatsapp-copy">
-                <h3>Finaliza tu pedido manual por WhatsApp</h3>
-                <p>Envianos tu numero de pedido para concretar la recarga con soporte.</p>
-            </div>
+        <div class="nx-manual-wa">
+            <h3>Finaliza tu pedido manual por WhatsApp</h3>
+            <p>Envíanos tu número de pedido para concretar la recarga con soporte.</p>
             <button
                 type="button"
-                class="manual-order-whatsapp-btn"
                 id="manualOrderWhatsAppBtn"
                 data-message="Hola, ya complete mi pedido manual y necesito finalizar la recarga.%0A%0ANumero de pedido: #{{ order.order_number }}%0AJuego: {{ order.game.name|replace('%', '%25')|replace('\n', ' ') }}%0APaquete adquirido: {{ order.package.name|replace('%', '%25')|replace('\n', ' ') }}{% if order.player_id %}%0A{{ order.game.player_id_label|replace('%', '%25')|replace('\n', ' ') }}: {{ order.player_id|replace('%', '%25')|replace('\n', ' ') }}{% endif %}{% if order.zone_id %}%0A{{ order.game.zone_id_label|replace('%', '%25')|replace('\n', ' ') }}: {{ order.zone_id|replace('%', '%25')|replace('\n', ' ') }}{% endif %}">
                 CONTINUAR PEDIDO EN WHATSAPP
@@ -848,29 +876,27 @@
         </div>
         {% endif %}
 
-        {% if order.pin_delivered and order.game.category and order.game.category.slug == 'tarjetas' %}
-        <div class="pin-reveal">
-            <p class="pin-label">Tu PIN / Código</p>
-            <div class="pin-code">{{ order.pin_delivered }}</div>
-            <p class="pin-hint">Guarda este código en un lugar seguro.</p>
+        <!-- Botones de acción -->
+        <div class="nx-order-actions">
+            <a class="wa-btn" href="{{ SUPPORT_WHATSAPP_URL or 'https://whatsapp.com' }}" target="_blank" rel="noopener noreferrer">
+                <span>🟢</span><span>Únete al canal</span>
+            </a>
+            <a class="back-btn" href="{{ url_for('main_bp.index') }}">
+                <span>↺</span><span>Volver a la página</span>
+            </a>
         </div>
-        {% endif %}
-
-        <a href="{{ url_for('main_bp.index') }}" class="back-store-btn">
-            ← Volver a la tienda
-        </a>
 
         {% if order.status == 'pending' %}
-        <p class="refresh-hint">
+        <p class="nx-order-hint">
+            {% if is_manual_order %}Esta orden será revisada por nuestro equipo. {% endif %}
             <button onclick="location.reload()" class="btn-link">Actualizar estado</button>
         </p>
         {% if auto_verify_allowed %}
-        <p class="refresh-hint" id="autoVerifyHint">Verificando tu pago automáticamente...</p>
+        <p class="nx-order-hint" id="autoVerifyHint">Verificando tu pago automáticamente...</p>
         {% endif %}
         {% endif %}
 
-    </div>
-
+    </section>
 </div>
 
 <div class="overlay-modal minigame-chooser-modal" id="minigameChooserModal" style="display:none" aria-hidden="true">
@@ -1748,7 +1774,7 @@
 
         var duration = 15 * 1000;
         var animationEnd = Date.now() + duration;
-        var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 1200 };
+        var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 1200, colors: ['#FF0000', '#FFFFFF', '#FF3333', '#E60000'] };
 
         function randomInRange(min, max) {
             return Math.random() * (max - min) + min;
@@ -1768,6 +1794,7 @@
                 spread: defaults.spread,
                 ticks: defaults.ticks,
                 zIndex: defaults.zIndex,
+                colors: defaults.colors,
                 particleCount: particleCount,
                 origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
             });
@@ -1776,6 +1803,7 @@
                 spread: defaults.spread,
                 ticks: defaults.ticks,
                 zIndex: defaults.zIndex,
+                colors: defaults.colors,
                 particleCount: particleCount,
                 origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
             });
@@ -1812,6 +1840,45 @@
 })();
 </script>
 {% endif %}
+<script>
+(function () {
+    // Timer de procesamiento (cuenta hacia arriba mientras la orden está pendiente)
+    var timerEl = document.getElementById('nxOrderTimer');
+    if (timerEl) {
+        var secs = 0;
+        setInterval(function () {
+            secs += 1;
+            var m = Math.floor(secs / 60);
+            var s = secs % 60;
+            timerEl.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+        }, 1000);
+    }
+
+    // Copiar PIN al hacer clic
+    var pinEl = document.getElementById('nxPinCode');
+    if (pinEl) {
+        pinEl.addEventListener('click', function () {
+            var code = String(pinEl.textContent || '').trim();
+            if (!code) return;
+            function done() {
+                var prev = pinEl.style.color;
+                pinEl.style.color = '#34d399';
+                setTimeout(function () { pinEl.style.color = prev; }, 1200);
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(code).then(done).catch(function () {});
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = code;
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); done(); } catch (_) {}
+                document.body.removeChild(ta);
+            }
+        });
+    }
+})();
+</script>
 <script>
 (function () {
     function normalizeWhatsAppTarget(raw) {
@@ -1875,14 +1942,16 @@
         if (!flow) return;
         var s = String(status || '').toLowerCase();
         if (manualFlow) {
-            if (s === 'approved' || s === 'completed') {
-                ['search', 'confirm', 'validate'].forEach(function (k) { setStepState(k, 'done'); });
+            if (s === 'approved' || s === 'completed' || verified) {
+                ['search', 'confirm', 'validate', 'connect', 'deliver'].forEach(function (k) { setStepState(k, 'done'); });
                 if (typeof window.syncOrderMinigameVisibility === 'function') window.syncOrderMinigameVisibility();
                 return;
             }
-            setStepState('search', verified ? 'done' : 'active');
-            setStepState('confirm', verified ? 'done' : 'pending');
-            setStepState('validate', verified ? 'done' : 'pending');
+            setStepState('search', 'active');
+            setStepState('confirm', 'pending');
+            setStepState('validate', 'pending');
+            setStepState('connect', 'pending');
+            setStepState('deliver', 'pending');
             if (typeof window.syncOrderMinigameVisibility === 'function') window.syncOrderMinigameVisibility();
             return;
         }
