@@ -839,14 +839,8 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     border-radius: 8px;
     object-fit: cover;
 }
-.nx-store .pkg-img-placeholder {
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(255,0,0,.14);
-    color: var(--nx-red);
-    font-weight: 900;
-    font-family: var(--nx-font-display);
-    font-size: 14px;
-}
+/* Sin imagen: la tarjeta queda solo con texto, como el mockup */
+.nx-store .pkg-img-placeholder { display: none; }
 
 .nx-store .pkg-info { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; }
 .nx-store .pkg-info h4 {

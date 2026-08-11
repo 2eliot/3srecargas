@@ -73,7 +73,7 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-outline"
-                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }})">
+                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }}, {{ 1 if pkg.image else 0 }})">
                                 Editar
                             </button>
                             <form method="POST" action="{{ url_for('admin_bp.package_delete', pkg_id=pkg.id) }}" style="display:inline">
@@ -175,6 +175,9 @@
                 <div class="form-group">
                     <label>Nueva Imagen (opcional)</label>
                     <input type="file" name="image" accept="image/*">
+                    <label class="check-label" id="editPkgRemoveImageWrap" style="display:none; margin-top:6px;">
+                        <input type="checkbox" name="remove_image" id="editPkgRemoveImage" value="1"> Quitar imagen actual (sin imagen)
+                    </label>
                 </div>
                 <div class="form-group form-span-2">
                     <label>Descripción</label>
@@ -203,7 +206,7 @@
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive) {
+function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive, hasImage) {
     document.getElementById('editPkgForm').action = '/admin/packages/' + id + '/edit';
     document.getElementById('editPkgName').value = name;
     document.getElementById('editPkgPrice').value = price;
@@ -212,6 +215,8 @@ function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive) {
     document.getElementById('editPkgOrder').value = order;
     document.getElementById('editPkgAuto').checked = isAuto;
     document.getElementById('editPkgActive').checked = isActive;
+    document.getElementById('editPkgRemoveImage').checked = false;
+    document.getElementById('editPkgRemoveImageWrap').style.display = hasImage ? 'inline-flex' : 'none';
     openModal('editPkgModal');
 }
 </script>

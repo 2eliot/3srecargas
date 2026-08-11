@@ -662,6 +662,11 @@ def package_edit(pkg_id):
     pkg.sort_order = int(request.form.get('sort_order', pkg.sort_order))
     pkg.is_active = bool(request.form.get('is_active'))
 
+    if request.form.get('remove_image'):
+        if pkg.image:
+            delete_uploaded_file(pkg.image)
+        pkg.image = None
+
     new_image = save_image(request.files.get('image'), 'packages')
     if new_image:
         delete_uploaded_file(pkg.image)
