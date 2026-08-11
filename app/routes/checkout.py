@@ -549,6 +549,14 @@ def checkout(package_id):
             if not payment_reference_input or not is_binance_auto_reference(payment_reference_input):
                 flash('Código Binance inválido. Por favor recarga la página e intenta de nuevo.', 'danger')
                 return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+
+            # El comprobante es opcional en Binance, pero si el cliente lo
+            # adjunta se guarda igual: sirve de respaldo para que el admin
+            # pueda revisar el pago a mano cuando el cliente olvida escribir
+            # el código en la nota del beneficiario.
+            capture_file = request.files.get('payment_capture')
+            if capture_file and capture_file.filename and is_allowed_capture_file(capture_file.filename):
+                capture_path = save_capture(capture_file)
         else:
             capture_file = request.files.get('payment_capture')
             if not capture_file or not capture_file.filename:

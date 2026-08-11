@@ -199,7 +199,7 @@
                 <div class="nx-proof-head" style="margin-bottom:10px">
                     <div class="nx-step-head-left">
                         <span class="nx-step-num red-glow-pill" style="border-radius:50%">4</span>
-                        <h2 class="nx-step-title">Comprobante de pago</h2>
+                        <h2 class="nx-step-title" id="nxProofTitle">Comprobante de pago</h2>
                     </div>
                     <span class="nx-timer-chip glass-subpanel">🕐 <span id="nxTimer">15:00</span></span>
                 </div>
@@ -782,7 +782,20 @@
         var binance = isBinanceAutoSelected();
         var payerMode = usesPayerVerification();
 
-        if (proofSection) proofSection.style.display = binance ? 'none' : '';
+        // El comprobante sigue visible también en Binance (ahí es opcional):
+        // sirve de respaldo para revisar el pago a mano en el admin cuando el
+        // cliente olvida escribir el código en la nota.
+        if (proofSection) proofSection.style.display = '';
+
+        var proofTitle = document.getElementById('nxProofTitle');
+        if (proofTitle) {
+            proofTitle.textContent = binance ? 'Comprobante de pago (opcional)' : 'Comprobante de pago';
+        }
+        if (dropSub && (!proofInput || !proofInput.files || !proofInput.files.length)) {
+            dropSub.textContent = binance
+                ? 'Opcional: adjúntalo por si acaso'
+                : 'Adjunta el comprobante';
+        }
 
         if (binance) {
             fetchBinanceCode();
@@ -797,7 +810,7 @@
         [payerPhoneInput, payerDniInput, payerDniType].forEach(function (el) {
             if (el) el.disabled = binance || !payerMode;
         });
-        if (proofInput) proofInput.disabled = binance;
+        if (proofInput) proofInput.disabled = false;
     }
 
     document.querySelectorAll('input[name="payment_method"]').forEach(function (input) {
