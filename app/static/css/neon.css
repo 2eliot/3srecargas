@@ -468,24 +468,26 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 .nx-store .categories-inner {
     display: flex !important;
     align-items: center;
-    justify-content: space-around;
-    gap: 8px;
-    padding: 10px !important;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px !important;
     border-radius: 16px;
     max-width: none !important;
-    overflow-x: auto;
-    -ms-overflow-style: none; scrollbar-width: none;
+    overflow: hidden;
 }
-.nx-store .categories-inner::-webkit-scrollbar { display: none; }
 
 .nx-store .cat-btn {
-    flex: 1;
-    padding: 11px 18px !important;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 10px 6px !important;
     border-radius: 6px !important;
     font-family: var(--nx-font-display) !important;
     font-weight: 900 !important;
-    font-size: 12px !important;
-    letter-spacing: .06em;
+    font-size: 11.5px !important;
+    letter-spacing: .03em;
     color: var(--nx-muted) !important;
     background: linear-gradient(135deg, rgba(255,255,255,0.01), rgba(255,255,255,0.001)) !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
@@ -2124,7 +2126,36 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     border-radius: 18px !important;
 }
 
+.nx-store .cat-btn span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* responsive fino */
+@media (max-width: 520px) {
+    /* Menos padding en teléfono: todo más compacto para llegar antes
+       a los métodos de pago al seleccionar un paquete */
+    .nx-store { padding: 6px 8px 24px; gap: 8px; }
+    .nx-store .nx-step-card { padding: 10px; }
+    .nx-store section[style*="margin-bottom:12px"] { margin-bottom: 8px !important; }
+    .nx-store .nx-step-head { margin-bottom: 8px; }
+    .nx-store .categories-inner { padding: 6px !important; gap: 5px; }
+    .nx-store .cat-btn { padding: 9px 4px !important; font-size: 11px !important; }
+    .nx-store .packages-grid { gap: 5px !important; }
+    .nx-store .package-item { min-height: 76px; padding: 9px 4px !important; }
+    .nx-store .nx-total-row { padding: 8px 12px; margin-top: 6px; }
+    .nx-store .payment-card-inner { padding: 10px 4px !important; min-height: 42px; }
+    .nx-store .nx-pay-row { padding: 8px 10px; margin-bottom: 6px; }
+    .nx-store .nx-player-row input { padding: 10px 12px; }
+    .nx-store .form-hint { margin-top: 6px; }
+    .nx-store .games-viewport { padding-bottom: 4px; }
+    .nx-kicker { font-size: 12px; }
+    .site-header { padding: 8px 0 0 !important; }
+    .header-inner { padding: 0 10px 8px !important; }
+}
+
 @media (max-width: 380px) {
     .nx-store .packages-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     .nx-store .payment-card-list { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
