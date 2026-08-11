@@ -920,7 +920,6 @@
         }
 
         if (autoPkgs.length > 0) {
-            addSectionLabel('⚡ Automático 24/7', 'auto');
             autoPkgs.forEach(function (pkg) { grid.appendChild(buildItem(pkg)); });
         }
 

@@ -842,7 +842,7 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     object-fit: cover;
 }
 /* Sin imagen: la tarjeta queda solo con texto, como el mockup */
-.nx-store .pkg-img-placeholder { display: none; }
+.nx-store .pkg-img-placeholder { display: none !important; }
 
 .nx-store .pkg-info { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; }
 .nx-store .pkg-info h4 {

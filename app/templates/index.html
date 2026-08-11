@@ -99,14 +99,12 @@
                     <span class="nx-step-num red-glow-pill" style="border-radius:50%">2</span>
                     <h2 class="nx-step-title">Selecciona tu paquete</h2>
                 </div>
-                <span class="nx-auto-chip">⚡ AUTOMÁTICO</span>
             </div>
 
             <div class="nx-discount-row" style="margin-bottom:8px">
                 <input type="text" id="affiliate_code" name="affiliate_code" class="glass-input"
                        placeholder="CÓDIGO DESCUENTO (OPCIONAL)" aria-label="Código de descuento" autocomplete="off">
                 <button type="button" class="nx-apply-btn red-glow-pill" id="applyDiscountBtn">APLICAR</button>
-                <button type="button" class="nx-discount-help" id="discountInfoTrigger" aria-label="Información sobre código de descuento">?</button>
             </div>
             <p class="discount-apply-feedback" id="discountApplyFeedback" aria-live="polite"></p>
 
@@ -126,7 +124,10 @@
                 </div>
             </div>
 
-            <div class="nx-total-row glass-subpanel">
+            <!-- El total ya se muestra en el botón "Comprar — Bs X"; este
+                 elemento se mantiene en el DOM (oculto) porque el resto del
+                 JS (caja de pago, botón confirmar) lee su valor. -->
+            <div class="nx-total-row glass-subpanel" style="display:none">
                 <span>Total</span>
                 <div class="nx-total-values">
                     <span id="sidebarTotal">-</span>
