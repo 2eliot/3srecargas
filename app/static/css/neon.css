@@ -1105,6 +1105,13 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 }
 .nx-code-row .nx-pay-val { color: #fcd34d; letter-spacing: .18em; font-size: 15px; }
 
+/* Divisor entre el comprobante y los datos del cliente (mismo contenedor) */
+.nx-inner-divider {
+    height: 1px;
+    background: rgba(255,255,255,.12);
+    margin: 14px 0;
+}
+
 /* Datos de contacto */
 .nx-contact-grid { display: flex; flex-direction: column; gap: 10px; }
 .nx-field label {

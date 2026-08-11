@@ -69,8 +69,10 @@
         </div>
     </section>
 
-    <form method="POST" id="quickCheckoutForm">
-        <input type="hidden" name="stage" value="init">
+    <form method="POST" id="quickCheckoutForm" enctype="multipart/form-data">
+        <input type="hidden" name="stage" id="nxStage" value="init">
+        <input type="hidden" name="confirm_token" id="nxConfirmToken" value="">
+        <input type="hidden" name="ai_extracted_reference" id="nxAiExtractedReference" value="">
 
         <!-- Paso 1: ID del jugador -->
         <section class="glass-panel nx-step-card" id="playerSection" style="margin-bottom:12px">
@@ -190,8 +192,102 @@
             <div id="nxPayboxContent"></div>
         </section>
 
-        <!-- Paso 4: datos de contacto -->
+        <!-- Binance auto (solo cuando el método es Binance con verificación automática) -->
+        <section class="glass-panel nx-step-card" id="nxBinanceSection" style="display:none; margin-bottom:12px">
+            <div class="nx-paybox-head">
+                <h2 class="nx-paybox-title">VERIFICACIÓN <span class="accent">BINANCE</span></h2>
+            </div>
+            <div class="nx-binance-alert">
+                <span class="warn">⚠</span>
+                <p><strong class="title">¡IMPORTANTE!</strong>
+                Escribe el <span class="hl">código amarillo</span> en la <span class="ul">"Nota del beneficiario"</span> (memo/nota) para que tu pago se acredite de forma automática.</p>
+            </div>
+            <p class="nx-pay-label">DIRECCIÓN BINANCE PAY</p>
+            <div class="nx-pay-row glass-subpanel">
+                <span class="nx-pay-val" id="nxBinanceWallet">—</span>
+                <button type="button" class="nx-copy-btn red-glow-pill" data-nx-copy-target="nxBinanceWallet" data-nx-copy-label="Binance Pay ID">Copiar</button>
+            </div>
+            <p class="nx-pay-label">CÓDIGO DE VERIFICACIÓN (NOTA)</p>
+            <div class="nx-pay-row glass-subpanel nx-code-row">
+                <span class="nx-pay-val" id="nxBinanceCode">—</span>
+                <button type="button" class="nx-copy-btn red-glow-pill" data-nx-copy-target="nxBinanceCode" data-nx-copy-label="Código de Nota">Copiar</button>
+            </div>
+            <p class="form-hint" style="margin-top:10px">Sin este código en la nota, tu pago <strong style="color:#fcd34d">NO</strong> podrá ser verificado automáticamente. Realiza el pago y presiona <strong style="color:#fff">Confirmar</strong>.</p>
+        </section>
+
+        <!-- Paso 4: comprobante de pago + datos del cliente (un solo contenedor) -->
         <section class="glass-panel nx-step-card" style="margin-bottom:12px">
+            <!-- 4.1 Comprobante -->
+            <div id="nxProofSection">
+                <div class="nx-proof-head" style="margin-bottom:10px">
+                    <div class="nx-step-head-left">
+                        <span class="nx-step-num red-glow-pill" style="border-radius:50%">4</span>
+                        <h2 class="nx-step-title">Comprobante de pago</h2>
+                    </div>
+                    <span class="nx-timer-chip glass-subpanel">🕐 <span id="nxTimer">15:00</span></span>
+                </div>
+
+                <div class="nx-dropzone" id="nxDropzone" role="button" tabindex="0">
+                    <input type="file" id="nxProofInput" name="payment_capture" accept="image/*">
+                    <div class="nx-drop-inner">
+                        <div class="nx-drop-left">
+                            <div class="nx-drop-ico" id="nxDropIco">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                            </div>
+                            <div class="nx-drop-copy">
+                                <p class="t1" id="nxDropTitle">Toca aquí para subir foto</p>
+                                <p class="t2" id="nxDropSub">Adjunta el comprobante</p>
+                            </div>
+                        </div>
+                        <span class="nx-drop-btn red-glow-pill" id="nxDropBtn">Subir</span>
+                    </div>
+                </div>
+
+                <div class="nx-extract-card glass-subpanel" id="nxExtractCard" hidden style="margin-top:10px">
+                    <p class="lbl">Referencia extraída del comprobante</p>
+                    <p class="val" id="nxExtractVal">-</p>
+                    <p class="st" id="nxExtractStatus"></p>
+                </div>
+
+                <!-- Referencia normal -->
+                <div id="nxRefBlock">
+                    <p class="nx-pay-label">Número de Referencia</p>
+                    <input type="text" id="nxReference" name="payment_reference" maxlength="30" autocomplete="off"
+                           placeholder="Ej: 123456" class="glass-input"
+                           style="width:100%; padding:11px 14px; text-align:center; letter-spacing:.15em; font-size:14px">
+                </div>
+
+                <!-- Verificación de pagador (Pabilo con teléfono + DNI) -->
+                <div id="nxPayerBlock" style="display:none">
+                    <p class="nx-pay-label">Referencia de pago</p>
+                    <input type="text" id="nxPayerReference" maxlength="30" autocomplete="off"
+                           placeholder="Ingresa la referencia de pago" class="glass-input"
+                           style="width:100%; padding:11px 14px">
+                    <p class="nx-pay-label">Teléfono del cliente</p>
+                    <input type="text" id="nxPayerPhone" name="payer_phone" maxlength="20" inputmode="numeric" autocomplete="off"
+                           placeholder="Teléfono con el que pagaste" class="glass-input" style="width:100%; padding:11px 14px">
+                    <p class="nx-pay-label">DNI del cliente</p>
+                    <div style="display:flex; gap:8px">
+                        <select id="nxPayerDniType" name="payer_dni_type" class="glass-input" style="max-width:88px; padding:11px 10px">
+                            <option value="V">V</option>
+                            <option value="E">E</option>
+                            <option value="J">J</option>
+                            <option value="G">G</option>
+                            <option value="P">P</option>
+                        </select>
+                        <input type="text" id="nxPayerDni" name="payer_dni_number" maxlength="20" autocomplete="off"
+                               placeholder="Cédula con la que pagaste" class="glass-input" style="flex:1; padding:11px 14px; min-width:0">
+                    </div>
+                </div>
+
+                <p class="nx-proof-warning" style="margin:10px 0 0">
+                    ⚠️ Subir comprobantes falsos o manipulados constituye fraude electrónico y será penalizado conforme a la ley.
+                </p>
+
+                <div class="nx-inner-divider"></div>
+            </div>
+
+            <!-- 4.2 Datos del cliente -->
             <div class="nx-contact-grid">
                 <div class="nx-field">
                     <label for="email">Correo</label>
@@ -265,109 +361,6 @@
             <span id="sidebarSubmitLabel">Selecciona un paquete para continuar</span>
         </button>
         </div>
-    </form>
-
-    <!-- ═══ Sección de confirmación integrada (aparece tras "Continuar") ═══ -->
-    <form method="POST" enctype="multipart/form-data" id="nxConfirmForm" class="nx-confirm-section" style="display:none; margin-top:12px" novalidate>
-        <input type="hidden" name="stage" value="confirm">
-        <input type="hidden" name="confirm_token" id="nxConfirmToken" value="">
-        <input type="hidden" name="ai_extracted_reference" id="nxAiExtractedReference" value="">
-
-        <!-- Binance auto -->
-        <section class="glass-panel nx-step-card" id="nxBinanceSection" style="display:none">
-            <div class="nx-paybox-head">
-                <h2 class="nx-paybox-title">VERIFICACIÓN <span class="accent">BINANCE</span></h2>
-            </div>
-            <div class="nx-binance-alert">
-                <span class="warn">⚠</span>
-                <p><strong class="title">¡IMPORTANTE!</strong>
-                Escribe el <span class="hl">código amarillo</span> en la <span class="ul">"Nota del beneficiario"</span> (memo/nota) para que tu pago se acredite de forma automática.</p>
-            </div>
-            <p class="nx-pay-label">DIRECCIÓN BINANCE PAY</p>
-            <div class="nx-pay-row glass-subpanel">
-                <span class="nx-pay-val" id="nxBinanceWallet">—</span>
-                <button type="button" class="nx-copy-btn red-glow-pill" data-nx-copy-target="nxBinanceWallet" data-nx-copy-label="Binance Pay ID">Copiar</button>
-            </div>
-            <p class="nx-pay-label">CÓDIGO DE VERIFICACIÓN (NOTA)</p>
-            <div class="nx-pay-row glass-subpanel nx-code-row">
-                <span class="nx-pay-val" id="nxBinanceCode">—</span>
-                <button type="button" class="nx-copy-btn red-glow-pill" data-nx-copy-target="nxBinanceCode" data-nx-copy-label="Código de Nota">Copiar</button>
-            </div>
-            <p class="form-hint" style="margin-top:10px">Sin este código en la nota, tu pago <strong style="color:#fcd34d">NO</strong> podrá ser verificado automáticamente. Realiza el pago y presiona <strong style="color:#fff">Confirmar</strong>.</p>
-        </section>
-
-        <!-- Comprobante -->
-        <section class="glass-panel nx-step-card" id="nxProofSection">
-            <div class="nx-proof-head" style="margin-bottom:10px">
-                <div class="nx-step-head-left">
-                    <span class="nx-step-num red-glow-pill" style="border-radius:50%">4</span>
-                    <h2 class="nx-step-title">Comprobante de pago</h2>
-                </div>
-                <span class="nx-timer-chip glass-subpanel">🕐 <span id="nxTimer">15:00</span></span>
-            </div>
-
-            <div class="nx-dropzone" id="nxDropzone" role="button" tabindex="0">
-                <input type="file" id="nxProofInput" name="payment_capture" accept="image/*">
-                <div class="nx-drop-inner">
-                    <div class="nx-drop-left">
-                        <div class="nx-drop-ico" id="nxDropIco">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-                        </div>
-                        <div class="nx-drop-copy">
-                            <p class="t1" id="nxDropTitle">Toca aquí para subir foto</p>
-                            <p class="t2" id="nxDropSub">Adjunta el comprobante</p>
-                        </div>
-                    </div>
-                    <span class="nx-drop-btn red-glow-pill" id="nxDropBtn">Subir</span>
-                </div>
-            </div>
-
-            <div class="nx-extract-card glass-subpanel" id="nxExtractCard" hidden style="margin-top:10px">
-                <p class="lbl">Referencia extraída del comprobante</p>
-                <p class="val" id="nxExtractVal">-</p>
-                <p class="st" id="nxExtractStatus"></p>
-            </div>
-
-            <!-- Referencia normal -->
-            <div id="nxRefBlock">
-                <p class="nx-pay-label">Número de Referencia</p>
-                <input type="text" id="nxReference" name="payment_reference" maxlength="30" autocomplete="off"
-                       placeholder="Ej: 123456" class="glass-input"
-                       style="width:100%; padding:11px 14px; text-align:center; letter-spacing:.15em; font-size:14px">
-            </div>
-
-            <!-- Verificación de pagador (Pabilo con teléfono + DNI) -->
-            <div id="nxPayerBlock" style="display:none">
-                <p class="nx-pay-label">Referencia de pago</p>
-                <input type="text" id="nxPayerReference" maxlength="30" autocomplete="off"
-                       placeholder="Ingresa la referencia de pago" class="glass-input"
-                       style="width:100%; padding:11px 14px">
-                <p class="nx-pay-label">Teléfono del cliente</p>
-                <input type="text" id="nxPayerPhone" name="payer_phone" maxlength="20" inputmode="numeric" autocomplete="off"
-                       placeholder="Teléfono con el que pagaste" class="glass-input" style="width:100%; padding:11px 14px">
-                <p class="nx-pay-label">DNI del cliente</p>
-                <div style="display:flex; gap:8px">
-                    <select id="nxPayerDniType" name="payer_dni_type" class="glass-input" style="max-width:88px; padding:11px 10px">
-                        <option value="V">V</option>
-                        <option value="E">E</option>
-                        <option value="J">J</option>
-                        <option value="G">G</option>
-                        <option value="P">P</option>
-                    </select>
-                    <input type="text" id="nxPayerDni" name="payer_dni_number" maxlength="20" autocomplete="off"
-                           placeholder="Cédula con la que pagaste" class="glass-input" style="flex:1; padding:11px 14px; min-width:0">
-                </div>
-            </div>
-
-            <p class="nx-proof-warning" style="margin-top:10px">
-                ⚠️ Subir comprobantes falsos o manipulados constituye fraude electrónico y será penalizado conforme a la ley.
-            </p>
-        </section>
-
-        <button type="submit" class="nx-submit-btn red-glow-pill" id="nxConfirmBtn" disabled>
-            <span aria-hidden="true">🛡</span>
-            <span id="nxConfirmBtnLabel">Confirmar</span>
-        </button>
     </form>
 
     <!-- Aviso previo al pago -->
@@ -503,7 +496,13 @@
         });
 </script>
 <script>
-/* ── Flujo integrado: datos de pago + confirmación en la misma página ── */
+/* ── Checkout de una sola página ─────────────────────────────────────────
+   Al seleccionar un paquete se despliegan a la vez: método de pago, datos
+   para el pago y el contenedor con comprobante + datos del cliente.
+   Detrás sigue habiendo dos llamadas al servidor (stage=init para guardar
+   la sesión y obtener el confirm_token, y el POST final stage=confirm),
+   pero para el cliente es un solo formulario.
+   ────────────────────────────────────────────────────────────────────── */
 (function () {
     'use strict';
 
@@ -512,10 +511,10 @@
     var tutorialBtn = document.getElementById('nxTutorialBtn');
     var mainForm = document.getElementById('quickCheckoutForm');
     var mainSubmitBtn = document.getElementById('sidebarSubmitBtn');
-    var confirmForm = document.getElementById('nxConfirmForm');
-    var confirmBtn = document.getElementById('nxConfirmBtn');
-    var confirmBtnLabel = document.getElementById('nxConfirmBtnLabel');
+    var submitLabel = document.getElementById('sidebarSubmitLabel');
+    var stageInput = document.getElementById('nxStage');
     var confirmTokenInput = document.getElementById('nxConfirmToken');
+    var checkoutSteps = document.getElementById('nxCheckoutSteps');
     var binanceSection = document.getElementById('nxBinanceSection');
     var proofSection = document.getElementById('nxProofSection');
     var refBlock = document.getElementById('nxRefBlock');
@@ -524,6 +523,7 @@
     var payerRefInput = document.getElementById('nxPayerReference');
     var payerPhoneInput = document.getElementById('nxPayerPhone');
     var payerDniInput = document.getElementById('nxPayerDni');
+    var payerDniType = document.getElementById('nxPayerDniType');
     var proofInput = document.getElementById('nxProofInput');
     var dropzone = document.getElementById('nxDropzone');
     var dropIco = document.getElementById('nxDropIco');
@@ -544,12 +544,15 @@
     var toastMsg = document.getElementById('nxToastMsg');
     var timerEl = document.getElementById('nxTimer');
 
-    var prepared = null;        // datos JSON del checkout preparado
+    var prepared = null;        // datos JSON del checkout ya preparado
     var preparing = false;
+    var submitting = false;
+    var warningShown = false;
     var timerInterval = null;
     var toastTimeout = null;
     var extractionRequestId = 0;
 
+    /* ── Utilidades ────────────────────────────────────────────────── */
     function showToast(message) {
         if (!toast) return;
         toastMsg.textContent = message;
@@ -559,7 +562,16 @@
         toastTimeout = setTimeout(function () {
             toast.style.opacity = '0';
             toast.style.transform = 'translate(-50%, 80px)';
-        }, 2600);
+        }, 2800);
+    }
+
+    function legacyCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta);
     }
 
     function copyText(text, label) {
@@ -573,18 +585,10 @@
         }
     }
 
-    function legacyCopy(text) {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        try { document.execCommand('copy'); } catch (_) {}
-        document.body.removeChild(ta);
-    }
-
     function esc(str) {
         return String(str == null ? '' : str)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     function getCheckedMethod() {
@@ -602,7 +606,20 @@
         return !!(m && String(m.value || '').toLowerCase() === 'binance' && window.NX_BINANCE_AUTO);
     }
 
-    /* ── Caja "DATOS PARA EL PAGO" según método seleccionado ── */
+    function usesPayerVerification() {
+        var m = getCheckedMethod();
+        return !!(m && m.dataset.payerVerification === '1');
+    }
+
+    function digits(input, max) {
+        if (!input) return '';
+        var v = String(input.value || '').replace(/\D/g, '');
+        if (max && v.length > max) v = v.slice(0, max);
+        if (input.value !== v) input.value = v;
+        return v;
+    }
+
+    /* ── Caja "DATOS PARA EL PAGO" ─────────────────────────────────── */
     function payRow(icon, value, label) {
         return '' +
             '<div class="nx-pay-row glass-subpanel">' +
@@ -635,7 +652,7 @@
             html += '' +
                 '<div class="nx-binance-alert">' +
                     '<span class="warn">⚠</span>' +
-                    '<p><strong class="title">¡IMPORTANTE!</strong> Pagarás con Binance Pay. Al confirmar tu orden te daremos un <span class="hl">código amarillo</span> que debes escribir en la <span class="ul">"Nota del beneficiario"</span> para que el pago se acredite automáticamente.</p>' +
+                    '<p><strong class="title">¡IMPORTANTE!</strong> Pagarás con Binance Pay. Abajo tienes el <span class="hl">código amarillo</span> que debes escribir en la <span class="ul">"Nota del beneficiario"</span> para que el pago se acredite automáticamente.</p>' +
                 '</div>';
             if (window.NX_BINANCE_WALLET) {
                 html += '<p class="nx-pay-label">DIRECCIÓN BINANCE PAY</p>' + payRow('🪙', window.NX_BINANCE_WALLET, 'Binance Pay ID');
@@ -684,14 +701,160 @@
         payboxContent.innerHTML = html;
         payboxContent.dataset.copyAll = copyAllLines.join('\n');
 
-        // Botón tutorial si el método tiene video propio (o el global aplica)
         if (tutorialBtn) {
             tutorialBtn.style.display = getMethodVideoUrl() ? 'inline-flex' : 'none';
         }
     }
 
-    /* Video del método seleccionado: el video propio del método tiene
-       prioridad; si no tiene, se usa el video global si aplica a ese método. */
+    function syncAmounts() {
+        var total = getTotalText();
+        var amountEl = document.getElementById('nxPayAmount');
+        if (amountEl) amountEl.textContent = total || '—';
+    }
+
+    var totalNode = document.getElementById('sidebarTotal');
+    if (totalNode && 'MutationObserver' in window) {
+        new MutationObserver(syncAmounts).observe(totalNode, { childList: true, characterData: true, subtree: true });
+    }
+
+    /* ── Botones de copiar (delegación) ────────────────────────────── */
+    document.addEventListener('click', function (evt) {
+        var btn = evt.target && evt.target.closest
+            ? evt.target.closest('[data-nx-copy-value], [data-nx-copy-target], [data-nx-copy-amount], #nxCopyAllBtn')
+            : null;
+        if (!btn) return;
+        evt.preventDefault();
+
+        if (btn.id === 'nxCopyAllBtn') {
+            var all = (payboxContent.dataset.copyAll || '');
+            var total = getTotalText();
+            if (total) all += '\nMonto: ' + total;
+            copyText('--- DATOS DE PAGO ---\n' + all, 'Todos los datos');
+            return;
+        }
+        if (btn.hasAttribute('data-nx-copy-amount')) {
+            copyText(getTotalText(), btn.getAttribute('data-nx-copy-label') || 'Monto');
+            return;
+        }
+        var targetId = btn.getAttribute('data-nx-copy-target');
+        if (targetId) {
+            var el = document.getElementById(targetId);
+            copyText(el ? String(el.textContent || '').trim() : '', btn.getAttribute('data-nx-copy-label') || 'Dato');
+            return;
+        }
+        copyText(btn.getAttribute('data-nx-copy-value') || '', btn.getAttribute('data-nx-copy-label') || 'Dato');
+    });
+
+    /* ── Secciones según el método de pago ─────────────────────────── */
+    function applyMethodSections() {
+        var binance = isBinanceAutoSelected();
+        var payerMode = usesPayerVerification();
+
+        if (proofSection) proofSection.style.display = binance ? 'none' : '';
+        if (binanceSection) binanceSection.style.display = binance ? '' : 'none';
+
+        if (binance) {
+            var walletEl = document.getElementById('nxBinanceWallet');
+            if (walletEl) walletEl.textContent = window.NX_BINANCE_WALLET || '—';
+            var codeEl = document.getElementById('nxBinanceCode');
+            if (codeEl && !prepared) codeEl.textContent = 'Presiona Confirmar para generarlo';
+        }
+
+        if (refBlock) refBlock.style.display = (binance || payerMode) ? 'none' : '';
+        if (payerBlock) payerBlock.style.display = (!binance && payerMode) ? '' : 'none';
+
+        // Los campos ocultos se deshabilitan para que no viajen en el POST
+        if (refInput) refInput.disabled = binance || payerMode;
+        [payerPhoneInput, payerDniInput, payerDniType].forEach(function (el) {
+            if (el) el.disabled = binance || !payerMode;
+        });
+        if (proofInput) proofInput.disabled = binance;
+    }
+
+    document.querySelectorAll('input[name="payment_method"]').forEach(function (input) {
+        input.addEventListener('change', function () {
+            invalidatePrepared();
+            renderPaybox();
+            syncAmounts();
+            applyMethodSections();
+        });
+    });
+
+    renderPaybox();
+    applyMethodSections();
+
+    /* ── Mostrar/ocultar el bloque de checkout al elegir paquete ───── */
+    function showCheckoutSteps() {
+        if (!checkoutSteps || checkoutSteps.style.display !== 'none') return;
+        checkoutSteps.style.display = '';
+        renderPaybox();
+        syncAmounts();
+        applyMethodSections();
+        startTimer();
+        if (!warningShown) {
+            warningShown = true;
+            openWarning();
+        }
+        setTimeout(function () {
+            checkoutSteps.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 150);
+    }
+
+    function hideCheckoutSteps() {
+        if (checkoutSteps) checkoutSteps.style.display = 'none';
+        stopTimer();
+    }
+
+    function invalidatePrepared() {
+        prepared = null;
+        if (confirmTokenInput) confirmTokenInput.value = '';
+        if (stageInput) stageInput.value = 'init';
+    }
+
+    document.addEventListener('click', function (evt) {
+        if (!evt.target || !evt.target.closest) return;
+        if (evt.target.closest('.package-item')) {
+            invalidatePrepared();
+            showCheckoutSteps();
+            return;
+        }
+        if (evt.target.closest('.game-card, .cat-btn')) {
+            invalidatePrepared();
+            hideCheckoutSteps();
+        }
+    });
+
+    /* ── Temporizador visual ───────────────────────────────────────── */
+    function startTimer() {
+        stopTimer();
+        var seconds = 15 * 60;
+        timerInterval = setInterval(function () {
+            seconds = seconds <= 0 ? 15 * 60 : seconds - 1;
+            var m = String(Math.floor(seconds / 60)).padStart(2, '0');
+            var s = String(seconds % 60).padStart(2, '0');
+            if (timerEl) timerEl.textContent = m + ':' + s;
+        }, 1000);
+    }
+
+    function stopTimer() {
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        if (timerEl) timerEl.textContent = '15:00';
+    }
+
+    /* ── Modales de aviso y video ──────────────────────────────────── */
+    function openWarning() {
+        if (!warningModal) { maybeOpenVideo(); return; }
+        warningModal.style.display = 'flex';
+        warningModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeWarning() {
+        if (!warningModal) return;
+        warningModal.style.display = 'none';
+        warningModal.setAttribute('aria-hidden', 'true');
+        maybeOpenVideo();
+    }
+
     function getMethodVideoUrl() {
         var m = getCheckedMethod();
         if (!m) return '';
@@ -718,129 +881,8 @@
         videoModal.setAttribute('aria-hidden', 'false');
     }
 
-    function syncAmounts() {
-        var total = getTotalText();
-        var amountEl = document.getElementById('nxPayAmount');
-        if (amountEl) amountEl.textContent = total || '—';
-        if (prepared && confirmBtnLabel) {
-            confirmBtnLabel.innerHTML = 'Confirmar — <span class="price-accent">' + esc(prepared.amount_text || total || '') + '</span>';
-        }
-    }
+    function maybeOpenVideo() { openVideoModal(); }
 
-    // Observa el total que mantiene main.js para reflejarlo en la caja de pago
-    var totalNode = document.getElementById('sidebarTotal');
-    if (totalNode && 'MutationObserver' in window) {
-        new MutationObserver(syncAmounts).observe(totalNode, { childList: true, characterData: true, subtree: true });
-    }
-
-    // Delegación de botones copiar
-    document.addEventListener('click', function (evt) {
-        var btn = evt.target && evt.target.closest ? evt.target.closest('[data-nx-copy-value], [data-nx-copy-target], [data-nx-copy-amount], #nxCopyAllBtn') : null;
-        if (!btn) return;
-        evt.preventDefault();
-
-        if (btn.id === 'nxCopyAllBtn') {
-            var all = (payboxContent.dataset.copyAll || '');
-            var total = getTotalText();
-            if (total) all += '\nMonto: ' + total;
-            copyText('--- DATOS DE PAGO ---\n' + all, 'Todos los datos');
-            return;
-        }
-        if (btn.hasAttribute('data-nx-copy-amount')) {
-            copyText(getTotalText(), btn.getAttribute('data-nx-copy-label') || 'Monto');
-            return;
-        }
-        var targetId = btn.getAttribute('data-nx-copy-target');
-        if (targetId) {
-            var el = document.getElementById(targetId);
-            copyText(el ? String(el.textContent || '').trim() : '', btn.getAttribute('data-nx-copy-label') || 'Dato');
-            return;
-        }
-        copyText(btn.getAttribute('data-nx-copy-value') || '', btn.getAttribute('data-nx-copy-label') || 'Dato');
-    });
-
-    document.querySelectorAll('input[name="payment_method"]').forEach(function (input) {
-        input.addEventListener('change', function () {
-            renderPaybox();
-            syncAmounts();
-            invalidatePrepared();
-        });
-    });
-
-    renderPaybox();
-
-    /* ── Invalidación cuando el usuario cambia algo clave ── */
-    function invalidatePrepared() {
-        if (!prepared) return;
-        prepared = null;
-        confirmForm.style.display = 'none';
-        mainSubmitBtn.style.display = '';
-        stopTimer();
-    }
-
-    /* Los pasos 3-4 (método de pago, datos, contacto y botón) solo se
-       muestran cuando el cliente selecciona un paquete. */
-    var checkoutSteps = document.getElementById('nxCheckoutSteps');
-
-    function showCheckoutSteps() {
-        if (!checkoutSteps || checkoutSteps.style.display !== 'none') return;
-        checkoutSteps.style.display = '';
-        renderPaybox();
-        syncAmounts();
-        setTimeout(function () {
-            checkoutSteps.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 150);
-    }
-
-    function hideCheckoutSteps() {
-        if (checkoutSteps) checkoutSteps.style.display = 'none';
-    }
-
-    document.addEventListener('click', function (evt) {
-        if (!evt.target || !evt.target.closest) return;
-        if (evt.target.closest('.package-item')) {
-            invalidatePrepared();
-            showCheckoutSteps();
-            return;
-        }
-        if (evt.target.closest('.game-card, .cat-btn')) {
-            invalidatePrepared();
-            hideCheckoutSteps();
-        }
-    });
-
-    /* ── Timer visual 15:00 ── */
-    function startTimer() {
-        stopTimer();
-        var seconds = 15 * 60;
-        function tick() {
-            seconds = seconds <= 0 ? 15 * 60 : seconds - 1;
-            var m = String(Math.floor(seconds / 60)).padStart(2, '0');
-            var s = String(seconds % 60).padStart(2, '0');
-            if (timerEl) timerEl.textContent = m + ':' + s;
-        }
-        timerInterval = setInterval(tick, 1000);
-    }
-    function stopTimer() {
-        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-        if (timerEl) timerEl.textContent = '15:00';
-    }
-
-    /* ── Modales ── */
-    function openWarning() {
-        if (!warningModal) { maybeOpenVideo(); return; }
-        warningModal.style.display = 'flex';
-        warningModal.setAttribute('aria-hidden', 'false');
-    }
-    function closeWarning() {
-        if (!warningModal) return;
-        warningModal.style.display = 'none';
-        warningModal.setAttribute('aria-hidden', 'true');
-        maybeOpenVideo();
-    }
-    function maybeOpenVideo() {
-        openVideoModal();
-    }
     function closeVideo() {
         if (!videoModal) return;
         videoModal.classList.remove('is-open');
@@ -850,136 +892,10 @@
 
     if (warningAck) warningAck.addEventListener('click', closeWarning);
     if (videoClose) videoClose.addEventListener('click', closeVideo);
-    if (videoContinue) videoContinue.addEventListener('click', function () {
-        closeVideo();
-        confirmForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    if (videoContinue) videoContinue.addEventListener('click', closeVideo);
     if (tutorialBtn) tutorialBtn.addEventListener('click', openVideoModal);
 
-    /* ── Paso init + preparación del checkout (fetch JSON) ── */
-    mainForm.addEventListener('submit', function (evt) {
-        var action = mainForm.getAttribute('action') || mainForm.action || '';
-        if (!action || action.indexOf('/checkout/') === -1) {
-            return; // main.js mostrará el alert de "selecciona un paquete"
-        }
-        var playerSection = document.getElementById('playerSection');
-        var playerIdInput = document.getElementById('playerId');
-        if (playerSection && playerSection.style.display !== 'none' &&
-            playerIdInput && !playerIdInput.value.trim()) {
-            return; // main.js valida y muestra el aviso correspondiente
-        }
-        evt.preventDefault();
-        if (preparing) return;
-        prepareCheckout(action);
-    });
-
-    function restoreMainButton() {
-        preparing = false;
-        var label = document.getElementById('sidebarSubmitLabel');
-        mainSubmitBtn.disabled = false;
-        // main.js dejó "Procesando..." — recalcular el texto según total
-        var total = getTotalText();
-        if (label) label.textContent = total ? ('Comprar — ' + total) : 'Continuar';
-    }
-
-    function prepareCheckout(actionUrl) {
-        preparing = true;
-        var fd = new FormData(mainForm);
-        fd.set('ajax', '1');
-
-        fetch(actionUrl, { method: 'POST', body: fd })
-            .then(function (res) {
-                return res.json().catch(function () { throw new Error('Respuesta inválida del servidor.'); });
-            })
-            .then(function (data) {
-                if (!data.ok) throw new Error(data.message || 'No se pudo iniciar el pago.');
-                return fetch(actionUrl + '?format=json').then(function (r) { return r.json(); });
-            })
-            .then(function (data) {
-                if (!data.ok) throw new Error(data.message || 'No se pudo preparar el pago.');
-                setupConfirmSection(data);
-            })
-            .catch(function (err) {
-                showToast('⚠️ ' + (err.message || 'Error al preparar el pago.'));
-            })
-            .finally(restoreMainButton);
-    }
-
-    function formatAmount(data) {
-        var amt = Number(data.display_amount || 0);
-        if (data.display_currency === 'usd') return '$' + amt.toFixed(2);
-        return 'Bs ' + Math.round(amt).toLocaleString('es-VE');
-    }
-
-    function setupConfirmSection(data) {
-        prepared = data;
-        prepared.amount_text = formatAmount(data);
-
-        confirmTokenInput.value = data.confirm_token || '';
-        confirmForm.action = data.confirm_url;
-
-        var isBinance = !!data.binance_auto;
-        binanceSection.style.display = isBinance ? '' : 'none';
-        proofSection.style.display = isBinance ? 'none' : '';
-
-        if (isBinance) {
-            document.getElementById('nxBinanceWallet').textContent = data.binance_wallet || '—';
-            document.getElementById('nxBinanceCode').textContent = data.binance_code || '—';
-            if (refInput) { refInput.value = data.binance_code || ''; refInput.required = false; }
-            if (proofInput) proofInput.required = false;
-        } else {
-            var payerVerification = !!data.payer_verification;
-            refBlock.style.display = payerVerification ? 'none' : '';
-            payerBlock.style.display = payerVerification ? '' : 'none';
-            if (proofInput) proofInput.required = true;
-            if (refInput) refInput.required = !payerVerification;
-            startTimer();
-        }
-
-        confirmForm.style.display = 'flex';
-        mainSubmitBtn.style.display = 'none';
-        confirmBtnLabel.innerHTML = 'Confirmar — <span class="price-accent">' + esc(prepared.amount_text) + '</span>';
-        updateConfirmState();
-
-        setTimeout(function () {
-            confirmForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 120);
-
-        openWarning();
-    }
-
-    /* ── Estado del botón confirmar ── */
-    function digits(input, max) {
-        if (!input) return '';
-        var v = String(input.value || '').replace(/\D/g, '');
-        if (max && v.length > max) v = v.slice(0, max);
-        if (input.value !== v) input.value = v;
-        return v;
-    }
-
-    function updateConfirmState() {
-        if (!prepared) { confirmBtn.disabled = true; return; }
-
-        if (prepared.binance_auto) {
-            confirmBtn.disabled = false;
-            return;
-        }
-
-        var hasFile = !!(proofInput && proofInput.files && proofInput.files.length);
-        var hasData;
-        if (prepared.payer_verification) {
-            hasData = digits(payerPhoneInput, 20).length >= 10 && digits(payerDniInput, 20).length >= 5;
-        } else {
-            hasData = !!(refInput && refInput.value.trim().length >= 4);
-        }
-        confirmBtn.disabled = !(hasFile && hasData);
-    }
-
-    [refInput, payerRefInput, payerPhoneInput, payerDniInput].forEach(function (input) {
-        if (input) input.addEventListener('input', updateConfirmState);
-    });
-
-    /* ── Comprobante: preview + extracción IA ── */
+    /* ── Comprobante: preview + extracción por IA ──────────────────── */
     if (dropzone) {
         dropzone.addEventListener('click', function () { proofInput && proofInput.click(); });
         dropzone.addEventListener('keypress', function (evt) {
@@ -998,37 +914,35 @@
     }
 
     function runExtraction() {
-        if (!prepared || prepared.binance_auto || !proofInput || !proofInput.files || !proofInput.files.length) {
+        if (isBinanceAutoSelected() || !proofInput || !proofInput.files || !proofInput.files.length) {
             if (aiRefInput) aiRefInput.value = '';
             setExtractState('', '');
             return;
         }
         var file = proofInput.files[0];
-        var url = prepared.extract_url || '/api/extract-payment-reference';
         var requestId = ++extractionRequestId;
         setExtractState('', 'Analizando comprobante...', 'is-loading');
 
         var fd = new FormData();
         fd.append('payment_capture', file);
 
-        fetch(url, { method: 'POST', body: fd })
-            .then(function (res) { return res.json().catch(function () { return { ok: false, reference: '', message: 'No se pudo leer la respuesta.' }; }); })
+        fetch('/api/extract-payment-reference', { method: 'POST', body: fd })
+            .then(function (res) {
+                return res.json().catch(function () {
+                    return { ok: false, reference: '', message: 'No se pudo leer la respuesta.' };
+                });
+            })
             .then(function (data) {
                 if (requestId !== extractionRequestId) return;
                 var ref = String(data.reference || '').trim();
                 if (aiRefInput) aiRefInput.value = ref;
                 if (ref) {
                     setExtractState(ref, data.message || 'Si la referencia manual está mal escrita, validaremos con esta.', 'is-success');
-                    if (refInput && !refInput.value.trim() && !prepared.payer_verification) {
-                        refInput.value = ref;
-                    }
-                    if (payerRefInput && !payerRefInput.value.trim() && prepared.payer_verification) {
-                        payerRefInput.value = ref;
-                    }
+                    if (refInput && !refInput.disabled && !refInput.value.trim()) refInput.value = ref;
+                    if (payerRefInput && !payerRefInput.value.trim() && usesPayerVerification()) payerRefInput.value = ref;
                 } else {
                     setExtractState('-', data.message || 'No se pudo extraer una referencia clara.', data.ok ? 'is-warning' : 'is-error');
                 }
-                updateConfirmState();
             })
             .catch(function () {
                 if (requestId !== extractionRequestId) return;
@@ -1058,42 +972,157 @@
                 dropBtn.textContent = 'Subir';
             }
             runExtraction();
-            updateConfirmState();
         });
     }
 
-    /* ── Envío final ── */
-    confirmForm.addEventListener('submit', function (evt) {
-        if (!prepared) { evt.preventDefault(); return; }
+    if (payerPhoneInput) payerPhoneInput.addEventListener('input', function () { digits(payerPhoneInput, 20); });
+    if (payerDniInput) payerDniInput.addEventListener('input', function () { digits(payerDniInput, 20); });
 
-        if (!prepared.binance_auto) {
-            if (prepared.payer_verification) {
-                // sincronizar la referencia del bloque de pagador
-                if (refInput) refInput.value = payerRefInput ? payerRefInput.value.trim() : '';
-                if (digits(payerPhoneInput, 20).length < 10) {
-                    evt.preventDefault();
-                    showToast('⚠️ Ingresa el teléfono con el que pagaste.');
-                    return;
-                }
-                if (digits(payerDniInput, 20).length < 5) {
-                    evt.preventDefault();
-                    showToast('⚠️ Ingresa la cédula con la que pagaste.');
-                    return;
-                }
-            } else if (!refInput || refInput.value.trim().length < 4) {
-                evt.preventDefault();
-                showToast('⚠️ Ingresa el número de referencia.');
-                return;
-            }
-            if (!proofInput || !proofInput.files || !proofInput.files.length) {
-                evt.preventDefault();
-                showToast('⚠️ Adjunta la captura del comprobante.');
-                return;
-            }
+    /* ── Envío ─────────────────────────────────────────────────────── */
+    function restoreSubmitButton() {
+        preparing = false;
+        if (!mainSubmitBtn) return;
+        mainSubmitBtn.disabled = false;
+        if (!submitLabel) return;
+        var total = getTotalText();
+        if (prepared && isBinanceAutoSelected()) {
+            submitLabel.textContent = 'Ya pagué, confirmar' + (total ? ' — ' + total : '');
+        } else {
+            submitLabel.textContent = total ? ('Comprar — ' + total) : 'Continuar';
+        }
+    }
+
+    function validateBeforeSubmit() {
+        if (isBinanceAutoSelected()) return true;
+
+        if (!proofInput || !proofInput.files || !proofInput.files.length) {
+            showToast('⚠️ Adjunta la captura del comprobante.');
+            return false;
         }
 
-        confirmBtn.disabled = true;
-        confirmBtnLabel.textContent = 'Procesando...';
+        if (usesPayerVerification()) {
+            if (refInput) refInput.value = payerRefInput ? payerRefInput.value.trim() : '';
+            if (digits(payerPhoneInput, 20).length < 10) {
+                showToast('⚠️ Ingresa el teléfono con el que pagaste.');
+                return false;
+            }
+            if (digits(payerDniInput, 20).length < 5) {
+                showToast('⚠️ Ingresa la cédula con la que pagaste.');
+                return false;
+            }
+        } else if (!refInput || refInput.value.trim().length < 4) {
+            showToast('⚠️ Ingresa el número de referencia.');
+            return false;
+        }
+        return true;
+    }
+
+    /* Guarda la sesión del checkout (stage=init) y obtiene el confirm_token. */
+    function prepareCheckout(actionUrl) {
+        var fd = new FormData();
+        fd.set('stage', 'init');
+        fd.set('ajax', '1');
+        [
+            ['player_id', 'playerId'],
+            ['player_nickname', 'playerNicknameHidden'],
+            ['zone_id', 'zoneId'],
+            ['email', 'email'],
+            ['phone', 'phone'],
+            ['affiliate_code', 'affiliate_code']
+        ].forEach(function (pair) {
+            var el = document.getElementById(pair[1]);
+            fd.set(pair[0], el ? String(el.value || '') : '');
+        });
+        var method = getCheckedMethod();
+        fd.set('payment_method', method ? method.value : '');
+
+        return fetch(actionUrl, { method: 'POST', body: fd })
+            .then(function (res) {
+                return res.json().catch(function () { throw new Error('Respuesta inválida del servidor.'); });
+            })
+            .then(function (data) {
+                if (!data.ok) throw new Error(data.message || 'No se pudo iniciar el pago.');
+                return fetch(actionUrl + '?format=json').then(function (r) { return r.json(); });
+            })
+            .then(function (data) {
+                if (!data.ok) throw new Error(data.message || 'No se pudo preparar el pago.');
+                prepared = data;
+                if (confirmTokenInput) confirmTokenInput.value = data.confirm_token || '';
+                return data;
+            });
+    }
+
+    function doFinalSubmit() {
+        submitting = true;
+        if (stageInput) stageInput.value = 'confirm';
+        if (mainSubmitBtn) mainSubmitBtn.disabled = true;
+        if (submitLabel) submitLabel.textContent = 'Procesando...';
+        // submit() nativo: no vuelve a disparar este handler
+        mainForm.submit();
+    }
+
+    mainForm.addEventListener('submit', function (evt) {
+        if (submitting) return;
+
+        var action = mainForm.getAttribute('action') || mainForm.action || '';
+        if (!action || action.indexOf('/checkout/') === -1) {
+            return; // main.js avisa "selecciona un paquete"
+        }
+
+        var playerSection = document.getElementById('playerSection');
+        var playerIdInput = document.getElementById('playerId');
+        if (playerSection && playerSection.style.display !== 'none' &&
+            playerIdInput && !playerIdInput.value.trim()) {
+            return; // main.js muestra el aviso correspondiente
+        }
+
+        evt.preventDefault();
+        if (preparing) return;
+
+        if (!validateBeforeSubmit()) {
+            setTimeout(restoreSubmitButton, 0);
+            return;
+        }
+
+        // Binance: primero se genera y muestra el código, luego se confirma
+        if (isBinanceAutoSelected() && !prepared) {
+            preparing = true;
+            prepareCheckout(action)
+                .then(function (data) {
+                    var codeEl = document.getElementById('nxBinanceCode');
+                    var walletEl = document.getElementById('nxBinanceWallet');
+                    if (codeEl) codeEl.textContent = data.binance_code || '—';
+                    if (walletEl) walletEl.textContent = data.binance_wallet || window.NX_BINANCE_WALLET || '—';
+                    if (binanceSection) {
+                        binanceSection.style.display = '';
+                        binanceSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                    showToast('Copia el código, realiza el pago y presiona confirmar.');
+                })
+                .catch(function (err) {
+                    invalidatePrepared();
+                    showToast('⚠️ ' + (err.message || 'Error al preparar el pago.'));
+                })
+                .finally(restoreSubmitButton);
+            return;
+        }
+
+        if (prepared) {
+            doFinalSubmit();
+            return;
+        }
+
+        preparing = true;
+        prepareCheckout(action)
+            .then(function () {
+                preparing = false;
+                doFinalSubmit();
+            })
+            .catch(function (err) {
+                invalidatePrepared();
+                showToast('⚠️ ' + (err.message || 'Error al confirmar la orden.'));
+                restoreSubmitButton();
+            });
     });
 })();
 </script>
