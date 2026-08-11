@@ -192,29 +192,6 @@
             <div id="nxPayboxContent"></div>
         </section>
 
-        <!-- Binance auto (solo cuando el método es Binance con verificación automática) -->
-        <section class="glass-panel nx-step-card" id="nxBinanceSection" style="display:none; margin-bottom:12px">
-            <div class="nx-paybox-head">
-                <h2 class="nx-paybox-title">VERIFICACIÓN <span class="accent">BINANCE</span></h2>
-            </div>
-            <div class="nx-binance-alert">
-                <span class="warn">⚠</span>
-                <p><strong class="title">¡IMPORTANTE!</strong>
-                Escribe el <span class="hl">código amarillo</span> en la <span class="ul">"Nota del beneficiario"</span> (memo/nota) para que tu pago se acredite de forma automática.</p>
-            </div>
-            <p class="nx-pay-label">DIRECCIÓN BINANCE PAY</p>
-            <div class="nx-pay-row glass-subpanel">
-                <span class="nx-pay-val" id="nxBinanceWallet">—</span>
-                <button type="button" class="nx-copy-btn red-glow-pill" data-nx-copy-target="nxBinanceWallet" data-nx-copy-label="Binance Pay ID">Copiar</button>
-            </div>
-            <p class="nx-pay-label">CÓDIGO DE VERIFICACIÓN (NOTA)</p>
-            <div class="nx-pay-row glass-subpanel nx-code-row">
-                <span class="nx-pay-val" id="nxBinanceCode">—</span>
-                <button type="button" class="nx-copy-btn red-glow-pill" data-nx-copy-target="nxBinanceCode" data-nx-copy-label="Código de Nota">Copiar</button>
-            </div>
-            <p class="form-hint" style="margin-top:10px">Sin este código en la nota, tu pago <strong style="color:#fcd34d">NO</strong> podrá ser verificado automáticamente. Realiza el pago y presiona <strong style="color:#fff">Confirmar</strong>.</p>
-        </section>
-
         <!-- Paso 4: comprobante de pago + datos del cliente (un solo contenedor) -->
         <section class="glass-panel nx-step-card" style="margin-bottom:12px">
             <!-- 4.1 Comprobante -->
@@ -515,7 +492,6 @@
     var stageInput = document.getElementById('nxStage');
     var confirmTokenInput = document.getElementById('nxConfirmToken');
     var checkoutSteps = document.getElementById('nxCheckoutSteps');
-    var binanceSection = document.getElementById('nxBinanceSection');
     var proofSection = document.getElementById('nxProofSection');
     var refBlock = document.getElementById('nxRefBlock');
     var payerBlock = document.getElementById('nxPayerBlock');
@@ -547,6 +523,9 @@
     var prepared = null;        // datos JSON del checkout ya preparado
     var preparing = false;
     var submitting = false;
+    var binanceCode = '';       // código Binance visible desde el inicio
+    var binanceWallet = '';
+    var binanceCodeRequestedFor = null;   // id de paquete ya solicitado
     var warningShown = false;
     var timerInterval = null;
     var toastTimeout = null;
@@ -648,16 +627,32 @@
         var copyAllLines = [];
 
         if (isBinanceAutoSelected()) {
+            // Diseño Binance del documento: aviso + dirección + código de
+            // verificación en ámbar + monto. El código se muestra de una vez.
             payboxTitle.innerHTML = 'VERIFICACIÓN <span class="accent">BINANCE</span>';
             html += '' +
                 '<div class="nx-binance-alert">' +
                     '<span class="warn">⚠</span>' +
-                    '<p><strong class="title">¡IMPORTANTE!</strong> Pagarás con Binance Pay. Abajo tienes el <span class="hl">código amarillo</span> que debes escribir en la <span class="ul">"Nota del beneficiario"</span> para que el pago se acredite automáticamente.</p>' +
+                    '<p><strong class="title">¡IMPORTANTE!</strong> Escribe el <span class="hl">código amarillo</span> en la <span class="ul">"Nota del beneficiario"</span> para que tu pago se acredite de forma automática, o mira el tutorial si tienes dudas.</p>' +
                 '</div>';
-            if (window.NX_BINANCE_WALLET) {
-                html += '<p class="nx-pay-label">DIRECCIÓN BINANCE PAY</p>' + payRow('🪙', window.NX_BINANCE_WALLET, 'Binance Pay ID');
+
+            var wallet = binanceWallet || window.NX_BINANCE_WALLET || '';
+            if (wallet) {
+                html += '<p class="nx-pay-label">DIRECCIÓN BINANCE PAY</p>' +
+                    '<div class="nx-pay-row glass-subpanel">' +
+                        '<span class="nx-pay-val" id="nxBinanceWallet">' + esc(wallet) + '</span>' +
+                        '<button type="button" class="nx-copy-btn red-glow-pill" data-nx-copy-target="nxBinanceWallet" data-nx-copy-label="Binance Pay ID">Copiar</button>' +
+                    '</div>';
             }
+
+            html += '<p class="nx-pay-label">CÓDIGO DE VERIFICACIÓN (NOTA)</p>' +
+                '<div class="nx-pay-row glass-subpanel nx-code-row">' +
+                    '<span class="nx-pay-val" id="nxBinanceCode">' + esc(binanceCode || 'Generando...') + '</span>' +
+                    '<button type="button" class="nx-copy-btn red-glow-pill" data-nx-copy-target="nxBinanceCode" data-nx-copy-label="Código de Nota">Copiar</button>' +
+                '</div>';
+
             html += '<p class="nx-pay-label">MONTO A PAGAR</p>' + amountRow();
+            html += '<p class="form-hint" style="margin-top:10px">Sin este código en la nota, tu pago <strong style="color:#fcd34d">NO</strong> podrá verificarse automáticamente.</p>';
         } else {
             payboxTitle.textContent = 'DATOS PARA EL PAGO';
 
@@ -745,19 +740,53 @@
         copyText(btn.getAttribute('data-nx-copy-value') || '', btn.getAttribute('data-nx-copy-label') || 'Dato');
     });
 
+    /* ── Código Binance: se pide apenas se elige Binance ───────────── */
+    function getPackageId() {
+        var action = mainForm.getAttribute('action') || mainForm.action || '';
+        var match = action.match(/\/checkout\/(\d+)/);
+        return match ? match[1] : '';
+    }
+
+    function fetchBinanceCode() {
+        var pkgId = getPackageId();
+        if (!pkgId) return;
+        // Un mismo paquete conserva su código: no se vuelve a pedir.
+        if (binanceCodeRequestedFor === pkgId && binanceCode) {
+            paintBinanceCode();
+            return;
+        }
+        binanceCodeRequestedFor = pkgId;
+
+        fetch('/checkout/' + encodeURIComponent(pkgId) + '/binance-code')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.ok) return;
+                binanceCode = data.code || '';
+                binanceWallet = data.wallet || '';
+                paintBinanceCode();
+            })
+            .catch(function () {
+                binanceCodeRequestedFor = null;
+            });
+    }
+
+    function paintBinanceCode() {
+        var codeEl = document.getElementById('nxBinanceCode');
+        if (codeEl && binanceCode) codeEl.textContent = binanceCode;
+        var walletEl = document.getElementById('nxBinanceWallet');
+        if (walletEl && binanceWallet) walletEl.textContent = binanceWallet;
+    }
+
     /* ── Secciones según el método de pago ─────────────────────────── */
     function applyMethodSections() {
         var binance = isBinanceAutoSelected();
         var payerMode = usesPayerVerification();
 
         if (proofSection) proofSection.style.display = binance ? 'none' : '';
-        if (binanceSection) binanceSection.style.display = binance ? '' : 'none';
 
         if (binance) {
-            var walletEl = document.getElementById('nxBinanceWallet');
-            if (walletEl) walletEl.textContent = window.NX_BINANCE_WALLET || '—';
-            var codeEl = document.getElementById('nxBinanceCode');
-            if (codeEl && !prepared) codeEl.textContent = 'Presiona Confirmar para generarlo';
+            fetchBinanceCode();
+            paintBinanceCode();
         }
 
         if (refBlock) refBlock.style.display = (binance || payerMode) ? 'none' : '';
@@ -816,6 +845,12 @@
         if (evt.target.closest('.package-item')) {
             invalidatePrepared();
             showCheckoutSteps();
+            // Cambiar de paquete cambia el monto y el código Binance
+            setTimeout(function () {
+                renderPaybox();
+                syncAmounts();
+                applyMethodSections();
+            }, 60);
             return;
         }
         if (evt.target.closest('.game-card, .cat-btn')) {
@@ -985,11 +1020,7 @@
         mainSubmitBtn.disabled = false;
         if (!submitLabel) return;
         var total = getTotalText();
-        if (prepared && isBinanceAutoSelected()) {
-            submitLabel.textContent = 'Ya pagué, confirmar' + (total ? ' — ' + total : '');
-        } else {
-            submitLabel.textContent = total ? ('Comprar — ' + total) : 'Continuar';
-        }
+        submitLabel.textContent = total ? ('Comprar — ' + total) : 'Continuar';
     }
 
     function validateBeforeSubmit() {
@@ -1081,29 +1112,6 @@
 
         if (!validateBeforeSubmit()) {
             setTimeout(restoreSubmitButton, 0);
-            return;
-        }
-
-        // Binance: primero se genera y muestra el código, luego se confirma
-        if (isBinanceAutoSelected() && !prepared) {
-            preparing = true;
-            prepareCheckout(action)
-                .then(function (data) {
-                    var codeEl = document.getElementById('nxBinanceCode');
-                    var walletEl = document.getElementById('nxBinanceWallet');
-                    if (codeEl) codeEl.textContent = data.binance_code || '—';
-                    if (walletEl) walletEl.textContent = data.binance_wallet || window.NX_BINANCE_WALLET || '—';
-                    if (binanceSection) {
-                        binanceSection.style.display = '';
-                        binanceSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                    }
-                    showToast('Copia el código, realiza el pago y presiona confirmar.');
-                })
-                .catch(function (err) {
-                    invalidatePrepared();
-                    showToast('⚠️ ' + (err.message || 'Error al preparar el pago.'));
-                })
-                .finally(restoreSubmitButton);
             return;
         }
 

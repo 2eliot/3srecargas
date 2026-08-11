@@ -941,6 +941,42 @@ def checkout(package_id):
     )
 
 
+@checkout_bp.route('/checkout/<int:package_id>/binance-code')
+def binance_auto_code(package_id):
+    """Entrega el código Binance de este paquete sin exigir el paso de pago.
+
+    El código se guarda en la sesión igual que en el checkout normal, así que
+    se mantiene estable mientras dure la sesión de compra: el cliente lo ve
+    apenas selecciona Binance, paga con él, y al confirmar la orden se usa
+    exactamente ese mismo código para la verificación automática.
+    """
+    package = Package.query.filter_by(id=package_id, is_active=True).first_or_404()
+
+    _app = current_app._get_current_object()
+    if not is_binance_auto_enabled(_app):
+        return jsonify({'ok': False, 'enabled': False, 'code': '', 'wallet': ''})
+
+    pkg_key = str(package_id)
+    binance_codes = session.get('binance_codes') or {}
+    existing_code = binance_codes.get(pkg_key)
+
+    if existing_code and is_binance_auto_reference(existing_code):
+        code = existing_code
+    else:
+        code = generate_binance_auto_code(_app)
+        binance_codes[pkg_key] = code
+        session['binance_codes'] = binance_codes
+
+    wallet_setting = Setting.query.filter_by(key='binance_wallet_address').first()
+
+    return jsonify({
+        'ok': True,
+        'enabled': True,
+        'code': code,
+        'wallet': wallet_setting.value if wallet_setting else '',
+    })
+
+
 @checkout_bp.route('/order/<order_number>')
 def order_status(order_number):
     order = Order.query.filter_by(order_number=order_number).first_or_404()
