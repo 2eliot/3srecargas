@@ -506,7 +506,34 @@ def verify_order_payment(order, force_reference=False):
         original_reference = candidate['reference']
         source = candidate['source']
 
-        # Generar variantes: referencia completa, últimos 6, 5, 4 dígitos
+        # El chequeo de duplicados SIEMPRE se hace con la referencia completa
+        # (nunca con una variante truncada): dos referencias que solo
+        # coinciden en sus últimos 4-5 dígitos no son la misma referencia,
+        # y bloquear por eso genera falsos "duplicado" entre órdenes
+        # legítimas que nada tienen que ver entre sí.
+        if not uses_payer_identity:
+            duplicate = find_reference_conflict(
+                reference=original_reference,
+                payment_method_code=order.payment_method,
+                exclude_order_id=order.id,
+            )
+            if duplicate:
+                duplicate_hit = duplicate
+                last_soft_result = {
+                    'ok': False,
+                    'verified': False,
+                    'message': (
+                        'Se detectó otra orden con la misma referencia bancaria. '
+                        'La aprobación automática fue bloqueada.'
+                    ),
+                    'duplicate_order_id': duplicate.id,
+                }
+                continue
+
+        # Generar variantes: referencia completa, últimos 6, 5, 4 dígitos.
+        # Estas variantes truncadas son solo para intentar encontrar el pago
+        # en Pabilo (algunos bancos solo devuelven la referencia truncada),
+        # NUNCA se usan para decidir si la orden es un duplicado.
         reference_variants = _generate_reference_variants(original_reference)
 
         for variant_ref in reference_variants:
@@ -516,25 +543,6 @@ def verify_order_payment(order, force_reference=False):
             else:
                 variant_payload, payload_error = build_pabilo_reference_payload(variant_ref)
                 if payload_error:
-                    continue
-
-            if not uses_payer_identity:
-                duplicate = find_reference_conflict(
-                    reference=variant_ref,
-                    payment_method_code=order.payment_method,
-                    exclude_order_id=order.id,
-                )
-                if duplicate:
-                    duplicate_hit = duplicate
-                    last_soft_result = {
-                        'ok': False,
-                        'verified': False,
-                        'message': (
-                            'Se detectó otra orden con la misma referencia bancaria. '
-                            'La aprobación automática fue bloqueada.'
-                        ),
-                        'duplicate_order_id': duplicate.id,
-                    }
                     continue
 
             response, data = _request_pabilo_verify(url, api_key, variant_payload, timeout)
