@@ -51,6 +51,25 @@
                 </div>
                 {% endif %}
             </div>
+            <div class="form-group">
+                <label for="promo_banner_image">Banner promocional (arriba de la tienda)</label>
+                <input type="file" id="promo_banner_image" name="promo_banner_image" accept="image/png,image/jpeg,image/webp,image/gif">
+                <p class="form-hint">Banner horizontal pequeño que se muestra arriba de las categorías. Recomendado: proporción ~5:1 (ej. 1000x220).</p>
+                {% if promo_banner_image %}
+                <div class="logo-preview">
+                    <img src="{{ url_for('static', filename='uploads/' + promo_banner_image) }}" alt="Banner promocional actual">
+                    <label class="remove-logo">
+                        <input type="checkbox" name="remove_promo_banner_image" value="1">
+                        Quitar banner promocional
+                    </label>
+                </div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="promo_banner_link">Link del banner promocional</label>
+                <input type="text" id="promo_banner_link" name="promo_banner_link" value="{{ promo_banner_link }}" placeholder="https://... (opcional)">
+                <p class="form-hint">Al hacer clic en el banner, el cliente será llevado a este link. Déjalo vacío si no quieres que sea clicable.</p>
+            </div>
         </div>
         <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
         <h3 style="margin-bottom:16px;">Verificación Automática de Pagos</h3>

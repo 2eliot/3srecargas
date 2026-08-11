@@ -32,17 +32,7 @@ body {
 
 body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 
-/* Línea de acento superior */
-body::before {
-    content: '';
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 4px;
-    background: linear-gradient(90deg, #9333ea, var(--nx-red), #22d3ee);
-    box-shadow: 0 0 15px rgba(255, 0, 0, 1);
-    z-index: 1000;
-    pointer-events: none;
-}
+/* (franja de acento superior eliminada a pedido del usuario) */
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -350,7 +340,7 @@ body::before {
 .footer-social-list .footer-social-link:nth-child(3) { background: #020617; border: 1px solid #1e293b !important; color: #22d3ee !important; }
 .footer-social-list .footer-social-wa { background: linear-gradient(90deg, var(--nx-red), #dc2626) !important; color: #fff !important; }
 
-.footer-contact-list { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.footer-contact-list { display: flex; flex-direction: column; gap: 8px; align-items: center; padding: 0 !important; margin: 0 !important; }
 .footer-contact-list li {
     display: flex !important;
     align-items: center;
@@ -361,6 +351,51 @@ body::before {
     font-weight: 600;
 }
 .footer-contact-list svg { width: 13px; height: 13px; color: var(--nx-red); }
+
+/* Centrado del footer en TODOS los anchos (las media queries de main.css
+   lo alineaban a la izquierda en teléfonos) */
+.main-footer .footer-grid,
+.main-footer .footer-col,
+.main-footer .footer-col-center,
+.main-footer .footer-col-right {
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+}
+
+.main-footer .footer-heading {
+    text-align: center !important;
+    width: 100%;
+    margin: 0 auto !important;
+}
+
+.main-footer .footer-social-list {
+    justify-content: center !important;
+    align-items: center !important;
+    width: auto !important;
+    margin: 0 auto !important;
+    flex-wrap: wrap;
+}
+
+.main-footer .footer-social-link,
+.main-footer .footer-social-wa {
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+    max-width: 44px !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    justify-content: center !important;
+}
+
+.main-footer .footer-contact-list li {
+    justify-content: center !important;
+    text-align: center !important;
+    width: 100%;
+}
 
 .copyright-bar {
     max-width: 480px;

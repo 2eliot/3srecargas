@@ -63,7 +63,8 @@
                                     data-show-contact-email="{{ 1 if m.show_contact_email else 0 }}"
                                     data-show-pay-id="{{ 1 if m.show_pay_id else 0 }}"
                                     data-show-contact-phone="{{ 1 if m.show_contact_phone else 0 }}"
-                                    data-uses-rate="{{ 1 if m.uses_rate else 0 }}">
+                                    data-uses-rate="{{ 1 if m.uses_rate else 0 }}"
+                                    data-tutorial-video="{{ m.tutorial_video or '' }}">
                                 Editar
                             </button>
                             <form method="POST" action="{{ url_for('admin_bp.payment_method_delete', method_id=m.id) }}" style="display:inline">
@@ -140,6 +141,14 @@
                     <input type="file" name="logo" accept="image/*">
                     <p class="form-hint">Recomendado: imagen horizontal tipo banner.</p>
                 </div>
+                <div class="form-group">
+                    <label>Video tutorial (opcional)</label>
+                    <input type="file" name="tutorial_video" accept="video/*">
+                    <p class="form-hint" id="pmVideoHint">El cliente verá el botón "Ver tutorial" con este video al elegir este método.</p>
+                    <label class="check-label" id="pmRemoveVideoWrap" style="display:none; margin-top:6px;">
+                        <input type="checkbox" name="remove_tutorial_video" id="pmRemoveVideo"> Quitar video actual
+                    </label>
+                </div>
             </div>
             <div class="form-checks">
                 <label class="check-label">
@@ -194,6 +203,9 @@ function openPmModal() {
     document.getElementById('pmShowContactEmail').checked = false;
     document.getElementById('pmShowPayId').checked = false;
     document.getElementById('pmShowContactPhone').checked = false;
+    document.getElementById('pmRemoveVideoWrap').style.display = 'none';
+    document.getElementById('pmRemoveVideo').checked = false;
+    document.getElementById('pmVideoHint').textContent = 'El cliente verá el botón "Ver tutorial" con este video al elegir este método.';
     document.getElementById('pmModal').style.display = 'flex';
 }
 
@@ -220,6 +232,19 @@ function openEditPm(id, name, code, order, isActive, contactEmail, payId, contac
     document.getElementById('pmModal').style.display = 'flex';
 }
 
+function setPmVideoState(tutorialVideo) {
+    var wrap = document.getElementById('pmRemoveVideoWrap');
+    var hint = document.getElementById('pmVideoHint');
+    document.getElementById('pmRemoveVideo').checked = false;
+    if (tutorialVideo) {
+        wrap.style.display = 'inline-flex';
+        hint.textContent = 'Ya hay un video cargado (' + tutorialVideo.split('/').pop() + '). Sube otro para reemplazarlo o marca "Quitar".';
+    } else {
+        wrap.style.display = 'none';
+        hint.textContent = 'El cliente verá el botón "Ver tutorial" con este video al elegir este método.';
+    }
+}
+
 document.querySelectorAll('.edit-pm-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
         openEditPm(
@@ -241,6 +266,7 @@ document.querySelectorAll('.edit-pm-btn').forEach(function (btn) {
             parseInt(this.dataset.showContactPhone || '0', 10),
             parseInt(this.dataset.usesRate || '1', 10)
         );
+        setPmVideoState(this.dataset.tutorialVideo || '');
     });
 });
 

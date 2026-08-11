@@ -814,6 +814,16 @@ def checkout(package_id):
                     'file': video_file_value,
                 }
 
+    # El video propio del método de pago tiene prioridad sobre el global
+    if selected_method and (selected_method.tutorial_video or '').strip():
+        checkout_payment_video = {
+            'enabled': True,
+            'title': f'Cómo pagar con {selected_method.name}',
+            'message': checkout_payment_video.get('message') or 'Reproduce este video corto antes de continuar para evitar errores al pagar.',
+            'cta': checkout_payment_video.get('cta') or 'Entendido, continuar',
+            'file': selected_method.tutorial_video.strip(),
+        }
+
     # ── Binance Pay auto-verification ──────────────────────────────────────────
     _app = current_app._get_current_object()
     binance_auto = (

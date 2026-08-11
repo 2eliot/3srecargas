@@ -1431,6 +1431,7 @@ def payment_method_add():
         return redirect(url_for('admin_bp.payment_methods'))
 
     logo = save_image(request.files.get('logo'), 'payments')
+    tutorial_video = save_video(request.files.get('tutorial_video'), 'payments')
     uses_rate = bool(request.form.get('uses_rate'))
     method = PaymentMethod(
         code=code,
@@ -1449,6 +1450,7 @@ def payment_method_add():
         show_contact_email=show_contact_email,
         show_pay_id=show_pay_id,
         show_contact_phone=show_contact_phone,
+        tutorial_video=tutorial_video,
     )
     db.session.add(method)
     db.session.commit()
@@ -1481,6 +1483,17 @@ def payment_method_edit(method_id):
     if new_logo:
         delete_uploaded_file(method.logo)
         method.logo = new_logo
+
+    if request.form.get('remove_tutorial_video'):
+        if method.tutorial_video:
+            delete_uploaded_file(method.tutorial_video)
+        method.tutorial_video = None
+
+    new_tutorial_video = save_video(request.files.get('tutorial_video'), 'payments')
+    if new_tutorial_video:
+        if method.tutorial_video:
+            delete_uploaded_file(method.tutorial_video)
+        method.tutorial_video = new_tutorial_video
 
     db.session.commit()
     flash('Método de pago actualizado.', 'success')
@@ -1580,6 +1593,10 @@ def settings():
     site_logo_value = site_logo_setting.value if site_logo_setting else ''
     order_status_image_setting = Setting.query.filter_by(key='order_status_image').first()
     order_status_image_value = order_status_image_setting.value if order_status_image_setting else ''
+    promo_banner_image_setting = Setting.query.filter_by(key='promo_banner_image').first()
+    promo_banner_image_value = promo_banner_image_setting.value if promo_banner_image_setting else ''
+    promo_banner_link_setting = Setting.query.filter_by(key='promo_banner_link').first()
+    promo_banner_link_value = promo_banner_link_setting.value if promo_banner_link_setting else ''
     checkout_payment_video_method_setting = Setting.query.filter_by(key='checkout_payment_video_method').first()
     checkout_payment_video_method_value = checkout_payment_video_method_setting.value if checkout_payment_video_method_setting else ''
     checkout_payment_video_title_setting = Setting.query.filter_by(key='checkout_payment_video_title').first()
@@ -1678,6 +1695,9 @@ def settings():
         logo_file = request.files.get('site_logo')
         remove_order_status_image = request.form.get('remove_order_status_image')
         order_status_image_file = request.files.get('order_status_image')
+        remove_promo_banner_image = request.form.get('remove_promo_banner_image')
+        promo_banner_image_file = request.files.get('promo_banner_image')
+        promo_banner_link = (request.form.get('promo_banner_link', '') or '').strip()
         checkout_payment_video_method = (request.form.get('checkout_payment_video_method', '') or '').strip().lower()
         checkout_payment_video_title = (request.form.get('checkout_payment_video_title', '') or '').strip()
         checkout_payment_video_message = (request.form.get('checkout_payment_video_message', '') or '').strip()
@@ -1766,6 +1786,35 @@ def settings():
                     db.session.add(order_status_image_setting)
                 else:
                     order_status_image_setting.value = saved_order_status_image
+
+        if remove_promo_banner_image and promo_banner_image_setting:
+            delete_uploaded_file(promo_banner_image_setting.value)
+            promo_banner_image_setting.value = ''
+
+        if promo_banner_image_file and promo_banner_image_file.filename:
+            saved_promo_banner = save_image(promo_banner_image_file, 'branding')
+            if saved_promo_banner:
+                if promo_banner_image_setting and promo_banner_image_setting.value:
+                    delete_uploaded_file(promo_banner_image_setting.value)
+                if not promo_banner_image_setting:
+                    promo_banner_image_setting = Setting(
+                        key='promo_banner_image',
+                        value=saved_promo_banner,
+                        description='Banner promocional pequeño mostrado arriba en la tienda'
+                    )
+                    db.session.add(promo_banner_image_setting)
+                else:
+                    promo_banner_image_setting.value = saved_promo_banner
+
+        if not promo_banner_link_setting:
+            promo_banner_link_setting = Setting(
+                key='promo_banner_link',
+                value=promo_banner_link,
+                description='Link al que lleva el banner promocional al hacer clic'
+            )
+            db.session.add(promo_banner_link_setting)
+        else:
+            promo_banner_link_setting.value = promo_banner_link
 
         valid_video_method = ''
         if checkout_payment_video_method:
@@ -1914,6 +1963,8 @@ def settings():
         default_package_id=default_auto_package_id,
         site_logo=site_logo_value,
         order_status_image=order_status_image_value,
+        promo_banner_image=promo_banner_image_value,
+        promo_banner_link=promo_banner_link_value,
         social_settings=social_settings,
         email_settings=email_settings,
         payment_verify_settings=payment_verify_settings,

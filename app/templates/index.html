@@ -6,9 +6,15 @@
 <div class="nx-store" id="nxStore">
 
     {% if promo_banner %}
-    <a class="nx-promo-banner glass-panel" {% if promo_banner_link %}href="{{ promo_banner_link }}" target="_blank" rel="noopener"{% else %}href="#"{% endif %}>
+    {% if promo_banner_link %}
+    <a class="nx-promo-banner glass-panel" href="{{ promo_banner_link }}" target="_blank" rel="noopener">
         <img src="{{ url_for('static', filename='uploads/' + promo_banner) }}" alt="Promoción">
     </a>
+    {% else %}
+    <div class="nx-promo-banner glass-panel" style="cursor:default">
+        <img src="{{ url_for('static', filename='uploads/' + promo_banner) }}" alt="Promoción">
+    </div>
+    {% endif %}
     {% endif %}
 
     <!-- Tabs de categorías -->
@@ -129,6 +135,8 @@
             </div>
         </section>
 
+        <!-- Pasos 3-4: aparecen al seleccionar un paquete -->
+        <div id="nxCheckoutSteps" style="display:none">
         <!-- Paso 3: método de pago -->
         <section class="glass-panel nx-step-card" style="margin-bottom:12px">
             <div class="nx-step-head">
@@ -154,6 +162,7 @@
                            data-show-pay-id="{{ 1 if m.show_pay_id else 0 }}"
                            data-show-contact-phone="{{ 1 if m.show_contact_phone else 0 }}"
                            data-payer-verification="{{ 1 if m.pabilo_requires_phone_dni else 0 }}"
+                           data-tutorial-video="{{ m.tutorial_video or '' }}"
                            {% if loop.first %}checked{% endif %}>
                     <div class="payment-card-inner">
                         <span class="payment-card-check" aria-hidden="true"></span>
@@ -254,6 +263,7 @@
             <span aria-hidden="true">🛡</span>
             <span id="sidebarSubmitLabel">Selecciona un paquete para continuar</span>
         </button>
+        </div>
     </form>
 
     <!-- ═══ Sección de confirmación integrada (aparece tras "Continuar") ═══ -->
@@ -382,26 +392,22 @@
         </div>
     </div>
 
-    <!-- Modal video tutorial -->
-    {% if checkout_payment_video.enabled %}
+    <!-- Modal video tutorial (src dinámico según el método de pago) -->
     <div class="nx-video-modal" id="nxVideoModal" aria-hidden="true">
         <div class="nx-video-card" role="dialog" aria-modal="true">
             <div class="nx-video-card-head">
-                <h3><span style="color:#ef4444">▶</span> {{ checkout_payment_video.title }}</h3>
+                <h3><span style="color:#ef4444">▶</span> <span id="nxVideoTitle">{{ checkout_payment_video.title }}</span></h3>
                 <button type="button" class="nx-video-close" id="nxVideoClose">✕</button>
             </div>
             {% if checkout_payment_video.message %}
             <p style="font-size:12px; color:#cbd5e1; margin:0">{{ checkout_payment_video.message }}</p>
             {% endif %}
-            <video controls preload="metadata" playsinline id="nxVideoPlayer">
-                <source src="{{ url_for('static', filename='uploads/' + checkout_payment_video.file) }}">
-            </video>
+            <video controls preload="metadata" playsinline id="nxVideoPlayer"></video>
             <button type="button" class="red-glow-pill" id="nxVideoContinue" style="padding:10px 0; font-size:12px; letter-spacing:.08em; text-transform:uppercase">
                 {{ checkout_payment_video.cta }}
             </button>
         </div>
     </div>
-    {% endif %}
 
     <!-- Toast -->
     <div id="nxToast" style="position:fixed; bottom:22px; left:50%; transform:translate(-50%, 80px); z-index:1300; background:#0f172a; color:#fff; font-size:12px; font-weight:700; padding:10px 16px; border-radius:12px; border:1px solid #FF0000; box-shadow:0 10px 30px rgba(0,0,0,.6); display:flex; align-items:center; gap:8px; opacity:0; transition:all .3s ease; pointer-events:none; font-family:'Outfit',sans-serif">
@@ -482,6 +488,7 @@
     window.NX_BINANCE_AUTO = {{ 'true' if binance_auto_enabled else 'false' }};
     window.NX_BINANCE_WALLET = {{ binance_wallet|tojson }};
     window.NX_VIDEO_METHOD = {{ (checkout_payment_video.method if checkout_payment_video.enabled else '')|tojson }};
+    window.NX_VIDEO_GLOBAL_FILE = {{ (checkout_payment_video.file if checkout_payment_video.enabled else '')|tojson }};
     window.CONTACT_PREFILL = {
         email: {{ (current_user.preferred_contact_email if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.preferred_contact_email else '')|tojson }},
         phone: {{ (current_user.phone if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.phone else '')|tojson }}
@@ -644,20 +651,20 @@
                     html += payRow('👤', m.dataset.idNumber, 'Cédula/RIF');
                     copyAllLines.push('Cédula/RIF: ' + m.dataset.idNumber);
                 }
-                if (m.dataset.contactPhone && m.dataset.showContactPhone === '1') {
+                if (m.dataset.contactPhone) {
                     html += payRow('📞', m.dataset.contactPhone, 'Teléfono');
                     copyAllLines.push('Teléfono: ' + m.dataset.contactPhone);
                 }
             } else {
-                if (m.dataset.contactEmail && m.dataset.showContactEmail === '1') {
+                if (m.dataset.contactEmail) {
                     html += payRow('✉', m.dataset.contactEmail, 'Correo');
                     copyAllLines.push('Correo: ' + m.dataset.contactEmail);
                 }
-                if (m.dataset.payId && m.dataset.showPayId === '1') {
+                if (m.dataset.payId) {
                     html += payRow('🆔', m.dataset.payId, 'Pay ID');
                     copyAllLines.push('Pay ID: ' + m.dataset.payId);
                 }
-                if (m.dataset.contactPhone && m.dataset.showContactPhone === '1') {
+                if (m.dataset.contactPhone) {
                     html += payRow('📞', m.dataset.contactPhone, 'Teléfono');
                     copyAllLines.push('Teléfono: ' + m.dataset.contactPhone);
                 }
@@ -676,11 +683,38 @@
         payboxContent.innerHTML = html;
         payboxContent.dataset.copyAll = copyAllLines.join('\n');
 
-        // Botón tutorial si hay video configurado para este método
+        // Botón tutorial si el método tiene video propio (o el global aplica)
         if (tutorialBtn) {
-            var showVideo = window.NX_VIDEO_METHOD && String(m.value || '').toLowerCase() === String(window.NX_VIDEO_METHOD).toLowerCase();
-            tutorialBtn.style.display = showVideo ? 'inline-flex' : 'none';
+            tutorialBtn.style.display = getMethodVideoUrl() ? 'inline-flex' : 'none';
         }
+    }
+
+    /* Video del método seleccionado: el video propio del método tiene
+       prioridad; si no tiene, se usa el video global si aplica a ese método. */
+    function getMethodVideoUrl() {
+        var m = getCheckedMethod();
+        if (!m) return '';
+        var own = String(m.dataset.tutorialVideo || '').trim();
+        if (own) return '/static/uploads/' + own;
+        if (window.NX_VIDEO_GLOBAL_FILE && window.NX_VIDEO_METHOD &&
+            String(m.value || '').toLowerCase() === String(window.NX_VIDEO_METHOD).toLowerCase()) {
+            return '/static/uploads/' + window.NX_VIDEO_GLOBAL_FILE;
+        }
+        return '';
+    }
+
+    function openVideoModal() {
+        var url = getMethodVideoUrl();
+        if (!videoModal || !url) return;
+        if (videoPlayer && videoPlayer.getAttribute('src') !== url) {
+            videoPlayer.setAttribute('src', url);
+            try { videoPlayer.load(); } catch (_) {}
+        }
+        var m = getCheckedMethod();
+        var titleEl = document.getElementById('nxVideoTitle');
+        if (titleEl && m) titleEl.textContent = 'Cómo pagar con ' + (m.dataset.methodName || m.value);
+        videoModal.classList.add('is-open');
+        videoModal.setAttribute('aria-hidden', 'false');
     }
 
     function syncAmounts() {
@@ -743,9 +777,34 @@
         stopTimer();
     }
 
+    /* Los pasos 3-4 (método de pago, datos, contacto y botón) solo se
+       muestran cuando el cliente selecciona un paquete. */
+    var checkoutSteps = document.getElementById('nxCheckoutSteps');
+
+    function showCheckoutSteps() {
+        if (!checkoutSteps || checkoutSteps.style.display !== 'none') return;
+        checkoutSteps.style.display = '';
+        renderPaybox();
+        syncAmounts();
+        setTimeout(function () {
+            checkoutSteps.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 150);
+    }
+
+    function hideCheckoutSteps() {
+        if (checkoutSteps) checkoutSteps.style.display = 'none';
+    }
+
     document.addEventListener('click', function (evt) {
-        if (evt.target && evt.target.closest && evt.target.closest('.package-item, .game-card, .cat-btn')) {
+        if (!evt.target || !evt.target.closest) return;
+        if (evt.target.closest('.package-item')) {
             invalidatePrepared();
+            showCheckoutSteps();
+            return;
+        }
+        if (evt.target.closest('.game-card, .cat-btn')) {
+            invalidatePrepared();
+            hideCheckoutSteps();
         }
     });
 
@@ -779,12 +838,7 @@
         maybeOpenVideo();
     }
     function maybeOpenVideo() {
-        var m = getCheckedMethod();
-        if (!videoModal || !m) return;
-        if (window.NX_VIDEO_METHOD && String(m.value || '').toLowerCase() === String(window.NX_VIDEO_METHOD).toLowerCase()) {
-            videoModal.classList.add('is-open');
-            videoModal.setAttribute('aria-hidden', 'false');
-        }
+        openVideoModal();
     }
     function closeVideo() {
         if (!videoModal) return;
@@ -799,12 +853,7 @@
         closeVideo();
         confirmForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
-    if (tutorialBtn) tutorialBtn.addEventListener('click', function () {
-        if (videoModal) {
-            videoModal.classList.add('is-open');
-            videoModal.setAttribute('aria-hidden', 'false');
-        }
-    });
+    if (tutorialBtn) tutorialBtn.addEventListener('click', openVideoModal);
 
     /* ── Paso init + preparación del checkout (fetch JSON) ── */
     mainForm.addEventListener('submit', function (evt) {
