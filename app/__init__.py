@@ -190,7 +190,9 @@ def create_app(config_class=Config):
         _ensure_order_delivery_proof_column()
         _ensure_game_columns()
         _ensure_package_pricing_columns()
+        _ensure_package_announcement_column()
         _ensure_affiliate_columns()
+        _ensure_one_per_player_columns()
         _ensure_payment_verification_columns()
         _ensure_ai_reference_columns()
         _ensure_order_idempotency_column()
@@ -378,6 +380,23 @@ def _ensure_package_pricing_columns():
         db.session.rollback()
 
 
+def _ensure_package_announcement_column():
+    try:
+        if _ensure_postgres_columns('packages', ['announcement_type VARCHAR(30)']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(packages)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'announcement_type' not in existing:
+            db.session.execute(text('ALTER TABLE packages ADD COLUMN announcement_type VARCHAR(30)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _ensure_game_columns():
     try:
         if _ensure_postgres_columns('games', [
@@ -411,6 +430,35 @@ def _ensure_affiliate_columns():
         existing = {r[1] for r in rows}
         if 'client_discount_rate' not in existing:
             db.session.execute(text('ALTER TABLE affiliates ADD COLUMN client_discount_rate NUMERIC(5, 2) DEFAULT 0'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_one_per_player_columns():
+    """Marca de 'solo 1 uso por ID' para códigos de descuento y de afiliado,
+    pensada para regalarlos a usuarios nuevos sin que se puedan reutilizar
+    en la misma cuenta/ID de juego una vez usados."""
+    try:
+        if _ensure_postgres_columns('discounts', ['one_per_player BOOLEAN DEFAULT FALSE']):
+            pass
+        elif db.engine.dialect.name == 'sqlite':
+            rows = db.session.execute(text('PRAGMA table_info(discounts)')).fetchall()
+            existing = {r[1] for r in rows}
+            if 'one_per_player' not in existing:
+                db.session.execute(text('ALTER TABLE discounts ADD COLUMN one_per_player BOOLEAN DEFAULT 0'))
+                db.session.commit()
+
+        if _ensure_postgres_columns('affiliates', ['one_per_player BOOLEAN DEFAULT FALSE']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(affiliates)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'one_per_player' not in existing:
+            db.session.execute(text('ALTER TABLE affiliates ADD COLUMN one_per_player BOOLEAN DEFAULT 0'))
             db.session.commit()
     except Exception:
         db.session.rollback()

@@ -123,6 +123,24 @@
             padding: 40px;
             color: var(--text-muted);
         }
+        .order-view-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 12px;
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all var(--transition);
+        }
+        .order-view-btn:hover {
+            background: var(--accent);
+            color: #fff;
+        }
         .btn-logout {
             background: var(--danger);
             color: white;
@@ -221,6 +239,9 @@
                             <span class="order-detail-value">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
                         </div>
                     </div>
+                    <a class="order-view-btn" href="{{ url_for('checkout_bp.order_status', order_number=order.order_number) }}">
+                        Ver orden →
+                    </a>
                 </div>
                 {% endfor %}
             {% else %}

@@ -5,6 +5,7 @@
     --bg-card:      #1a1a30;
     --sidebar-bg:   #10101e;
     --sidebar-w:    230px;
+    --sidebar-w-collapsed: 64px;
     --topbar-h:     56px;
     --accent:       #8b5cf6;
     --accent-dark:  #6d28d9;
@@ -153,6 +154,36 @@ input[type="file"] {
 .logo-main { color: var(--text-primary); }
 .logo-sub  { color: var(--accent); }
 .sidebar-close { display: none; background: none; border: none; color: var(--text-muted); font-size: 18px; padding: 4px; }
+.sidebar-collapse-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: var(--radius-sm);
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.sidebar-collapse-toggle:hover { color: var(--text-primary); border-color: var(--accent); }
+.sidebar-collapse-toggle svg { transition: transform var(--transition); }
+
+/* ── Sidebar colapsado (solo iconos) ───────────────────────
+   Se activa agregando la clase "sidebar-collapsed" al <html>,
+   así el estado (guardado en localStorage) se puede aplicar
+   antes de pintar la página y evitar el parpadeo. */
+html.sidebar-collapsed .admin-sidebar { width: var(--sidebar-w-collapsed); }
+html.sidebar-collapsed .admin-main { margin-left: var(--sidebar-w-collapsed); }
+html.sidebar-collapsed .admin-topbar { left: var(--sidebar-w-collapsed); }
+html.sidebar-collapsed .nav-label,
+html.sidebar-collapsed .sidebar-logo .logo-sub { display: none; }
+html.sidebar-collapsed .sidebar-header { padding: 16px 12px; justify-content: center; }
+html.sidebar-collapsed .sidebar-logo { gap: 0; }
+html.sidebar-collapsed .nav-item { justify-content: center; padding: 10px; }
+html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg); }
 
 .sidebar-nav { flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
@@ -742,7 +773,7 @@ input[type="file"] {
 
 .ranking-admin-archive-item {
     display: grid;
-    grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1fr) auto auto;
     gap: 10px;
     align-items: center;
     padding: 10px 12px;
@@ -1063,6 +1094,16 @@ input[type="file"] {
     .topbar-user { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 199; }
     .sidebar-overlay.active { display: block; }
+    /* En móvil el sidebar siempre se abre completo (overlay), el colapso
+       de escritorio no aplica aquí. */
+    .sidebar-collapse-toggle { display: none; }
+    html.sidebar-collapsed .admin-sidebar { width: min(86vw, 320px); }
+    html.sidebar-collapsed .admin-main { margin-left: 0; }
+    html.sidebar-collapsed .admin-topbar { left: 0; }
+    html.sidebar-collapsed .nav-label,
+    html.sidebar-collapsed .sidebar-logo .logo-sub { display: inline; }
+    html.sidebar-collapsed .sidebar-header { padding: 16px 20px; justify-content: space-between; }
+    html.sidebar-collapsed .nav-item { justify-content: flex-start; padding: 9px 12px; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
     .admin-order-card__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .orders-filter-grid {

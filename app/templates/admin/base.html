@@ -8,6 +8,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
     {% block extra_css %}{% endblock %}
+    <script>
+        // Aplica el estado colapsado antes de pintar la página para evitar
+        // el parpadeo (sidebar ancho -> se encoge un instante después).
+        (function() {
+            try {
+                if (localStorage.getItem('adminSidebarCollapsed') === '1') {
+                    document.documentElement.classList.add('sidebar-collapsed');
+                }
+            } catch (_) {}
+        })();
+    </script>
 </head>
 <body class="admin-body">
 
@@ -16,8 +27,13 @@
     <aside class="admin-sidebar" id="adminSidebar">
         <div class="sidebar-header">
             <a href="{{ url_for('main_bp.index') }}" class="sidebar-logo">
-                <span class="logo-main">3S</span><span class="logo-sub">Admin</span>
+                <span class="logo-main">3S</span><span class="logo-sub nav-label">Admin</span>
             </a>
+            <button class="sidebar-collapse-toggle" id="sidebarCollapseToggle" onclick="toggleSidebarCollapse()" title="Contraer/expandir menú" aria-label="Contraer o expandir el menú">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            </button>
             <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
         </div>
 
@@ -28,7 +44,7 @@
                     <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
                     <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
                 </svg>
-                Dashboard
+                <span class="nav-label">Dashboard</span>
             </a>
             <a href="{{ url_for('admin_bp.games') }}"
                class="nav-item {% if request.endpoint == 'admin_bp.games' %}active{% endif %}">
@@ -36,7 +52,7 @@
                     <rect x="2" y="6" width="20" height="12" rx="2"/>
                     <path d="M6 12h4m-2-2v4"/><circle cx="17" cy="11" r="1"/><circle cx="15" cy="13" r="1"/>
                 </svg>
-                Juegos
+                <span class="nav-label">Juegos</span>
             </a>
             <a href="{{ url_for('admin_bp.categories') }}"
                class="nav-item {% if 'category' in request.endpoint %}active{% endif %}">
@@ -44,7 +60,7 @@
                     <rect x="3" y="4" width="18" height="6" rx="2"></rect>
                     <rect x="3" y="14" width="18" height="6" rx="2"></rect>
                 </svg>
-                Servicios
+                <span class="nav-label">Servicios</span>
             </a>
             <a href="{{ url_for('admin_bp.packages') }}"
                class="nav-item {% if 'package' in request.endpoint %}active{% endif %}">
@@ -53,7 +69,7 @@
                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
                     <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
                 </svg>
-                Paquetes
+                <span class="nav-label">Paquetes</span>
             </a>
             <a href="{{ url_for('admin_bp.payment_methods') }}"
                class="nav-item {% if 'payment_method' in request.endpoint %}active{% endif %}">
@@ -63,7 +79,7 @@
                     <line x1="7" y1="15" x2="9" y2="15"/>
                     <line x1="11" y1="15" x2="13" y2="15"/>
                 </svg>
-                Métodos de Pago
+                <span class="nav-label">Métodos de Pago</span>
             </a>
             <a href="{{ url_for('admin_bp.orders') }}"
                class="nav-item {% if 'order' in request.endpoint %}active{% endif %}">
@@ -75,7 +91,7 @@
                     <path d="M6 16h12"/>
                     <path d="M6 20h12"/>
                 </svg>
-                Órdenes
+                <span class="nav-label">Órdenes</span>
             </a>
             <a href="{{ url_for('admin_bp.pins') }}"
                class="nav-item {% if 'pin' in request.endpoint %}active{% endif %}">
@@ -83,7 +99,7 @@
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
-                Stock PINs
+                <span class="nav-label">Stock PINs</span>
             </a>
             <a href="{{ url_for('admin_bp.affiliates') }}"
                class="nav-item {% if 'affiliate' in request.endpoint %}active{% endif %}">
@@ -92,7 +108,7 @@
                     <circle cx="9" cy="7" r="4"/>
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
-                Afiliados
+                <span class="nav-label">Afiliados</span>
             </a>
             <a href="{{ url_for('admin_bp.rankings') }}"
                class="nav-item {% if 'ranking' in request.endpoint %}active{% endif %}">
@@ -104,7 +120,7 @@
                     <circle cx="14" cy="14" r="1"/>
                     <circle cx="18" cy="8" r="1"/>
                 </svg>
-                Ranking
+                <span class="nav-label">Ranking</span>
             </a>
             <a href="{{ url_for('admin_bp.minigames') }}"
                class="nav-item {% if 'minigame' in request.endpoint %}active{% endif %}">
@@ -113,7 +129,7 @@
                     <path d="M9 9v12"/><path d="M15 9v12"/><path d="M4 21h16"/>
                     <circle cx="12" cy="15" r="2"/>
                 </svg>
-                Mini Juegos
+                <span class="nav-label">Mini Juegos</span>
             </a>
             <a href="{{ url_for('admin_bp.settings') }}"
                class="nav-item {% if 'settings' in request.endpoint %}active{% endif %}">
@@ -121,7 +137,7 @@
                     <circle cx="12" cy="12" r="3"/>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1.82l-.02.08a2 2 0 0 1-3.9 0l-.02-.08A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82-.33l-.08.02a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1.82-.33l-.08.02a2 2 0 1 1 0-3.9l.08-.02A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1.82l.02-.08a2 2 0 0 1 3.9 0l.02.08A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82.33l.08-.02a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 .6 1 1.65 1.65 0 0 0 1.82.33l.08-.02a2 2 0 1 1 0 3.9l-.08.02A1.65 1.65 0 0 0 19.4 15z"/>
                 </svg>
-                Configuración
+                <span class="nav-label">Configuración</span>
             </a>
             <a href="{{ url_for('admin_bp.revendedores_mapping') }}"
                class="nav-item {% if 'revendedores' in request.endpoint %}active{% endif %}">
@@ -130,7 +146,7 @@
                     <polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
                     <line x1="4" y1="4" x2="9" y2="9"/>
                 </svg>
-                Mapeo Revendedores
+                <span class="nav-label">Mapeo Revendedores</span>
             </a>
             <a href="{{ url_for('admin_bp.stats') }}"
                class="nav-item {% if request.endpoint == 'admin_bp.stats' %}active{% endif %}">
@@ -140,7 +156,7 @@
                     <line x1="6" y1="20" x2="6" y2="14"/>
                     <line x1="2" y1="20" x2="22" y2="20"/>
                 </svg>
-                Estadísticas
+                <span class="nav-label">Estadísticas</span>
             </a>
         </nav>
 
@@ -150,14 +166,14 @@
                     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
                     <polyline points="9 22 9 12 15 12 15 22"/>
                 </svg>
-                Ver Tienda
+                <span class="nav-label">Ver Tienda</span>
             </a>
             <a href="{{ url_for('admin_bp.logout') }}" class="nav-item nav-logout">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                     <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
                 </svg>
-                Cerrar Sesión
+                <span class="nav-label">Cerrar Sesión</span>
             </a>
         </div>
     </aside>
@@ -222,6 +238,23 @@
         var nextState = typeof forceOpen === 'boolean' ? forceOpen : !sidebar.classList.contains('open');
         setSidebarState(nextState);
     };
+
+    // Colapsar/expandir el menú en escritorio (se recuerda entre visitas).
+    window.toggleSidebarCollapse = function() {
+        var root = document.documentElement;
+        var collapsed = root.classList.toggle('sidebar-collapsed');
+        try { localStorage.setItem('adminSidebarCollapsed', collapsed ? '1' : '0'); } catch (_) {}
+    };
+
+    function applyNavItemTooltips() {
+        document.querySelectorAll('.nav-item').forEach(function(item) {
+            var label = item.querySelector('.nav-label');
+            if (label && !item.getAttribute('title')) {
+                item.setAttribute('title', label.textContent.trim());
+            }
+        });
+    }
+    applyNavItemTooltips();
 
     function applyResponsiveTableLabels() {
         document.querySelectorAll('.table-wrap table').forEach(function(table) {

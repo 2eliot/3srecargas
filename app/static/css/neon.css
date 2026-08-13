@@ -835,6 +835,32 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     transform: scale(1.02);
 }
 
+.nx-store .package-item.is-out-of-stock {
+    opacity: .5;
+    filter: grayscale(.4);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.nx-store .package-item.is-out-of-stock:hover {
+    border-color: rgba(255,255,255,0.1) !important;
+    background: linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.005) 100%) !important;
+}
+.nx-store .pkg-stock-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(0,0,0,.75);
+    color: #ff5a5a;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,90,90,.5);
+    z-index: 2;
+}
+
 .nx-store .package-item img,
 .nx-store .pkg-img-placeholder {
     width: 30px; height: 30px;
@@ -1333,6 +1359,115 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     font-family: var(--nx-font-display) !important;
     font-weight: 900 !important;
     letter-spacing: .06em;
+}
+
+/* ── Popup "Únete a nuestra comunidad" (recurrente) ────────── */
+.community-popup-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1300;
+    background: rgba(0,0,0,.82);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.community-popup-card {
+    position: relative;
+    width: min(100%, 360px);
+    padding: 28px 22px 22px;
+    border-radius: 20px;
+    text-align: center;
+    background: linear-gradient(135deg, rgba(30,32,40,.97) 0%, rgba(10,12,18,.98) 100%);
+    border: 1px solid rgba(255,0,0,.45);
+    border-top: 1px solid rgba(255,255,255,.25);
+    box-shadow: 0 25px 70px rgba(0,0,0,.7), 0 0 40px rgba(255,0,0,.15);
+    color: var(--nx-text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+.community-popup-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 999px;
+    padding: 4px 9px;
+    color: #fff;
+    cursor: pointer;
+}
+.community-popup-close:disabled { opacity: .55; cursor: not-allowed; }
+.community-popup-close-count {
+    font-size: 11px;
+    font-weight: 800;
+    min-width: 12px;
+}
+.community-popup-close[disabled] .community-popup-close-x { display: none; }
+.community-popup-close:not([disabled]) .community-popup-close-count { display: none; }
+.community-popup-icon {
+    width: 56px; height: 56px;
+    border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, rgba(255,0,0,.9), rgba(150,0,0,.85));
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(255,0,0,.5);
+    margin-top: 4px;
+}
+.community-popup-card h3 {
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 18px;
+    color: #fff;
+    margin: 0;
+}
+.community-popup-lead {
+    font-size: 13px;
+    color: var(--nx-muted);
+    line-height: 1.5;
+    margin: 0 0 4px;
+}
+.community-popup-join {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 13px 16px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(255,0,0,1), rgba(200,0,0,.95));
+    border: 1px solid rgba(255,255,255,.4);
+    box-shadow: 0 4px 20px rgba(255,0,0,.6), inset 0 1.5px 2px rgba(255,255,255,.5);
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    letter-spacing: .04em;
+    text-decoration: none;
+    font-size: 13.5px;
+}
+.community-popup-continue {
+    width: 100%;
+    padding: 11px 16px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.18);
+    color: var(--nx-text);
+    font-size: 13px;
+    font-weight: 700;
+}
+.community-popup-mute {
+    background: none;
+    border: none;
+    color: var(--nx-dim);
+    font-size: 11.5px;
+    padding: 2px;
+    text-decoration: underline;
 }
 
 /* Modal video tutorial */

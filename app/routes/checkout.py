@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 from ..models import db, Game, Package, Order, Affiliate, AffiliateCommission, Pin, PaymentMethod, User, Discount
 from ..models import Setting
 from ..models import OrderMiniGameOpportunity
-from ..utils.order_processing import approve_order, get_order_auto_mapping
+from ..utils.order_processing import approve_order, order_qualifies_for_auto_fulfillment
 from ..utils.minigames import (
     ensure_minigame_opportunity,
     get_order_minigame_state,
@@ -123,13 +123,7 @@ def extract_reference_from_saved_capture(relative_capture_path):
 
 
 def order_qualifies_for_auto_verify(order):
-    if not order:
-        return False
-
-    has_mapping = bool(get_order_auto_mapping(order))
-    category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
-    uses_pin_stock = bool(order.package and order.package.is_automated) or category_slug == 'tarjetas'
-    return has_mapping or uses_pin_stock
+    return order_qualifies_for_auto_fulfillment(order)
 
 
 def order_supports_background_payment_verification(order):
@@ -296,7 +290,34 @@ def resolve_discount_code(code):
     return discount, affiliate
 
 
-def get_checkout_discount_result(code, package_price):
+def _code_already_used_by_player(discount_id=None, affiliate_id=None, player_id=None, email=None):
+    """True si este ID de jugador (o este correo, para wallet/tarjetas) ya
+    tiene una orden pendiente/aprobada/completada con este código de
+    descuento o de afiliado — para los códigos marcados 'un uso por ID',
+    pensados para regalar solo a usuarios nuevos."""
+    if not discount_id and not affiliate_id:
+        return False
+
+    identity_filters = []
+    player_id = (player_id or '').strip()
+    email = (email or '').strip()
+    if player_id:
+        identity_filters.append(Order.player_id == player_id)
+    if email:
+        identity_filters.append(Order.email == email)
+    if not identity_filters:
+        return False
+
+    query = Order.query.filter(Order.status.in_(['pending', 'approved', 'completed']))
+    if discount_id:
+        query = query.filter(Order.discount_id == discount_id)
+    else:
+        query = query.filter(Order.affiliate_id == affiliate_id)
+    query = query.filter(or_(*identity_filters))
+    return db.session.query(query.exists()).scalar()
+
+
+def get_checkout_discount_result(code, package_price, player_id=None, email=None):
     discount, affiliate = resolve_discount_code(code)
     original_amount = float(package_price or 0)
 
@@ -315,6 +336,12 @@ def get_checkout_discount_result(code, package_price):
             result['error'] = 'Este código de descuento ya no está disponible, expiró o no aplica para este monto.'
             return result
 
+        if discount.one_per_player and _code_already_used_by_player(
+            discount_id=discount.id, player_id=player_id, email=email
+        ):
+            result['error'] = 'Este código ya fue usado con este ID. Solo se puede usar una vez por jugador.'
+            return result
+
         result['discount'] = discount
         result['discount_amount'] = float(discount.calculate_discount(package_price))
         return result
@@ -324,6 +351,12 @@ def get_checkout_discount_result(code, package_price):
         if rate <= 0:
             rate = float(affiliate.commission_rate or 0)
         if rate > 0:
+            if affiliate.one_per_player and _code_already_used_by_player(
+                affiliate_id=affiliate.id, player_id=player_id, email=email
+            ):
+                result['error'] = 'Este código ya fue usado con este ID. Solo se puede usar una vez por jugador.'
+                return result
+
             raw_discount = original_amount * rate / 100.0
             discount_amount = round(raw_discount, 2)
             if raw_discount > 0 and discount_amount <= 0:
@@ -667,7 +700,11 @@ def checkout(package_id):
         package_checkout_price = get_package_checkout_price(package, method_config)
         package_bs_rate = get_game_bs_rate(game, usd_rate)
         original_amount = float(package_checkout_price)
-        discount_result = get_checkout_discount_result(discount_code, package_checkout_price)
+        discount_result = get_checkout_discount_result(
+            discount_code, package_checkout_price,
+            player_id=player_id_value if not is_wallet else None,
+            email=player_id_value if is_wallet else (data.get('email') or '').strip(),
+        )
         discount = discount_result['discount']
         affiliate = discount_result['affiliate']
         discount_amount = discount_result['discount_amount']
@@ -853,7 +890,13 @@ def checkout(package_id):
     
     # Calcular descuento si hay código (descuento explícito o afiliado)
     discount_code = ((affiliate_code or _get_active_session_affiliate_code() or '').strip()).upper()
-    discount_result = get_checkout_discount_result(discount_code, package_checkout_price)
+    _preview_pkg_data = checkout_data.get(pkg_key) or {}
+    _preview_player_id = (_preview_pkg_data.get('player_id') or '').strip()
+    discount_result = get_checkout_discount_result(
+        discount_code, package_checkout_price,
+        player_id=_preview_player_id if not is_wallet else None,
+        email=_preview_player_id if is_wallet else (_preview_pkg_data.get('email') or '').strip(),
+    )
     discount_amount = discount_result['discount_amount']
     
     final_amount = max(original_amount - discount_amount, 0.0)
@@ -1013,6 +1056,12 @@ def order_status(order_number):
         (order.payment_method or '').lower() == 'binance'
         and is_binance_auto_reference(order.payment_reference or '')
     )
+    # Solo mientras el pago todavía no se ha verificado tiene sentido
+    # mostrarle al cliente "esperando tu pago en Binance". Una vez que se
+    # verificó pero el producto requiere entrega manual, la orden queda
+    # 'pending' a propósito para revisión — esa pantalla de espera ya no
+    # aplica, debe verse como cualquier otra orden manual pendiente.
+    is_binance_awaiting_payment = is_binance_auto_order and not order.payment_verified_at
 
     auto_verify_enabled = is_auto_verify_enabled()
     payment_auto_verify_allowed = (
@@ -1037,8 +1086,8 @@ def order_status(order_number):
         auto_verify_enabled=auto_verify_enabled,
         auto_verify_allowed=payment_auto_verify_allowed,
         auto_process_allowed=auto_process_allowed,
-        is_manual_order=not auto_process_allowed and not is_binance_auto_order,
-        is_binance_auto_order=is_binance_auto_order,
+        is_manual_order=not auto_process_allowed and not is_binance_awaiting_payment,
+        is_binance_auto_order=is_binance_awaiting_payment,
         order_status_image=order_status_image,
         minigame_state=minigame_state,
     )

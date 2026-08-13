@@ -582,6 +582,42 @@ def game_delete(game_id):
     return redirect(url_for('admin_bp.games'))
 
 
+@admin_bp.route('/games/<int:game_id>/delete-permanent', methods=['POST'])
+@login_required
+def game_delete_permanent(game_id):
+    game = Game.query.get_or_404(game_id)
+
+    order_count = Order.query.filter_by(game_id=game.id).count()
+    if order_count > 0:
+        flash(
+            f'No puedes eliminar "{game.name}" porque tiene {order_count} orden(es) asociada(s) '
+            '(se perdería el historial). Usa "Off" para ocultarlo en su lugar.',
+            'danger',
+        )
+        return redirect(url_for('admin_bp.games'))
+
+    package_ids = [pkg.id for pkg in Package.query.filter_by(game_id=game.id).all()]
+    game_name = game.name
+
+    try:
+        if package_ids:
+            RevendedoresItemMapping.query.filter(
+                RevendedoresItemMapping.store_package_id.in_(package_ids)
+            ).delete(synchronize_session=False)
+            Pin.query.filter(Pin.package_id.in_(package_ids)).delete(synchronize_session=False)
+            Package.query.filter(Package.id.in_(package_ids)).delete(synchronize_session=False)
+
+        db.session.delete(game)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        flash(f'No se pudo eliminar "{game_name}": {exc}', 'danger')
+        return redirect(url_for('admin_bp.games'))
+
+    flash(f'Juego "{game_name}" eliminado.', 'success')
+    return redirect(url_for('admin_bp.games'))
+
+
 # ─── Packages ────────────────────────────────────────────────────────────────
 
 @admin_bp.route('/packages')
@@ -601,6 +637,14 @@ def packages():
     )
 
 
+PACKAGE_ANNOUNCEMENT_TYPES = {'', 'one_time_purchase', 'redeem_code'}
+
+
+def _normalize_package_announcement_type(raw_value):
+    value = (raw_value or '').strip()
+    return value if value in PACKAGE_ANNOUNCEMENT_TYPES else ''
+
+
 @admin_bp.route('/packages/add', methods=['POST'])
 @login_required
 def package_add():
@@ -611,6 +655,7 @@ def package_add():
     description = request.form.get('description', '').strip()
     is_automated = bool(request.form.get('is_automated'))
     sort_order = int(request.form.get('sort_order', 100))
+    announcement_type = _normalize_package_announcement_type(request.form.get('announcement_type'))
 
     if not game_id or not name or not price:
         flash('Juego, nombre y precio son obligatorios.', 'danger')
@@ -631,18 +676,19 @@ def package_add():
     pkg = Package(
         game_id=int(game_id), name=name, price=base_price, usd_price=usd_price,
         description=description, is_automated=is_automated,
-        sort_order=sort_order, image=image,
+        sort_order=sort_order, image=image, announcement_type=announcement_type or None,
     )
     db.session.add(pkg)
     db.session.commit()
     flash(f'Paquete "{name}" creado.', 'success')
-    return redirect(url_for('admin_bp.packages'))
+    return redirect(url_for('admin_bp.packages', game_id=pkg.game_id))
 
 
 @admin_bp.route('/packages/<int:pkg_id>/edit', methods=['POST'])
 @login_required
 def package_edit(pkg_id):
     pkg = Package.query.get_or_404(pkg_id)
+    return_game_id = request.form.get('return_game_id', type=int) or pkg.game_id
     pkg.name = request.form.get('name', pkg.name).strip()
     price_raw = request.form.get('price', pkg.price)
     usd_price_raw = request.form.get('usd_price', '')
@@ -651,16 +697,17 @@ def package_edit(pkg_id):
         pkg.usd_price = float(usd_price_raw) if str(usd_price_raw).strip() else None
     except ValueError:
         flash('Los precios deben ser números válidos.', 'danger')
-        return redirect(url_for('admin_bp.packages'))
+        return redirect(url_for('admin_bp.packages', game_id=return_game_id))
 
     if float(pkg.price or 0) <= 0 or (pkg.usd_price is not None and float(pkg.usd_price) <= 0):
         flash('Los precios deben ser mayores a 0.', 'danger')
-        return redirect(url_for('admin_bp.packages'))
+        return redirect(url_for('admin_bp.packages', game_id=return_game_id))
 
     pkg.description = request.form.get('description', pkg.description or '').strip()
     pkg.is_automated = bool(request.form.get('is_automated'))
     pkg.sort_order = int(request.form.get('sort_order', pkg.sort_order))
     pkg.is_active = bool(request.form.get('is_active'))
+    pkg.announcement_type = _normalize_package_announcement_type(request.form.get('announcement_type')) or None
 
     if request.form.get('remove_image'):
         if pkg.image:
@@ -674,7 +721,7 @@ def package_edit(pkg_id):
 
     db.session.commit()
     flash('Paquete actualizado.', 'success')
-    return redirect(url_for('admin_bp.packages'))
+    return redirect(url_for('admin_bp.packages', game_id=return_game_id))
 
 
 @admin_bp.route('/packages/<int:pkg_id>/delete', methods=['POST'])
@@ -684,7 +731,39 @@ def package_delete(pkg_id):
     pkg.is_active = False
     db.session.commit()
     flash('Paquete desactivado.', 'warning')
-    return redirect(url_for('admin_bp.packages'))
+    return redirect(url_for('admin_bp.packages', game_id=pkg.game_id))
+
+
+@admin_bp.route('/packages/<int:pkg_id>/delete-permanent', methods=['POST'])
+@login_required
+def package_delete_permanent(pkg_id):
+    pkg = Package.query.get_or_404(pkg_id)
+    game_id = pkg.game_id
+
+    order_count = Order.query.filter_by(package_id=pkg.id).count()
+    if order_count > 0:
+        flash(
+            f'No puedes eliminar "{pkg.name}" porque tiene {order_count} orden(es) asociada(s) '
+            '(se perdería el historial). Usa "Off" para ocultarlo en su lugar.',
+            'danger',
+        )
+        return redirect(url_for('admin_bp.packages', game_id=game_id))
+
+    pkg_name = pkg.name
+    try:
+        RevendedoresItemMapping.query.filter_by(store_package_id=pkg.id).delete(synchronize_session=False)
+        Pin.query.filter_by(package_id=pkg.id).delete(synchronize_session=False)
+        if pkg.image:
+            delete_uploaded_file(pkg.image)
+        db.session.delete(pkg)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        flash(f'No se pudo eliminar "{pkg_name}": {exc}', 'danger')
+        return redirect(url_for('admin_bp.packages', game_id=game_id))
+
+    flash(f'Paquete "{pkg_name}" eliminado.', 'success')
+    return redirect(url_for('admin_bp.packages', game_id=game_id))
 
 
 # ─── Orders ──────────────────────────────────────────────────────────────────
@@ -1206,7 +1285,11 @@ def affiliate_add():
         flash('Ese código ya existe.', 'danger')
         return redirect(url_for('admin_bp.affiliates'))
 
-    aff = Affiliate(name=name, code=code, email=email, commission_rate=commission_rate, client_discount_rate=client_discount_rate)
+    aff = Affiliate(
+        name=name, code=code, email=email, commission_rate=commission_rate,
+        client_discount_rate=client_discount_rate,
+        one_per_player=bool(request.form.get('one_per_player')),
+    )
     db.session.add(aff)
     db.session.commit()
     flash(f'Afiliado "{name}" creado con código {code}.', 'success')
@@ -1221,6 +1304,7 @@ def affiliate_edit(aff_id):
     aff.email = request.form.get('email', aff.email or '').strip()
     aff.commission_rate = float(request.form.get('commission_rate', aff.commission_rate))
     aff.client_discount_rate = float(request.form.get('client_discount_rate', aff.client_discount_rate or 0))
+    aff.one_per_player = bool(request.form.get('one_per_player'))
     aff.is_active = bool(request.form.get('is_active'))
     db.session.commit()
     flash('Afiliado actualizado.', 'success')
@@ -1322,6 +1406,7 @@ def discount_code_add():
         min_amount=min_amount,
         max_discount=max_discount,
         usage_limit=usage_limit,
+        one_per_player=bool(request.form.get('one_per_player')),
         is_active=bool(request.form.get('is_active')),
         expires_at=expires_at,
     )
@@ -1394,6 +1479,7 @@ def discount_code_edit(discount_id):
     discount.min_amount = min_amount
     discount.max_discount = max_discount
     discount.expires_at = expires_at
+    discount.one_per_player = bool(request.form.get('one_per_player'))
     discount.is_active = bool(request.form.get('is_active'))
     db.session.commit()
     flash(f'Código de descuento {code} actualizado.', 'success')
@@ -1649,6 +1735,11 @@ def settings():
         'ranking_free_fire_game_id': 'Juego asociado al ranking de Free Fire',
         'ranking_blood_strike_game_id': 'Juego asociado al ranking de Blood Strike',
     }
+    community_popup_keys = {
+        'community_popup_enabled': 'Activa el popup recurrente de "Únete a nuestra comunidad"',
+        'community_popup_interval_hours': 'Cada cuántas horas puede reaparecer (por pestaña/visita)',
+        'community_popup_whatsapp_url': 'Link del canal de WhatsApp al que invita el popup',
+    }
     email_settings = {}
     for key in email_keys:
         setting = Setting.query.filter_by(key=key).first()
@@ -1668,6 +1759,13 @@ def settings():
     for key in ranking_keys:
         setting = Setting.query.filter_by(key=key).first()
         ranking_settings[key] = setting.value if setting else ''
+
+    community_popup_settings = {}
+    for key in community_popup_keys:
+        setting = Setting.query.filter_by(key=key).first()
+        community_popup_settings[key] = setting.value if setting else ''
+    if not community_popup_settings.get('community_popup_interval_hours'):
+        community_popup_settings['community_popup_interval_hours'] = '3'
 
     ranking_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
     active_payment_methods = PaymentMethod.query.filter_by(is_active=True).order_by(PaymentMethod.sort_order.asc(), PaymentMethod.name.asc()).all()
@@ -1724,6 +1822,16 @@ def settings():
             'ranking_blood_strike_enabled': '1' if request.form.get('ranking_blood_strike_enabled') else '0',
             'ranking_free_fire_game_id': (request.form.get('ranking_free_fire_game_id', '') or '').strip(),
             'ranking_blood_strike_game_id': (request.form.get('ranking_blood_strike_game_id', '') or '').strip(),
+        }
+        community_interval_raw = (request.form.get('community_popup_interval_hours', '') or '').strip()
+        try:
+            community_interval_hours = str(max(1, int(float(community_interval_raw)))) if community_interval_raw else '3'
+        except ValueError:
+            community_interval_hours = '3'
+        community_popup_payload = {
+            'community_popup_enabled': '1' if request.form.get('community_popup_enabled') else '0',
+            'community_popup_interval_hours': community_interval_hours,
+            'community_popup_whatsapp_url': (request.form.get('community_popup_whatsapp_url', '') or '').strip(),
         }
 
         if new_rate:
@@ -1918,6 +2026,15 @@ def settings():
             else:
                 current_setting.value = val
 
+        for key, desc in community_popup_keys.items():
+            val = community_popup_payload.get(key, '')
+            current_setting = Setting.query.filter_by(key=key).first()
+            if not current_setting:
+                current_setting = Setting(key=key, value=val, description=desc)
+                db.session.add(current_setting)
+            else:
+                current_setting.value = val
+
         ranking_prize_desc = 'Paquete vinculado al premio mensual del ranking por puesto.'
         ranking_prize_auto_desc = 'Si está activo, el paquete del premio se fuerza como automatizado.'
         for ranking_key_name in ('free_fire', 'blood_strike'):
@@ -1986,6 +2103,7 @@ def settings():
         ranking_prize_positions=RANKING_PRIZE_POSITIONS,
         ranking_prize_labels=RANKING_PRIZE_LABELS,
         ranking_packages_by_game=ranking_packages_by_game,
+        community_popup_settings=community_popup_settings,
     )
 
 

@@ -73,12 +73,16 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-outline"
-                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }}, {{ 1 if pkg.image else 0 }})">
+                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }}, {{ 1 if pkg.image else 0 }}, '{{ pkg.announcement_type or '' }}')">
                                 Editar
                             </button>
                             <form method="POST" action="{{ url_for('admin_bp.package_delete', pkg_id=pkg.id) }}" style="display:inline">
                                 <button class="btn-sm btn-danger" type="submit"
                                         onclick="return confirm('¿Desactivar paquete?')">Off</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin_bp.package_delete_permanent', pkg_id=pkg.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit"
+                                        onclick="return confirm('¿ELIMINAR el paquete \'{{ pkg.name|e }}\' permanentemente? Esto no se puede deshacer. Si tiene órdenes asociadas, no se podrá eliminar.')">Eliminar</button>
                             </form>
                         </div>
                     </td>
@@ -133,6 +137,14 @@
                     <label>Imagen del Ítem (mini)</label>
                     <input type="file" name="image" accept="image/*">
                 </div>
+                <div class="form-group">
+                    <label>Anuncio al elegir el paquete</label>
+                    <select name="announcement_type">
+                        <option value="">Ninguno</option>
+                        <option value="one_time_purchase">Se compra una sola vez (no recomprable en la cuenta)</option>
+                        <option value="redeem_code">Es un código que el cliente debe canjear él mismo</option>
+                    </select>
+                </div>
             </div>
             <div class="form-checks">
                 <label class="check-label">
@@ -155,6 +167,7 @@
             <button onclick="closeModal('editPkgModal')">✕</button>
         </div>
         <form method="POST" id="editPkgForm" enctype="multipart/form-data">
+            <input type="hidden" name="return_game_id" id="editPkgReturnGameId" value="{{ selected_game_id or '' }}">
             <div class="form-grid-2">
                 <div class="form-group">
                     <label>Nombre *</label>
@@ -183,6 +196,14 @@
                     <label>Descripción</label>
                     <input type="text" name="description" id="editPkgDesc">
                 </div>
+                <div class="form-group">
+                    <label>Anuncio al elegir el paquete</label>
+                    <select name="announcement_type" id="editPkgAnnouncementType">
+                        <option value="">Ninguno</option>
+                        <option value="one_time_purchase">Se compra una sola vez (no recomprable en la cuenta)</option>
+                        <option value="redeem_code">Es un código que el cliente debe canjear él mismo</option>
+                    </select>
+                </div>
             </div>
             <div class="form-checks">
                 <label class="check-label">
@@ -206,7 +227,7 @@
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive, hasImage) {
+function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive, hasImage, announcementType) {
     document.getElementById('editPkgForm').action = '/admin/packages/' + id + '/edit';
     document.getElementById('editPkgName').value = name;
     document.getElementById('editPkgPrice').value = price;
@@ -217,6 +238,7 @@ function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive, h
     document.getElementById('editPkgActive').checked = isActive;
     document.getElementById('editPkgRemoveImage').checked = false;
     document.getElementById('editPkgRemoveImageWrap').style.display = hasImage ? 'inline-flex' : 'none';
+    document.getElementById('editPkgAnnouncementType').value = announcementType || '';
     openModal('editPkgModal');
 }
 </script>

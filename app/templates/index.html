@@ -423,6 +423,24 @@
         </div>
     </div>
 
+    <div class="store-popup-overlay" id="pkgOneTimePopup" style="display:none" aria-hidden="true">
+        <div class="store-popup-card" role="dialog" aria-modal="true" aria-labelledby="pkgOneTimeTitle">
+            <div class="store-popup-header">
+                <span id="pkgOneTimeTitle">AVISO IMPORTANTE</span>
+            </div>
+            <div class="store-popup-body">
+                <p class="store-popup-lead">Recuerda revisar si tienes este paquete disponible en el juego, ya que se compra una sola vez en tu cuenta.</p>
+                <ul class="store-popup-list">
+                    <li>Si ya lo compraste no puedes volver a comprarlo.</li>
+                    <li>Evita inconvenientes: revisa tu cuenta antes de continuar.</li>
+                </ul>
+            </div>
+            <div class="store-popup-actions">
+                <button type="button" class="store-popup-confirm" id="pkgOneTimeCloseBtn">ENTIENDO, CONTINUAR</button>
+            </div>
+        </div>
+    </div>
+
     <div class="store-popup-overlay" id="gameSelectionPopup" style="display:none" aria-hidden="true">
         <div class="store-popup-card game-selection-popup-card" role="dialog" aria-modal="true" aria-labelledby="gameSelectionPopupTitle">
             <div class="store-popup-header game-selection-popup-header">
@@ -448,6 +466,26 @@
             </div>
         </div>
     </div>
+
+    <div class="community-popup-overlay" id="communityPopup" style="display:none" aria-hidden="true">
+        <div class="community-popup-card" role="dialog" aria-modal="true" aria-labelledby="communityPopupTitle">
+            <button type="button" class="community-popup-close" id="communityPopupCloseX" disabled>
+                <span class="community-popup-close-count" id="communityPopupCloseCount">4</span>
+                <span class="community-popup-close-x">✕</span>
+            </button>
+            <div class="community-popup-icon">
+                <svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.36 5.07L2 22l5.07-1.33C8.53 21.5 10.24 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.2 14.2c-.22.62-1.28 1.19-1.76 1.24-.45.05-.95.24-3.2-.67-2.7-1.11-4.42-3.84-4.55-4.02-.13-.18-1.08-1.44-1.08-2.75s.68-1.94.92-2.2c.24-.26.53-.33.7-.33h.5c.16 0 .38-.03.58.44.22.5.75 1.75.82 1.88.07.13.11.28.02.46-.09.18-.14.29-.27.44-.14.16-.29.36-.41.48-.14.14-.28.29-.12.56.16.28.72 1.19 1.55 1.92 1.06.95 1.96 1.24 2.24 1.38.28.14.44.12.6-.07.16-.19.68-.79.87-1.06.18-.27.36-.22.6-.13.24.09 1.53.72 1.79.85.26.13.44.19.5.3.06.13.06.7-.16 1.32z"/></svg>
+            </div>
+            <h3 id="communityPopupTitle">¡Únete a nuestra Comunidad!</h3>
+            <p class="community-popup-lead">Participa Gratis en TORNEOS, sorteos y dinámicas todos los días y mucho más en nuestro canal de WhatsApp.</p>
+            <a class="community-popup-join" id="communityPopupJoinBtn" href="#" target="_blank" rel="noopener noreferrer">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12c0 1.85.5 3.58 1.36 5.07L2 22l5.07-1.33C8.53 21.5 10.24 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.2 14.2c-.22.62-1.28 1.19-1.76 1.24-.45.05-.95.24-3.2-.67-2.7-1.11-4.42-3.84-4.55-4.02-.13-.18-1.08-1.44-1.08-2.75s.68-1.94.92-2.2c.24-.26.53-.33.7-.33h.5c.16 0 .38-.03.58.44.22.5.75 1.75.82 1.88.07.13.11.28.02.46-.09.18-.14.29-.27.44-.14.16-.29.36-.41.48-.14.14-.28.29-.12.56.16.28.72 1.19 1.55 1.92 1.06.95 1.96 1.24 2.24 1.38.28.14.44.12.6-.07.16-.19.68-.79.87-1.06.18-.27.36-.22.6-.13.24.09 1.53.72 1.79.85.26.13.44.19.5.3.06.13.06.7-.16 1.32z"/></svg>
+                <span>UNIRME AL CANAL</span>
+            </a>
+            <button type="button" class="community-popup-continue" id="communityPopupContinueBtn">Continuar a la página</button>
+            <button type="button" class="community-popup-mute" id="communityPopupMuteBtn">🔕 No mostrar más por hoy</button>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -460,6 +498,11 @@
     window.NX_BINANCE_WALLET = {{ binance_wallet|tojson }};
     window.NX_VIDEO_METHOD = {{ (checkout_payment_video.method if checkout_payment_video.enabled else '')|tojson }};
     window.NX_VIDEO_GLOBAL_FILE = {{ (checkout_payment_video.file if checkout_payment_video.enabled else '')|tojson }};
+    window.NX_COMMUNITY_POPUP = {
+        enabled: {{ 'true' if community_popup_enabled else 'false' }},
+        intervalHours: {{ community_popup_interval_hours|default(3)|int }},
+        whatsappUrl: {{ community_popup_whatsapp_url|tojson }}
+    };
     window.CONTACT_PREFILL = {
         email: {{ (current_user.preferred_contact_email if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.preferred_contact_email else '')|tojson }},
         phone: {{ (current_user.phone if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.phone else '')|tojson }}

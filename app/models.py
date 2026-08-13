@@ -1,10 +1,21 @@
 from datetime import datetime
-import uuid
+import random
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
+
+
+def generate_order_number():
+    """Número de orden solo con dígitos (antes era hexadecimal, con letras
+    A-F mezcladas con números, lo cual confundía al leerlo o dictarlo por
+    teléfono). Se arma con la cola del timestamp en milisegundos (siempre
+    creciente, prácticamente nunca se repite) más 3 dígitos aleatorios
+    extra como margen adicional contra colisiones."""
+    millis_tail = str(int(datetime.utcnow().timestamp() * 1000))[-9:]
+    random_suffix = ''.join(random.choices('0123456789', k=3))
+    return millis_tail + random_suffix
 
 
 class Category(db.Model):
@@ -80,6 +91,10 @@ class Package(db.Model):
     is_automated = db.Column(db.Boolean, default=False)
     sort_order = db.Column(db.Integer, default=100)
     is_active = db.Column(db.Boolean, default=True)
+    # Aviso opcional que se muestra al elegir este paquete. Valores:
+    # None/'' = sin aviso, 'one_time_purchase' = "solo se compra una vez en
+    # tu cuenta", 'redeem_code' = "es un código que debes canjear tú mismo".
+    announcement_type = db.Column(db.String(30))
     pins = db.relationship('Pin', backref='package', lazy='dynamic')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -98,6 +113,7 @@ class Package(db.Model):
             'image': self.image,
             'is_automated': self.is_automated,
             'pin_count': self.pin_count if self.is_automated else None,
+            'announcement_type': self.announcement_type or '',
         }
 
 
@@ -117,7 +133,7 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     order_number = db.Column(
         db.String(12), unique=True,
-        default=lambda: str(uuid.uuid4())[:8].upper()
+        default=generate_order_number
     )
     game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False)
     package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
@@ -234,6 +250,7 @@ class Discount(db.Model):
     max_discount = db.Column(db.Numeric(10, 2))  # maximum discount amount
     usage_limit = db.Column(db.Integer)  # max times it can be used
     used_count = db.Column(db.Integer, default=0)  # times used
+    one_per_player = db.Column(db.Boolean, default=False)  # 1 uso por ID de jugador
     is_active = db.Column(db.Boolean, default=True)
     expires_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -285,6 +302,7 @@ class Affiliate(db.Model):
     client_discount_rate = db.Column(db.Numeric(5, 2), default=0.0)  # % descuento al cliente
     balance = db.Column(db.Numeric(10, 2), default=0.0)
     total_earned = db.Column(db.Numeric(10, 2), default=0.0)
+    one_per_player = db.Column(db.Boolean, default=False)  # 1 uso por ID de jugador
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     commissions = db.relationship('AffiliateCommission', backref='affiliate')

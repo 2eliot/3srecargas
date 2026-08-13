@@ -483,6 +483,17 @@ def index():
     promo_banner = (_get_setting_val('promo_banner_image', '') or '').strip()
     promo_banner_link = (_get_setting_val('promo_banner_link', '') or '').strip()
 
+    community_popup_enabled = (_get_setting_val('community_popup_enabled', '') or '') == '1'
+    try:
+        community_popup_interval_hours = max(1, int(float(_get_setting_val('community_popup_interval_hours', '3') or '3')))
+    except ValueError:
+        community_popup_interval_hours = 3
+    community_popup_whatsapp_url = (
+        (_get_setting_val('community_popup_whatsapp_url', '') or '').strip()
+        or (_get_setting_val('support_whatsapp', '') or '').strip()
+        or 'https://wa.me/19543789224'
+    )
+
     return render_template(
         'index.html',
         games=games,
@@ -496,6 +507,9 @@ def index():
         checkout_payment_video=checkout_payment_video,
         promo_banner=promo_banner,
         promo_banner_link=promo_banner_link,
+        community_popup_enabled=community_popup_enabled,
+        community_popup_interval_hours=community_popup_interval_hours,
+        community_popup_whatsapp_url=community_popup_whatsapp_url,
     )
 
 
@@ -544,6 +558,12 @@ def api_packages(game_id):
     for p in packages:
         d = p.to_dict()
         d['is_auto'] = bool(p.is_automated or is_tarjetas or (p.id in auto_mapped_ids))
+        # Sin stock de verdad = paquete automatizado por PINs, sin PINs
+        # libres, y sin un mapeo de Revendedores que sirva de respaldo. Si
+        # tiene mapeo, igual se puede completar aunque el stock esté en 0.
+        d['out_of_stock'] = bool(
+            p.is_automated and int(p.pin_count or 0) <= 0 and p.id not in auto_mapped_ids
+        )
         pkg_list.append(d)
 
     game_dict['requires_manual_login_popup'] = bool(

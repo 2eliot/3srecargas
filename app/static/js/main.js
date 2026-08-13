@@ -22,6 +22,15 @@
     var discountInfoCloseBtn = document.getElementById('discountInfoCloseBtn');
     var gameSelectionPopup = document.getElementById('gameSelectionPopup');
     var gameSelectionPopupCloseBtn = document.getElementById('gameSelectionPopupCloseBtn');
+    var pkgOneTimePopup = document.getElementById('pkgOneTimePopup');
+    var pkgOneTimeCloseBtn = document.getElementById('pkgOneTimeCloseBtn');
+    var pkgAnnouncementShown = {};
+    var communityPopup = document.getElementById('communityPopup');
+    var communityPopupCloseX = document.getElementById('communityPopupCloseX');
+    var communityPopupCloseCount = document.getElementById('communityPopupCloseCount');
+    var communityPopupJoinBtn = document.getElementById('communityPopupJoinBtn');
+    var communityPopupContinueBtn = document.getElementById('communityPopupContinueBtn');
+    var communityPopupMuteBtn = document.getElementById('communityPopupMuteBtn');
     var contactEmailInput = document.getElementById('email');
     var phoneFieldStack = document.getElementById('phoneFieldStack');
     var phoneCountryCodeInput = document.getElementById('phoneCountryCode');
@@ -895,16 +904,28 @@
             item.dataset.priceUsd = String(priceUsd);
             item.dataset.priceBase = String(parseFloat(pkg.price));
 
+            var outOfStock = !!pkg.out_of_stock;
+            var stockBadge = outOfStock ? '<span class="pkg-stock-badge">Sin Stock</span>' : '';
+
             item.innerHTML =
                 imgHtml +
+                stockBadge +
                 '<div class="pkg-info">' +
                     '<h4>' + escHtml(pkg.name) + '</h4>' +
                     '<span class="price"></span>' +
                     '<span class="price-usd"></span>' +
                 '</div>';
-            item.addEventListener('click', function () {
-                selectPackage(pkg, item);
-            });
+
+            if (outOfStock) {
+                item.classList.add('is-out-of-stock');
+                item.disabled = true;
+                item.setAttribute('aria-disabled', 'true');
+                item.title = 'Sin stock disponible por ahora';
+            } else {
+                item.addEventListener('click', function () {
+                    selectPackage(pkg, item);
+                });
+            }
             return item;
         }
 
@@ -1312,6 +1333,7 @@
         }
 
         updateSidebarForPackage(pkg);
+        maybeShowPackageAnnouncement(pkg);
     }
 
     function updateSidebarForPackage(pkg) {
@@ -1690,6 +1712,15 @@
         });
     }
 
+    if (pkgOneTimeCloseBtn && pkgOneTimePopup) {
+        pkgOneTimeCloseBtn.addEventListener('click', closePkgOneTimePopup);
+        pkgOneTimePopup.addEventListener('click', function (evt) {
+            if (evt.target === pkgOneTimePopup) {
+                closePkgOneTimePopup();
+            }
+        });
+    }
+
     if (rankingModalOpenBtn) {
         rankingModalOpenBtn.addEventListener('click', openRankingModal);
     }
@@ -1842,6 +1873,131 @@
         gameSelectionPopup.style.display = 'none';
         gameSelectionPopup.setAttribute('aria-hidden', 'true');
         scrollPackagesPanelIntoView(80);
+    }
+
+    function openPkgOneTimePopup() {
+        if (!pkgOneTimePopup) return;
+        pkgOneTimePopup.style.display = 'flex';
+        pkgOneTimePopup.setAttribute('aria-hidden', 'false');
+    }
+
+    function closePkgOneTimePopup() {
+        if (!pkgOneTimePopup) return;
+        pkgOneTimePopup.style.display = 'none';
+        pkgOneTimePopup.setAttribute('aria-hidden', 'true');
+    }
+
+    /* ── Popup "Únete a nuestra comunidad" (recurrente) ─────────
+       Reaparece cada N horas (configurable en el admin) mientras el
+       cliente navega, salvo que marque "No mostrar más por hoy". */
+    var COMMUNITY_LAST_SHOWN_KEY = 'store:community-popup-last-shown';
+    var COMMUNITY_MUTED_UNTIL_KEY = 'store:community-popup-muted-until';
+    var communityPopupCloseTimer = null;
+
+    function communityPopupConfig() {
+        return window.NX_COMMUNITY_POPUP || { enabled: false, intervalHours: 3, whatsappUrl: '' };
+    }
+
+    function isCommunityPopupMuted() {
+        try {
+            var mutedUntil = parseInt(localStorage.getItem(COMMUNITY_MUTED_UNTIL_KEY) || '0', 10);
+            return !!mutedUntil && Date.now() < mutedUntil;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function communityPopupDue() {
+        var cfg = communityPopupConfig();
+        if (!cfg.enabled || isCommunityPopupMuted()) return false;
+        try {
+            var lastShown = parseInt(localStorage.getItem(COMMUNITY_LAST_SHOWN_KEY) || '0', 10);
+            var intervalMs = Math.max(1, cfg.intervalHours || 3) * 60 * 60 * 1000;
+            return !lastShown || (Date.now() - lastShown) >= intervalMs;
+        } catch (_) {
+            return true;
+        }
+    }
+
+    function openCommunityPopup() {
+        if (!communityPopup) return;
+        if (communityPopupJoinBtn) {
+            communityPopupJoinBtn.href = communityPopupConfig().whatsappUrl || 'https://whatsapp.com';
+        }
+        communityPopup.style.display = 'flex';
+        communityPopup.setAttribute('aria-hidden', 'false');
+        try { localStorage.setItem(COMMUNITY_LAST_SHOWN_KEY, String(Date.now())); } catch (_) {}
+
+        // Botón de cerrar deshabilitado con cuenta regresiva de 4s, para que
+        // el aviso no se cierre por accidente al primer toque.
+        var count = 4;
+        if (communityPopupCloseX) communityPopupCloseX.disabled = true;
+        if (communityPopupCloseCount) communityPopupCloseCount.textContent = String(count);
+        clearInterval(communityPopupCloseTimer);
+        communityPopupCloseTimer = setInterval(function () {
+            count -= 1;
+            if (communityPopupCloseCount) communityPopupCloseCount.textContent = String(Math.max(count, 0));
+            if (count <= 0) {
+                clearInterval(communityPopupCloseTimer);
+                if (communityPopupCloseX) communityPopupCloseX.disabled = false;
+            }
+        }, 1000);
+    }
+
+    function closeCommunityPopup() {
+        if (!communityPopup) return;
+        communityPopup.style.display = 'none';
+        communityPopup.setAttribute('aria-hidden', 'true');
+        clearInterval(communityPopupCloseTimer);
+    }
+
+    function muteCommunityPopupForToday() {
+        try {
+            var endOfDay = new Date();
+            endOfDay.setHours(23, 59, 59, 999);
+            localStorage.setItem(COMMUNITY_MUTED_UNTIL_KEY, String(endOfDay.getTime()));
+        } catch (_) {}
+        closeCommunityPopup();
+    }
+
+    if (communityPopupCloseX) {
+        communityPopupCloseX.addEventListener('click', function () {
+            if (!communityPopupCloseX.disabled) closeCommunityPopup();
+        });
+    }
+    if (communityPopupContinueBtn) {
+        communityPopupContinueBtn.addEventListener('click', closeCommunityPopup);
+    }
+    if (communityPopupMuteBtn) {
+        communityPopupMuteBtn.addEventListener('click', muteCommunityPopupForToday);
+    }
+
+    function scheduleCommunityPopupCheck() {
+        if (!communityPopupConfig().enabled) return;
+        if (communityPopupDue()) {
+            window.setTimeout(openCommunityPopup, 2500);
+        }
+        // Revisa cada minuto por si el cliente se queda navegando más
+        // tiempo del intervalo configurado, sin necesidad de recargar.
+        window.setInterval(function () {
+            if (communityPopup && communityPopup.style.display === 'flex') return;
+            if (communityPopupDue()) openCommunityPopup();
+        }, 60000);
+    }
+    scheduleCommunityPopupCheck();
+
+    /* Muestra el aviso configurado para el paquete elegido (si tiene uno),
+       una sola vez por paquete durante esta visita. */
+    function maybeShowPackageAnnouncement(pkg) {
+        if (!pkg || !pkg.announcement_type) return;
+        if (pkgAnnouncementShown[pkg.id]) return;
+        pkgAnnouncementShown[pkg.id] = true;
+
+        if (pkg.announcement_type === 'one_time_purchase') {
+            openPkgOneTimePopup();
+        } else if (pkg.announcement_type === 'redeem_code') {
+            openGameSelectionPopup();
+        }
     }
 
     /* ── Quick checkout form submit UX ───────────────────── */
