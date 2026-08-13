@@ -100,6 +100,7 @@
                     '<strong>#' + escHtml(entry.position) + '</strong>' +
                     '<span>' + escHtml(entry.nickname || entry.masked_nickname || 'Jugador***') + '</span>' +
                     '<code>' + escHtml(entry.player_id || entry.masked_player_id || '----') + '</code>' +
+                    '<span title="' + escHtml(item.units_label || 'Total') + '"><strong>' + escHtml(entry.total_units) + '</strong> ' + escHtml(item.units_label || '') + '</span>' +
                     '<span>' + escHtml(formatReward(entry.prize_label, item.key)) + '</span>' +
                 '</div>';
             });

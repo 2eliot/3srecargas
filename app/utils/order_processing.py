@@ -39,6 +39,24 @@ def get_order_auto_mapping(order_obj):
     return mappings[0] if mappings else None
 
 
+def order_qualifies_for_auto_fulfillment(order):
+    """True si la orden puede completarse SOLA (stock de PINs propio o
+    mapeo de Revendedores) sin que un admin tenga que hacer la recarga a
+    mano (p.ej. Zinli, o un juego al que le quitaron el mapeo).
+
+    La usan tanto el auto-verify de Pabilo como el de Binance Pay para
+    decidir si, al confirmarse el pago, la orden puede aprobarse y
+    entregarse sola o si debe quedar 'pending' para que el admin la
+    procese manualmente.
+    """
+    if not order:
+        return False
+    has_mapping = bool(get_order_auto_mapping(order))
+    category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
+    uses_pin_stock = bool(order.package and order.package.is_automated) or category_slug == 'tarjetas'
+    return has_mapping or uses_pin_stock
+
+
 def get_order_auto_mappings(order_obj):
     try:
         if not order_obj or not order_obj.package_id:
@@ -920,6 +938,10 @@ def _approve_order_locked(order, delivery_proof_path=None):
     if delivery_proof_path:
         order.delivery_proof = delivery_proof_path
     order.updated_at = datetime.utcnow()
+    # El pago ya está confirmado aunque la recarga sea manual: el cliente
+    # no debería perder su giro gratis solo porque este producto no tiene
+    # entrega automática.
+    ensure_minigame_opportunity(order)
     process_affiliate_commission(order)
     db.session.commit()
     try:

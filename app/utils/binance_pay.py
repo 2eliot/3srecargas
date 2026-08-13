@@ -402,7 +402,8 @@ def try_verify_binance_order(order, app):
     """
     from ..models import Order, db
     from .locks import acquire_lock, release_lock
-    from .order_processing import approve_order
+    from .minigames import ensure_minigame_opportunity
+    from .order_processing import approve_order, order_qualifies_for_auto_fulfillment
 
     log = f"[BinanceAuto #{order.order_number}]"
     cfg = _binance_settings(app)
@@ -413,6 +414,12 @@ def try_verify_binance_order(order, app):
 
     if (order.status or '').lower() != 'pending':
         return {'done': True, 'verified': False, 'message': f"La orden ya está en '{order.status}'."}
+
+    if order.payment_verified_at:
+        # Ya se verificó el pago antes (producto de entrega manual que se
+        # dejó 'pending' a propósito para revisión). No hay que volver a
+        # consultar la API de Binance en cada tick del scheduler.
+        return {'done': True, 'verified': True, 'message': 'El pago ya estaba verificado; queda pendiente de revisión manual.'}
 
     if not is_binance_auto_reference(order.payment_reference):
         return {'done': True, 'verified': False, 'message': 'La referencia no tiene el formato de código Binance.'}
@@ -473,6 +480,26 @@ def try_verify_binance_order(order, app):
         if note not in (order.notes or ''):
             order.notes = ((order.notes or '') + '\n' + note).strip()
         order.payment_verified_at = datetime.utcnow()
+
+        # Si el producto no tiene forma de entregarse solo (sin stock de
+        # PINs ni mapeo de Revendedores, p.ej. Zinli o un juego al que le
+        # quitaron el mapeo), NO se aprueba en automático: el pago llegó,
+        # pero la recarga la tiene que hacer un admin a mano. Antes se
+        # llamaba a approve_order() sin distinción y la orden quedaba
+        # 'approved' de una sola vez, sin que nadie se enterara de que
+        # faltaba procesarla manualmente.
+        auto_fulfillable = order_qualifies_for_auto_fulfillment(order)
+        if not auto_fulfillable:
+            manual_note = (
+                '[Binance] Pago verificado automáticamente, pero este producto requiere '
+                'recarga manual. La orden queda pendiente para que un admin la procese.'
+            )
+            if manual_note not in (order.notes or ''):
+                order.notes = ((order.notes or '') + '\n' + manual_note).strip()
+            # El pago ya está confirmado: el cliente no debería perder su
+            # giro gratis solo porque la entrega no es automática.
+            ensure_minigame_opportunity(order)
+
         try:
             db.session.commit()
         except Exception as exc:
@@ -482,6 +509,15 @@ def try_verify_binance_order(order, app):
             db.session.rollback()
             print(f"{log} No se pudo registrar la transacción {tx_id}: {exc}")
             return {'done': False, 'verified': False, 'message': 'La transacción ya fue acreditada a otra orden.'}
+
+        if not auto_fulfillable:
+            print(f"{log} Pago verificado ({reason}) — requiere recarga manual, queda pendiente.")
+            return {
+                'done': True,
+                'verified': True,
+                'manual_review_required': True,
+                'message': 'Pago verificado. La orden requiere recarga manual y queda pendiente de revisión.',
+            }
 
         print(f"{log} Pago verificado ({reason}) — aprobando.")
         approval = approve_order(order)

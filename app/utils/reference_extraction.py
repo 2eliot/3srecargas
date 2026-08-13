@@ -190,6 +190,11 @@ def extract_reference_from_image_bytes(image_bytes, mime_type='image/jpeg', file
     prompt = (
         'Analiza este comprobante de pago y extrae unicamente la referencia bancaria o numero de operacion del pago. '
         'Ignora montos, telefonos, cedulas, numeros de cuenta, fecha, hora y nombres del beneficiario. '
+        'IMPORTANTE: en los comprobantes de Pago Movil del Banco de Venezuela (BDV), el numero de "Operacion" a veces '
+        'no cabe en una sola linea y continua envuelto en una segunda linea justo debajo, mostrando 1 o 2 digitos '
+        'sueltos (por ejemplo "00695913176" en una linea y "0" en la linea de abajo, o "8542" seguido de "12" debajo). '
+        'Esos digitos de la segunda linea son parte final de la misma referencia y DEBES concatenarlos al final del '
+        'numero de arriba para formar la referencia completa; no los ignores ni los trates como un numero aparte. '
         'Si no puedes identificar una referencia con claridad, devuelve referencia vacia. '
         'Responde solo JSON con esta forma exacta: '
         '{"found":true,"reference":"123456","reason":"texto corto"}.'
