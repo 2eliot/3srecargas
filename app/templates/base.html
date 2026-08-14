@@ -10,21 +10,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ range(100000)|random }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/neon.css') }}?v={{ range(100000)|random }}">
+    <link rel="stylesheet" href="{{ static_v('css/main.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/neon.css') }}">
     {% if SITE_BACKGROUND_IMAGE %}
     <style>
-        /* Fondo de la web configurado en Admin > Configuración. Imagen
-           normal (cover/centrada/fija) con un velo oscuro parejo detrás
-           para que el texto claro del sitio se siga leyendo bien. */
-        body {
+        /* Fondo de la web configurado en Admin > Configuración. Sobreescribe
+           la capa fija de fondo que define neon.css (body::before) con la
+           imagen elegida y un velo oscuro parejo para que el texto claro se
+           siga leyendo. Al ser una capa fija no usa background-attachment:
+           fixed, que causa repintados lentos al hacer scroll en móviles. */
+        body::before {
+            background-color: #000;
             background-image:
                 linear-gradient(rgba(0,0,0,.72), rgba(0,0,0,.72)),
-                url('{{ url_for('static', filename='uploads/' + SITE_BACKGROUND_IMAGE) }}') !important;
-            background-size: cover !important;
-            background-position: center !important;
-            background-repeat: no-repeat !important;
-            background-attachment: fixed !important;
+                url('{{ url_for('static', filename='uploads/' + SITE_BACKGROUND_IMAGE) }}');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
         }
     </style>
     {% endif %}
@@ -325,6 +327,6 @@
     </script>
     
     <!-- Main JS loaded at end of body for DOM readiness -->
-    <script src="{{ url_for('static', filename='js/main.js') }}?v={{ range(100000)|random }}"></script>
+    <script src="{{ static_v('js/main.js') }}"></script>
 </body>
 </html>

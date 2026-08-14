@@ -398,7 +398,19 @@ def get_public_rankings_payload(target_date=None):
 
 
 def has_visible_public_rankings(target_date=None):
-    return any(item.get('enabled') for item in get_public_rankings_payload(target_date=target_date))
+    """Solo decide si se muestra el botón de Ranking en el header.
+
+    Corre en cada página vía context processor, así que no puede pagar el
+    costo de `get_public_rankings_payload` (que carga todas las órdenes del
+    mes). Basta con leer el interruptor en settings y confirmar que el juego
+    configurado existe.
+    """
+    for config in RANKING_DEFS.values():
+        if not _is_ranking_enabled(config, None, target_date=target_date):
+            continue
+        if _resolve_ranking_game(config):
+            return True
+    return False
 
 
 def archive_previous_month_rankings_if_needed():

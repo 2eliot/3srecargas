@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from flask import Flask
+from flask import Flask, url_for
 from flask_login import current_user
 from flask_login import LoginManager
 from sqlalchemy import event, text
@@ -123,46 +123,52 @@ def create_app(config_class=Config):
     def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):
         return format_ve(value, fmt)
 
+    # Versión de cachébuster por archivo: el mtime es igual en los 3 workers
+    # de gunicorn y solo cambia al desplegar, así el navegador sí puede
+    # cachear el CSS/JS entre visitas (antes era un número aleatorio por
+    # request y se re-descargaba todo siempre).
+    static_version_cache = {}
+
+    @app.template_global('static_v')
+    def static_v(filename):
+        version = static_version_cache.get(filename)
+        if version is None:
+            try:
+                version = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+            except OSError:
+                version = 0
+            static_version_cache[filename] = version
+        return f"{url_for('static', filename=filename)}?v={version}"
+
     @app.context_processor
     def inject_settings():
-        site_logo = None
-        setting = Setting.query.filter_by(key='site_logo').first()
-        if setting and setting.value:
-            site_logo = setting.value
-
-        site_background_image = None
-        bg_setting = Setting.query.filter_by(key='site_background_image').first()
-        if bg_setting and bg_setting.value:
-            site_background_image = bg_setting.value
-
+        # Corre en cada página: una sola consulta para todos los settings
+        # en vez de una por clave.
         social_keys = ['social_facebook', 'social_instagram', 'social_tiktok', 'social_whatsapp']
-        social_links = {}
-        for key in social_keys:
-            val_setting = Setting.query.filter_by(key=key).first()
-            social_links[key.upper()] = val_setting.value if val_setting and val_setting.value else ''
-
-        support_email_setting = Setting.query.filter_by(key='support_email').first()
-        support_email = support_email_setting.value if support_email_setting and support_email_setting.value else '3srecargas@gmail.com'
-
-        support_whatsapp_setting = Setting.query.filter_by(key='support_whatsapp').first()
-        support_whatsapp_url = support_whatsapp_setting.value if support_whatsapp_setting and support_whatsapp_setting.value else 'https://wa.me/19543789224'
-
-        support_schedule_setting = Setting.query.filter_by(key='support_schedule').first()
-        support_schedule = support_schedule_setting.value if support_schedule_setting and support_schedule_setting.value else 'Lunes a Domingo 10:00 AM a 8:00 PM'
-
-        support_location_setting = Setting.query.filter_by(key='support_location').first()
-        support_location = support_location_setting.value if support_location_setting and support_location_setting.value else 'Puerto Ordaz, Bolívar, Venezuela'
-
         ranking_keys = [
             'ranking_free_fire_enabled',
             'ranking_blood_strike_enabled',
             'ranking_free_fire_game_id',
             'ranking_blood_strike_game_id',
         ]
-        ranking_settings = {}
-        for key in ranking_keys:
-            current_setting = Setting.query.filter_by(key=key).first()
-            ranking_settings[key] = current_setting.value if current_setting and current_setting.value else ''
+        wanted_keys = (
+            ['site_logo', 'site_background_image', 'support_email', 'support_whatsapp', 'support_schedule', 'support_location']
+            + social_keys
+            + ranking_keys
+        )
+        values = {
+            row.key: row.value
+            for row in Setting.query.filter(Setting.key.in_(wanted_keys)).all()
+        }
+
+        site_logo = values.get('site_logo') or None
+        site_background_image = values.get('site_background_image') or None
+        social_links = {key.upper(): values.get(key) or '' for key in social_keys}
+        support_email = values.get('support_email') or '3srecargas@gmail.com'
+        support_whatsapp_url = values.get('support_whatsapp') or 'https://wa.me/19543789224'
+        support_schedule = values.get('support_schedule') or 'Lunes a Domingo 10:00 AM a 8:00 PM'
+        support_location = values.get('support_location') or 'Puerto Ordaz, Bolívar, Venezuela'
+        ranking_settings = {key: values.get(key) or '' for key in ranking_keys}
 
         has_active_ranking = has_visible_public_rankings()
 

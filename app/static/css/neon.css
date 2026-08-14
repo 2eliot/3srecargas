@@ -21,13 +21,30 @@
 html { background: #000; }
 
 body {
-    background-color: #000 !important;
+    /* Transparente para que se vea la capa fija de fondo (body::before).
+       El !important le gana al background de main.css. */
+    background: transparent !important;
+    color: var(--nx-text);
+    font-family: var(--nx-font-sans) !important;
+}
+
+/* Capa fija de fondo: reemplaza a background-attachment: fixed en el body,
+   que fuerza repintados lentos al hacer scroll (sobre todo en móviles).
+   El fondo personalizado del admin (inline en base.html) sobreescribe
+   esta misma capa. */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-color: #000;
     background-image:
         radial-gradient(ellipse at 50% -10%, rgba(255, 0, 0, .10), transparent 55%),
         radial-gradient(ellipse at 85% 110%, rgba(120, 0, 255, .08), transparent 55%);
-    background-attachment: fixed;
-    color: var(--nx-text);
-    font-family: var(--nx-font-sans) !important;
 }
 
 body::selection, body ::selection { background: var(--nx-red); color: #fff; }

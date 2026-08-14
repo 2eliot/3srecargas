@@ -120,17 +120,54 @@ def delete_uploaded_file(relative_path):
             pass
 
 
+MAX_IMAGE_DIMENSION = 1920
+
+
+def _compress_and_save_image(file, dest_path, ext):
+    """Redimensiona y comprime antes de guardar. Estas imágenes (logo, fondo,
+    banners, juegos) se sirven a todos los visitantes, así que una foto de
+    celular sin comprimir (3-8 MB) hace lenta la primera carga. GIF se guarda
+    tal cual para no romper animaciones; ante cualquier error se guarda el
+    archivo original como antes."""
+    if ext == 'gif':
+        file.save(dest_path)
+        return
+
+    try:
+        from PIL import Image, ImageOps
+
+        image = Image.open(file.stream)
+        image = ImageOps.exif_transpose(image)
+        if max(image.size) > MAX_IMAGE_DIMENSION:
+            image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION), Image.LANCZOS)
+
+        if ext in ('jpg', 'jpeg'):
+            if image.mode not in ('RGB', 'L'):
+                image = image.convert('RGB')
+            image.save(dest_path, format='JPEG', quality=82, optimize=True, progressive=True)
+        elif ext == 'webp':
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            image.save(dest_path, format='WEBP', quality=82, method=6)
+        else:  # png
+            image.save(dest_path, format='PNG', optimize=True)
+    except Exception:
+        file.stream.seek(0)
+        file.save(dest_path)
+
+
 def save_image(file, subfolder=''):
     if not file or not allowed_file(file.filename):
         return None
     filename = secure_filename(file.filename)
+    ext = file.filename.rsplit('.', 1)[1].lower()
     ts = now_ve_naive().strftime('%Y%m%d%H%M%S%f')
     filename = f"{ts}_{filename}"
     folder = current_app.config['UPLOAD_FOLDER']
     if subfolder:
         folder = os.path.join(folder, subfolder)
     os.makedirs(folder, exist_ok=True)
-    file.save(os.path.join(folder, filename))
+    _compress_and_save_image(file, os.path.join(folder, filename), ext)
     return (subfolder + '/' + filename) if subfolder else filename
 
 
