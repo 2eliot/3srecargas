@@ -6,7 +6,6 @@
     var activeGameId   = null;
     var activeCategory = window.ACTIVE_CATEGORY || 'juegos';
     var currentGame    = null;
-    var skipNextPackagesScroll = false;
     var selectedPackage = null;
     var appliedDiscountCode = '';
     var usdRate = typeof window.USD_RATE_BS === 'number' ? window.USD_RATE_BS : 0;
@@ -806,38 +805,6 @@
         panel.style.display = 'block';
     }
 
-    function scrollPackagesPanelIntoView(delayMs) {
-        var run = function () {
-            var panel = document.getElementById('packagesPanel');
-            if (!panel || panel.style.display === 'none') return;
-
-            var rect = panel.getBoundingClientRect();
-            var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-
-            if (rect.top >= 16 && rect.bottom <= viewportHeight) {
-                return;
-            }
-
-            var targetTop = window.scrollY + rect.top - 16;
-
-            if (targetTop < 0) {
-                targetTop = 0;
-            }
-
-            window.scrollTo({
-                top: targetTop,
-                behavior: 'smooth'
-            });
-        };
-
-        if (delayMs && delayMs > 0) {
-            window.setTimeout(run, delayMs);
-            return;
-        }
-
-        window.requestAnimationFrame(run);
-    }
-
     /* ── Fetch Packages via AJAX ──────────────────────────── */
     function fetchPackages(gameId) {
         console.log('Fetching packages for gameId:', gameId);
@@ -958,11 +925,6 @@
         selectedPackage = null;
         updateSidebarForPackage(null);
         refreshPackagePriceViews();
-        if (skipNextPackagesScroll) {
-            skipNextPackagesScroll = false;
-        } else {
-            scrollPackagesPanelIntoView(120);
-        }
     }
 
     /* ── Player ID Verification (replicated from Inefablestore) ── */
@@ -1657,9 +1619,7 @@
     });
 
     // Seleccionar automáticamente el primer juego al cargar
-    // (sin hacer scroll: la página debe quedarse arriba al entrar)
     if (initialCards.length > 0) {
-        skipNextPackagesScroll = true;
         handleGameClick(initialCards[0]);
     }
 
@@ -1854,7 +1814,6 @@
         if (!manualInfoPopup) return;
         manualInfoPopup.style.display = 'none';
         manualInfoPopup.setAttribute('aria-hidden', 'true');
-        scrollPackagesPanelIntoView(80);
     }
 
     function openDiscountInfoPopup() {
@@ -1879,7 +1838,6 @@
         if (!gameSelectionPopup) return;
         gameSelectionPopup.style.display = 'none';
         gameSelectionPopup.setAttribute('aria-hidden', 'true');
-        scrollPackagesPanelIntoView(80);
     }
 
     function openPkgOneTimePopup() {
