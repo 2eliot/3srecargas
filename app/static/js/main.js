@@ -6,6 +6,7 @@
     var activeGameId   = null;
     var activeCategory = window.ACTIVE_CATEGORY || 'juegos';
     var currentGame    = null;
+    var skipNextPackagesScroll = false;
     var selectedPackage = null;
     var appliedDiscountCode = '';
     var usdRate = typeof window.USD_RATE_BS === 'number' ? window.USD_RATE_BS : 0;
@@ -957,7 +958,11 @@
         selectedPackage = null;
         updateSidebarForPackage(null);
         refreshPackagePriceViews();
-        scrollPackagesPanelIntoView(120);
+        if (skipNextPackagesScroll) {
+            skipNextPackagesScroll = false;
+        } else {
+            scrollPackagesPanelIntoView(120);
+        }
     }
 
     /* ── Player ID Verification (replicated from Inefablestore) ── */
@@ -1652,7 +1657,9 @@
     });
 
     // Seleccionar automáticamente el primer juego al cargar
+    // (sin hacer scroll: la página debe quedarse arriba al entrar)
     if (initialCards.length > 0) {
+        skipNextPackagesScroll = true;
         handleGameClick(initialCards[0]);
     }
 
