@@ -5,10 +5,11 @@ from uuid import uuid4
 import requests
 from flask import current_app
 
-from ..models import Affiliate, AffiliateCommission, Pin, RevendedoresItemMapping, db
+from ..models import Affiliate, AffiliateCommission, Order, Pin, RevendedoresItemMapping, db
 from .locks import acquire_lock, release_lock
 from .minigames import ensure_minigame_opportunity
 from .notifications import notify_order_approved, notify_order_completed
+from .points import award_points_for_order
 
 # TTL del lock de aprobación por orden: cubre el peor caso realista (un
 # intento de VPS/Revendedores de 120s más margen) para que, si el worker
@@ -520,6 +521,7 @@ def process_revendedores_queue(order, base_state=None, force=False):
     auto_resp['success'] = True
     order.status = 'completed'
     ensure_minigame_opportunity(order)
+    award_points_for_order(order)
     order.automation_response = json.dumps(auto_resp)
     order.updated_at = datetime.utcnow()
     process_affiliate_commission(order)
@@ -587,6 +589,53 @@ def approve_order(order, delivery_proof_path=None):
         return _approve_order_locked(order, delivery_proof_path=delivery_proof_path)
     finally:
         release_lock(lock_key, lock_holder)
+
+
+def deliver_prize_to_player(game, package, player_id, zone_id=None, note='', reference_prefix='PREMIO'):
+    """Entrega un premio (minijuego ganado o canje de puntos) a un ID real.
+
+    Crea una orden interna de $0 y la manda por el MISMO camino de entrega
+    automática que cualquier compra real (PIN propio o Revendedores), en
+    vez de reinventar la lógica de fulfillment. Así el premio queda
+    visible en Órdenes para auditoría, y si no hay stock en el momento,
+    la orden simplemente se queda 'pending' para que el admin la resuelva
+    a mano — igual que le pasaría a cualquier compra normal sin stock.
+
+    Devuelve (order, approval_dict).
+    """
+    if not game or not package:
+        return None, {
+            'ok': False, 'changed': False,
+            'message': 'Falta el juego o el paquete premio configurado para esta entrega.',
+            'category': 'danger',
+        }
+
+    clean_player_id = str(player_id or '').strip()
+    if not clean_player_id:
+        return None, {
+            'ok': False, 'changed': False,
+            'message': 'No hay un ID de jugador válido para entregar el premio.',
+            'category': 'danger',
+        }
+
+    order = Order(
+        game_id=game.id,
+        package_id=package.id,
+        player_id=clean_player_id,
+        zone_id=(str(zone_id or '').strip() or None),
+        payment_method='prize',
+        payment_reference=f'{reference_prefix}-{uuid4().hex[:10].upper()}',
+        amount=0,
+        original_amount=0,
+        discount_amount=0,
+        status='pending',
+        notes=note or 'Premio entregado automáticamente.',
+    )
+    db.session.add(order)
+    db.session.commit()
+
+    approval = approve_order(order)
+    return order, approval
 
 
 def _claim_pin_for_order(package, order):
@@ -680,6 +729,7 @@ def _resolve_ambiguous_redeem(order, pin, reason):
         pin.order_id = order.id
         order.status = 'completed'
         ensure_minigame_opportunity(order)
+        award_points_for_order(order)
         order.pin_id = pin.id
         order.pin_delivered = pin.code
         order.automation_response = json.dumps({
@@ -840,6 +890,7 @@ def _approve_order_locked(order, delivery_proof_path=None):
                 pin.order_id = order.id
                 order.status = 'completed'
                 ensure_minigame_opportunity(order)
+                award_points_for_order(order)
                 order.pin_id = pin.id
                 order.pin_delivered = pin.code
                 order.automation_response = json.dumps({
@@ -918,6 +969,7 @@ def _approve_order_locked(order, delivery_proof_path=None):
         pin.order_id = order.id
         order.status = 'completed'
         ensure_minigame_opportunity(order)
+        award_points_for_order(order)
         order.pin_id = pin.id
         order.pin_delivered = pin.code
         order.updated_at = datetime.utcnow()
@@ -939,9 +991,10 @@ def _approve_order_locked(order, delivery_proof_path=None):
         order.delivery_proof = delivery_proof_path
     order.updated_at = datetime.utcnow()
     # El pago ya está confirmado aunque la recarga sea manual: el cliente
-    # no debería perder su giro gratis solo porque este producto no tiene
-    # entrega automática.
+    # no debería perder su giro gratis ni sus puntos solo porque este
+    # producto no tiene entrega automática.
     ensure_minigame_opportunity(order)
+    award_points_for_order(order)
     process_affiliate_commission(order)
     db.session.commit()
     try:

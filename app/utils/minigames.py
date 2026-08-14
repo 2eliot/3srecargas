@@ -1,42 +1,41 @@
 import json
 from datetime import datetime
-from decimal import Decimal
 
 from flask import current_app
 
-from ..models import Discount, MiniGameCounter, OrderMiniGameOpportunity, Setting, db
+from ..models import Game, MiniGameCounter, OrderMiniGameOpportunity, Package, Setting, db
 
-MINIGAME_CYCLE_LENGTH = 200
 MINIGAME_GAME_DEFS = [
     {'key': 'ruleta', 'label': 'Ruleta', 'icon': '🎯'},
     {'key': 'tragaperras', 'label': 'Tragaperras', 'icon': '🎰'},
     {'key': 'caja_sorpresa', 'label': 'Caja sorpresa', 'icon': '🎁'},
 ]
 MINIGAME_GAME_KEYS = {item['key'] for item in MINIGAME_GAME_DEFS}
-MINIGAME_CYCLE_LENGTH = 300
 MINIGAME_GLOBAL_COUNTER_KEY = 'global'
-MINIGAME_REWARD_DEFS = [
-    {'tier': 1, 'kind': 'coupon', 'position': 60, 'default_label': 'Cupón 5%'},
-    {'tier': 2, 'kind': 'coupon', 'position': 120, 'default_label': 'Cupón 10%'},
-    {'tier': 3, 'kind': 'coupon', 'position': 180, 'default_label': 'Cupón 15%'},
-    {'tier': 4, 'kind': 'coupon', 'position': 240, 'default_label': 'Cupón $1'},
-    {'tier': 5, 'kind': 'coupon', 'position': 300, 'default_label': 'Cupón $3'},
-    {'tier': 6, 'kind': 'coupon', 'position': None, 'default_label': 'Cupón $5', 'visible_only': True},
-]
-MINIGAME_REWARD_SCHEDULE = {
-    int(item['position']): {
-        'kind': item['kind'],
-        'tier': item['tier'],
-        'label': item['default_label'],
-    }
-    for item in MINIGAME_REWARD_DEFS
-    if item.get('position')
-}
 MINIGAME_SLOT_MISS_REELS = [
     {'icon': '💎', 'label': 'BONUS'},
     {'icon': '🪙', 'label': 'COIN'},
     {'icon': '⭐', 'label': 'LUCKY'},
 ]
+
+# Los 3 juegos con minijuego dedicado tras la recarga. El resto de los
+# juegos no ofrece minijuego en absoluto (se decide con
+# order_qualifies_for_minigame más abajo). Cada slot lo configura el
+# admin: a qué Game de la tienda corresponde y qué Package se entrega
+# como premio real (diamantes/oro) al ID que hizo la recarga.
+MINIGAME_SLOTS = [
+    {'slot_key': 'free_fire', 'label': 'Free Fire'},
+    {'slot_key': 'blood_strike', 'label': 'Blood Strike'},
+    {'slot_key': 'mlbb', 'label': 'Mobile Legends'},
+]
+MINIGAME_SLOT_KEYS = {item['slot_key'] for item in MINIGAME_SLOTS}
+
+# Relleno visual para que la ruleta/caja se vea con varios premios, tal
+# como se pidió ("que estén varios premios pero que el único que sea
+# ganable sea el primer paquete"). Estos nunca se entregan de verdad.
+MINIGAME_DECORATIVE_LABELS = ['Bono Sorpresa', 'Súper Premio', 'Extra']
+
+DEFAULT_MINIGAME_WIN_INTERVAL = 50
 
 
 def get_minigame_game_defs():
@@ -50,18 +49,68 @@ def get_minigame_game_label(game_key):
     return str(game_key or '').strip()
 
 
-def get_minigame_reward_for_position(position):
-    reward = MINIGAME_REWARD_SCHEDULE.get(int(position or 0))
-    if reward:
-        return dict(reward)
-    return {'kind': 'miss', 'tier': 0, 'label': 'Fallaste'}
-
-
 def is_minigame_dev_mode():
     try:
         return bool(current_app.config.get('MINIGAME_DEV_MODE'))
     except Exception:
         return False
+
+
+def _get_setting_value(key):
+    setting = Setting.query.filter_by(key=key).first()
+    return setting.value if setting and setting.value else ''
+
+
+def _get_setting_int(key):
+    raw = _get_setting_value(key)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_minigame_win_interval():
+    """Cada cuántos giros (de todos los clientes, por juego) se otorga el
+    premio real. Configurable en el admin, con 50 como valor por defecto."""
+    value = _get_setting_int('minigame_win_every_n_spins')
+    return value if value and value > 0 else DEFAULT_MINIGAME_WIN_INTERVAL
+
+
+def get_minigame_slot_defs():
+    return [dict(item) for item in MINIGAME_SLOTS]
+
+
+def get_minigame_slot_config(slot_key):
+    slot_key = str(slot_key or '').strip()
+    slot_def = next((item for item in MINIGAME_SLOTS if item['slot_key'] == slot_key), None)
+    label = slot_def['label'] if slot_def else slot_key
+
+    game_id = _get_setting_int(f'minigame_slot_{slot_key}_game_id')
+    package_id = _get_setting_int(f'minigame_slot_{slot_key}_prize_package_id')
+    game = Game.query.get(game_id) if game_id else None
+    package = Package.query.get(package_id) if package_id else None
+
+    return {
+        'slot_key': slot_key,
+        'label': label,
+        'game': game,
+        'prize_package': package,
+        'enabled': bool(game and package and game.is_active and package.is_active),
+    }
+
+
+def get_minigame_slots_config():
+    return [get_minigame_slot_config(item['slot_key']) for item in MINIGAME_SLOTS]
+
+
+def get_minigame_slot_for_game(game_id):
+    if not game_id:
+        return None
+    for slot_def in MINIGAME_SLOTS:
+        cfg = get_minigame_slot_config(slot_def['slot_key'])
+        if cfg['enabled'] and cfg['game'] and cfg['game'].id == int(game_id):
+            return cfg
+    return None
 
 
 def order_qualifies_for_minigame(order):
@@ -71,11 +120,27 @@ def order_qualifies_for_minigame(order):
         return bool(order.status != 'rejected')
     if order.status == 'rejected':
         return False
-    return bool(order.status == 'completed' or order.payment_verified_at)
+    if not (order.status == 'completed' or order.payment_verified_at):
+        return False
+    # Solo los 3 juegos configurados (Free Fire / Blood Strike / MLBB)
+    # ofrecen minijuego; el resto no tiene ruleta tras la recarga.
+    return bool(get_minigame_slot_for_game(order.game_id))
 
 
 def get_minigame_counter_scope_key(order_or_game):
-    return MINIGAME_GLOBAL_COUNTER_KEY
+    """El contador de giros es POR JUEGO (no global ni por cliente): así
+    'cada 50 giros' cuenta los giros de todos los clientes en ese juego."""
+    if order_or_game is None:
+        return MINIGAME_GLOBAL_COUNTER_KEY
+
+    game_id = getattr(order_or_game, 'game_id', None)
+    if game_id is None and isinstance(order_or_game, Game):
+        game_id = order_or_game.id
+    if not game_id:
+        return MINIGAME_GLOBAL_COUNTER_KEY
+
+    slot = get_minigame_slot_for_game(game_id)
+    return slot['slot_key'] if slot else MINIGAME_GLOBAL_COUNTER_KEY
 
 
 def get_or_create_minigame_counter(order_or_game):
@@ -105,135 +170,38 @@ def ensure_minigame_opportunity(order):
     return opportunity
 
 
-def _reward_setting_key(tier):
-    return f'minigame_coupon_reward_{int(tier)}'
-
-
-def _parse_reward_setting_ids(raw_value):
-    values = []
-    for item in str(raw_value or '').split(','):
-        item = item.strip()
-        if item.isdigit():
-            values.append(int(item))
-    return values
-
-
-def get_minigame_reward_discount_ids(tier):
-    setting = Setting.query.filter_by(key=_reward_setting_key(tier)).first()
-    return _parse_reward_setting_ids(setting.value if setting else '')
-
-
-def _format_minigame_discount_label(discount, fallback=''):
-    if not discount:
-        return str(fallback or '').strip() or 'Cupón'
-
-    description = str(discount.description or '').strip()
-    if description:
-        return description
-
-    if discount.discount_type == 'percentage':
-        return f'Cupón {float(discount.discount_value or 0):.0f}%'
-
-    value = float(discount.discount_value or 0)
-    value_text = f'{value:.2f}'.rstrip('0').rstrip('.')
-    return f'Cupón ${value_text}'
-
-
-def get_minigame_reward_discount_pool(tier):
-    configured_ids = get_minigame_reward_discount_ids(tier)
-    if not configured_ids:
+def get_minigame_reward_catalog_for_order(order):
+    """Catálogo de premios a mostrar en la ruleta/caja para esta orden:
+    el premio real primero (el único ganable) más relleno decorativo."""
+    if not order:
+        return []
+    slot = get_minigame_slot_for_game(order.game_id)
+    if not slot or not slot.get('enabled'):
         return []
 
-    discounts = Discount.query.filter(Discount.id.in_(configured_ids)).all()
-    discounts_by_id = {discount.id: discount for discount in discounts}
-    ordered = []
-    for discount_id in configured_ids:
-        discount = discounts_by_id.get(discount_id)
-        if discount:
-            ordered.append(discount)
-    return ordered
+    prize_label = slot['prize_package'].name if slot['prize_package'] else 'Premio'
+    catalog = [{'label': prize_label, 'winnable': True}]
+    for decor_label in MINIGAME_DECORATIVE_LABELS:
+        catalog.append({'label': decor_label, 'winnable': False})
+    return catalog
 
 
-def get_minigame_available_reward_discount_pool(tier):
-    pool = get_minigame_reward_discount_pool(tier)
-    if not pool:
-        return []
-
-    pool_ids = [discount.id for discount in pool]
-    assigned_ids = {
-        int(discount_id)
-        for (discount_id,) in (
-            db.session.query(OrderMiniGameOpportunity.reward_discount_id)
-            .filter(OrderMiniGameOpportunity.reward_discount_id.in_(pool_ids))
-            .all()
-        )
-        if discount_id is not None
-    }
-
-    now = datetime.utcnow()
-    available = []
-    for discount in pool:
-        if not discount.is_active:
-            continue
-        if discount.expires_at and discount.expires_at < now:
-            continue
-        if discount.usage_limit and int(discount.used_count or 0) >= int(discount.usage_limit):
-            continue
-        if discount.id in assigned_ids:
-            continue
-        available.append(discount)
-
-    return available
-
-
-def get_minigame_reward_discount(tier):
-    pool = get_minigame_available_reward_discount_pool(tier)
-    if not pool:
-        return None
-    return pool[0]
-
-
-def get_minigame_reward_label(tier, fallback=''):
-    pool = get_minigame_reward_discount_pool(tier)
-    if pool:
-        return _format_minigame_discount_label(pool[0], fallback=fallback)
-    return str(fallback or '').strip()
-
-
-def get_minigame_reward_definitions():
-    reward_defs = []
-    for item in MINIGAME_REWARD_DEFS:
-        reward_defs.append({
-            'tier': int(item['tier']),
-            'kind': item['kind'],
-            'position': item.get('position'),
-            'default_label': item['default_label'],
-            'label': get_minigame_reward_label(item['tier'], fallback=item['default_label']),
-            'visible_only': bool(item.get('visible_only')),
-        })
-    return reward_defs
-
-
-def build_minigame_roulette_segments():
-    reward_defs = get_minigame_reward_definitions()
+def build_minigame_roulette_segments(catalog):
     labels = []
-    for reward in reward_defs:
+    for reward in catalog:
         labels.append('FAILED')
-        labels.append(reward.get('label') or reward.get('default_label') or 'Cupón')
-    return labels
+        labels.append(reward.get('label') or 'Premio')
+    return labels or ['FAILED', 'Premio']
 
 
-def build_minigame_surprise_items():
+def build_minigame_surprise_items(catalog):
     items = [
         {'icon': '❌', 'label': 'FALLASTE'},
         {'icon': '❌', 'label': 'FALLASTE'},
         {'icon': '❌', 'label': 'FALLASTE'},
     ]
-    for reward in get_minigame_reward_definitions():
-        items.append({
-            'icon': '🎟️',
-            'label': reward.get('label') or reward.get('default_label') or 'Cupón',
-        })
+    for reward in catalog:
+        items.append({'icon': '🎁', 'label': reward.get('label') or 'Premio'})
     return items[:9]
 
 
@@ -241,32 +209,21 @@ def build_slot_reels_for_reward(reward):
     reward_kind = reward.get('kind')
     reward_label = reward.get('label') or 'Fallaste'
 
-    if reward_kind == 'miss':
+    if reward_kind != 'game_prize':
         return [dict(symbol) for symbol in MINIGAME_SLOT_MISS_REELS]
 
-    if reward_kind == 'coupon':
-        symbol = {'icon': '🎟️', 'label': reward_label}
-    elif reward_kind == 'cash':
-        symbol = {
-            'icon': '🔥' if reward.get('amount') == Decimal('3.00') else '💰',
-            'label': reward_label,
-        }
-    else:
-        symbol = {'icon': '❌', 'label': reward_label}
-
+    symbol = {'icon': '🎁', 'label': reward_label}
     return [dict(symbol), dict(symbol), dict(symbol)]
 
 
-def build_minigame_result_payload(game_key, reward, choice_index=None):
+def build_minigame_result_payload(game_key, reward, choice_index=None, catalog=None):
+    catalog = catalog if catalog is not None else []
     reward_kind = reward.get('kind')
     reward_label = reward.get('label') or 'Fallaste'
 
     if game_key == 'ruleta':
-        segments = build_minigame_roulette_segments()
-        if reward_kind == 'miss':
-            target_label = 'FAILED'
-        else:
-            target_label = str(reward_label or '').strip() or 'FAILED'
+        segments = build_minigame_roulette_segments(catalog)
+        target_label = reward_label if reward_kind == 'game_prize' else 'FAILED'
         target_index = 0
         for index, label in enumerate(segments):
             if label.lower() == str(target_label).lower():
@@ -283,12 +240,12 @@ def build_minigame_result_payload(game_key, reward, choice_index=None):
             'reels': build_slot_reels_for_reward(reward)
         }
 
-    items = build_minigame_surprise_items()
+    items = build_minigame_surprise_items(catalog)
     selected_index = int(choice_index or 0)
     if selected_index < 0 or selected_index >= len(items):
         selected_index = 0
-    if reward_kind == 'coupon':
-        items[selected_index] = {'icon': '🎟️', 'label': reward_label}
+    if reward_kind == 'game_prize':
+        items[selected_index] = {'icon': '🎁', 'label': reward_label}
     else:
         items[selected_index] = {'icon': '❌', 'label': 'FALLASTE'}
     return {
@@ -332,46 +289,67 @@ def play_order_minigame(order, game_key, choice_index=None):
     if opportunity.selected_game_key and opportunity.selected_game_key != game_key:
         raise ValueError('Esta oportunidad ya quedó bloqueada a otro minijuego.')
 
+    dev_mode = is_minigame_dev_mode()
+    slot = get_minigame_slot_for_game(order.game_id)
+    if not slot and not dev_mode:
+        raise ValueError('Este juego no tiene minijuego habilitado en este momento.')
+
+    win_interval = get_minigame_win_interval()
     counter = get_or_create_minigame_counter(order)
     counter.play_count = int(counter.play_count or 0) + 1
-    position = ((counter.play_count - 1) % MINIGAME_CYCLE_LENGTH) + 1
-    cycle_number = ((counter.play_count - 1) // MINIGAME_CYCLE_LENGTH) + 1
-    if is_minigame_dev_mode():
-        position = 60
-        cycle_number = 1
-    counter.last_position = position
+    counter.last_position = counter.play_count
     counter.updated_at = datetime.utcnow()
 
-    reward = get_minigame_reward_for_position(position)
-    reward_discount = None
-    reward_discount_code = ''
-    reward_amount = None
-    reward_label = get_minigame_reward_label(reward.get('tier'), fallback=reward.get('label'))
+    is_win = bool(slot) and (counter.play_count % win_interval == 0)
+    if dev_mode and not is_win:
+        is_win = True  # en modo prueba, siempre se gana para poder revisar el flujo
 
-    if reward.get('kind') == 'coupon':
-        reward_discount = get_minigame_reward_discount(reward.get('tier'))
-        reward_discount_code = reward_discount.code if reward_discount else ''
-        reward_label = _format_minigame_discount_label(reward_discount, fallback=reward_label)
-    elif reward.get('kind') == 'cash':
-        reward_amount = reward.get('amount')
+    prize_order = None
+    if is_win and slot:
+        # Reusa el mismo camino de entrega automática que cualquier compra
+        # real (PIN propio o Revendedores) en vez de reinventar la lógica.
+        from .order_processing import deliver_prize_to_player
 
-    reward_payload = dict(reward)
-    reward_payload['label'] = reward_label
+        prize_label = slot['prize_package'].name if slot['prize_package'] else 'Premio'
+        prize_order, approval = deliver_prize_to_player(
+            slot['game'], slot['prize_package'], order.player_id,
+            zone_id=order.zone_id,
+            note=f'Premio de minijuego ganado en la orden #{order.order_number}.',
+            reference_prefix='MINIJUEGO',
+        )
+        reward_kind = 'game_prize'
+        reward_label = prize_label
+        if prize_order and approval and not approval.get('ok'):
+            # La orden del premio quedó registrada pero no se pudo entregar
+            # sola (p.ej. sin stock en ese momento); el admin la completa a
+            # mano desde Órdenes, igual que cualquier compra normal sin stock.
+            reward_label = f'{prize_label} (pendiente de entrega)'
+    elif is_win:
+        # Solo posible en modo prueba con un juego sin slot configurado.
+        reward_kind = 'game_prize'
+        reward_label = 'Premio de prueba'
+    else:
+        reward_kind = 'miss'
+        reward_label = 'Fallaste'
+
+    reward_payload = {'kind': reward_kind, 'label': reward_label}
+    catalog = get_minigame_reward_catalog_for_order(order)
 
     opportunity.status = 'played'
     opportunity.selected_game_key = game_key
     opportunity.selected_choice_index = int(choice_index) if choice_index is not None else None
-    opportunity.result_kind = reward.get('kind')
-    opportunity.reward_tier = int(reward.get('tier') or 0)
+    opportunity.result_kind = reward_kind
+    opportunity.reward_tier = 1 if is_win else 0
     opportunity.reward_label = reward_label
-    opportunity.reward_amount = reward_amount
-    opportunity.reward_discount_id = reward_discount.id if reward_discount else None
-    opportunity.reward_discount_code = reward_discount_code
-    opportunity.counter_position = position
-    opportunity.counter_cycle = cycle_number
+    opportunity.reward_amount = None
+    opportunity.reward_discount_id = None
+    opportunity.reward_discount_code = ''
+    opportunity.prize_order_id = prize_order.id if prize_order else None
+    opportunity.counter_position = counter.play_count
+    opportunity.counter_cycle = ((counter.play_count - 1) // win_interval) + 1
     opportunity.played_at = datetime.utcnow()
     opportunity.result_payload = json.dumps(
-        build_minigame_result_payload(game_key, reward_payload, choice_index=choice_index),
+        build_minigame_result_payload(game_key, reward_payload, choice_index=choice_index, catalog=catalog),
         ensure_ascii=False,
     )
     opportunity.updated_at = datetime.utcnow()
@@ -422,6 +400,6 @@ def get_order_minigame_state(order, create_if_needed=True):
         'qualifies': order_qualifies_for_minigame(order),
         'dev_mode': is_minigame_dev_mode(),
         'games': get_minigame_game_defs(),
-        'reward_catalog': get_minigame_reward_definitions(),
+        'reward_catalog': get_minigame_reward_catalog_for_order(order),
         'opportunity': serialize_minigame_opportunity(opportunity),
     }

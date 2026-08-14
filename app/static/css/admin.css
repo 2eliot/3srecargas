@@ -675,6 +675,7 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 .badge-inactive { background: rgba(100,100,100,.15); color: var(--text-muted); }
 .badge-auto     { background: rgba(139,92,246,.2); color: #a78bfa; }
 .badge-danger   { background: rgba(239,68,68,.15); color: var(--danger); }
+.badge-warning  { background: rgba(245,158,11,.15); color: var(--warning); }
 
 .ranking-prize-config-grid {
     display: grid;

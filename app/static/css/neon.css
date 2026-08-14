@@ -248,6 +248,7 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 .header-action-icon svg { width: 11px; height: 11px; }
 .header-action-icon-ranking { background: rgba(245,158,11,.2); color: #fbbf24; }
 .header-action-icon-support { background: rgba(16,185,129,.18); color: #34d399; }
+.header-action-icon-points { background: rgba(59,130,246,.2); color: #60a5fa; }
 .header-action-icon-user,
 .header-action-icon-login { background: rgba(255,0,0,.2); color: var(--nx-red); }
 
@@ -1469,6 +1470,211 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     padding: 2px;
     text-decoration: underline;
 }
+
+/* ── Banner de opt-in de notificaciones (paso 1 de 2) ──────── */
+.push-prompt-banner {
+    position: fixed;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    z-index: 1150;
+    max-width: 420px;
+    margin: 0 auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 14px 14px 16px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(30,32,40,.97) 0%, rgba(10,12,18,.98) 100%);
+    border: 1px solid rgba(255,0,0,.4);
+    box-shadow: 0 20px 50px rgba(0,0,0,.6), 0 0 30px rgba(255,0,0,.12);
+    animation: pushPromptSlideUp .35s ease;
+}
+@keyframes pushPromptSlideUp {
+    from { transform: translateY(16px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+.push-prompt-icon { font-size: 22px; line-height: 1; flex: 0 0 auto; }
+.push-prompt-copy { flex: 1; min-width: 0; }
+.push-prompt-copy strong { display: block; font-family: var(--nx-font-display); font-weight: 900; font-size: 13px; color: #fff; margin-bottom: 3px; }
+.push-prompt-copy span { display: block; font-size: 12px; color: var(--nx-muted); line-height: 1.4; }
+.push-prompt-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: 0 0 auto; }
+.push-prompt-accept {
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(255,0,0,1), rgba(200,0,0,.95));
+    border: 1px solid rgba(255,255,255,.4);
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 11px;
+    letter-spacing: .04em;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.push-prompt-dismiss {
+    background: none;
+    border: none;
+    color: var(--nx-dim);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+@media (max-width: 480px) {
+    .push-prompt-banner { left: 10px; right: 10px; bottom: 10px; }
+}
+
+/* ── Modal "Canjear Puntos" ─────────────────────────────────── */
+.points-modal-card { width: min(100%, 440px); }
+.points-modal-hint { font-size: 12.5px; color: var(--nx-muted); line-height: 1.5; margin: 0 0 14px; padding: 0 24px; }
+.points-form-group { padding: 0 24px; margin-bottom: 14px; }
+.points-form-group label { display: block; font-size: 11px; color: var(--nx-dim); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; font-weight: 700; }
+.points-form-group select,
+.points-form-group input {
+    width: 100%;
+    padding: 11px 14px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.15);
+    color: #fff;
+    font-size: 14px;
+}
+.points-modal-error {
+    margin: 0 24px 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255,0,0,.12);
+    border: 1px solid rgba(255,0,0,.4);
+    color: #fca5a5;
+    font-size: 12.5px;
+}
+.points-modal-result {
+    margin: 0 24px 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(16,185,129,.12);
+    border: 1px solid rgba(16,185,129,.4);
+    color: #6ee7b7;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+}
+.points-modal-result.is-miss { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.18); color: var(--nx-muted); }
+.points-primary-btn,
+.points-secondary-btn {
+    display: block;
+    width: calc(100% - 48px);
+    margin: 0 24px 24px;
+    padding: 13px 16px;
+    border-radius: 10px;
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 13px;
+    letter-spacing: .04em;
+    text-align: center;
+    cursor: pointer;
+}
+.points-primary-btn {
+    background: linear-gradient(135deg, rgba(255,0,0,1), rgba(200,0,0,.95));
+    border: 1px solid rgba(255,255,255,.4);
+    box-shadow: 0 4px 20px rgba(255,0,0,.5), inset 0 1.5px 2px rgba(255,255,255,.5);
+    color: #fff;
+}
+.points-primary-btn:disabled { opacity: .5; cursor: not-allowed; }
+.points-secondary-btn {
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.18);
+    color: var(--nx-muted);
+    margin-bottom: 0;
+}
+.points-modal-actions {
+    display: flex;
+    gap: 10px;
+    padding: 0 24px 24px;
+}
+.points-modal-actions .points-secondary-btn,
+.points-modal-actions .points-primary-btn { flex: 1; width: auto; margin: 0; }
+
+.points-balance-card {
+    margin: 0 24px 12px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(59,130,246,.14), rgba(29,78,216,.06));
+    border: 1px solid rgba(96,165,250,.35);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.points-balance-label { display: block; font-family: var(--nx-font-display); font-weight: 900; font-size: 13px; color: #fff; }
+.points-balance-id { display: block; font-size: 11px; color: var(--nx-muted); font-family: monospace; }
+.points-balance-amount { text-align: right; }
+.points-balance-amount strong { display: block; font-family: var(--nx-font-display); font-weight: 900; font-size: 22px; color: #60a5fa; line-height: 1; }
+.points-balance-amount span { font-size: 10px; color: var(--nx-muted); text-transform: uppercase; letter-spacing: .06em; }
+
+/* Tira horizontal tipo apertura de caja (CS:GO). El ítem que cae bajo el
+   puntero central es el resultado real; el resto es solo relleno visual. */
+.points-strip-viewport {
+    position: relative;
+    height: 92px;
+    margin: 0 24px 16px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.12);
+}
+.points-strip-pointer {
+    position: absolute;
+    top: 0; bottom: 0; left: 50%;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--nx-red);
+    box-shadow: 0 0 10px rgba(255,0,0,.8);
+    z-index: 3;
+}
+.points-strip-pointer::before,
+.points-strip-pointer::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+}
+.points-strip-pointer::before { top: -1px; border-top: 7px solid var(--nx-red); }
+.points-strip-pointer::after { bottom: -1px; border-bottom: 7px solid var(--nx-red); }
+.points-strip-track {
+    position: absolute;
+    top: 0; left: 50%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    will-change: transform;
+    transition: transform 3.2s cubic-bezier(.12,.72,.14,1);
+}
+.points-strip-item {
+    flex: 0 0 auto;
+    width: 76px;
+    height: 76px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
+    border: 1px solid rgba(255,255,255,.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    text-align: center;
+    padding: 4px;
+}
+.points-strip-item .icon { font-size: 22px; line-height: 1; }
+.points-strip-item .label { font-size: 9px; font-weight: 700; color: var(--nx-muted); line-height: 1.2; word-break: break-word; }
+.points-strip-item.is-prize { border-color: rgba(96,165,250,.6); background: linear-gradient(135deg, rgba(59,130,246,.22), rgba(29,78,216,.08)); }
+.points-strip-item.is-prize .label { color: #93c5fd; }
+.points-strip-item.is-winner { border-color: var(--nx-red); box-shadow: 0 0 18px rgba(255,0,0,.6); }
 
 /* Modal video tutorial */
 .nx-video-modal {

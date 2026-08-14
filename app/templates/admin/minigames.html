@@ -3,115 +3,157 @@
 {% block page_title %}Mini Juegos{% endblock %}
 
 {% block content %}
+{% if minigame_dev_mode %}
+<div class="admin-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08);">
+    <h2 style="margin-bottom:8px;">Modo desarrollo activo</h2>
+    <p class="form-hint" style="color:#fde68a;">En este entorno cada giro se fuerza como ganador para poder revisar el flujo completo (incluida la entrega automática) sin esperar los giros configurados.</p>
+</div>
+{% endif %}
+
 <div class="stats-grid" style="margin-bottom:20px;">
     {% for card in counter_cards %}
     <div class="stat-card">
-        <div class="stat-icon">{{ card.icon }}</div>
+        <div class="stat-icon">{{ '🎮' if card.enabled else '🚫' }}</div>
         <div class="stat-info">
             <span class="stat-value">{{ card.play_count }}</span>
             <span class="stat-label">{{ card.label }}</span>
-            <small style="color:#94a3b8;display:block;margin-top:6px;">Posición actual: {{ card.current_position or 0 }}/{{ minigame_cycle_length }}</small>
+            {% if card.enabled %}
+            <small style="color:#94a3b8;display:block;margin-top:6px;">
+                Premio: {{ card.prize_name }} · Faltan {{ card.spins_until_win }} giro(s) para el próximo ganador
+            </small>
+            {% else %}
+            <small style="color:#f59e0b;display:block;margin-top:6px;">Sin configurar — no ofrece minijuego todavía</small>
+            {% endif %}
         </div>
     </div>
     {% endfor %}
 </div>
 
-{% if minigame_dev_mode %}
-<div class="admin-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08);">
-    <h2 style="margin-bottom:8px;">Modo desarrollo activo</h2>
-    <p class="form-hint" style="color:#fde68a;">En este entorno los botones del minijuego aparecen en todas las órdenes no rechazadas y el primer giro se fuerza como ganador para pruebas.</p>
-</div>
-{% endif %}
-
 <div class="admin-card" style="margin-bottom:20px;">
     <div class="card-header">
-        <h2>Premios de cupones</h2>
+        <h2>Configuración por juego</h2>
+        <p class="form-hint">
+            Solo estos 3 juegos ofrecen minijuego tras la recarga; el resto no muestra ruleta. El premio configurado
+            es el ÚNICO ganable — se entrega en automático (diamantes/oro real) al ID que hizo la recarga cada
+            cierta cantidad de giros. En la ruleta/caja aparecerán más opciones de relleno, pero nunca se otorgan.
+        </p>
     </div>
-    <form method="POST" class="minigame-reward-stock-grid">
-        {% for reward in reward_definitions %}
-        <div class="admin-card minigame-reward-stock-card">
-            <div class="card-header">
-                <h3>{{ reward.label }}</h3>
-                <span class="badge {% if reward.visible_only %}badge-inactive{% else %}badge-active{% endif %}">{% if reward.visible_only %}0%{% else %}Giro {{ reward.position }}{% endif %}</span>
+    <form method="POST">
+        <div class="form-grid-2" style="margin-bottom:16px;">
+            <div class="form-group">
+                <label for="minigame_win_every_n_spins">Cada cuántos giros se gana el premio</label>
+                <input type="number" id="minigame_win_every_n_spins" name="minigame_win_every_n_spins"
+                       min="1" step="1" value="{{ win_interval }}">
+                <p class="form-hint">El giro exacto #{{ win_interval }}, #{{ win_interval * 2 }}, #{{ win_interval * 3 }}... (de todos los clientes juntos) entrega el premio.</p>
             </div>
-            <div class="minigame-reward-stock-body">
-            <label for="minigame_coupon_reward_{{ reward.tier }}">{{ reward.label }}</label>
-            <textarea id="minigame_coupon_reward_{{ reward.tier }}" name="minigame_coupon_reward_{{ reward.tier }}" rows="5" placeholder="CODIGO10&#10;CODIGO11&#10;CODIGO12">{{ coupon_reward_code_lines[reward.tier] }}</textarea>
-            <p class="form-hint">
-                {% if reward.visible_only %}
-                Premio visible con probabilidad 0%. Se mostrará en los mini juegos, pero no se entregará automáticamente.
-                {% else %}
-                Pega un código por línea, igual que en stock. Cuando salga este premio, el sistema entregará el siguiente código disponible del pool.
-                {% endif %}
-            </p>
-            <p class="form-hint">También puedes pegar IDs numéricos si lo prefieres.</p>
+        </div>
+
+        {% for slot in slots_config %}
+        <div class="admin-card" style="margin-bottom:14px;">
+            <div class="card-header">
+                <h3>{{ slot.label }}</h3>
+                <span class="badge {% if slot.enabled %}badge-active{% else %}badge-inactive{% endif %}">
+                    {{ 'Activo' if slot.enabled else 'Sin configurar' }}
+                </span>
+            </div>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="minigame_slot_{{ slot.slot_key }}_game_id">Juego de la tienda</label>
+                    <select id="minigame_slot_{{ slot.slot_key }}_game_id" name="minigame_slot_{{ slot.slot_key }}_game_id"
+                            class="minigame-slot-game-select" data-slot="{{ slot.slot_key }}">
+                        <option value="">— Sin asignar —</option>
+                        {% for g in all_games %}
+                        <option value="{{ g.id }}" {{ 'selected' if slot.game and slot.game.id == g.id }}>{{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="minigame_slot_{{ slot.slot_key }}_prize_package_id">Paquete que se entrega como premio</label>
+                    <select id="minigame_slot_{{ slot.slot_key }}_prize_package_id" name="minigame_slot_{{ slot.slot_key }}_prize_package_id"
+                            class="minigame-slot-package-select" data-slot="{{ slot.slot_key }}">
+                        <option value="">— Sin asignar —</option>
+                        {% if slot.game %}
+                            {% for pkg in packages_by_game_id.get(slot.game.id|string, []) %}
+                            <option value="{{ pkg.id }}" {{ 'selected' if slot.prize_package and slot.prize_package.id == pkg.id }}>{{ pkg.name }}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                    <p class="form-hint">Debe ser un paquete real de ese juego con stock de PINs o mapeo de Revendedores, para que se entregue solo.</p>
+                </div>
             </div>
         </div>
         {% endfor %}
-        <div class="form-group" style="grid-column:1/-1;">
-            <button type="submit" class="btn-primary">Guardar premios</button>
+
+        <div class="form-group">
+            <button type="submit" class="btn-primary">Guardar configuración</button>
         </div>
     </form>
-    <div class="table-wrap" style="margin-top:18px;">
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th>Contador</th>
-                    {% for reward in reward_definitions %}
-                    <th>{{ reward.label }}</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for card in counter_cards %}
-                <tr>
-                    <td>{{ card.label }}</td>
-                    {% for reward in card.next_rewards %}
-                    <td>{{ reward.next_hit_label }}</td>
-                    {% endfor %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
 </div>
 
 <div class="admin-card">
     <div class="card-header">
         <h2>Ganadores recientes</h2>
-        <p class="form-hint">Control de premios reales entregados por orden, usando un contador global compartido entre todos los juegos de la tienda.</p>
+        <p class="form-hint">Cada premio ganado genera una orden interna de $0 que se procesa igual que cualquier compra — si en ese momento no hay stock, queda pendiente para completarla a mano.</p>
     </div>
     <div class="table-wrap">
         <table class="admin-table">
             <thead>
                 <tr>
                     <th>Fecha</th>
-                    <th>Mini juego</th>
                     <th>Premio</th>
-                    <th>Código</th>
-                    <th>Orden</th>
-                    <th>Servicio</th>
-                    <th>Cliente</th>
-                    <th>Contador</th>
+                    <th>Orden de la recarga</th>
+                    <th>Juego</th>
+                    <th>ID ganador</th>
+                    <th>Orden del premio</th>
+                    <th>Giro #</th>
                 </tr>
             </thead>
             <tbody>
                 {% for item in winners %}
                 <tr>
                     <td>{{ item.played_at|datetime_ve('%d/%m/%Y %H:%M') if item.played_at else '—' }}</td>
-                    <td>{{ get_minigame_game_label(item.selected_game_key) }}</td>
                     <td>{{ item.reward_label or '—' }}</td>
-                    <td>{{ item.reward_discount_code or '—' }}</td>
-                    <td><a href="{{ url_for('admin_bp.order_detail', order_id=item.order.id) }}">#{{ item.order.order_number }}</a></td>
+                    <td>{% if item.order %}<a href="{{ url_for('admin_bp.order_detail', order_id=item.order.id) }}">#{{ item.order.order_number }}</a>{% else %}—{% endif %}</td>
                     <td>{{ item.order.game.name if item.order and item.order.game else '—' }}</td>
-                    <td>{{ item.order.email or item.order.player_id or '—' }}</td>
-                    <td>{{ item.counter_position or 0 }}/{{ minigame_cycle_length }}</td>
+                    <td>{{ item.order.player_id or '—' if item.order else '—' }}</td>
+                    <td>
+                        {% if item.prize_order %}
+                        <a href="{{ url_for('admin_bp.order_detail', order_id=item.prize_order.id) }}">#{{ item.prize_order.order_number }}</a>
+                        <span class="badge {% if item.prize_order.status == 'completed' %}badge-active{% elif item.prize_order.status == 'rejected' %}badge-inactive{% else %}badge-warning{% endif %}">{{ item.prize_order.status_label }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>{{ item.counter_position or 0 }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="8" class="empty-row">Todavía no hay premios ganados.</td></tr>
+                <tr><td colspan="7" class="empty-row">Todavía no hay premios ganados.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Filtra las opciones de paquete según el juego elegido en cada slot,
+    // sin recargar la página (usa la lista de paquetes por juego ya enviada
+    // desde el servidor).
+    var PACKAGES_BY_GAME = {{ packages_by_game_id | tojson }};
+
+    document.querySelectorAll('.minigame-slot-game-select').forEach(function (gameSelect) {
+        gameSelect.addEventListener('change', function () {
+            var slot = gameSelect.getAttribute('data-slot');
+            var pkgSelect = document.querySelector('.minigame-slot-package-select[data-slot="' + slot + '"]');
+            if (!pkgSelect) return;
+            var packages = PACKAGES_BY_GAME[gameSelect.value] || [];
+            pkgSelect.innerHTML = '<option value="">— Sin asignar —</option>';
+            packages.forEach(function (pkg) {
+                var opt = document.createElement('option');
+                opt.value = pkg.id;
+                opt.textContent = pkg.name;
+                pkgSelect.appendChild(opt);
+            });
+        });
+    });
+</script>
 {% endblock %}

@@ -51,6 +51,9 @@
     var supportModal = document.getElementById('supportModal');
     var supportModalOpenBtn = document.getElementById('openSupportModalBtn');
     var supportModalCloseBtn = document.getElementById('supportModalCloseBtn');
+    var pointsModal = document.getElementById('pointsModal');
+    var pointsModalOpenBtn = document.getElementById('openPointsModalBtn');
+    var pointsModalCloseBtn = document.getElementById('pointsModalCloseBtn');
     var supportForm = document.getElementById('supportForm');
     var supportIdentityInput = document.getElementById('supportOrderIdentity');
     var supportGameInput = document.getElementById('supportGame');
@@ -582,6 +585,223 @@
 
     function closeRankingModal() {
         closeModal(rankingModal);
+    }
+
+    /* ── Canjear Puntos ───────────────────────────────────── */
+    var pointsState = { gameId: null, playerId: '', spinCost: 5, spinning: false, gamesLoaded: false };
+
+    function pointsEl(id) { return document.getElementById(id); }
+
+    function loadPointsGames() {
+        if (pointsState.gamesLoaded) return;
+        var select = pointsEl('pointsGameSelect');
+        if (!select) return;
+        fetch('/api/points/games')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                pointsState.gamesLoaded = true;
+                var games = (data && data.games) || [];
+                pointsState.spinCost = (data && data.spin_cost) || 5;
+                if (!games.length) {
+                    select.innerHTML = '<option value="">Todavía no hay premios de puntos disponibles</option>';
+                    return;
+                }
+                select.innerHTML = '<option value="">Selecciona un juego</option>' + games.map(function (g) {
+                    return '<option value="' + g.game_id + '" data-prize="' + escHtml(g.prize_label) + '">' + escHtml(g.game_name) + '</option>';
+                }).join('');
+            })
+            .catch(function () {
+                select.innerHTML = '<option value="">Error al cargar juegos</option>';
+            });
+    }
+
+    function resetPointsModal() {
+        var lookupStep = pointsEl('pointsLookupStep');
+        var spinStep = pointsEl('pointsSpinStep');
+        if (lookupStep) lookupStep.style.display = 'block';
+        if (spinStep) spinStep.style.display = 'none';
+        var err = pointsEl('pointsLookupError');
+        if (err) { err.style.display = 'none'; err.textContent = ''; }
+        var result = pointsEl('pointsSpinResult');
+        if (result) { result.style.display = 'none'; result.textContent = ''; }
+    }
+
+    function openPointsModal() {
+        if (!pointsModal) return;
+        loadPointsGames();
+        resetPointsModal();
+        openModal(pointsModal);
+    }
+
+    function closePointsModal() {
+        closeModal(pointsModal);
+    }
+
+    var POINTS_STRIP_DECORATIVE = [
+        { icon: '🎲', label: 'Suerte' },
+        { icon: '⭐', label: 'Extra' },
+        { icon: '🔸', label: 'Bono' },
+        { icon: '🎯', label: 'Casi' },
+    ];
+    var POINTS_STRIP_TOTAL = 24;
+    var POINTS_STRIP_WINNER_INDEX = 20;
+    var POINTS_STRIP_ITEM_STRIDE = 84; // 76px de ancho + 8px de gap
+
+    function buildPointsStrip(prizeLabel, targetIcon, targetLabel) {
+        var track = pointsEl('pointsStripTrack');
+        if (!track) return;
+        var html = '';
+        for (var i = 0; i < POINTS_STRIP_TOTAL; i++) {
+            if (i === POINTS_STRIP_WINNER_INDEX) {
+                html += '<div class="points-strip-item is-prize" data-target="1"><span class="icon">' + escHtml(targetIcon) + '</span><span class="label">' + escHtml(targetLabel) + '</span></div>';
+            } else {
+                var decor = POINTS_STRIP_DECORATIVE[i % POINTS_STRIP_DECORATIVE.length];
+                html += '<div class="points-strip-item"><span class="icon">' + decor.icon + '</span><span class="label">' + decor.label + '</span></div>';
+            }
+        }
+        track.innerHTML = html;
+        track.style.transition = 'none';
+        track.style.transform = 'translateX(0px)';
+    }
+
+    function spinPointsStripTo(won) {
+        var track = pointsEl('pointsStripTrack');
+        if (!track) return;
+        var offset = POINTS_STRIP_WINNER_INDEX * POINTS_STRIP_ITEM_STRIDE + (POINTS_STRIP_ITEM_STRIDE / 2);
+        // Forzar reflow para que la transición de aterrizaje sí se anime.
+        void track.offsetWidth;
+        track.style.transition = 'transform 3.2s cubic-bezier(.12,.72,.14,1)';
+        track.style.transform = 'translateX(-' + offset + 'px)';
+        window.setTimeout(function () {
+            var winnerEl = track.querySelector('[data-target="1"]');
+            if (winnerEl && won) winnerEl.classList.add('is-winner');
+        }, 3300);
+    }
+
+    function showPointsBalance(data) {
+        pointsState.gameId = data.game_id;
+        pointsState.playerId = data.player_id;
+        pointsState.spinCost = data.spin_cost;
+
+        var select = pointsEl('pointsGameSelect');
+        var selectedOption = select ? select.options[select.selectedIndex] : null;
+        var prizeLabel = (selectedOption && selectedOption.getAttribute('data-prize')) || 'Premio';
+
+        pointsEl('pointsLookupStep').style.display = 'none';
+        pointsEl('pointsSpinStep').style.display = 'block';
+        pointsEl('pointsSpinGameLabel').textContent = data.game_name;
+        pointsEl('pointsSpinIdLabel').textContent = 'ID: ' + data.player_id;
+        pointsEl('pointsBalanceValue').textContent = data.balance;
+        pointsEl('pointsPrizeLabel').textContent = prizeLabel;
+        pointsEl('pointsSpinCostLabel').textContent = data.spin_cost;
+
+        var spinBtn = pointsEl('pointsSpinBtn');
+        if (spinBtn) spinBtn.disabled = data.balance < data.spin_cost;
+
+        buildPointsStrip(prizeLabel, '🎁', prizeLabel);
+    }
+
+    function handlePointsLookup() {
+        var select = pointsEl('pointsGameSelect');
+        var idInput = pointsEl('pointsPlayerIdInput');
+        var errEl = pointsEl('pointsLookupError');
+        var gameId = select ? select.value : '';
+        var playerId = idInput ? idInput.value.trim() : '';
+
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+        if (!gameId) {
+            if (errEl) { errEl.textContent = 'Elige un juego.'; errEl.style.display = 'block'; }
+            return;
+        }
+        if (!playerId) {
+            if (errEl) { errEl.textContent = 'Ingresa tu ID.'; errEl.style.display = 'block'; }
+            return;
+        }
+
+        var btn = pointsEl('pointsLookupBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Consultando...'; }
+
+        fetch('/api/points/balance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ game_id: gameId, player_id: playerId })
+        })
+            .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+            .then(function (res) {
+                if (btn) { btn.disabled = false; btn.textContent = 'CONSULTAR SALDO'; }
+                if (!res.data.ok) {
+                    if (errEl) { errEl.textContent = res.data.message || 'No se pudo consultar el saldo.'; errEl.style.display = 'block'; }
+                    return;
+                }
+                showPointsBalance(res.data);
+            })
+            .catch(function () {
+                if (btn) { btn.disabled = false; btn.textContent = 'CONSULTAR SALDO'; }
+                if (errEl) { errEl.textContent = 'Error de conexión. Intenta de nuevo.'; errEl.style.display = 'block'; }
+            });
+    }
+
+    function handlePointsSpin() {
+        if (pointsState.spinning || !pointsState.gameId || !pointsState.playerId) return;
+        var spinBtn = pointsEl('pointsSpinBtn');
+        var changeBtn = pointsEl('pointsChangeIdBtn');
+        var resultEl = pointsEl('pointsSpinResult');
+        if (resultEl) { resultEl.style.display = 'none'; resultEl.className = 'points-modal-result'; }
+
+        pointsState.spinning = true;
+        if (spinBtn) { spinBtn.disabled = true; spinBtn.textContent = 'GIRANDO...'; }
+        if (changeBtn) changeBtn.disabled = true;
+
+        fetch('/api/points/spin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ game_id: pointsState.gameId, player_id: pointsState.playerId })
+        })
+            .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+            .then(function (res) {
+                pointsState.spinning = false;
+                if (changeBtn) changeBtn.disabled = false;
+                if (!res.data.ok) {
+                    if (spinBtn) { spinBtn.disabled = false; spinBtn.textContent = 'GIRAR'; }
+                    if (resultEl) {
+                        resultEl.textContent = res.data.message || 'No se pudo procesar el giro.';
+                        resultEl.classList.add('is-miss');
+                        resultEl.style.display = 'block';
+                    }
+                    return;
+                }
+
+                var result = res.data.result;
+                pointsEl('pointsBalanceValue').textContent = result.points_balance;
+                spinPointsStripTo(result.won);
+
+                window.setTimeout(function () {
+                    if (spinBtn) {
+                        spinBtn.disabled = result.points_balance < pointsState.spinCost;
+                        spinBtn.textContent = 'GIRAR';
+                    }
+                    if (resultEl) {
+                        if (result.won) {
+                            resultEl.textContent = '¡Ganaste ' + result.reward_label + '! Se procesará al mismo ID.';
+                        } else {
+                            resultEl.textContent = 'Sin premio esta vez. ¡Sigue acumulando puntos!';
+                            resultEl.classList.add('is-miss');
+                        }
+                        resultEl.style.display = 'block';
+                    }
+                }, 3300);
+            })
+            .catch(function () {
+                pointsState.spinning = false;
+                if (spinBtn) { spinBtn.disabled = false; spinBtn.textContent = 'GIRAR'; }
+                if (changeBtn) changeBtn.disabled = false;
+                if (resultEl) {
+                    resultEl.textContent = 'Error de conexión. Intenta de nuevo.';
+                    resultEl.classList.add('is-miss');
+                    resultEl.style.display = 'block';
+                }
+            });
     }
 
     function prefillSupportForm() {
@@ -1692,6 +1912,34 @@
         rankingModalOpenBtn.addEventListener('click', openRankingModal);
     }
 
+    if (pointsModalOpenBtn) {
+        pointsModalOpenBtn.addEventListener('click', openPointsModal);
+    }
+
+    if (pointsModalCloseBtn && pointsModal) {
+        pointsModalCloseBtn.addEventListener('click', closePointsModal);
+        pointsModal.addEventListener('click', function (evt) {
+            if (evt.target === pointsModal) {
+                closePointsModal();
+            }
+        });
+    }
+
+    var pointsLookupBtnEl = document.getElementById('pointsLookupBtn');
+    if (pointsLookupBtnEl) {
+        pointsLookupBtnEl.addEventListener('click', handlePointsLookup);
+    }
+
+    var pointsChangeIdBtnEl = document.getElementById('pointsChangeIdBtn');
+    if (pointsChangeIdBtnEl) {
+        pointsChangeIdBtnEl.addEventListener('click', resetPointsModal);
+    }
+
+    var pointsSpinBtnEl = document.getElementById('pointsSpinBtn');
+    if (pointsSpinBtnEl) {
+        pointsSpinBtnEl.addEventListener('click', handlePointsSpin);
+    }
+
     if (rankingModalCloseBtn && rankingModal) {
         rankingModalCloseBtn.addEventListener('click', closeRankingModal);
         rankingModal.addEventListener('click', function (evt) {
@@ -1950,6 +2198,102 @@
         }, 60000);
     }
     scheduleCommunityPopupCheck();
+
+    /* ── Notificaciones push (opt-in en 2 pasos) ─────────────
+       Paso 1: aviso propio (banner) — no el permiso nativo de golpe.
+       Paso 2: si aceptan, recién ahí se dispara el permiso real del
+       navegador y se registra la suscripción. */
+    var PUSH_DISMISSED_KEY = 'store:push-prompt-dismissed';
+
+    function pushSupported() {
+        return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+        var padding = '='.repeat((4 - base64String.length % 4) % 4);
+        var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        var rawData = window.atob(base64);
+        var outputArray = new Uint8Array(rawData.length);
+        for (var i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    }
+
+    function maybeShowPushPrompt() {
+        if (!pushSupported()) return;
+        if (Notification.permission !== 'default') return;
+        try {
+            if (localStorage.getItem(PUSH_DISMISSED_KEY) === '1') return;
+        } catch (_) {}
+
+        var banner = document.getElementById('pushPromptBanner');
+        if (!banner) return;
+        window.setTimeout(function () {
+            if (Notification.permission === 'default') {
+                banner.style.display = 'flex';
+            }
+        }, 4000);
+    }
+
+    function hidePushPrompt(remember) {
+        var banner = document.getElementById('pushPromptBanner');
+        if (banner) banner.style.display = 'none';
+        if (remember) {
+            try { localStorage.setItem(PUSH_DISMISSED_KEY, '1'); } catch (_) {}
+        }
+    }
+
+    function activatePushNotifications() {
+        if (!pushSupported()) { hidePushPrompt(true); return; }
+
+        navigator.serviceWorker.register('/sw.js')
+            .then(function (registration) {
+                return Notification.requestPermission().then(function (permission) {
+                    if (permission !== 'granted') {
+                        hidePushPrompt(true);
+                        return null;
+                    }
+                    return fetch('/push/vapid-public-key')
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            return registration.pushManager.subscribe({
+                                userVisibleOnly: true,
+                                applicationServerKey: urlBase64ToUint8Array(data.publicKey),
+                            });
+                        });
+                });
+            })
+            .then(function (subscription) {
+                if (!subscription) return;
+                var raw = subscription.toJSON();
+                return fetch('/push/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        endpoint: raw.endpoint,
+                        keys: raw.keys,
+                        order_number: window.CURRENT_ORDER_NUMBER || '',
+                    }),
+                });
+            })
+            .then(function () {
+                hidePushPrompt(true);
+            })
+            .catch(function () {
+                hidePushPrompt(true);
+            });
+    }
+
+    var pushAcceptBtnEl = document.getElementById('pushPromptAcceptBtn');
+    if (pushAcceptBtnEl) {
+        pushAcceptBtnEl.addEventListener('click', activatePushNotifications);
+    }
+    var pushDismissBtnEl = document.getElementById('pushPromptDismissBtn');
+    if (pushDismissBtnEl) {
+        pushDismissBtnEl.addEventListener('click', function () { hidePushPrompt(true); });
+    }
+    maybeShowPushPrompt();
 
     /* Muestra el aviso configurado para el paquete elegido (si tiene uno),
        una sola vez por paquete durante esta visita. */

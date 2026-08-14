@@ -10,6 +10,7 @@ from ..models import (
     Order, RankingArchive,
 )
 from ..utils.timezone import now_ve, ve_day_start_utc_naive
+from ..utils.push_notifications import get_vapid_public_key, subscribe as push_subscribe, unsubscribe as push_unsubscribe
 
 main_bp = Blueprint('main_bp', __name__)
 
@@ -628,6 +629,50 @@ def api_rankings():
     archive_previous_month_rankings_if_needed()
     rankings = get_public_rankings_payload()
     return jsonify({'rankings': rankings})
+
+
+@main_bp.route('/sw.js')
+def service_worker():
+    # Se sirve desde la raíz (no /static/sw.js) para que el scope por
+    # defecto cubra todo el sitio, no solo /static/.
+    response = current_app.send_static_file('sw.js')
+    response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+    response.headers['Service-Worker-Allowed'] = '/'
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+
+@main_bp.route('/push/vapid-public-key')
+def push_vapid_public_key():
+    return jsonify({'ok': True, 'publicKey': get_vapid_public_key()})
+
+
+@main_bp.route('/push/subscribe', methods=['POST'])
+def push_subscribe_route():
+    payload = request.get_json(silent=True) or {}
+    endpoint = payload.get('endpoint')
+    keys = payload.get('keys') or {}
+    order_number = (payload.get('order_number') or '').strip()
+
+    order_id = None
+    if order_number:
+        order = Order.query.filter_by(order_number=order_number).first()
+        if order:
+            order_id = order.id
+
+    try:
+        push_subscribe(endpoint, keys.get('p256dh'), keys.get('auth'), order_id=order_id)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'message': str(exc)}), 400
+
+    return jsonify({'ok': True})
+
+
+@main_bp.route('/push/unsubscribe', methods=['POST'])
+def push_unsubscribe_route():
+    payload = request.get_json(silent=True) or {}
+    push_unsubscribe(payload.get('endpoint'))
+    return jsonify({'ok': True})
 
 
 def _get_games_for_category(category):

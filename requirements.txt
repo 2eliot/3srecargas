@@ -8,3 +8,4 @@ Werkzeug==3.0.3
 python-dotenv==1.0.1
 Pillow==10.3.0
 beautifulsoup4==4.12.3
+pywebpush==2.4.0

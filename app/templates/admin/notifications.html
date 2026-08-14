@@ -1,0 +1,45 @@
+{% extends 'admin/base.html' %}
+{% block title %}Notificaciones{% endblock %}
+{% block page_title %}Notificaciones Push{% endblock %}
+
+{% block content %}
+<div class="stats-grid" style="margin-bottom:20px;">
+    <div class="stat-card">
+        <div class="stat-icon">🔔</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ subscriber_count }}</span>
+            <span class="stat-label">Suscritos activos</span>
+        </div>
+    </div>
+</div>
+
+{% if not push_configured %}
+<div class="admin-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08);">
+    <p class="form-hint" style="color:#fde68a;">Las llaves VAPID todavía no se generaron. Se crean solas la primera vez que un cliente visita la tienda con notificaciones soportadas; si nadie ha visitado el sitio con el navegador aún, vuelve a intentar en un momento.</p>
+</div>
+{% endif %}
+
+<div class="admin-card">
+    <div class="card-header">
+        <h2>Enviar notificación a todos los suscritos</h2>
+        <p class="form-hint">Se envía a todo el que haya activado notificaciones en la tienda (promos, sorteos, avisos generales).</p>
+    </div>
+    <form method="POST">
+        <div class="form-group">
+            <label for="title">Título</label>
+            <input type="text" id="title" name="title" maxlength="60" required placeholder="¡Descuento especial hoy!">
+        </div>
+        <div class="form-group">
+            <label for="body">Mensaje</label>
+            <textarea id="body" name="body" rows="3" maxlength="180" required placeholder="Recargas de Free Fire con 10% de descuento solo por hoy."></textarea>
+        </div>
+        <div class="form-group">
+            <label for="url">Link al hacer clic (opcional)</label>
+            <input type="text" id="url" name="url" placeholder="/ (por defecto lleva a la tienda)">
+        </div>
+        <div class="form-group">
+            <button type="submit" class="btn-primary" onclick="return confirm('¿Enviar esta notificación a todos los suscritos?')">Enviar notificación</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

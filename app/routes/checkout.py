@@ -20,6 +20,7 @@ from ..utils.minigames import (
     play_order_minigame,
     select_order_minigame,
 )
+from ..utils.points import award_points_for_order, get_player_points_balance, get_points_enabled_games, get_points_spin_cost, spend_points_and_spin
 from ..utils.payment_verification import (
     find_reference_conflict,
     is_auto_verify_enabled,
@@ -210,6 +211,7 @@ def auto_verify_and_process_order(order, force=False):
 
             if not auto_approve_allowed:
                 ensure_minigame_opportunity(order)
+                award_points_for_order(order)
                 manual_note = '[Pabilo] Orden manual: pago verificado sin aprobación automática.'
                 if manual_note not in (order.notes or ''):
                     order.notes = ((order.notes or '') + '\n' + manual_note).strip()
@@ -1176,6 +1178,60 @@ def order_minigame_play(order_number):
         return jsonify({'ok': False, 'message': str(exc), 'state': get_order_minigame_state(order, create_if_needed=False)}), 400
 
     return jsonify({'ok': True, 'state': get_order_minigame_state(order)})
+
+
+@checkout_bp.route('/api/points/games')
+def points_games():
+    return jsonify({'ok': True, 'games': get_points_enabled_games(), 'spin_cost': get_points_spin_cost()})
+
+
+@checkout_bp.route('/api/points/balance', methods=['POST'])
+def points_balance():
+    payload = request.get_json(silent=True) or {}
+    try:
+        game_id = int(payload.get('game_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Elige un juego válido.'}), 400
+
+    player_id = str(payload.get('player_id') or '').strip()
+    if not player_id:
+        return jsonify({'ok': False, 'message': 'Ingresa el ID del juego.'}), 400
+
+    game = Game.query.filter_by(id=game_id, is_active=True).first()
+    if not game:
+        return jsonify({'ok': False, 'message': 'Juego no encontrado.'}), 404
+
+    balance = get_player_points_balance(game_id, player_id)
+    return jsonify({
+        'ok': True,
+        'game_id': game_id,
+        'game_name': game.name,
+        'player_id': player_id,
+        'balance': balance,
+        'spin_cost': get_points_spin_cost(),
+    })
+
+
+@checkout_bp.route('/api/points/spin', methods=['POST'])
+def points_spin():
+    payload = request.get_json(silent=True) or {}
+    try:
+        game_id = int(payload.get('game_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Elige un juego válido.'}), 400
+
+    player_id = str(payload.get('player_id') or '').strip()
+
+    try:
+        result = spend_points_and_spin(game_id, player_id)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': str(exc)}), 400
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': f'No se pudo procesar el giro: {exc}'}), 500
+
+    return jsonify({'ok': True, 'result': result})
 
 
 @checkout_bp.route('/api/extract-payment-reference', methods=['POST'])

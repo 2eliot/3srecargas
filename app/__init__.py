@@ -191,6 +191,8 @@ def create_app(config_class=Config):
         _ensure_game_columns()
         _ensure_package_pricing_columns()
         _ensure_package_announcement_column()
+        _ensure_minigame_opportunity_columns()
+        _ensure_points_columns()
         _ensure_affiliate_columns()
         _ensure_one_per_player_columns()
         _ensure_payment_verification_columns()
@@ -392,6 +394,40 @@ def _ensure_package_announcement_column():
         existing = {r[1] for r in rows}
         if 'announcement_type' not in existing:
             db.session.execute(text('ALTER TABLE packages ADD COLUMN announcement_type VARCHAR(30)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_minigame_opportunity_columns():
+    try:
+        if _ensure_postgres_columns('order_minigame_opportunities', ['prize_order_id INTEGER']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(order_minigame_opportunities)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'prize_order_id' not in existing:
+            db.session.execute(text('ALTER TABLE order_minigame_opportunities ADD COLUMN prize_order_id INTEGER'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_points_columns():
+    try:
+        if _ensure_postgres_columns('orders', ['points_awarded BOOLEAN DEFAULT FALSE']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'points_awarded' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN points_awarded BOOLEAN DEFAULT 0'))
             db.session.commit()
     except Exception:
         db.session.rollback()

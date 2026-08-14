@@ -916,6 +916,11 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+    // Si el cliente activa notificaciones desde esta pantalla, la
+    // suscripción queda ligada a esta orden para avisarle cuando esté lista.
+    window.CURRENT_ORDER_NUMBER = {{ order.order_number|tojson }};
+</script>
 <script id="orderMinigameStateData" type="application/json">{{ minigame_state|tojson }}</script>
 <script>
 (function () {
@@ -1324,6 +1329,12 @@
             title = 'Ganaste un premio en dólares';
             body = 'Para reclamarlo, escríbenos por WhatsApp con tu número de orden y el premio ganado.';
             extra = '<div class="order-minigame-actions"><button type="button" class="order-minigame-claim" id="claimMinigameCashBtn">Reclamar por WhatsApp</button></div>';
+        } else if (resultKind === 'game_prize') {
+            var isPending = /pendiente de entrega/i.test(opportunity.reward_label || '');
+            title = '¡Ganaste ' + (opportunity.reward_label || 'un premio') + '!';
+            body = isPending
+                ? 'Tu premio quedó registrado y nuestro equipo te lo entregará en breve al mismo ID de esta recarga.'
+                : 'Tu premio ya se envió automáticamente al mismo ID con el que hiciste esta recarga.';
         }
 
         return '' +

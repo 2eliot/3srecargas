@@ -16,23 +16,34 @@ from werkzeug.utils import secure_filename
 from ..models import (
     db, AdminUser, Game, Package, Category, Order,
     Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting, Discount,
-    MiniGameCounter, OrderMiniGameOpportunity,
+    OrderMiniGameOpportunity, PlayerPoints, PointsPrizeMapping, PointsSpinLog,
     RevendedoresCatalogItem, RevendedoresItemMapping,
 )
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
 from ..utils.minigames import (
-    MINIGAME_CYCLE_LENGTH,
-    get_minigame_available_reward_discount_pool,
-    get_minigame_reward_definitions,
-    get_minigame_reward_discount_ids,
+    get_minigame_slot_defs,
+    get_minigame_slots_config,
+    get_minigame_win_interval,
     get_minigame_counter_scope_key,
-    get_minigame_game_label,
+    get_or_create_minigame_counter,
     is_minigame_dev_mode,
+    DEFAULT_MINIGAME_WIN_INTERVAL,
 )
 from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
 from ..utils.order_processing import approve_order, get_revendedores_env, process_affiliate_commission, process_revendedores_queue
+from ..models import PushSubscription
+from ..utils.push_notifications import is_push_configured, send_push_broadcast
+from ..utils.points import (
+    DEFAULT_POINTS_PER_DOLLAR,
+    DEFAULT_POINTS_SPIN_COST,
+    DEFAULT_POINTS_WIN_INTERVAL,
+    get_points_per_dollar_rate,
+    get_points_spin_cost,
+    get_points_win_interval,
+    get_player_points_balance,
+)
 from ..utils.auth_accounts import (
     attach_matching_orders_to_customer,
     extract_customer_identifier_for_game,
@@ -241,44 +252,6 @@ def _discount_value_label(discount):
         return label
     value = float(discount.discount_value or 0)
     return f'${value:.2f}'.rstrip('0').rstrip('.')
-
-
-def _minigame_coupon_setting_key(tier):
-    return f'minigame_coupon_reward_{int(tier)}'
-
-
-def _minigame_setting_values(raw_values):
-    values = []
-    for item in raw_values or []:
-        item = str(item or '').strip()
-        if item.isdigit() and item not in values:
-            values.append(item)
-    return values
-
-
-def _parse_minigame_reward_codes(raw_value, discounts_by_code, discounts_by_id):
-    selected_ids = []
-    unknown_codes = []
-
-    for line in str(raw_value or '').splitlines():
-        item = line.strip()
-        if not item:
-            continue
-
-        discount = None
-        if item.isdigit():
-            discount = discounts_by_id.get(int(item))
-        if not discount:
-            discount = discounts_by_code.get(item.upper())
-
-        if discount:
-            discount_id = str(discount.id)
-            if discount_id not in selected_ids:
-                selected_ids.append(discount_id)
-        else:
-            unknown_codes.append(item)
-
-    return selected_ids, unknown_codes
 
 
 @admin_bp.before_app_request
@@ -2110,84 +2083,69 @@ def settings():
 @admin_bp.route('/minigames', methods=['GET', 'POST'])
 @login_required
 def minigames():
-    reward_definitions = get_minigame_reward_definitions()
-    coupon_tiers = tuple(item['tier'] for item in reward_definitions)
-    coupon_reward_settings = {}
-    coupon_reward_code_lines = {}
-    discounts = Discount.query.order_by(Discount.created_at.desc()).all()
-    discounts_by_id = {discount.id: discount for discount in discounts}
-    discounts_by_code = {str(discount.code or '').strip().upper(): discount for discount in discounts}
-    for tier in coupon_tiers:
-        coupon_reward_settings[tier] = [str(value) for value in get_minigame_reward_discount_ids(tier)]
-        coupon_reward_code_lines[tier] = '\n'.join(
-            discount.code
-            for discount in get_minigame_available_reward_discount_pool(tier)
-        )
+    slot_defs = get_minigame_slot_defs()
+    all_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
+    all_packages = (
+        Package.query.filter_by(is_active=True)
+        .order_by(Package.game_id.asc(), Package.sort_order.asc(), Package.name.asc())
+        .all()
+    )
+    packages_by_game_id = {}
+    for pkg in all_packages:
+        packages_by_game_id.setdefault(str(pkg.game_id), []).append({'id': pkg.id, 'name': pkg.name})
 
     if request.method == 'POST':
-        unknown_rewards = []
-        for tier in coupon_tiers:
-            raw_codes = request.form.get(_minigame_coupon_setting_key(tier), '')
-            selected_discount_ids, unknown_codes = _parse_minigame_reward_codes(
-                raw_codes,
-                discounts_by_code,
-                discounts_by_id,
-            )
-            if unknown_codes:
-                unknown_rewards.append(
-                    f"{next((item['label'] for item in reward_definitions if item['tier'] == tier), 'Premio ' + str(tier))}: {', '.join(unknown_codes)}"
-                )
-            setting = Setting.query.filter_by(key=_minigame_coupon_setting_key(tier)).first()
+        interval_raw = (request.form.get('minigame_win_every_n_spins', '') or '').strip()
+        try:
+            interval_value = str(max(1, int(float(interval_raw)))) if interval_raw else str(DEFAULT_MINIGAME_WIN_INTERVAL)
+        except ValueError:
+            interval_value = str(DEFAULT_MINIGAME_WIN_INTERVAL)
+
+        setting_updates = {'minigame_win_every_n_spins': interval_value}
+        for slot in slot_defs:
+            slot_key = slot['slot_key']
+            game_id = (request.form.get(f'minigame_slot_{slot_key}_game_id', '') or '').strip()
+            package_id = (request.form.get(f'minigame_slot_{slot_key}_prize_package_id', '') or '').strip()
+            setting_updates[f'minigame_slot_{slot_key}_game_id'] = game_id
+            setting_updates[f'minigame_slot_{slot_key}_prize_package_id'] = package_id
+
+        for key, value in setting_updates.items():
+            setting = Setting.query.filter_by(key=key).first()
             if not setting:
-                setting = Setting(
-                    key=_minigame_coupon_setting_key(tier),
-                    value='',
-                    description=f'Pool de códigos de descuento que se entrega al premio de minijuego {tier}.',
-                )
+                setting = Setting(key=key, value=value, description='Configuración de minijuego por juego.')
                 db.session.add(setting)
-            setting.value = ','.join(selected_discount_ids)
+            else:
+                setting.value = value
         db.session.commit()
-        if unknown_rewards:
-            flash('Algunos códigos no existen y fueron ignorados: ' + ' | '.join(unknown_rewards), 'warning')
-        flash('Premios de minijuegos actualizados.', 'success')
+        flash('Configuración de minijuegos actualizada.', 'success')
         return redirect(url_for('admin_bp.minigames'))
 
-    counters_by_key = {counter.game_key: counter for counter in MiniGameCounter.query.all()}
-    counter = counters_by_key.get(get_minigame_counter_scope_key(None))
-    play_count = int(counter.play_count or 0) if counter else 0
-    current_position = play_count % MINIGAME_CYCLE_LENGTH
-    if current_position == 0 and play_count:
-        current_position = MINIGAME_CYCLE_LENGTH
-    next_rewards = []
-    for reward in reward_definitions:
-        position = reward.get('position')
-        if position:
-            if current_position and position <= current_position:
-                next_hit = play_count + (MINIGAME_CYCLE_LENGTH - current_position) + position
-            else:
-                next_hit = play_count + (position - current_position)
-            next_hit_label = '#' + str(next_hit)
-        else:
-            next_hit_label = '0%'
-        next_rewards.append({
-            'position': position,
-            'label': reward.get('label'),
-            'next_hit_label': next_hit_label,
+    win_interval = get_minigame_win_interval()
+    slots_config = get_minigame_slots_config()
+    counter_cards = []
+    for slot in slots_config:
+        counter = get_or_create_minigame_counter(slot['game']) if slot['game'] else None
+        play_count = int(counter.play_count or 0) if counter else 0
+        remaining = win_interval - (play_count % win_interval) if play_count % win_interval else win_interval
+        counter_cards.append({
+            'key': slot['slot_key'],
+            'label': slot['label'],
+            'enabled': slot['enabled'],
+            'game_name': slot['game'].name if slot['game'] else None,
+            'prize_name': slot['prize_package'].name if slot['prize_package'] else None,
+            'play_count': play_count,
+            'spins_until_win': remaining if slot['enabled'] else None,
         })
-    counter_cards = [{
-        'key': 'global',
-        'label': 'Contador global',
-        'icon': '🌐',
-        'play_count': play_count,
-        'current_position': current_position,
-        'next_rewards': next_rewards,
-    }]
+    db.session.commit()  # persiste los contadores creados recién arriba
 
     winners = (
         OrderMiniGameOpportunity.query
         .filter(OrderMiniGameOpportunity.status == 'played')
-        .filter(OrderMiniGameOpportunity.result_kind.in_(['coupon', 'cash']))
-        .options(joinedload(OrderMiniGameOpportunity.order).joinedload(Order.game), joinedload(OrderMiniGameOpportunity.reward_discount))
+        .filter(OrderMiniGameOpportunity.result_kind == 'game_prize')
+        .options(
+            joinedload(OrderMiniGameOpportunity.order).joinedload(Order.game),
+            joinedload(OrderMiniGameOpportunity.prize_order),
+        )
         .order_by(OrderMiniGameOpportunity.played_at.desc())
         .limit(100)
         .all()
@@ -2195,15 +2153,168 @@ def minigames():
 
     return render_template(
         'admin/minigames.html',
+        slot_defs=slot_defs,
+        slots_config=slots_config,
+        all_games=all_games,
+        packages_by_game_id=packages_by_game_id,
+        win_interval=win_interval,
         counter_cards=counter_cards,
-        coupon_reward_settings=coupon_reward_settings,
-        coupon_reward_code_lines=coupon_reward_code_lines,
-        reward_definitions=reward_definitions,
-        discounts=discounts,
         winners=winners,
-        get_minigame_game_label=get_minigame_game_label,
-        minigame_cycle_length=MINIGAME_CYCLE_LENGTH,
         minigame_dev_mode=is_minigame_dev_mode(),
+    )
+
+
+# ─── Sistema de puntos ────────────────────────────────────────────────────────
+
+@admin_bp.route('/points', methods=['GET', 'POST'])
+@login_required
+def points():
+    all_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
+    all_packages = (
+        Package.query.filter_by(is_active=True)
+        .order_by(Package.game_id.asc(), Package.sort_order.asc(), Package.name.asc())
+        .all()
+    )
+    packages_by_game_id = {}
+    for pkg in all_packages:
+        packages_by_game_id.setdefault(str(pkg.game_id), []).append({'id': pkg.id, 'name': pkg.name})
+
+    if request.method == 'POST':
+        form_action = request.form.get('form_action', 'settings')
+
+        if form_action == 'add_mapping':
+            game_id = (request.form.get('mapping_game_id', '') or '').strip()
+            package_id = (request.form.get('mapping_package_id', '') or '').strip()
+            if not game_id or not package_id:
+                flash('Elige un juego y un paquete premio.', 'danger')
+                return redirect(url_for('admin_bp.points'))
+
+            existing = PointsPrizeMapping.query.filter_by(game_id=int(game_id)).first()
+            if existing:
+                existing.package_id = int(package_id)
+                existing.is_active = True
+                flash('Premio de puntos actualizado para ese juego.', 'success')
+            else:
+                db.session.add(PointsPrizeMapping(game_id=int(game_id), package_id=int(package_id), is_active=True))
+                flash('Premio de puntos agregado.', 'success')
+            db.session.commit()
+            return redirect(url_for('admin_bp.points'))
+
+        # form_action == 'settings' (por defecto)
+        per_dollar_raw = (request.form.get('points_per_dollar', '') or '').strip()
+        spin_cost_raw = (request.form.get('points_spin_cost', '') or '').strip()
+        interval_raw = (request.form.get('points_win_every_n_spins', '') or '').strip()
+
+        def _clean_positive(raw, default_value):
+            try:
+                value = float(raw)
+                return str(value if value > 0 else default_value)
+            except (TypeError, ValueError):
+                return str(default_value)
+
+        setting_updates = {
+            'points_per_dollar': _clean_positive(per_dollar_raw, DEFAULT_POINTS_PER_DOLLAR),
+            'points_spin_cost': str(int(float(_clean_positive(spin_cost_raw, DEFAULT_POINTS_SPIN_COST)))),
+            'points_win_every_n_spins': str(int(float(_clean_positive(interval_raw, DEFAULT_POINTS_WIN_INTERVAL)))),
+        }
+        for key, value in setting_updates.items():
+            setting = Setting.query.filter_by(key=key).first()
+            if not setting:
+                setting = Setting(key=key, value=value, description='Configuración del sistema de puntos.')
+                db.session.add(setting)
+            else:
+                setting.value = value
+        db.session.commit()
+        flash('Configuración de puntos actualizada.', 'success')
+        return redirect(url_for('admin_bp.points'))
+
+    mappings = (
+        PointsPrizeMapping.query
+        .options(joinedload(PointsPrizeMapping.game), joinedload(PointsPrizeMapping.package))
+        .join(Game, Game.id == PointsPrizeMapping.game_id)
+        .order_by(Game.name.asc())
+        .all()
+    )
+
+    recent_spins = (
+        PointsSpinLog.query
+        .options(joinedload(PointsSpinLog.game), joinedload(PointsSpinLog.prize_order))
+        .order_by(PointsSpinLog.created_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    top_balances = (
+        PlayerPoints.query
+        .options(joinedload(PlayerPoints.game))
+        .order_by(PlayerPoints.points_balance.desc())
+        .limit(50)
+        .all()
+    )
+
+    return render_template(
+        'admin/points.html',
+        all_games=all_games,
+        packages_by_game_id=packages_by_game_id,
+        mappings=mappings,
+        recent_spins=recent_spins,
+        top_balances=top_balances,
+        points_per_dollar=get_points_per_dollar_rate(),
+        points_spin_cost=get_points_spin_cost(),
+        points_win_interval=get_points_win_interval(),
+    )
+
+
+@admin_bp.route('/points/mappings/<int:mapping_id>/toggle', methods=['POST'])
+@login_required
+def points_mapping_toggle(mapping_id):
+    mapping = PointsPrizeMapping.query.get_or_404(mapping_id)
+    mapping.is_active = not mapping.is_active
+    db.session.commit()
+    flash('Premio de puntos actualizado.', 'success')
+    return redirect(url_for('admin_bp.points'))
+
+
+@admin_bp.route('/points/mappings/<int:mapping_id>/delete', methods=['POST'])
+@login_required
+def points_mapping_delete(mapping_id):
+    mapping = PointsPrizeMapping.query.get_or_404(mapping_id)
+    db.session.delete(mapping)
+    db.session.commit()
+    flash('Premio de puntos eliminado. Ese juego dejará de aparecer en "Canjear puntos".', 'warning')
+    return redirect(url_for('admin_bp.points'))
+
+
+# ─── Notificaciones push ──────────────────────────────────────────────────────
+
+@admin_bp.route('/notifications', methods=['GET', 'POST'])
+@login_required
+def notifications():
+    if request.method == 'POST':
+        title = (request.form.get('title') or '').strip()
+        body = (request.form.get('body') or '').strip()
+        url_link = (request.form.get('url') or '').strip()
+
+        if not title or not body:
+            flash('Título y mensaje son obligatorios.', 'danger')
+            return redirect(url_for('admin_bp.notifications'))
+
+        if not is_push_configured():
+            flash('Las notificaciones push todavía no están listas en el servidor.', 'danger')
+            return redirect(url_for('admin_bp.notifications'))
+
+        result = send_push_broadcast(title, body, url=url_link or None)
+        flash(
+            f'Notificación enviada: {result["sent"]} entregada(s), {result["failed"]} fallida(s).',
+            'success' if result['sent'] else 'warning',
+        )
+        return redirect(url_for('admin_bp.notifications'))
+
+    subscriber_count = PushSubscription.query.count()
+    return render_template(
+        'admin/notifications.html',
+        subscriber_count=subscriber_count,
+        push_configured=is_push_configured(),
     )
 
 

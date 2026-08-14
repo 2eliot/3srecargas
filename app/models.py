@@ -177,6 +177,9 @@ class Order(db.Model):
     # posible antes, cuando el emparejamiento por monto no dejaba rastro).
     binance_tx_id = db.Column(db.String(120), unique=True, index=True)
     notes = db.Column(db.Text)
+    # Evita otorgar puntos dos veces a la misma orden si el flujo de
+    # aprobación se re-ejecuta (reintentos del scheduler, doble clic, etc.).
+    points_awarded = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -227,6 +230,9 @@ class OrderMiniGameOpportunity(db.Model):
     reward_amount = db.Column(db.Numeric(10, 2))
     reward_discount_id = db.Column(db.Integer, db.ForeignKey('discounts.id'))
     reward_discount_code = db.Column(db.String(50))
+    # Orden interna de $0 creada para entregar el premio real (diamantes/
+    # oro) al ID que ganó, cuando el resultado es 'game_prize'.
+    prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
     counter_position = db.Column(db.Integer)
     counter_cycle = db.Column(db.Integer)
     result_payload = db.Column(db.Text)
@@ -235,8 +241,9 @@ class OrderMiniGameOpportunity(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    order = db.relationship('Order', backref=db.backref('minigame_opportunity', uselist=False))
+    order = db.relationship('Order', backref=db.backref('minigame_opportunity', uselist=False), foreign_keys=[order_id])
     reward_discount = db.relationship('Discount')
+    prize_order = db.relationship('Order', foreign_keys=[prize_order_id])
 
 
 class Discount(db.Model):
@@ -506,3 +513,69 @@ class ProcessLock(db.Model):
     key = db.Column(db.String(100), primary_key=True)
     holder = db.Column(db.String(100))
     expires_at = db.Column(db.DateTime, nullable=False)
+
+
+class PlayerPoints(db.Model):
+    """Saldo de puntos de un ID de jugador en un juego específico. Se gana
+    recargando por ID (nunca con códigos ni wallet) y solo sirve para
+    canjearse por premios reales del mismo juego."""
+    __tablename__ = 'player_points'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False)
+    player_id = db.Column(db.String(100), nullable=False)
+    points_balance = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    game = db.relationship('Game')
+
+    __table_args__ = (
+        db.UniqueConstraint('game_id', 'player_id', name='uq_player_points_game_player'),
+    )
+
+
+class PointsPrizeMapping(db.Model):
+    """Qué paquete se entrega como premio al canjear puntos, por juego."""
+    __tablename__ = 'points_prize_mappings'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, unique=True)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    package = db.relationship('Package')
+
+
+class PointsSpinLog(db.Model):
+    """Historial de giros de la ruleta de puntos, para auditoría en el admin."""
+    __tablename__ = 'points_spin_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False)
+    player_id = db.Column(db.String(100), nullable=False)
+    points_spent = db.Column(db.Integer, default=0)
+    won = db.Column(db.Boolean, default=False)
+    reward_label = db.Column(db.String(150))
+    prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    prize_order = db.relationship('Order')
+
+
+class PushSubscription(db.Model):
+    """Suscripción Web Push de un navegador. `endpoint` identifica al
+    navegador/dispositivo de forma única (lo asigna el proveedor push).
+    Si `order_id` está presente, además del broadcast general recibe el
+    aviso de 'tu recarga está lista' para esa orden puntual."""
+    __tablename__ = 'push_subscriptions'
+    id = db.Column(db.Integer, primary_key=True)
+    endpoint = db.Column(db.Text, nullable=False, unique=True)
+    p256dh_key = db.Column(db.String(255), nullable=False)
+    auth_key = db.Column(db.String(255), nullable=False)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_sent_at = db.Column(db.DateTime)
+
+    order = db.relationship('Order')

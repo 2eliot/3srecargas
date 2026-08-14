@@ -45,6 +45,15 @@
                 {% endif %}
             </a>
                 <div class="header-actions">
+                  <button type="button" class="header-action-btn" id="openPointsModalBtn">
+                    <span class="header-action-icon header-action-icon-points">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="9"/>
+                        <path d="M12 7v5l3 3"/>
+                      </svg>
+                    </span>
+                    <span class="header-action-label" data-short="Puntos">Canjear Puntos</span>
+                  </button>
                   {% if HAS_ACTIVE_RANKING %}
                   <button type="button" class="header-action-btn" id="openRankingModalBtn">
                     <span class="header-action-icon header-action-icon-ranking">
@@ -113,6 +122,58 @@
       <div class="ranking-tabs" id="rankingTabs"></div>
       <div class="ranking-status" id="rankingStatus">Cargando ranking...</div>
       <div class="ranking-board" id="rankingBoard" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="overlay-modal" id="pointsModal" style="display:none" aria-hidden="true">
+    <div class="overlay-modal-card points-modal-card" role="dialog" aria-modal="true" aria-labelledby="pointsModalTitle">
+      <div class="overlay-modal-header">
+        <div>
+          <h2 id="pointsModalTitle">CANJEAR PUNTOS</h2>
+        </div>
+        <button type="button" class="overlay-close-btn" id="pointsModalCloseBtn">✕</button>
+      </div>
+
+      <div id="pointsLookupStep">
+        <p class="points-modal-hint">Cada recarga por ID suma puntos. Elige tu juego, coloca tu ID y consulta cuántos puntos tienes para girar.</p>
+        <div class="points-form-group">
+          <label for="pointsGameSelect">Juego</label>
+          <select id="pointsGameSelect"><option value="">Cargando juegos...</option></select>
+        </div>
+        <div class="points-form-group">
+          <label for="pointsPlayerIdInput">ID del juego</label>
+          <input type="text" id="pointsPlayerIdInput" placeholder="Ej: 123456789" inputmode="numeric">
+        </div>
+        <p class="points-modal-error" id="pointsLookupError" style="display:none"></p>
+        <button type="button" class="points-primary-btn" id="pointsLookupBtn">CONSULTAR SALDO</button>
+      </div>
+
+      <div id="pointsSpinStep" style="display:none">
+        <div class="points-balance-card">
+          <div>
+            <span class="points-balance-label" id="pointsSpinGameLabel">—</span>
+            <span class="points-balance-id" id="pointsSpinIdLabel">—</span>
+          </div>
+          <div class="points-balance-amount">
+            <strong id="pointsBalanceValue">0</strong>
+            <span>puntos</span>
+          </div>
+        </div>
+        <p class="points-modal-hint">Premio: <strong id="pointsPrizeLabel">—</strong> · Cada giro cuesta <strong id="pointsSpinCostLabel">5</strong> puntos.</p>
+
+        <div class="points-strip-viewport">
+          <div class="points-strip-pointer"></div>
+          <div class="points-strip-track" id="pointsStripTrack"></div>
+        </div>
+
+        <p class="points-modal-error" id="pointsSpinError" style="display:none"></p>
+        <p class="points-modal-result" id="pointsSpinResult" style="display:none"></p>
+
+        <div class="points-modal-actions">
+            <button type="button" class="points-secondary-btn" id="pointsChangeIdBtn">Cambiar ID</button>
+            <button type="button" class="points-primary-btn" id="pointsSpinBtn">GIRAR</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -222,6 +283,18 @@
             &copy; 2026 <span class="brand-name">3sRecargas</span> - Todos los derechos reservados.
         </div>
     </footer>
+
+    <div class="push-prompt-banner" id="pushPromptBanner" style="display:none">
+        <div class="push-prompt-icon">🔔</div>
+        <div class="push-prompt-copy">
+            <strong>¿Quieres recibir alertas?</strong>
+            <span>Te avisamos cuando tu recarga esté lista o cuando haya promociones y descuentos.</span>
+        </div>
+        <div class="push-prompt-actions">
+            <button type="button" class="push-prompt-accept" id="pushPromptAcceptBtn">Activar</button>
+            <button type="button" class="push-prompt-dismiss" id="pushPromptDismissBtn" aria-label="Cerrar">✕</button>
+        </div>
+    </div>
 
     {% if SUPPORT_WHATSAPP_URL %}
     <a href="{{ SUPPORT_WHATSAPP_URL }}" target="_blank" rel="noopener noreferrer" aria-label="Soporte WhatsApp" class="nx-wa-float">
