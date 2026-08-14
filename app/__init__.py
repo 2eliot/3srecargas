@@ -130,6 +130,11 @@ def create_app(config_class=Config):
         if setting and setting.value:
             site_logo = setting.value
 
+        site_background_image = None
+        bg_setting = Setting.query.filter_by(key='site_background_image').first()
+        if bg_setting and bg_setting.value:
+            site_background_image = bg_setting.value
+
         social_keys = ['social_facebook', 'social_instagram', 'social_tiktok', 'social_whatsapp']
         social_links = {}
         for key in social_keys:
@@ -163,6 +168,7 @@ def create_app(config_class=Config):
 
         return {
             'SITE_LOGO': site_logo,
+            'SITE_BACKGROUND_IMAGE': site_background_image,
             'SOCIAL_LINKS': social_links,
             'SUPPORT_EMAIL': support_email,
             'SUPPORT_WHATSAPP_URL': support_whatsapp_url,

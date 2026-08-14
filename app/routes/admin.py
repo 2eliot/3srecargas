@@ -1655,6 +1655,8 @@ def settings():
     default_auto_package_id = default_pkg_setting.value if default_pkg_setting else ''
     site_logo_setting = Setting.query.filter_by(key='site_logo').first()
     site_logo_value = site_logo_setting.value if site_logo_setting else ''
+    site_background_setting = Setting.query.filter_by(key='site_background_image').first()
+    site_background_value = site_background_setting.value if site_background_setting else ''
     order_status_image_setting = Setting.query.filter_by(key='order_status_image').first()
     order_status_image_value = order_status_image_setting.value if order_status_image_setting else ''
     promo_banner_image_setting = Setting.query.filter_by(key='promo_banner_image').first()
@@ -1769,6 +1771,8 @@ def settings():
         default_pkg = request.form.get('default_auto_package_id', '').strip()
         remove_logo = request.form.get('remove_logo')
         logo_file = request.files.get('site_logo')
+        remove_site_background = request.form.get('remove_site_background')
+        site_background_file = request.files.get('site_background_image')
         remove_order_status_image = request.form.get('remove_order_status_image')
         order_status_image_file = request.files.get('order_status_image')
         remove_promo_banner_image = request.form.get('remove_promo_banner_image')
@@ -1853,6 +1857,25 @@ def settings():
                     db.session.add(site_logo_setting)
                 else:
                     site_logo_setting.value = saved_logo
+
+        if remove_site_background and site_background_setting:
+            delete_uploaded_file(site_background_setting.value)
+            site_background_setting.value = ''
+
+        if site_background_file and site_background_file.filename:
+            saved_background = save_image(site_background_file, 'branding')
+            if saved_background:
+                if site_background_setting and site_background_setting.value:
+                    delete_uploaded_file(site_background_setting.value)
+                if not site_background_setting:
+                    site_background_setting = Setting(
+                        key='site_background_image',
+                        value=saved_background,
+                        description='Imagen de fondo de toda la web'
+                    )
+                    db.session.add(site_background_setting)
+                else:
+                    site_background_setting.value = saved_background
 
         if remove_order_status_image and order_status_image_setting:
             delete_uploaded_file(order_status_image_setting.value)
@@ -2057,6 +2080,7 @@ def settings():
         usd_rate=usd_rate,
         default_package_id=default_auto_package_id,
         site_logo=site_logo_value,
+        site_background_image=site_background_value,
         order_status_image=order_status_image_value,
         promo_banner_image=promo_banner_image_value,
         promo_banner_link=promo_banner_link_value,

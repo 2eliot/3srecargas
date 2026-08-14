@@ -12,6 +12,22 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}?v={{ range(100000)|random }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/neon.css') }}?v={{ range(100000)|random }}">
+    {% if SITE_BACKGROUND_IMAGE %}
+    <style>
+        /* Fondo de la web configurado en Admin > Configuración. Imagen
+           normal (cover/centrada/fija) con un velo oscuro parejo detrás
+           para que el texto claro del sitio se siga leyendo bien. */
+        body {
+            background-image:
+                linear-gradient(rgba(0,0,0,.72), rgba(0,0,0,.72)),
+                url('{{ url_for('static', filename='uploads/' + SITE_BACKGROUND_IMAGE) }}') !important;
+            background-size: cover !important;
+            background-position: center !important;
+            background-repeat: no-repeat !important;
+            background-attachment: fixed !important;
+        }
+    </style>
+    {% endif %}
     {% block extra_css %}{% endblock %}
 
     <!-- Meta Pixel Code -->
