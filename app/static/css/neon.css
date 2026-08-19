@@ -188,15 +188,26 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     position: relative !important;
 }
 
+/* Tres columnas: hueco, logo, botón. El hueco mide lo mismo que el botón,
+   así el logo queda centrado en el header y no desplazado hacia un lado. */
 .header-inner {
     max-width: 480px !important;
     margin: 0 auto;
     padding: 0 12px 10px !important;
-    display: flex;
+    display: grid !important;
+    grid-template-columns: 38px 1fr 38px;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
     border-bottom: 1px solid rgba(255,255,255,.25);
 }
+
+.header-spacer { display: block; }
+
+.header-inner .logo-link {
+    justify-self: center;
+    min-width: 0;
+}
+.header-inner .nav-toggle { justify-self: end; }
 
 .logo-img { max-height: 40px !important; }
 
@@ -363,6 +374,7 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 }
 .drawer-item-icon svg { width: 17px; height: 17px; }
 .drawer-icon-home { background: rgba(148,163,184,.18); color: #cbd5e1; }
+.drawer-icon-redeem { background: rgba(16,185,129,.2); color: #34d399; }
 .drawer-icon-points { background: rgba(59,130,246,.2); color: #60a5fa; }
 .drawer-icon-ranking { background: rgba(245,158,11,.2); color: #fbbf24; }
 .drawer-icon-user,
@@ -2741,4 +2753,323 @@ body.drawer-open { overflow: hidden; }
     .nx-store .packages-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     .nx-store .payment-card-list { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     .header-action-label { display: none; }
+}
+
+/* ─── Página de canje (/redimir) ──────────────────────────────────────────
+   Reutiliza los mismos cristales, rojos y tipografías de la tienda: el
+   cliente llega aquí desde el menú y no debería sentir que cambió de web. */
+.rdm-page {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 14px 12px 40px;
+}
+
+.rdm-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+    padding: 7px 13px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.03);
+    color: rgba(255,255,255,.72);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: border-color .2s ease, color .2s ease;
+}
+.rdm-back:hover { border-color: var(--nx-red); color: #fff; }
+
+.rdm-card { padding: 22px 18px 18px; }
+
+.rdm-head { text-align: center; margin-bottom: 22px; }
+.rdm-kicker {
+    display: inline-block;
+    font-family: var(--nx-font-display);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--nx-red);
+    margin-bottom: 8px;
+}
+.rdm-title {
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 26px;
+    letter-spacing: -.01em;
+    color: #fff;
+    margin: 0 0 8px;
+}
+.rdm-sub {
+    font-size: 12.5px;
+    color: rgba(255,255,255,.55);
+    line-height: 1.5;
+    margin: 0 auto;
+    max-width: 34ch;
+}
+
+.rdm-step { display: flex; flex-direction: column; gap: 10px; }
+.rdm-step[hidden] { display: none; }
+
+.rdm-label {
+    font-family: var(--nx-font-display);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.6);
+}
+
+/* El código es lo único importante de esta pantalla: se escribe grande,
+   en monoespaciada y espaciado, como se lee en un video. */
+.rdm-code-input {
+    font-family: "Space Grotesk", ui-monospace, monospace !important;
+    font-size: 21px !important;
+    font-weight: 700 !important;
+    letter-spacing: .18em !important;
+    text-align: center;
+    text-transform: uppercase;
+    padding: 15px 12px !important;
+}
+
+.rdm-btn {
+    width: 100%;
+    padding: 13px 0;
+    border: 0;
+    border-radius: 12px;
+    font-family: var(--nx-font-display);
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #fff;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+}
+.rdm-btn:disabled { opacity: .5; cursor: default; }
+.rdm-btn-link { display: block; }
+.rdm-btn-sm { width: auto; padding: 11px 18px; font-size: 11.5px; flex: 0 0 auto; }
+
+.rdm-link-btn {
+    background: none;
+    border: 0;
+    color: rgba(255,255,255,.5);
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 4px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.rdm-link-btn:hover { color: #fff; }
+
+.rdm-feedback {
+    font-size: 11.5px;
+    font-weight: 700;
+    margin: 0;
+    min-height: 15px;
+    line-height: 1.4;
+}
+.rdm-feedback.is-error { color: #fb7185; }
+.rdm-feedback.is-success { color: #34d399; }
+
+/* Premio confirmado, arriba del paso del ID. */
+.rdm-prize {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 13px;
+    background: rgba(16,185,129,.09);
+    border: 1px solid rgba(16,185,129,.35);
+    margin-bottom: 4px;
+}
+.rdm-prize-check {
+    width: 30px; height: 30px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: rgba(16,185,129,.22);
+    color: #34d399;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 14px;
+}
+.rdm-prize-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rdm-prize-text strong {
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 14px;
+    color: #fff;
+}
+.rdm-prize-text small { font-size: 11px; color: rgba(255,255,255,.5); }
+
+.rdm-nick {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 800;
+    color: #34d399;
+}
+.rdm-nick[hidden] { display: none; }
+
+/* Resultado */
+.rdm-result { align-items: center; text-align: center; gap: 12px; }
+.rdm-done-icon {
+    width: 62px; height: 62px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 27px;
+    margin-bottom: 2px;
+}
+.rdm-done-icon.is-ok { background: rgba(16,185,129,.18); color: #34d399; border: 1px solid rgba(16,185,129,.4); }
+.rdm-done-icon.is-wait { background: rgba(245,158,11,.18); color: #fbbf24; border: 1px solid rgba(245,158,11,.4); }
+.rdm-done-title {
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 20px;
+    color: #fff;
+    margin: 0;
+}
+.rdm-done-text {
+    font-size: 12.5px;
+    color: rgba(255,255,255,.6);
+    line-height: 1.55;
+    margin: 0;
+    max-width: 36ch;
+}
+.rdm-order {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 11px 16px;
+    border-radius: 11px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.1);
+}
+.rdm-order[hidden] { display: none; }
+.rdm-order span {
+    font-size: 9.5px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.45);
+}
+.rdm-order strong {
+    font-family: "Space Grotesk", monospace;
+    font-size: 15px;
+    color: var(--nx-red);
+    letter-spacing: .06em;
+}
+
+/* Historial: enlace discreto, no un segundo formulario compitiendo. */
+.rdm-history-trigger {
+    margin: 18px 0 0;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,.07);
+    text-align: center;
+}
+.rdm-text-link {
+    background: none;
+    border: 0;
+    color: rgba(255,255,255,.42);
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    padding: 2px 4px;
+}
+.rdm-text-link:hover { color: var(--nx-red); }
+
+.rdm-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1250;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0,0,0,.8);
+    backdrop-filter: blur(5px);
+}
+.rdm-modal[hidden] { display: none; }
+.rdm-modal-card {
+    width: min(100%, 400px);
+    max-height: 86vh;
+    overflow-y: auto;
+    padding: 20px 18px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #14070a 0%, #0a0508 100%);
+    border: 1px solid rgba(255,0,0,.3);
+    box-shadow: 0 24px 60px rgba(0,0,0,.7);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.rdm-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.rdm-modal-head h3 {
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 16px;
+    color: #fff;
+    margin: 0;
+}
+.rdm-modal-close {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.1);
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+}
+.rdm-modal-close:hover { border-color: var(--nx-red); }
+
+.rdm-history-row { display: flex; gap: 8px; align-items: stretch; }
+.rdm-history-list { display: flex; flex-direction: column; gap: 8px; }
+.rdm-history-empty {
+    font-size: 12px;
+    color: rgba(255,255,255,.45);
+    text-align: center;
+    margin: 6px 0;
+}
+.rdm-history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 11px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.07);
+}
+.rdm-history-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rdm-history-main strong { font-size: 12.5px; font-weight: 800; color: #fff; }
+.rdm-history-main small { font-size: 10.5px; color: rgba(255,255,255,.45); }
+.rdm-history-tag {
+    flex: 0 0 auto;
+    font-size: 9.5px;
+    font-weight: 900;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 999px;
+}
+.rdm-history-tag.is-ok { background: rgba(16,185,129,.16); color: #34d399; }
+.rdm-history-tag.is-wait { background: rgba(245,158,11,.16); color: #fbbf24; }
+
+@media (max-width: 380px) {
+    .rdm-code-input { font-size: 18px !important; letter-spacing: .12em !important; }
+    .rdm-title { font-size: 22px; }
 }

@@ -1,0 +1,382 @@
+{% extends 'base.html' %}
+{% block title %}Canjear código — 3S Recargas{% endblock %}
+
+{% block content %}
+<div class="nx-store rdm-page">
+
+    <a href="{{ url_for('main_bp.index') }}" class="rdm-back">← Volver a la tienda</a>
+
+    <section class="glass-panel rdm-card">
+        <div class="rdm-head">
+            <span class="rdm-kicker">Canje de códigos</span>
+            <h1 class="rdm-title">Canjea tu código</h1>
+            <p class="rdm-sub">Escribe el código que ganaste en el canal o en TikTok y recibe tu recarga al instante.</p>
+        </div>
+
+        <!-- Paso 1: el código -->
+        <div class="rdm-step" id="rdmStepCode">
+            <label class="rdm-label" for="rdmCode">Tu código</label>
+            <input type="text" id="rdmCode" class="glass-input rdm-code-input"
+                   placeholder="ABCD-EFGH-JKMN" autocomplete="off"
+                   spellcheck="false" maxlength="20" inputmode="text">
+            <p class="rdm-feedback" id="rdmCodeFeedback" aria-live="polite"></p>
+            <button type="button" class="rdm-btn red-glow-pill" id="rdmCheckBtn">
+                <span class="rdm-btn-label">Continuar</span>
+            </button>
+        </div>
+
+        <!-- Paso 2: el ID del jugador -->
+        <div class="rdm-step" id="rdmStepPlayer" hidden>
+            <div class="rdm-prize" id="rdmPrize">
+                <span class="rdm-prize-check">✓</span>
+                <div class="rdm-prize-text">
+                    <strong id="rdmPrizePackage">—</strong>
+                    <small id="rdmPrizeGame">—</small>
+                </div>
+            </div>
+
+            <label class="rdm-label" for="rdmPlayerId" id="rdmPlayerLabel">Tu ID de jugador</label>
+            <input type="text" id="rdmPlayerId" class="glass-input"
+                   placeholder="Ingresa tu ID" autocomplete="off" maxlength="60" inputmode="numeric">
+            <p class="rdm-nick" id="rdmNick" hidden></p>
+
+            <div id="rdmZoneWrap" hidden>
+                <label class="rdm-label" for="rdmZoneId" id="rdmZoneLabel">Zone ID</label>
+                <input type="text" id="rdmZoneId" class="glass-input"
+                       placeholder="Ingresa tu Zone ID" autocomplete="off" maxlength="30">
+            </div>
+
+            <p class="rdm-feedback" id="rdmPlayerFeedback" aria-live="polite"></p>
+
+            <button type="button" class="rdm-btn red-glow-pill" id="rdmRedeemBtn">
+                <span class="rdm-btn-label">Canjear ahora</span>
+            </button>
+            <button type="button" class="rdm-link-btn" id="rdmChangeCodeBtn">Usar otro código</button>
+        </div>
+
+        <!-- Paso 3: resultado -->
+        <div class="rdm-step rdm-result" id="rdmStepDone" hidden>
+            <div class="rdm-done-icon" id="rdmDoneIcon">✓</div>
+            <h2 class="rdm-done-title" id="rdmDoneTitle">¡Canje listo!</h2>
+            <p class="rdm-done-text" id="rdmDoneText"></p>
+            <div class="rdm-order" id="rdmOrderRow" hidden>
+                <span>Número de orden</span>
+                <strong id="rdmOrderNumber">—</strong>
+            </div>
+            <a href="{{ url_for('main_bp.index') }}" class="rdm-btn red-glow-pill rdm-btn-link">Ir a la tienda</a>
+            <button type="button" class="rdm-link-btn" id="rdmAnotherBtn">Canjear otro código</button>
+        </div>
+
+        <!-- El historial va detrás de un enlace discreto: el formulario del
+             código es lo único que debe competir por la atención. -->
+        <p class="rdm-history-trigger">
+            <button type="button" class="rdm-text-link" id="rdmHistoryOpen">Ver mis canjes anteriores</button>
+        </p>
+    </section>
+
+    <!-- Historial -->
+    <div class="rdm-modal" id="rdmHistoryModal" aria-hidden="true" hidden>
+        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="rdmHistoryTitle">
+            <div class="rdm-modal-head">
+                <h3 id="rdmHistoryTitle">Mis canjes</h3>
+                <button type="button" class="rdm-modal-close" id="rdmHistoryClose" aria-label="Cerrar">✕</button>
+            </div>
+            <label class="rdm-label" for="rdmHistoryId">Escribe tu ID de jugador</label>
+            <div class="rdm-history-row">
+                <input type="text" id="rdmHistoryId" class="glass-input"
+                       placeholder="Tu ID" autocomplete="off" maxlength="60">
+                <button type="button" class="rdm-btn rdm-btn-sm red-glow-pill" id="rdmHistorySearch">Buscar</button>
+            </div>
+            <p class="rdm-feedback" id="rdmHistoryFeedback" aria-live="polite"></p>
+            <div class="rdm-history-list" id="rdmHistoryList"></div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var codeInput = document.getElementById('rdmCode');
+    var codeFeedback = document.getElementById('rdmCodeFeedback');
+    var checkBtn = document.getElementById('rdmCheckBtn');
+    var stepCode = document.getElementById('rdmStepCode');
+    var stepPlayer = document.getElementById('rdmStepPlayer');
+    var stepDone = document.getElementById('rdmStepDone');
+
+    var playerInput = document.getElementById('rdmPlayerId');
+    var playerLabel = document.getElementById('rdmPlayerLabel');
+    var playerFeedback = document.getElementById('rdmPlayerFeedback');
+    var zoneWrap = document.getElementById('rdmZoneWrap');
+    var zoneInput = document.getElementById('rdmZoneId');
+    var zoneLabel = document.getElementById('rdmZoneLabel');
+    var nickEl = document.getElementById('rdmNick');
+    var redeemBtn = document.getElementById('rdmRedeemBtn');
+    var changeCodeBtn = document.getElementById('rdmChangeCodeBtn');
+
+    var validated = null;   // datos del código validado en el paso 1
+    var busy = false;
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+
+    function setFeedback(el, msg, kind) {
+        if (!el) return;
+        el.textContent = msg || '';
+        el.classList.remove('is-error', 'is-success');
+        if (msg && kind) el.classList.add(kind);
+    }
+
+    function setBusy(btn, on, labelBusy) {
+        busy = on;
+        if (!btn) return;
+        btn.disabled = on;
+        var label = btn.querySelector('.rdm-btn-label');
+        if (!label) return;
+        if (on) {
+            label.dataset.prev = label.textContent;
+            label.textContent = labelBusy || 'Un momento...';
+        } else if (label.dataset.prev) {
+            label.textContent = label.dataset.prev;
+        }
+    }
+
+    function postJson(url, payload) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload || {})
+        }).then(function (r) {
+            return r.json().catch(function () {
+                throw new Error('No se pudo contactar al servidor.');
+            }).then(function (data) {
+                if (!r.ok || !data.ok) throw new Error(data.message || 'Algo salió mal.');
+                return data;
+            });
+        });
+    }
+
+    /* Va formateando el código en bloques de 4 mientras se escribe. */
+    codeInput.addEventListener('input', function () {
+        var limpio = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+        var bloques = limpio.match(/.{1,4}/g);
+        codeInput.value = bloques ? bloques.join('-') : '';
+        setFeedback(codeFeedback, '');
+    });
+
+    codeInput.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Enter') { evt.preventDefault(); validarCodigo(); }
+    });
+
+    function validarCodigo() {
+        if (busy) return;
+        var code = codeInput.value.trim();
+        if (!code) {
+            setFeedback(codeFeedback, 'Escribe tu código.', 'is-error');
+            codeInput.focus();
+            return;
+        }
+        setBusy(checkBtn, true, 'Verificando...');
+        setFeedback(codeFeedback, '');
+
+        postJson('{{ url_for("redeem_bp.validate") }}', {code: code})
+            .then(function (data) {
+                validated = data;
+                document.getElementById('rdmPrizePackage').textContent = data.prize.package || '';
+                document.getElementById('rdmPrizeGame').textContent = data.prize.game || '';
+
+                var juego = data.game || {};
+                playerLabel.textContent = 'Tu ' + (juego.player_id_label || 'ID de jugador');
+                playerInput.placeholder = 'Ingresa tu ' + (juego.player_id_label || 'ID');
+                if (juego.requires_zone_id) {
+                    zoneWrap.hidden = false;
+                    zoneLabel.textContent = juego.zone_id_label || 'Zone ID';
+                } else {
+                    zoneWrap.hidden = true;
+                }
+
+                stepCode.hidden = true;
+                stepPlayer.hidden = false;
+                nickEl.hidden = true;
+                setFeedback(playerFeedback, '');
+                playerInput.focus();
+            })
+            .catch(function (err) {
+                setFeedback(codeFeedback, err.message, 'is-error');
+            })
+            .finally(function () { setBusy(checkBtn, false); });
+    }
+
+    checkBtn.addEventListener('click', validarCodigo);
+
+    /* Verificación del nick, solo en el juego que la tiene disponible. */
+    var verifyTimer = null;
+    playerInput.addEventListener('input', function () {
+        nickEl.hidden = true;
+        setFeedback(playerFeedback, '');
+        if (!validated || !validated.can_verify_id) return;
+        var uid = playerInput.value.trim();
+        if (verifyTimer) clearTimeout(verifyTimer);
+        if (!/^\d{6,}$/.test(uid)) return;
+        verifyTimer = setTimeout(function () {
+            fetch('/store/player/verify?uid=' + encodeURIComponent(uid) + '&gid=' + encodeURIComponent(validated.game.id))
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data && data.ok && data.nick) {
+                        nickEl.textContent = '✓ ' + data.nick;
+                        nickEl.hidden = false;
+                    }
+                })
+                .catch(function () { /* si falla, se canjea igual */ });
+        }, 500);
+    });
+
+    playerInput.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Enter') { evt.preventDefault(); canjear(); }
+    });
+
+    function canjear() {
+        if (busy || !validated) return;
+        var playerId = playerInput.value.trim();
+        if (!playerId) {
+            setFeedback(playerFeedback, 'Escribe tu ID de jugador.', 'is-error');
+            playerInput.focus();
+            return;
+        }
+        var zoneId = zoneWrap.hidden ? '' : zoneInput.value.trim();
+        if (!zoneWrap.hidden && !zoneId) {
+            setFeedback(playerFeedback, 'Escribe tu ' + (zoneLabel.textContent || 'Zone ID') + '.', 'is-error');
+            zoneInput.focus();
+            return;
+        }
+
+        setBusy(redeemBtn, true, 'Canjeando...');
+        setFeedback(playerFeedback, '');
+
+        postJson('{{ url_for("redeem_bp.redeem") }}', {
+            code: validated.code,
+            player_id: playerId,
+            zone_id: zoneId,
+            nickname: nickEl.hidden ? '' : nickEl.textContent.replace('✓ ', '')
+        })
+            .then(function (data) {
+                stepPlayer.hidden = true;
+                stepDone.hidden = false;
+                document.getElementById('rdmDoneText').textContent = data.message || '';
+                var icon = document.getElementById('rdmDoneIcon');
+                var title = document.getElementById('rdmDoneTitle');
+                if (data.delivered) {
+                    icon.textContent = '✓';
+                    icon.className = 'rdm-done-icon is-ok';
+                    title.textContent = '¡Recarga enviada!';
+                } else {
+                    icon.textContent = '⏳';
+                    icon.className = 'rdm-done-icon is-wait';
+                    title.textContent = 'Canje registrado';
+                }
+                if (data.order_number) {
+                    document.getElementById('rdmOrderNumber').textContent = data.order_number;
+                    document.getElementById('rdmOrderRow').hidden = false;
+                }
+            })
+            .catch(function (err) {
+                setFeedback(playerFeedback, err.message, 'is-error');
+            })
+            .finally(function () { setBusy(redeemBtn, false); });
+    }
+
+    redeemBtn.addEventListener('click', canjear);
+
+    changeCodeBtn.addEventListener('click', function () {
+        validated = null;
+        stepPlayer.hidden = true;
+        stepCode.hidden = false;
+        codeInput.value = '';
+        playerInput.value = '';
+        setFeedback(codeFeedback, '');
+        codeInput.focus();
+    });
+
+    document.getElementById('rdmAnotherBtn').addEventListener('click', function () {
+        validated = null;
+        stepDone.hidden = true;
+        stepCode.hidden = false;
+        codeInput.value = '';
+        playerInput.value = '';
+        document.getElementById('rdmOrderRow').hidden = true;
+        setFeedback(codeFeedback, '');
+        codeInput.focus();
+    });
+
+    /* ── Historial ─────────────────────────────────────────── */
+    var histModal = document.getElementById('rdmHistoryModal');
+    var histId = document.getElementById('rdmHistoryId');
+    var histList = document.getElementById('rdmHistoryList');
+    var histFeedback = document.getElementById('rdmHistoryFeedback');
+
+    function abrirHistorial() {
+        histModal.hidden = false;
+        histModal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('drawer-open');
+        histId.focus();
+    }
+    function cerrarHistorial() {
+        histModal.hidden = true;
+        histModal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('drawer-open');
+    }
+
+    document.getElementById('rdmHistoryOpen').addEventListener('click', abrirHistorial);
+    document.getElementById('rdmHistoryClose').addEventListener('click', cerrarHistorial);
+    histModal.addEventListener('click', function (evt) {
+        if (evt.target === histModal) cerrarHistorial();
+    });
+    document.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Escape' && !histModal.hidden) cerrarHistorial();
+    });
+
+    function buscarHistorial() {
+        var pid = histId.value.trim();
+        if (!pid) {
+            setFeedback(histFeedback, 'Escribe tu ID para buscar.', 'is-error');
+            return;
+        }
+        setFeedback(histFeedback, 'Buscando...');
+        histList.innerHTML = '';
+
+        postJson('{{ url_for("redeem_bp.history") }}', {player_id: pid})
+            .then(function (data) {
+                setFeedback(histFeedback, '');
+                if (!data.items.length) {
+                    histList.innerHTML = '<p class="rdm-history-empty">No hay canjes con ese ID.</p>';
+                    return;
+                }
+                histList.innerHTML = data.items.map(function (item) {
+                    return '' +
+                        '<div class="rdm-history-item">' +
+                            '<div class="rdm-history-main">' +
+                                '<strong>' + esc(item.package) + '</strong>' +
+                                '<small>' + esc(item.game) + ' · ' + esc(item.date) + '</small>' +
+                            '</div>' +
+                            '<span class="rdm-history-tag ' + (item.delivered ? 'is-ok' : 'is-wait') + '">' +
+                                (item.delivered ? 'Entregado' : 'En proceso') +
+                            '</span>' +
+                        '</div>';
+                }).join('');
+            })
+            .catch(function (err) {
+                setFeedback(histFeedback, err.message, 'is-error');
+            });
+    }
+
+    document.getElementById('rdmHistorySearch').addEventListener('click', buscarHistorial);
+    histId.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Enter') { evt.preventDefault(); buscarHistorial(); }
+    });
+})();
+</script>
+{% endblock %}

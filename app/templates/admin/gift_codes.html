@@ -1,0 +1,224 @@
+{% extends 'admin/base.html' %}
+{% block title %}Códigos de regalo{% endblock %}
+{% block page_title %}Códigos de regalo{% endblock %}
+
+{% block content %}
+<div class="stats-grid" style="margin-bottom:16px">
+    <div class="stat-card">
+        <div class="stat-icon">🎟️</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ total_codes }}</span>
+            <span class="stat-label">Generados</span>
+        </div>
+    </div>
+    <div class="stat-card stat-to-deliver">
+        <div class="stat-icon">📤</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ available_codes }}</span>
+            <span class="stat-label">Sin usar</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ used_codes }}</span>
+            <span class="stat-label">Canjeados</span>
+        </div>
+    </div>
+</div>
+
+<!-- Generar lote -->
+<div class="admin-card" style="margin-bottom:16px">
+    <div class="card-header">
+        <h3>Generar códigos</h3>
+    </div>
+    <form method="POST" action="{{ url_for('admin_bp.gift_codes_generate') }}">
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="gc_game">Juego o servicio</label>
+                <select id="gc_game" required>
+                    <option value="">Elige el juego…</option>
+                    {% for g in games %}
+                    <option value="{{ g.id }}">{{ g.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="package_id">Cantidad de recarga que entrega</label>
+                <select id="package_id" name="package_id" required disabled>
+                    <option value="">Elige primero el juego…</option>
+                </select>
+                <p class="form-hint">Es lo que recibe el usuario al canjear: el paquete decide el monto.</p>
+            </div>
+            <div class="form-group">
+                <label for="quantity">Cuántos códigos</label>
+                <input type="number" id="quantity" name="quantity" min="1" max="500" value="10" required>
+                <p class="form-hint">Máximo 500 por lote.</p>
+            </div>
+            <div class="form-group">
+                <label for="batch">Nombre del lote</label>
+                <input type="text" id="batch" name="batch" maxlength="60" placeholder="Ej: sorteo-tiktok-agosto">
+                <p class="form-hint">Para saber de qué campaña salió cada código.</p>
+            </div>
+            <div class="form-group">
+                <label for="source">Dónde se va a repartir</label>
+                <select id="source" name="source">
+                    <option value="">Sin especificar</option>
+                    <option value="canal">Canal</option>
+                    <option value="tiktok">TikTok</option>
+                    <option value="otro">Otro</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="expires_at">Vence el (opcional)</label>
+                <input type="date" id="expires_at" name="expires_at">
+                <p class="form-hint">Si lo dejas vacío, no vencen.</p>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Generar códigos</button>
+    </form>
+</div>
+
+<!-- Filtros -->
+<div class="filters-bar">
+    <div class="filter-tabs">
+        <a href="{{ url_for('admin_bp.gift_codes', batch=batch_filter or None) }}"
+           class="filter-tab {% if not status_filter %}active{% endif %}">Todos</a>
+        <a href="{{ url_for('admin_bp.gift_codes', status='available', batch=batch_filter or None) }}"
+           class="filter-tab {% if status_filter == 'available' %}active{% endif %}">Sin usar</a>
+        <a href="{{ url_for('admin_bp.gift_codes', status='used', batch=batch_filter or None) }}"
+           class="filter-tab {% if status_filter == 'used' %}active{% endif %}">Canjeados</a>
+        <a href="{{ url_for('admin_bp.gift_codes', status='disabled', batch=batch_filter or None) }}"
+           class="filter-tab {% if status_filter == 'disabled' %}active{% endif %}">Desactivados</a>
+    </div>
+    <form method="GET" action="{{ url_for('admin_bp.gift_codes') }}" class="orders-search-form">
+        {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+        <select name="batch" onchange="this.form.submit()">
+            <option value="">Todos los lotes</option>
+            {% for b in batches %}
+            <option value="{{ b }}" {% if batch_filter == b %}selected{% endif %}>{{ b }}</option>
+            {% endfor %}
+        </select>
+    </form>
+</div>
+
+<div class="admin-card">
+    <div class="card-header">
+        <h3>
+            Códigos
+            {% if batch_filter %}<span class="badge badge-active">{{ batch_filter }}</span>{% endif %}
+        </h3>
+        <div class="action-btns">
+            <a href="{{ url_for('admin_bp.gift_codes_export', batch=batch_filter or None) }}"
+               class="btn-sm btn-outline">Descargar sin usar (.txt)</a>
+            {% if batch_filter %}
+            <form method="POST" action="{{ url_for('admin_bp.gift_codes_batch_disable') }}" style="display:inline"
+                  onsubmit="return confirm('¿Desactivar todos los códigos sin usar del lote {{ batch_filter }}?')">
+                <input type="hidden" name="batch" value="{{ batch_filter }}">
+                <button type="submit" class="btn-sm btn-danger">Desactivar el lote</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Entrega</th>
+                    <th>Lote</th>
+                    <th>Estado</th>
+                    <th>Canjeado por</th>
+                    <th>Orden</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for gc in codes %}
+                <tr>
+                    <td data-label="Código">
+                        <code class="gift-code-cell">{{ format_code(gc.code) }}</code>
+                    </td>
+                    <td data-label="Entrega">
+                        {% if gc.package %}
+                        <strong>{{ gc.package.name }}</strong><br>
+                        <span class="text-muted">{{ gc.package.game.name if gc.package.game else '—' }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td data-label="Lote">
+                        {{ gc.batch or '—' }}
+                        {% if gc.source %}<br><span class="text-muted">{{ gc.source }}</span>{% endif %}
+                    </td>
+                    <td data-label="Estado">
+                        {% if gc.is_used %}
+                        <span class="status-badge status-completed">Canjeado</span>
+                        {% elif not gc.is_active %}
+                        <span class="status-badge status-rejected">Desactivado</span>
+                        {% elif gc.is_expired %}
+                        <span class="status-badge status-pending">Vencido</span>
+                        {% else %}
+                        <span class="status-badge status-approved">Disponible</span>
+                        {% endif %}
+                    </td>
+                    <td data-label="Canjeado por">
+                        {% if gc.is_used %}
+                        {{ gc.used_player_id }}{% if gc.used_nickname %}<br><span class="text-muted">{{ gc.used_nickname }}</span>{% endif %}
+                        <br><span class="text-muted">{{ gc.used_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td data-label="Orden">
+                        {% if gc.order %}
+                        <a href="{{ url_for('admin_bp.order_detail', order_id=gc.order.id) }}" class="btn-sm btn-outline">
+                            #{{ gc.order.order_number }}
+                        </a>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td data-label="">
+                        {% if not gc.is_used %}
+                        <form method="POST" action="{{ url_for('admin_bp.gift_code_toggle', code_id=gc.id) }}" style="display:inline">
+                            <button type="submit" class="btn-sm {% if gc.is_active %}btn-danger{% else %}btn-success{% endif %}">
+                                {{ 'Desactivar' if gc.is_active else 'Reactivar' }}
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="empty-row">Todavía no hay códigos generados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// El selector de recarga depende del juego: el paquete elegido es lo que
+// va a recibir el usuario al canjear.
+(function () {
+    var packagesByGame = {{ packages_by_game|tojson }};
+    var gameSelect = document.getElementById('gc_game');
+    var packageSelect = document.getElementById('package_id');
+
+    gameSelect.addEventListener('change', function () {
+        var lista = packagesByGame[gameSelect.value] || [];
+        packageSelect.innerHTML = '';
+        if (!lista.length) {
+            packageSelect.innerHTML = '<option value="">Este juego no tiene paquetes activos</option>';
+            packageSelect.disabled = true;
+            return;
+        }
+        packageSelect.disabled = false;
+        packageSelect.insertAdjacentHTML('beforeend', '<option value="">Elige la cantidad…</option>');
+        lista.forEach(function (p) {
+            var opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name + ' — $' + p.price;
+            packageSelect.appendChild(opt);
+        });
+    });
+})();
+</script>
+{% endblock %}

@@ -579,3 +579,41 @@ class PushSubscription(db.Model):
     last_sent_at = db.Column(db.DateTime)
 
     order = db.relationship('Order')
+
+
+class GiftCode(db.Model):
+    """Código de regalo que se canjea por una recarga real.
+
+    Se reparten en el canal y en TikTok; para usarlos hay que pasar por la
+    web (/redimir). Cada código está atado a un paquete concreto, así que
+    el monto queda decidido desde que se genera el lote. Un código = un
+    solo uso, garantizado por un UPDATE condicional al momento de canjear.
+    """
+    __tablename__ = 'gift_codes'
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    # Etiqueta del lote con el que se generó, para saber de qué campaña
+    # salió cada código sin tener que cruzar fechas a mano.
+    batch = db.Column(db.String(60))
+    source = db.Column(db.String(30))  # 'canal', 'tiktok', 'otro'
+    is_active = db.Column(db.Boolean, default=True)
+    is_used = db.Column(db.Boolean, default=False, index=True)
+    used_at = db.Column(db.DateTime)
+    used_player_id = db.Column(db.String(100), index=True)
+    used_zone_id = db.Column(db.String(50))
+    used_nickname = db.Column(db.String(120))
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True)
+    expires_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    package = db.relationship('Package')
+    order = db.relationship('Order')
+
+    @property
+    def is_expired(self):
+        return bool(self.expires_at and self.expires_at < datetime.utcnow())
+
+    @property
+    def is_redeemable(self):
+        return bool(self.is_active and not self.is_used and not self.is_expired)

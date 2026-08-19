@@ -111,6 +111,7 @@ def create_app(config_class=Config):
     from .routes.affiliates import affiliates_bp
     from .routes.auth import auth_bp
     from .routes.verify import verify_bp
+    from .routes.redeem import redeem_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
@@ -118,6 +119,7 @@ def create_app(config_class=Config):
     app.register_blueprint(affiliates_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(verify_bp)
+    app.register_blueprint(redeem_bp)
 
     @app.template_filter('datetime_ve')
     def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):

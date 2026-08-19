@@ -102,6 +102,16 @@
                 <span class="nav-label">Stock PINs</span>
                 {% if stock_pins_protected %}<span class="nav-lock-hint" title="Pide código de acceso">🔒</span>{% endif %}
             </a>
+            <a href="{{ url_for('admin_bp.gift_codes') }}"
+               class="nav-item {% if 'gift' in request.endpoint %}active{% endif %}">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="8" width="18" height="13" rx="2"/>
+                    <path d="M3 12h18"/><path d="M12 8v13"/>
+                    <path d="M12 8S9.5 3 7 4.5 8.5 8 12 8s5-2 2.5-3.5S12 8 12 8z"/>
+                </svg>
+                <span class="nav-label">Códigos regalo</span>
+                {% if stock_pins_protected %}<span class="nav-lock-hint" title="Pide código de acceso">🔒</span>{% endif %}
+            </a>
             <a href="{{ url_for('admin_bp.affiliates') }}"
                class="nav-item {% if 'affiliate' in request.endpoint %}active{% endif %}">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

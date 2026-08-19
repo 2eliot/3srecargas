@@ -1478,3 +1478,17 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
     margin: 0;
 }
 .nav-lock-hint { margin-left: auto; font-size: 12px; opacity: .75; }
+
+/* Códigos de regalo: el código se lee y se copia, así que monoespaciado. */
+.gift-code-cell {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    background: rgba(139,92,246,.12);
+    color: #c4b5fd;
+    padding: 4px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+.text-muted { color: var(--text-muted); font-size: 11.5px; }

@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import (
-    Blueprint, render_template, request, redirect,
+    Blueprint, render_template, request, redirect, Response,
     url_for, flash, session, current_app, jsonify
 )
 from flask_login import login_user, logout_user, login_required, current_user
@@ -18,9 +18,10 @@ from ..models import (
     db, AdminUser, Game, Package, Category, Order,
     Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting, Discount,
     OrderMiniGameOpportunity, PlayerPoints, PointsPrizeMapping, PointsSpinLog,
-    RevendedoresCatalogItem, RevendedoresItemMapping,
+    RevendedoresCatalogItem, RevendedoresItemMapping, GiftCode,
 )
 from ..utils.availability import format_hour, get_manual_schedule
+from ..utils.gift_codes import create_batch as create_gift_batch, format_code as format_gift_code
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
 from ..utils.minigames import (
     get_minigame_slot_defs,
@@ -1217,14 +1218,21 @@ def order_reject(order_id):
 STOCK_PINS_SESSION_KEY = 'stock_pins_unlocked_at'
 STOCK_PINS_ATTEMPTS_KEY = 'stock_pins_attempts'
 STOCK_PINS_MAX_ATTEMPTS = 5
-# Endpoints que cuentan como "estar dentro de Stock PINs". Salir de aquí
-# cierra el acceso y hay que volver a poner el código.
+# Endpoints que cuentan como "estar dentro de la zona de códigos". Salir de
+# aquí cierra el acceso y hay que volver a poner la clave. Los códigos de
+# regalo entran en la misma zona: también son dinero y los protege la misma
+# clave, así que moverse entre ambas pantallas no la vuelve a pedir.
 STOCK_PINS_ENDPOINTS = {
     'admin_bp.pins',
     'admin_bp.pins_upload',
     'admin_bp.pin_delete',
     'admin_bp.pins_unlock',
     'admin_bp.pins_lock',
+    'admin_bp.gift_codes',
+    'admin_bp.gift_codes_generate',
+    'admin_bp.gift_codes_export',
+    'admin_bp.gift_code_toggle',
+    'admin_bp.gift_codes_batch_disable',
 }
 
 
@@ -1304,12 +1312,15 @@ def stock_pins_required(view):
 def pins_unlock():
     access_code = get_stock_pins_access_code()
     if not access_code or stock_pins_is_unlocked():
-        return redirect(url_for('admin_bp.pins'))
+        destino = (request.values.get('next') or '').strip()
+        if not destino.startswith(('/admin/pins', '/admin/gift-codes')):
+            destino = url_for('admin_bp.pins')
+        return redirect(destino)
 
     next_url = (request.values.get('next') or '').strip()
-    # Solo rutas internas: un `next` externo convertiría esta pantalla en un
-    # redirector abierto.
-    if not next_url.startswith('/admin/pins'):
+    # Solo rutas internas de la zona de códigos: un `next` externo
+    # convertiría esta pantalla en un redirector abierto.
+    if not next_url.startswith(('/admin/pins', '/admin/gift-codes')):
         next_url = url_for('admin_bp.pins')
 
     if request.method == 'POST':
@@ -1439,6 +1450,173 @@ def pin_delete(pin_id):
         flash('PIN eliminado.', 'warning')
     return redirect(url_for('admin_bp.pins', package_id=package_id))
 
+
+# ─── Códigos de regalo ───────────────────────────────────────────────────────
+
+@admin_bp.route('/gift-codes')
+@login_required
+@stock_pins_required
+def gift_codes():
+    """Los códigos son dinero: viven detrás del mismo candado que el stock."""
+    batch_filter = (request.args.get('batch') or '').strip()
+    status_filter = (request.args.get('status') or '').strip()
+    game_id = request.args.get('game_id', type=int)
+
+    query = GiftCode.query.order_by(GiftCode.created_at.desc(), GiftCode.id.desc())
+    if batch_filter:
+        query = query.filter(GiftCode.batch == batch_filter)
+    if status_filter == 'used':
+        query = query.filter(GiftCode.is_used.is_(True))
+    elif status_filter == 'available':
+        query = query.filter(GiftCode.is_used.is_(False), GiftCode.is_active.is_(True))
+    elif status_filter == 'disabled':
+        query = query.filter(GiftCode.is_active.is_(False))
+    if game_id:
+        query = query.join(Package).filter(Package.game_id == game_id)
+
+    codes = query.limit(500).all()
+
+    total = GiftCode.query.count()
+    usados = GiftCode.query.filter(GiftCode.is_used.is_(True)).count()
+    disponibles = GiftCode.query.filter(
+        GiftCode.is_used.is_(False), GiftCode.is_active.is_(True)
+    ).count()
+
+    lotes = [
+        row[0] for row in
+        db.session.query(GiftCode.batch)
+        .filter(GiftCode.batch.isnot(None))
+        .distinct().order_by(GiftCode.batch.asc()).all()
+        if row[0]
+    ]
+
+    games = (
+        Game.query.filter_by(is_active=True)
+        .order_by(Game.name.asc()).all()
+    )
+    # Cada juego con sus paquetes: el paquete ES la cantidad de recarga que
+    # va a entregar el código, así que se elige juego y después monto.
+    packages_by_game = {}
+    for pkg in (
+        Package.query.filter_by(is_active=True)
+        .order_by(Package.game_id.asc(), Package.sort_order.asc(), Package.name.asc())
+        .all()
+    ):
+        packages_by_game.setdefault(str(pkg.game_id), []).append({
+            'id': pkg.id,
+            'name': pkg.name,
+            'price': str(pkg.price),
+        })
+
+    return render_template(
+        'admin/gift_codes.html',
+        codes=codes,
+        games=games,
+        packages_by_game=packages_by_game,
+        batches=lotes,
+        batch_filter=batch_filter,
+        status_filter=status_filter,
+        game_id=game_id,
+        total_codes=total,
+        used_codes=usados,
+        available_codes=disponibles,
+        format_code=format_gift_code,
+    )
+
+
+@admin_bp.route('/gift-codes/generate', methods=['POST'])
+@login_required
+@stock_pins_required
+def gift_codes_generate():
+    package_id = request.form.get('package_id', type=int)
+    quantity = request.form.get('quantity', type=int)
+    batch = (request.form.get('batch') or '').strip()
+    source = (request.form.get('source') or '').strip()
+    expires_raw = (request.form.get('expires_at') or '').strip()
+
+    expires_at = None
+    if expires_raw:
+        try:
+            expires_at = datetime.strptime(expires_raw, '%Y-%m-%d').replace(
+                hour=23, minute=59, second=59
+            )
+        except ValueError:
+            flash('La fecha de vencimiento no es válida.', 'danger')
+            return redirect(url_for('admin_bp.gift_codes'))
+
+    try:
+        creados = create_gift_batch(
+            package_id, quantity, batch=batch, source=source, expires_at=expires_at
+        )
+    except (ValueError, RuntimeError) as exc:
+        flash(str(exc), 'danger')
+        return redirect(url_for('admin_bp.gift_codes'))
+
+    package = Package.query.get(package_id)
+    nombre = f'{package.game.name} / {package.name}' if package and package.game else 'el paquete'
+    flash(f'{len(creados)} códigos generados para {nombre}.', 'success')
+    return redirect(url_for('admin_bp.gift_codes', batch=batch or None))
+
+
+@admin_bp.route('/gift-codes/export')
+@login_required
+@stock_pins_required
+def gift_codes_export():
+    """Descarga los códigos sin usar como texto plano, listos para repartir."""
+    batch_filter = (request.args.get('batch') or '').strip()
+
+    query = GiftCode.query.filter(
+        GiftCode.is_used.is_(False), GiftCode.is_active.is_(True)
+    )
+    if batch_filter:
+        query = query.filter(GiftCode.batch == batch_filter)
+    codes = query.order_by(GiftCode.created_at.asc()).all()
+
+    cuerpo = '\n'.join(format_gift_code(c.code) for c in codes)
+    nombre = f'codigos-{batch_filter or "todos"}.txt'.replace(' ', '-')
+    return Response(
+        cuerpo,
+        mimetype='text/plain; charset=utf-8',
+        headers={'Content-Disposition': f'attachment; filename="{nombre}"'},
+    )
+
+
+@admin_bp.route('/gift-codes/<int:code_id>/toggle', methods=['POST'])
+@login_required
+@stock_pins_required
+def gift_code_toggle(code_id):
+    gift = GiftCode.query.get_or_404(code_id)
+    if gift.is_used:
+        flash('Ese código ya fue canjeado, no se puede reactivar ni desactivar.', 'warning')
+    else:
+        gift.is_active = not bool(gift.is_active)
+        db.session.commit()
+        flash(
+            'Código reactivado.' if gift.is_active else 'Código desactivado.',
+            'success' if gift.is_active else 'warning',
+        )
+    return redirect(request.referrer or url_for('admin_bp.gift_codes'))
+
+
+@admin_bp.route('/gift-codes/batch-disable', methods=['POST'])
+@login_required
+@stock_pins_required
+def gift_codes_batch_disable():
+    """Apaga un lote completo, para cuando un video se filtra o se cancela
+    una campaña. Solo toca los que nadie canjeó todavía."""
+    batch = (request.form.get('batch') or '').strip()
+    if not batch:
+        flash('Elige un lote.', 'danger')
+        return redirect(url_for('admin_bp.gift_codes'))
+
+    afectados = (
+        GiftCode.query
+        .filter(GiftCode.batch == batch, GiftCode.is_used.is_(False))
+        .update({'is_active': False}, synchronize_session=False)
+    )
+    db.session.commit()
+    flash(f'{afectados} códigos del lote "{batch}" quedaron desactivados.', 'warning')
+    return redirect(url_for('admin_bp.gift_codes', batch=batch))
 
 # ─── Affiliates ──────────────────────────────────────────────────────────────
 

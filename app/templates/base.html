@@ -53,6 +53,9 @@
 <body>
     <header class="site-header">
         <div class="header-inner">
+            <!-- Ocupa el mismo ancho que el botón de la derecha para que el
+                 logo quede centrado de verdad y no corrido. -->
+            <span class="header-spacer" aria-hidden="true"></span>
             <a href="{{ url_for('main_bp.index') }}" class="logo-link">
                 {% if SITE_LOGO %}
                     <img src="{{ url_for('static', filename='uploads/' + SITE_LOGO) }}" alt="Logo" class="logo-img">
@@ -87,6 +90,21 @@
                 <span class="drawer-item-text">
                     <strong>Inicio</strong>
                     <small>Volver a la tienda</small>
+                </span>
+            </a>
+
+            <a href="{{ url_for('redeem_bp.redeem_page') }}" class="drawer-item">
+                <span class="drawer-item-icon drawer-icon-redeem">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="8" width="18" height="13" rx="2"/>
+                        <path d="M3 12h18"/>
+                        <path d="M12 8v13"/>
+                        <path d="M12 8S9.5 3 7 4.5 8.5 8 12 8s5-2 2.5-3.5S12 8 12 8z"/>
+                    </svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Canjear código</strong>
+                    <small>Redime el código que ganaste</small>
                 </span>
             </a>
 
