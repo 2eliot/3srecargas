@@ -3,17 +3,17 @@
 {% block page_title %}Gestión de Stock PINs{% endblock %}
 
 {% block content %}
-<!-- Package Selector -->
+<!-- Paso 1: juego o servicio -->
 <div class="admin-card" style="margin-bottom:16px">
-    <h3 style="margin-bottom:12px">Selecciona un paquete automatizado</h3>
+    <h3 style="margin-bottom:12px">1 · Elige el juego o servicio</h3>
     <div class="pkg-selector-grid">
-        {% for pkg in automated_packages %}
-        <a href="{{ url_for('admin_bp.pins', package_id=pkg.id) }}"
-           class="pkg-selector-card {% if selected_package and selected_package.id == pkg.id %}active{% endif %}">
-            <div class="pkg-sel-name">{{ pkg.game.name }}</div>
-            <div class="pkg-sel-pkg">{{ pkg.name }}</div>
-            <div class="pkg-sel-count {% if pkg.pin_count < 5 %}low{% endif %}">
-                {{ pkg.pin_count }} disponibles
+        {% for entry in pin_games %}
+        <a href="{{ url_for('admin_bp.pins', game_id=entry.game.id) }}"
+           class="pkg-selector-card {% if selected_game and selected_game.game.id == entry.game.id %}active{% endif %}">
+            <div class="pkg-sel-name">{{ entry.game.name }}</div>
+            <div class="pkg-sel-pkg">{{ entry.packages|length }} paquete{{ '' if entry.packages|length == 1 else 's' }}</div>
+            <div class="pkg-sel-count {% if entry.available < 5 %}low{% endif %}">
+                {{ entry.available }} disponibles
             </div>
         </a>
         {% else %}
@@ -21,6 +21,27 @@
         {% endfor %}
     </div>
 </div>
+
+<!-- Paso 2: paquete del juego elegido -->
+{% if selected_game %}
+<div class="admin-card" style="margin-bottom:16px">
+    <div class="card-header">
+        <h3>2 · Paquetes de {{ selected_game.game.name }}</h3>
+        <a href="{{ url_for('admin_bp.pins') }}" class="btn-sm btn-outline">← Cambiar de juego</a>
+    </div>
+    <div class="pkg-selector-grid">
+        {% for pkg in selected_game.packages %}
+        <a href="{{ url_for('admin_bp.pins', package_id=pkg.id) }}"
+           class="pkg-selector-card {% if selected_package and selected_package.id == pkg.id %}active{% endif %}">
+            <div class="pkg-sel-name">{{ pkg.name }}</div>
+            <div class="pkg-sel-count {% if pkg.pin_count < 5 %}low{% endif %}">
+                {{ pkg.pin_count }} disponibles
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 {% if selected_package %}
 <!-- Upload PINs -->

@@ -10,6 +10,11 @@
            class="filter-tab {% if not status_filter %}active{% endif %}">Todas</a>
         <a href="{{ url_for('admin_bp.orders', status='pending', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
            class="filter-tab {% if status_filter == 'pending' %}active{% endif %}">Pendientes</a>
+        <a href="{{ url_for('admin_bp.orders', status='to_deliver', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
+           class="filter-tab filter-tab-deliver {% if status_filter == 'to_deliver' %}active{% endif %}">
+            Por entregar
+            {% if to_deliver_count %}<span class="filter-tab-count">{{ to_deliver_count }}</span>{% endif %}
+        </a>
         <a href="{{ url_for('admin_bp.orders', status='approved', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
            class="filter-tab {% if status_filter == 'approved' %}active{% endif %}">Aprobadas</a>
         <a href="{{ url_for('admin_bp.orders', status='completed', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
@@ -139,7 +144,12 @@
                         <span class="aff-badge">{{ order.affiliate.code }}</span>
                         {% else %}—{% endif %}
                     </td>
-                    <td data-label="Estado"><span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span></td>
+                    <td data-label="Estado">
+                        <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
+                        {% if order.status == 'pending' and order.payment_verified_at %}
+                        <span class="status-badge status-paid-pending" title="El pago ya se verificó: falta hacer la recarga">Pagada · falta entregar</span>
+                        {% endif %}
+                    </td>
                     <td data-label="Fecha">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
                     <td data-label="Acciones">
                         {% if order.status == 'pending' %}

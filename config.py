@@ -24,6 +24,12 @@ class Config:
     VPS_COUNTRY = os.environ.get('VPS_COUNTRY', 'Venezuela')
     VPS_FULL_NAME = os.environ.get('VPS_FULL_NAME', 'Usuario Recarga')
     VPS_BIRTH_DATE = os.environ.get('VPS_BIRTH_DATE', '01/01/1995')
+    # Código extra para entrar a Stock PINs dentro del admin. Sirve para que
+    # quien atiende la web pueda usar el resto del panel sin llegar a los
+    # códigos. Si se deja vacío, la sección queda abierta como antes.
+    STOCK_PINS_ACCESS_CODE = os.environ.get('STOCK_PINS_ACCESS_CODE', '')
+    # Minutos que dura el desbloqueo antes de volver a pedir el código.
+    STOCK_PINS_UNLOCK_MINUTES = int(os.environ.get('STOCK_PINS_UNLOCK_MINUTES', 30))
     UPLOAD_FOLDER = os.path.join(BASE_DIR, 'app', 'static', 'uploads')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
     ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}

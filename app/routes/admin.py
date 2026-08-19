@@ -1,3 +1,4 @@
+import hmac
 import os
 import json
 import re
@@ -19,6 +20,7 @@ from ..models import (
     OrderMiniGameOpportunity, PlayerPoints, PointsPrizeMapping, PointsSpinLog,
     RevendedoresCatalogItem, RevendedoresItemMapping,
 )
+from ..utils.availability import format_hour, get_manual_schedule
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
 from ..utils.minigames import (
     get_minigame_slot_defs,
@@ -394,6 +396,7 @@ def dashboard():
         revenue=revenue,
         recent_orders=recent_orders,
         low_stock=low_stock,
+        to_deliver=count_orders_to_deliver(),
     )
 
 
@@ -793,6 +796,20 @@ def _parse_order_filter_date(raw_value, end_of_day=False):
     return parsed
 
 
+def count_orders_to_deliver():
+    """Órdenes con el pago ya verificado que siguen esperando la recarga
+    manual. Es el número que hay que tener a la vista para que ninguna se
+    quede sin hacer."""
+    try:
+        return (
+            Order.query
+            .filter(Order.status == 'pending', Order.payment_verified_at.isnot(None))
+            .count()
+        )
+    except Exception:
+        return 0
+
+
 def _apply_order_filters(
     query,
     status_filter='',
@@ -817,7 +834,17 @@ def _apply_order_filters(
     except (TypeError, ValueError):
         service_id = None
 
-    if status_filter:
+    # "Por entregar" no es un estado guardado sino una vista: órdenes cuyo
+    # pago ya se verificó solo (Binance/Pabilo) pero cuyo producto se recarga
+    # a mano, así que siguen pendientes esperando que un admin las haga.
+    # Antes se perdían entre el resto de las pendientes y el cliente terminaba
+    # reclamando por WhatsApp.
+    if status_filter == 'to_deliver':
+        query = query.filter(
+            Order.status == 'pending',
+            Order.payment_verified_at.isnot(None),
+        )
+    elif status_filter:
         query = query.filter_by(status=status_filter)
 
     if search_query:
@@ -917,6 +944,7 @@ def orders():
         end_order_index=end_order_index,
         services=services,
         packages=packages,
+        to_deliver_count=count_orders_to_deliver(),
     )
 
 
@@ -1186,8 +1214,135 @@ def order_reject(order_id):
 
 # ─── PINs ────────────────────────────────────────────────────────────────────
 
+STOCK_PINS_SESSION_KEY = 'stock_pins_unlocked_at'
+STOCK_PINS_ATTEMPTS_KEY = 'stock_pins_attempts'
+STOCK_PINS_MAX_ATTEMPTS = 5
+# Endpoints que cuentan como "estar dentro de Stock PINs". Salir de aquí
+# cierra el acceso y hay que volver a poner el código.
+STOCK_PINS_ENDPOINTS = {
+    'admin_bp.pins',
+    'admin_bp.pins_upload',
+    'admin_bp.pin_delete',
+    'admin_bp.pins_unlock',
+    'admin_bp.pins_lock',
+}
+
+
+def get_stock_pins_access_code():
+    return (current_app.config.get('STOCK_PINS_ACCESS_CODE') or '').strip()
+
+
+@admin_bp.app_context_processor
+def _inject_stock_pins_state():
+    """Para pintar el candado en el menú lateral."""
+    try:
+        return {'stock_pins_protected': bool(get_stock_pins_access_code())}
+    except Exception:
+        return {'stock_pins_protected': False}
+
+
+@admin_bp.before_request
+def _relock_stock_pins_on_exit():
+    """Al salir de la sección, el acceso se cierra solo.
+
+    Basta con irse a Órdenes o al tablero para que Stock PINs vuelva a pedir
+    el código: así el acceso no queda abierto el resto de la sesión si quien
+    atiende la web se sienta en el mismo equipo.
+    """
+    if request.endpoint in STOCK_PINS_ENDPOINTS:
+        return
+    session.pop(STOCK_PINS_SESSION_KEY, None)
+
+
+def stock_pins_is_unlocked():
+    """True si esta sesión ya puso el código y el desbloqueo sigue vigente.
+
+    Sin código configurado la sección queda abierta, para no dejar fuera a
+    quien todavía no puso la variable de entorno.
+    """
+    if not get_stock_pins_access_code():
+        return True
+
+    stamp = session.get(STOCK_PINS_SESSION_KEY)
+    if not stamp:
+        return False
+    try:
+        unlocked_at = datetime.fromisoformat(stamp)
+    except (TypeError, ValueError):
+        session.pop(STOCK_PINS_SESSION_KEY, None)
+        return False
+
+    minutes = int(current_app.config.get('STOCK_PINS_UNLOCK_MINUTES') or 30)
+    if datetime.utcnow() - unlocked_at > timedelta(minutes=minutes):
+        session.pop(STOCK_PINS_SESSION_KEY, None)
+        return False
+    return True
+
+
+def stock_pins_required(view):
+    """Pide el código antes de dejar entrar a cualquier ruta de Stock PINs.
+
+    Va sobre TODAS las rutas de la sección, no solo sobre la pantalla:
+    proteger la vista y dejar abiertas la carga y el borrado no serviría de
+    nada, porque se llega a ellas con un POST directo.
+    """
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if stock_pins_is_unlocked():
+            return view(*args, **kwargs)
+        if request.method == 'POST':
+            flash('Tu acceso a Stock PINs expiró. Ingresa el código de nuevo.', 'warning')
+            return redirect(url_for('admin_bp.pins_unlock'))
+        # full_path deja un '?' colgando cuando no hay query string.
+        target = request.full_path.rstrip('?')
+        return redirect(url_for('admin_bp.pins_unlock', next=target))
+    return wrapper
+
+
+@admin_bp.route('/pins/unlock', methods=['GET', 'POST'])
+@login_required
+def pins_unlock():
+    access_code = get_stock_pins_access_code()
+    if not access_code or stock_pins_is_unlocked():
+        return redirect(url_for('admin_bp.pins'))
+
+    next_url = (request.values.get('next') or '').strip()
+    # Solo rutas internas: un `next` externo convertiría esta pantalla en un
+    # redirector abierto.
+    if not next_url.startswith('/admin/pins'):
+        next_url = url_for('admin_bp.pins')
+
+    if request.method == 'POST':
+        attempts = int(session.get(STOCK_PINS_ATTEMPTS_KEY) or 0)
+        if attempts >= STOCK_PINS_MAX_ATTEMPTS:
+            flash('Demasiados intentos fallidos. Cierra sesión y vuelve a entrar.', 'danger')
+            return render_template('admin/pins_unlock.html', next_url=next_url, locked_out=True)
+
+        submitted = (request.form.get('access_code') or '').strip()
+        if hmac.compare_digest(submitted, access_code):
+            session[STOCK_PINS_SESSION_KEY] = datetime.utcnow().isoformat()
+            session.pop(STOCK_PINS_ATTEMPTS_KEY, None)
+            return redirect(next_url)
+
+        session[STOCK_PINS_ATTEMPTS_KEY] = attempts + 1
+        restantes = STOCK_PINS_MAX_ATTEMPTS - (attempts + 1)
+        flash(f'Código incorrecto. Te quedan {max(restantes, 0)} intentos.', 'danger')
+
+    return render_template('admin/pins_unlock.html', next_url=next_url, locked_out=False)
+
+
+@admin_bp.route('/pins/lock', methods=['POST'])
+@login_required
+def pins_lock():
+    """Cierra el acceso a mano, sin esperar a que caduque."""
+    session.pop(STOCK_PINS_SESSION_KEY, None)
+    flash('Stock PINs quedó bloqueado.', 'info')
+    return redirect(url_for('admin_bp.dashboard'))
+
+
 @admin_bp.route('/pins')
 @login_required
+@stock_pins_required
 def pins():
     package_id = request.args.get('package_id', type=int)
 
@@ -1219,9 +1374,30 @@ def pins():
                 .all()
             )
 
+    # Antes salían todos los paquetes revueltos en una sola rejilla: Apple,
+    # Free Fire y Roblox juntos. Ahora se elige primero el juego o servicio y
+    # solo entonces aparecen sus paquetes.
+    games_map = {}
+    for pkg in pin_enabled_packages:
+        entry = games_map.setdefault(pkg.game_id, {
+            'game': pkg.game,
+            'packages': [],
+            'available': 0,
+        })
+        entry['packages'].append(pkg)
+        entry['available'] += int(pkg.pin_count or 0)
+    pin_games = sorted(games_map.values(), key=lambda item: (item['game'].name or '').lower())
+
+    game_id = request.args.get('game_id', type=int)
+    if selected_package:
+        game_id = selected_package.game_id
+    selected_game_entry = games_map.get(game_id) if game_id else None
+
     return render_template(
         'admin/pins.html',
         automated_packages=pin_enabled_packages,
+        pin_games=pin_games,
+        selected_game=selected_game_entry,
         selected_package=selected_package,
         pins_list=pins_list,
     )
@@ -1229,6 +1405,7 @@ def pins():
 
 @admin_bp.route('/pins/<int:package_id>/upload', methods=['POST'])
 @login_required
+@stock_pins_required
 def pins_upload(package_id):
     package = Package.query.get_or_404(package_id)
     raw = request.form.get('pins_text', '').strip()
@@ -1250,6 +1427,7 @@ def pins_upload(package_id):
 
 @admin_bp.route('/pins/<int:pin_id>/delete', methods=['POST'])
 @login_required
+@stock_pins_required
 def pin_delete(pin_id):
     pin = Pin.query.get_or_404(pin_id)
     package_id = pin.package_id
@@ -1752,6 +1930,10 @@ def settings():
         'community_popup_interval_hours': 'Cada cuántas horas puede reaparecer (por pestaña/visita)',
         'community_popup_whatsapp_url': 'Link del canal de WhatsApp al que invita el popup',
     }
+    manual_schedule_keys = {
+        'manual_open_hour': 'Hora (0-23, Venezuela) en que abren los paquetes de recarga manual',
+        'manual_close_hour': 'Hora (0-23, Venezuela) en que cierran los paquetes de recarga manual',
+    }
     email_settings = {}
     for key in email_keys:
         setting = Setting.query.filter_by(key=key).first()
@@ -1778,6 +1960,15 @@ def settings():
         community_popup_settings[key] = setting.value if setting else ''
     if not community_popup_settings.get('community_popup_interval_hours'):
         community_popup_settings['community_popup_interval_hours'] = '3'
+
+    # Se leen con el mismo helper que usa la tienda, así el admin ve
+    # exactamente las horas que se están aplicando (incluidos los valores
+    # por defecto cuando todavía no se ha guardado nada).
+    manual_schedule = get_manual_schedule()
+    manual_schedule_settings = {
+        'manual_open_hour': str(manual_schedule['open_hour']),
+        'manual_close_hour': str(manual_schedule['close_hour']),
+    }
 
     ranking_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
     active_payment_methods = PaymentMethod.query.filter_by(is_active=True).order_by(PaymentMethod.sort_order.asc(), PaymentMethod.name.asc()).all()
@@ -1846,6 +2037,19 @@ def settings():
             'community_popup_enabled': '1' if request.form.get('community_popup_enabled') else '0',
             'community_popup_interval_hours': community_interval_hours,
             'community_popup_whatsapp_url': (request.form.get('community_popup_whatsapp_url', '') or '').strip(),
+        }
+
+        def _clean_hour(field_name, fallback):
+            raw = (request.form.get(field_name, '') or '').strip()
+            try:
+                hour = int(raw)
+            except (TypeError, ValueError):
+                return str(fallback)
+            return str(hour) if 0 <= hour <= 23 else str(fallback)
+
+        manual_schedule_payload = {
+            'manual_open_hour': _clean_hour('manual_open_hour', manual_schedule['open_hour']),
+            'manual_close_hour': _clean_hour('manual_close_hour', manual_schedule['close_hour']),
         }
 
         if new_rate:
@@ -2068,6 +2272,15 @@ def settings():
             else:
                 current_setting.value = val
 
+        for key, desc in manual_schedule_keys.items():
+            val = manual_schedule_payload.get(key, '')
+            current_setting = Setting.query.filter_by(key=key).first()
+            if not current_setting:
+                current_setting = Setting(key=key, value=val, description=desc)
+                db.session.add(current_setting)
+            else:
+                current_setting.value = val
+
         ranking_prize_desc = 'Paquete vinculado al premio mensual del ranking por puesto.'
         ranking_prize_auto_desc = 'Si está activo, el paquete del premio se fuerza como automatizado.'
         for ranking_key_name in ('free_fire', 'blood_strike'):
@@ -2138,6 +2351,7 @@ def settings():
         ranking_prize_labels=RANKING_PRIZE_LABELS,
         ranking_packages_by_game=ranking_packages_by_game,
         community_popup_settings=community_popup_settings,
+        manual_schedule_settings=manual_schedule_settings,
     )
 
 

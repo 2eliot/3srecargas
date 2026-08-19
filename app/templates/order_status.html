@@ -333,134 +333,148 @@
     text-transform: uppercase;
 }
 
+/* Ruleta: canvas negro/rojo con aro gris, flecha ambar arriba y el GO
+   central como boton real. El sector ganador lo decide el servidor; aqui
+   solo se anima hasta el que ya vino resuelto. */
 .roulette-shell {
     display: grid;
     justify-items: center;
-    gap: 22px;
+    gap: 18px;
 }
 
 .roulette-wheel-wrap {
     position: relative;
-    width: min(100%, 380px);
+    width: min(100%, 360px);
     aspect-ratio: 1;
-    padding: 16px;
-}
-
-.roulette-wheel-wrap::before {
-    content: '';
-    position: absolute;
-    inset: 10px;
+    padding: 12px;
     border-radius: 50%;
-    background: radial-gradient(circle at center, rgba(255,255,255,.06), rgba(255,255,255,0) 62%);
+    background: linear-gradient(180deg, #1f2937 0%, #030712 100%);
+    border: 4px solid #374151;
+    box-shadow: 0 0 25px rgba(220, 38, 38, .4), 0 22px 40px rgba(0,0,0,.5);
 }
 
 .roulette-pointer {
     position: absolute;
-    top: 2px;
+    top: -6px;
     left: 50%;
-    width: 0;
-    height: 0;
-    border-left: 18px solid transparent;
-    border-right: 18px solid transparent;
-    border-top: 0;
-    border-bottom: 36px solid #ffcf33;
+    width: 30px;
+    height: 38px;
     transform: translateX(-50%);
+    background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+    clip-path: polygon(50% 100%, 0 0, 100% 0);
+    border-radius: 2px;
     z-index: 5;
-    filter: drop-shadow(0 10px 20px rgba(255,212,59,.42));
+    filter: drop-shadow(0 6px 14px rgba(251, 191, 36, .5));
 }
 
 .roulette-wheel {
     position: absolute;
-    inset: 14px;
+    inset: 12px;
     border-radius: 50%;
-    box-shadow:
-        inset 0 0 0 12px rgba(0,0,0,.08),
-        0 24px 44px rgba(0,0,0,.42);
     transition: transform 4.2s cubic-bezier(.12,.88,.18,1);
-    overflow: hidden;
+    filter: drop-shadow(0 10px 20px rgba(0, 0, 0, .5));
 }
 
 .roulette-wheel.is-spinning {
-    filter: drop-shadow(0 16px 30px rgba(255,207,51,.18));
+    filter: drop-shadow(0 14px 26px rgba(220, 38, 38, .35));
 }
 
-.roulette-wheel::before {
-    content: '';
-    position: absolute;
-    inset: -16px;
-    border-radius: 50%;
-    border: 12px solid #1d2434;
-    box-shadow: inset 0 0 0 8px rgba(0,0,0,.24);
-}
-
-.roulette-wheel-svg {
+.roulette-wheel-canvas {
     width: 100%;
     height: 100%;
     display: block;
     border-radius: 50%;
 }
 
-.roulette-segment-red {
-    fill: #ff1263;
-}
-
-.roulette-segment-white {
-    fill: #ffffff;
-}
-
-.roulette-segment-ring {
-    fill: none;
-    stroke: rgba(0, 0, 0, .08);
-    stroke-width: 20;
-}
-
-.roulette-svg-text {
-    font-family: Inter, sans-serif;
-    font-weight: 1000;
-    letter-spacing: .02em;
-    text-anchor: middle;
-}
-
-.roulette-svg-text.red {
-    fill: #ffffff;
-}
-
-.roulette-svg-text.dark {
-    fill: #111827;
-}
-
-.roulette-svg-mark {
-    fill: #ff7ba7;
-    font-size: 13px;
-}
-
-.roulette-svg-main {
-    font-size: 15px;
-}
-
-.roulette-svg-sub {
-    font-size: 10px;
-    letter-spacing: .08em;
-}
-
+/* El GO es el boton de jugar, no un adorno. */
 .roulette-center {
     position: absolute;
     inset: 50%;
-    width: 88px;
-    height: 88px;
-    margin: -44px;
+    width: 84px;
+    height: 84px;
+    margin: -42px;
     border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #3a3a3a, #111 58%, #050505 100%);
-    border: 7px solid #222a3b;
-    color: #ffcf33;
+    background: linear-gradient(135deg, #111827 0%, #000 100%);
+    border: 4px solid #f59e0b;
+    color: #fbbf24;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
-    font-weight: 1000;
-    letter-spacing: .02em;
-    z-index: 4;
-    box-shadow: 0 10px 22px rgba(0,0,0,.42);
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: .08em;
+    cursor: pointer;
+    z-index: 6;
+    box-shadow: 0 0 30px rgba(234, 179, 8, .5), 0 8px 18px rgba(0,0,0,.5);
+    transition: transform .15s ease;
+}
+
+.roulette-center:hover:not(:disabled) { transform: scale(1.06); }
+.roulette-center:active:not(:disabled) { transform: scale(.95); }
+.roulette-center:disabled { opacity: .55; cursor: default; }
+
+.roulette-hint {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: rgba(255,255,255,.5);
+}
+
+/* Modal de resultado del giro. */
+.roulette-result-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1400;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0,0,0,.8);
+    backdrop-filter: blur(4px);
+}
+
+.roulette-result-modal.is-open { display: flex; }
+
+.roulette-result-card {
+    width: min(100%, 380px);
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 18px;
+    padding: 26px 22px;
+    text-align: center;
+    box-shadow: 0 26px 60px rgba(0,0,0,.6);
+}
+
+.roulette-result-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+}
+
+.roulette-result-icon.win { background: rgba(245,158,11,.2); color: #fbbf24; border: 1px solid rgba(245,158,11,.4); }
+.roulette-result-icon.miss { background: rgba(239,68,68,.2); color: #f87171; border: 1px solid rgba(239,68,68,.4); }
+
+.roulette-result-title { font-size: 22px; font-weight: 900; margin-bottom: 8px; }
+.roulette-result-title.win { color: #fbbf24; }
+.roulette-result-title.miss { color: #ef4444; }
+.roulette-result-text { font-size: 13px; color: #d1d5db; margin-bottom: 22px; }
+
+.roulette-result-close {
+    width: 100%;
+    padding: 12px 0;
+    border-radius: 12px;
+    border: 0;
+    background: linear-gradient(90deg, #dc2626, #b91c1c);
+    color: #fff;
+    font-weight: 800;
+    font-size: 14px;
+    cursor: pointer;
+    box-shadow: 0 10px 24px rgba(220,38,38,.3);
 }
 
 .slot-machine-shell {
@@ -566,41 +580,6 @@
     filter: blur(var(--slot-blur, .18px));
 }
 
-.surprise-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-}
-
-.surprise-box {
-    min-height: 94px;
-    border-radius: 16px;
-    border: 2px solid rgba(255,255,255,.08);
-    background: linear-gradient(135deg, #121212, #050505);
-    color: #ff1e68;
-    font-size: 30px;
-    font-weight: 900;
-    display: grid;
-    place-items: center;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
-}
-
-.surprise-box.is-revealed {
-    background: #fff;
-    color: #0f172a;
-    border-color: #ff1e68;
-}
-
-.surprise-box.is-selected {
-    box-shadow: 0 0 0 3px #ffd43b, 0 0 24px rgba(255,212,59,.24);
-}
-
-.surprise-box-label {
-    margin-top: 6px;
-    font-size: 12px;
-    font-weight: 900;
-}
-
 .order-minigame-result {
     margin-top: 18px;
     padding: 16px;
@@ -696,18 +675,14 @@
     }
 
     .roulette-wheel-wrap {
-        width: min(100%, 324px);
-    }
-
-    .roulette-svg-main {
-        font-size: 12px;
+        width: min(100%, 320px);
     }
 
     .roulette-center {
-        width: 76px;
-        height: 76px;
-        margin: -38px;
-        font-size: 14px;
+        width: 72px;
+        height: 72px;
+        margin: -36px;
+        font-size: 17px;
     }
 }
 </style>
@@ -1113,71 +1088,88 @@
         return labels;
     }
 
-    function buildSurpriseItemsFromCatalog() {
-        var items = [
-            { icon: '❌', label: 'FALLASTE' },
-            { icon: '❌', label: 'FALLASTE' },
-            { icon: '❌', label: 'FALLASTE' }
-        ];
-        getMinigameRewardCatalog().forEach(function (reward) {
-            items.push({
-                icon: '🎟️',
-                label: (reward && reward.label) || 'Cupón'
-            });
+    /* Dibuja la rueda en canvas: sectores negros para premio y rojos para
+       fallo, aro gris exterior y el texto acostado hacia el borde. Se
+       redibuja con la resolucion real de la pantalla para que no salga
+       borroso al rotar. */
+    function drawRouletteWheel(canvas, labels) {
+        if (!canvas || !canvas.getContext) return;
+        var list = (labels && labels.length) ? labels : ['FAILED', 'PREMIO'];
+        var ratio = window.devicePixelRatio || 1;
+        var size = Math.max(canvas.clientWidth || 0, 240);
+
+        canvas.width = Math.round(size * ratio);
+        canvas.height = Math.round(size * ratio);
+
+        var ctx = canvas.getContext('2d');
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, size, size);
+
+        var center = size / 2;
+        var radius = center - 6;
+        var arc = (2 * Math.PI) / list.length;
+
+        list.forEach(function (label, index) {
+            var parts = parseRouletteLabel(label);
+            var isMiss = parts.main === 'FAILED';
+            // ctx.arc empieza a las 3 en punto y el puntero está arriba: sin
+            // este cuarto de vuelta la rueda frenaría dos sectores corridos
+            // respecto al que decidió el servidor.
+            var startAngle = (index * arc) - (Math.PI / 2);
+
+            ctx.beginPath();
+            ctx.moveTo(center, center);
+            ctx.arc(center, center, radius, startAngle, startAngle + arc);
+            ctx.closePath();
+            ctx.fillStyle = isMiss ? '#dc2626' : '#111111';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#1f2937';
+            ctx.stroke();
+
+            ctx.save();
+            ctx.translate(center, center);
+            ctx.rotate(startAngle + (arc / 2));
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffffff';
+
+            var text = (isMiss ? '✕ ' : '◆ ') + parts.main;
+            var fontSize = size < 300 ? 11 : 13;
+            ctx.font = '900 ' + fontSize + "px 'Outfit', Inter, sans-serif";
+            while (ctx.measureText(text).width > radius - 40 && fontSize > 8) {
+                fontSize -= 1;
+                ctx.font = '900 ' + fontSize + "px 'Outfit', Inter, sans-serif";
+            }
+            ctx.fillText(text, radius - 18, 0);
+            ctx.restore();
         });
-        return items.slice(0, 9);
+
+        ctx.beginPath();
+        ctx.arc(center, center, radius - 2, 0, 2 * Math.PI);
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = '#374151';
+        ctx.stroke();
     }
 
-    function polarPoint(cx, cy, radius, angleDeg) {
-        var angleRad = ((angleDeg - 90) * Math.PI) / 180;
-        return {
-            x: cx + (radius * Math.cos(angleRad)),
-            y: cy + (radius * Math.sin(angleRad))
-        };
+    var lastRouletteLabels = null;
+
+    function renderRouletteWheel(labels) {
+        var canvas = document.getElementById('rouletteCanvas');
+        if (!canvas) return;
+        lastRouletteLabels = labels;
+        // El ancho real solo se conoce cuando ya esta en el documento.
+        requestAnimationFrame(function () {
+            drawRouletteWheel(canvas, labels);
+        });
     }
 
-    function buildRouletteSegmentPath(cx, cy, radius, startAngle, endAngle) {
-        var start = polarPoint(cx, cy, radius, startAngle);
-        var end = polarPoint(cx, cy, radius, endAngle);
-        var largeArc = endAngle - startAngle > 180 ? 1 : 0;
-        return [
-            'M', cx, cy,
-            'L', start.x, start.y,
-            'A', radius, radius, 0, largeArc, 1, end.x, end.y,
-            'Z'
-        ].join(' ');
-    }
-
-    function buildRouletteWheelSvg(labels) {
-        var cx = 150;
-        var cy = 150;
-        var radius = 144;
-        var textRadius = 102;
-        var svg = '<svg class="roulette-wheel-svg" viewBox="0 0 300 300" aria-hidden="true">';
-        for (var i = 0; i < labels.length; i += 1) {
-            var startAngle = i * 36;
-            var endAngle = startAngle + 36;
-            var midAngle = startAngle + 18;
-            var isRed = i % 2 === 0;
-            var textColor = isRed ? 'red' : 'dark';
-            var labelParts = parseRouletteLabel(labels[i]);
-            var textPoint = polarPoint(cx, cy, textRadius, midAngle);
-            var textRotation = midAngle - 90;
-            svg += '<path class="' + (isRed ? 'roulette-segment-red' : 'roulette-segment-white') + '" d="' + buildRouletteSegmentPath(cx, cy, radius, startAngle, endAngle) + '"></path>';
-            svg += '<g transform="translate(' + textPoint.x.toFixed(2) + ' ' + textPoint.y.toFixed(2) + ') rotate(' + textRotation.toFixed(2) + ')">';
-            if (labelParts.mark) {
-                svg += '<text class="roulette-svg-text roulette-svg-mark" x="0" y="-14">' + escapeHtml(labelParts.mark) + '</text>';
-            }
-            svg += '<text class="roulette-svg-text roulette-svg-main ' + textColor + '" x="0" y="0">' + escapeHtml(labelParts.main) + '</text>';
-            if (labelParts.sub) {
-                svg += '<text class="roulette-svg-text roulette-svg-sub ' + textColor + '" x="0" y="14">' + escapeHtml(labelParts.sub) + '</text>';
-            }
-            svg += '</g>';
-        }
-        svg += '<circle class="roulette-segment-ring" cx="150" cy="150" r="134"></circle>';
-        svg += '</svg>';
-        return svg;
-    }
+    // Al girar el teléfono cambia el ancho y el canvas hay que rehacerlo.
+    window.addEventListener('resize', function () {
+        if (!lastRouletteLabels) return;
+        var canvas = document.getElementById('rouletteCanvas');
+        if (canvas) drawRouletteWheel(canvas, lastRouletteLabels);
+    });
 
     function buildStageHeader(opportunity) {
         var label = opportunity && opportunity.selected_game_label ? opportunity.selected_game_label : 'Mini juego';
@@ -1207,17 +1199,54 @@
     function buildRouletteStage(opportunity) {
         var payload = (opportunity && opportunity.result_payload) || {};
         var labels = payload.segments || buildRouletteSegmentsFromCatalog();
+        var played = !!(opportunity && opportunity.played);
         return '' +
             '<div class="minigame-stage">' + buildStageHeader(opportunity) +
                 '<div class="roulette-shell">' +
                     '<div class="roulette-wheel-wrap">' +
                         '<div class="roulette-pointer"></div>' +
-                        '<div class="roulette-wheel" id="rouletteWheel">' + buildRouletteWheelSvg(labels) + '</div>' +
-                        '<div class="roulette-center">GO</div>' +
+                        '<div class="roulette-wheel" id="rouletteWheel">' +
+                            '<canvas class="roulette-wheel-canvas" id="rouletteCanvas" aria-hidden="true"></canvas>' +
+                        '</div>' +
+                        '<button type="button" class="roulette-center" id="playRouletteBtn"' +
+                            (played ? ' disabled' : '') + ' aria-label="Girar la ruleta">GO</button>' +
                     '</div>' +
-                    '<button type="button" class="order-minigame-btn" id="playRouletteBtn">¡GIRAR AHORA!</button>' +
+                    '<p class="roulette-hint">' +
+                        (played ? 'Ya usaste tu giro en esta orden.' : 'Pulsa GO para girar. Tienes una sola oportunidad.') +
+                    '</p>' +
                 '</div>' +
             '</div>';
+    }
+
+    /* Modal del resultado del giro, encima de la tarjeta que queda guardada. */
+    function showRouletteResultModal(opportunity) {
+        var won = opportunity && opportunity.result_kind === 'game_prize';
+        var prize = (opportunity && opportunity.reward_label) || 'tu premio';
+        var existing = document.getElementById('rouletteResultModal');
+        if (existing) existing.remove();
+
+        var modal = document.createElement('div');
+        modal.className = 'roulette-result-modal is-open';
+        modal.id = 'rouletteResultModal';
+        modal.innerHTML =
+            '<div class="roulette-result-card" role="dialog" aria-modal="true">' +
+                '<div class="roulette-result-icon ' + (won ? 'win' : 'miss') + '">' + (won ? '♦' : '✕') + '</div>' +
+                '<h2 class="roulette-result-title ' + (won ? 'win' : 'miss') + '">' +
+                    (won ? '¡FELICIDADES!' : '¡SIGUIENTE INTENTO!') +
+                '</h2>' +
+                '<p class="roulette-result-text">' +
+                    (won
+                        ? '¡Te ganaste ' + escapeHtml(prize) + ' en tu giro instantáneo!'
+                        : 'Esta vez no hubo suerte. ¡Gracias por participar en la dinámica!') +
+                '</p>' +
+                '<button type="button" class="roulette-result-close">Aceptar</button>' +
+            '</div>';
+
+        function close() { modal.remove(); }
+        modal.addEventListener('click', function (evt) {
+            if (evt.target === modal || evt.target.classList.contains('roulette-result-close')) close();
+        });
+        document.body.appendChild(modal);
     }
 
     function getRouletteSegmentAngle(segmentCount) {
@@ -1294,21 +1323,6 @@
                         }).join('') +
                     '</div>' +
                     '<button type="button" class="order-minigame-btn" id="playSlotsBtn">¡GIRAR YA!</button>' +
-                '</div>' +
-            '</div>';
-    }
-
-    function buildSurpriseStage(opportunity) {
-        var items = ((opportunity && opportunity.result_payload) || {}).items || [];
-        if (!items.length) {
-            items = buildSurpriseItemsFromCatalog();
-        }
-        return '' +
-            '<div class="minigame-stage">' + buildStageHeader(opportunity) +
-                '<div class="surprise-grid" id="surpriseGrid">' +
-                    items.map(function (item, index) {
-                        return '<button type="button" class="surprise-box" data-choice-index="' + index + '"><div>' + escapeHtml(item.icon || '?') + '</div><div class="surprise-box-label">' + escapeHtml(item.label || 'ELIGE') + '</div></button>';
-                    }).join('') +
                 '</div>' +
             '</div>';
     }
@@ -1407,9 +1421,8 @@
             label: opportunity.selected_game_label || 'Mini juego'
         };
         var stageHtml = '';
-        if (selectedGame.key === 'ruleta') stageHtml = buildRouletteStage(opportunity);
-        else if (selectedGame.key === 'tragaperras') stageHtml = buildSlotsStage(opportunity);
-        else stageHtml = buildSurpriseStage(opportunity);
+        if (selectedGame.key === 'tragaperras') stageHtml = buildSlotsStage(opportunity);
+        else stageHtml = buildRouletteStage(opportunity);
 
         if (chooserTitle) chooserTitle.textContent = selectedGame.label;
         if (chooserText) {
@@ -1424,37 +1437,23 @@
                 (opportunity.played ? buildResultCard(opportunity) : '') +
             '</div>';
 
-        if (selectedGame.key === 'ruleta') {
+        if (selectedGame.key !== 'tragaperras') {
             var wheel = document.getElementById('rouletteWheel');
             var payload = opportunity.result_payload || {};
+            renderRouletteWheel(payload.segments || buildRouletteSegmentsFromCatalog());
             if (wheel && opportunity.played && typeof payload.target_index === 'number') {
                 setRouletteWheelInstant(wheel, payload.target_index, (payload.segments || []).length || 10);
             }
             if (opportunity.played) {
+                // El GO es la propia rueda: se deshabilita, no se quita.
                 var playRouletteBtn = document.getElementById('playRouletteBtn');
-                if (playRouletteBtn) playRouletteBtn.remove();
+                if (playRouletteBtn) playRouletteBtn.disabled = true;
             }
         }
 
         if (selectedGame.key === 'tragaperras' && opportunity.played) {
             var playSlotsBtn = document.getElementById('playSlotsBtn');
             if (playSlotsBtn) playSlotsBtn.remove();
-        }
-
-        if (selectedGame.key === 'caja_sorpresa' && opportunity.played) {
-            var payloadBox = opportunity.result_payload || {};
-            var boxes = chooserContent.querySelectorAll('#surpriseGrid .surprise-box');
-            boxes.forEach(function (box, index) {
-                var item = payloadBox.items && payloadBox.items[index] ? payloadBox.items[index] : null;
-                box.classList.add('is-revealed');
-                if (payloadBox.selected_index === index) {
-                    box.classList.add('is-selected');
-                }
-                if (item) {
-                    box.innerHTML = '<div>' + escapeHtml(item.icon || '?') + '</div><div class="surprise-box-label">' + escapeHtml(item.label || '') + '</div>';
-                }
-                box.disabled = true;
-            });
         }
 
         bindPlayableStage(opportunity);
@@ -1647,6 +1646,7 @@
                             state = nextState;
                             renderState();
                             renderChooserState();
+                            showRouletteResultModal(nextOpportunity);
                         });
                     }).catch(function (error) {
                         showError(error.message || 'No se pudo completar el juego.');
@@ -1689,13 +1689,6 @@
             }
             return;
         }
-
-        document.querySelectorAll('#surpriseGrid .surprise-box').forEach(function (box) {
-            box.addEventListener('click', function () {
-                var choiceIndex = Number(box.getAttribute('data-choice-index') || 0);
-                playSelectedGame('caja_sorpresa', choiceIndex);
-            });
-        });
     }
 
     function renderState() {

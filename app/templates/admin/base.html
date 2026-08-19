@@ -100,6 +100,7 @@
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
                 <span class="nav-label">Stock PINs</span>
+                {% if stock_pins_protected %}<span class="nav-lock-hint" title="Pide código de acceso">🔒</span>{% endif %}
             </a>
             <a href="{{ url_for('admin_bp.affiliates') }}"
                class="nav-item {% if 'affiliate' in request.endpoint %}active{% endif %}">

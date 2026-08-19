@@ -5,12 +5,18 @@ from flask import current_app
 
 from ..models import Game, MiniGameCounter, OrderMiniGameOpportunity, Package, Setting, db
 
+# La caja sorpresa se retiró: destapaba las siete cajas antes de que el
+# jugador eligiera, así que el resultado se veía de antemano y el juego no
+# tenía gracia. Quedan la ruleta y las tragaperras.
 MINIGAME_GAME_DEFS = [
     {'key': 'ruleta', 'label': 'Ruleta', 'icon': '🎯'},
     {'key': 'tragaperras', 'label': 'Tragaperras', 'icon': '🎰'},
-    {'key': 'caja_sorpresa', 'label': 'Caja sorpresa', 'icon': '🎁'},
 ]
 MINIGAME_GAME_KEYS = {item['key'] for item in MINIGAME_GAME_DEFS}
+# Clave del minijuego retirado. Las oportunidades viejas que la tengan
+# guardada se reconducen a la ruleta en vez de romperse.
+MINIGAME_RETIRED_GAME_KEYS = {'caja_sorpresa'}
+MINIGAME_FALLBACK_GAME_KEY = 'ruleta'
 MINIGAME_GLOBAL_COUNTER_KEY = 'global'
 MINIGAME_SLOT_MISS_REELS = [
     {'icon': '💎', 'label': 'BONUS'},
@@ -30,7 +36,7 @@ MINIGAME_SLOTS = [
 ]
 MINIGAME_SLOT_KEYS = {item['slot_key'] for item in MINIGAME_SLOTS}
 
-# Relleno visual para que la ruleta/caja se vea con varios premios, tal
+# Relleno visual para que la ruleta se vea con varios premios, tal
 # como se pidió ("que estén varios premios pero que el único que sea
 # ganable sea el primer paquete"). Estos nunca se entregan de verdad.
 MINIGAME_DECORATIVE_LABELS = ['Bono Sorpresa', 'Súper Premio', 'Extra']
@@ -171,7 +177,7 @@ def ensure_minigame_opportunity(order):
 
 
 def get_minigame_reward_catalog_for_order(order):
-    """Catálogo de premios a mostrar en la ruleta/caja para esta orden:
+    """Catálogo de premios a mostrar en la ruleta para esta orden:
     el premio real primero (el único ganable) más relleno decorativo."""
     if not order:
         return []
@@ -192,17 +198,6 @@ def build_minigame_roulette_segments(catalog):
         labels.append('FAILED')
         labels.append(reward.get('label') or 'Premio')
     return labels or ['FAILED', 'Premio']
-
-
-def build_minigame_surprise_items(catalog):
-    items = [
-        {'icon': '❌', 'label': 'FALLASTE'},
-        {'icon': '❌', 'label': 'FALLASTE'},
-        {'icon': '❌', 'label': 'FALLASTE'},
-    ]
-    for reward in catalog:
-        items.append({'icon': '🎁', 'label': reward.get('label') or 'Premio'})
-    return items[:9]
 
 
 def build_slot_reels_for_reward(reward):
@@ -235,22 +230,8 @@ def build_minigame_result_payload(game_key, reward, choice_index=None, catalog=N
             'target_label': reward_label,
         }
 
-    if game_key == 'tragaperras':
-        return {
-            'reels': build_slot_reels_for_reward(reward)
-        }
-
-    items = build_minigame_surprise_items(catalog)
-    selected_index = int(choice_index or 0)
-    if selected_index < 0 or selected_index >= len(items):
-        selected_index = 0
-    if reward_kind == 'game_prize':
-        items[selected_index] = {'icon': '🎁', 'label': reward_label}
-    else:
-        items[selected_index] = {'icon': '❌', 'label': 'FALLASTE'}
     return {
-        'items': items,
-        'selected_index': selected_index,
+        'reels': build_slot_reels_for_reward(reward)
     }
 
 
@@ -259,7 +240,7 @@ def select_order_minigame(order, game_key):
     if game_key not in MINIGAME_GAME_KEYS:
         raise ValueError('Juego inválido.')
 
-    opportunity = ensure_minigame_opportunity(order)
+    opportunity = migrate_retired_minigame_key(ensure_minigame_opportunity(order))
     if not opportunity:
         raise ValueError('Esta orden todavía no tiene una oportunidad activa.')
     if opportunity.status == 'played':
@@ -280,7 +261,7 @@ def play_order_minigame(order, game_key, choice_index=None):
     if game_key not in MINIGAME_GAME_KEYS:
         raise ValueError('Juego inválido.')
 
-    opportunity = ensure_minigame_opportunity(order)
+    opportunity = migrate_retired_minigame_key(ensure_minigame_opportunity(order))
     if not opportunity:
         raise ValueError('Esta orden todavía no tiene una oportunidad activa.')
     if opportunity.status == 'played':
@@ -390,10 +371,38 @@ def serialize_minigame_opportunity(opportunity):
     }
 
 
+def migrate_retired_minigame_key(opportunity):
+    """Reconduce a la ruleta las oportunidades que quedaron apuntando a un
+    minijuego retirado.
+
+    Sin esto, una orden vieja que ya había elegido la caja sorpresa se
+    quedaba atascada: el selector no ofrece esa clave y `select`/`play`
+    respondían "ya seleccionaste otro minijuego". Solo se toca si todavía no
+    se jugó; una jugada ya hecha se deja como quedó, es historial.
+    """
+    if not opportunity:
+        return opportunity
+    if (opportunity.selected_game_key or '') not in MINIGAME_RETIRED_GAME_KEYS:
+        return opportunity
+    if opportunity.status == 'played':
+        return opportunity
+
+    opportunity.selected_game_key = None
+    if opportunity.status == 'selected':
+        opportunity.status = 'available'
+    opportunity.updated_at = datetime.utcnow()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return opportunity
+
+
 def get_order_minigame_state(order, create_if_needed=True):
     opportunity = OrderMiniGameOpportunity.query.filter_by(order_id=order.id).first() if order else None
     if create_if_needed and not opportunity:
         opportunity = ensure_minigame_opportunity(order)
+    opportunity = migrate_retired_minigame_key(opportunity)
 
     return {
         'eligible': bool(opportunity),

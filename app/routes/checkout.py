@@ -13,6 +13,7 @@ from werkzeug.utils import secure_filename
 from ..models import db, Game, Package, Order, Affiliate, AffiliateCommission, Pin, PaymentMethod, User, Discount
 from ..models import Setting
 from ..models import OrderMiniGameOpportunity
+from ..utils.availability import get_purchase_block_reason
 from ..utils.order_processing import approve_order, order_qualifies_for_auto_fulfillment
 from ..utils.minigames import (
     ensure_minigame_opportunity,
@@ -479,6 +480,14 @@ def checkout(package_id):
         flash(message, 'danger')
         return redirect(url_for('main_bp.index'))
 
+    # La vitrina ya pinta en gris los paquetes agotados, pero hasta aquí eso
+    # era solo cosmético: entrando directo a /checkout/<id>, o con una
+    # pestaña abierta desde antes de que se acabara el stock, la compra se
+    # aceptaba igual y la orden quedaba trabada sin códigos que entregar.
+    block_reason = get_purchase_block_reason(package)
+    if block_reason:
+        return _init_error(block_reason)
+
     if request.method == 'POST':
         stage = request.form.get('stage', '').strip()
 
@@ -711,6 +720,12 @@ def checkout(package_id):
         affiliate = discount_result['affiliate']
         discount_amount = discount_result['discount_amount']
 
+        # Un código que no aplica NO cancela la compra. Antes esto hacía
+        # flash() + redirect al index y el cliente perdía la orden completa
+        # después de haber pagado y copiado su referencia: bastaba con que
+        # escribiera cualquier cosa en el campo de descuento (por ejemplo su
+        # referencia) o que arrastrara un ?aff= viejo. Ahora el código se
+        # descarta, se cobra el precio lleno y la orden sigue su curso.
         if discount_code and discount_result['error']:
             if pkg_key in checkout_data:
                 checkout_data[pkg_key] = {
@@ -719,8 +734,11 @@ def checkout(package_id):
                 }
                 session['checkout_data'] = checkout_data
             session.pop('affiliate_code', None)
-            flash(discount_result['error'], 'danger')
-            return redirect(url_for('main_bp.index'))
+            aff_code = ''
+            discount = None
+            affiliate = None
+            discount_amount = 0.0
+            flash(f"{discount_result['error']} Tu orden se registró sin descuento.", 'warning')
 
         if discount:
             discount.used_count = int(discount.used_count or 0) + 1

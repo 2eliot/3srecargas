@@ -761,6 +761,15 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 .nx-store .discount-apply-feedback.is-success { color: #34d399; }
 .nx-store .discount-apply-feedback.is-error { color: #fb7185; }
 
+/* El cliente confundía esta casilla con la de la referencia de pago. */
+.nx-store .nx-discount-hint {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: rgba(255,255,255,.42);
+    margin: 4px 2px 0;
+}
+
 .nx-discount-help {
     width: 20px; height: 20px;
     border-radius: 50%;
@@ -853,30 +862,69 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     transform: scale(1.02);
 }
 
+/* Agotado: se ve apagado, no se puede elegir y el cursor lo dice.
+   Sin pointer-events:none, que antes cancelaba el propio cursor.
+   El apagado va sobre el contenido y no sobre la tarjeta entera, porque
+   opacity en el padre también apagaría la píldora "AGOTADO". */
 .nx-store .package-item.is-out-of-stock {
-    opacity: .5;
-    filter: grayscale(.4);
     cursor: not-allowed;
-    pointer-events: none;
+    user-select: none;
+    background: rgba(255,255,255,.015) !important;
+}
+.nx-store .package-item.is-out-of-stock .pkg-info,
+.nx-store .package-item.is-out-of-stock img {
+    opacity: .4;
+    filter: grayscale(.75);
 }
 .nx-store .package-item.is-out-of-stock:hover {
     border-color: rgba(255,255,255,0.1) !important;
     background: linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.005) 100%) !important;
 }
+/* Fuera de horario el paquete se apaga menos: no está agotado, solo hay
+   que volver más tarde. */
+.nx-store .package-item.is-closed-now .pkg-info,
+.nx-store .package-item.is-closed-now img {
+    opacity: .5;
+    filter: grayscale(.5);
+}
+
+/* Aviso encima del bloque de paquetes manuales cuando está cerrado. */
+.nx-store .pkg-closed-notice {
+    grid-column: 1 / -1;
+    margin: 2px 0 6px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: rgba(245, 158, 11, .1);
+    border: 1px solid rgba(245, 158, 11, .35);
+    color: #fcd34d;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
+/* Píldora roja "AGOTADO" sobre la esquina de la tarjeta. */
 .nx-store .pkg-stock-badge {
     position: absolute;
     top: 4px;
     right: 4px;
-    background: rgba(0,0,0,.75);
-    color: #ff5a5a;
+    background: linear-gradient(180deg, #ff2b39 0%, #d31421 100%);
+    color: #fff;
     font-size: 9px;
-    font-weight: 800;
-    letter-spacing: .04em;
+    font-weight: 900;
+    letter-spacing: .06em;
     text-transform: uppercase;
-    padding: 2px 6px;
+    padding: 3px 8px;
     border-radius: 999px;
-    border: 1px solid rgba(255,90,90,.5);
+    border: 1px solid rgba(255,255,255,.35);
+    box-shadow: 0 2px 8px rgba(211,20,33,.55);
     z-index: 2;
+}
+
+/* "CERRADO" en ámbar: es temporal, no es lo mismo que agotado. */
+.nx-store .pkg-stock-badge.is-closed {
+    background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+    color: #2a1a00;
+    box-shadow: 0 2px 8px rgba(217,119,6,.5);
 }
 
 .nx-store .package-item img,

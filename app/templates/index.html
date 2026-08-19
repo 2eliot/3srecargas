@@ -109,6 +109,7 @@
                 <button type="button" class="nx-apply-btn red-glow-pill" id="applyDiscountBtn">APLICAR</button>
             </div>
             <p class="discount-apply-feedback" id="discountApplyFeedback" aria-live="polite"></p>
+            <p class="nx-discount-hint">Solo para códigos de promoción. Tu referencia de pago va más abajo.</p>
 
             <div id="packagesPanelHost">
                 <div class="packages-panel packages-panel-sidebar" id="packagesPanel" style="display:none">
@@ -360,6 +361,25 @@
             </div>
             <div class="payment-warning-footer">🚀 ¡Si sigues estos pasos, tu recarga llega al instante! 🚀</div>
             <button type="button" class="payment-warning-ack" id="paymentWarningAcknowledge">OK, ENTIENDO 🎮</button>
+        </div>
+    </div>
+
+    <!-- Aviso de Wallet (Zinli, TikTok, Binance…): se gestionan a mano -->
+    <div class="payment-warning-modal" id="walletNoticeModal" aria-hidden="true" style="display:none">
+        <div class="payment-warning-card" role="dialog" aria-modal="true" aria-labelledby="walletNoticeTitle">
+            <div class="payment-warning-head" id="walletNoticeTitle">⚠ ¡ATENCIÓN: LEE ESTO ANTES DE CONTINUAR! ⚠</div>
+            <div class="payment-warning-body">
+                <div class="payment-warning-item">
+                    <span class="payment-warning-icon">⚡</span>
+                    <p><strong>TIEMPO DE ENTREGA</strong><br>Las recargas de este paquete se realizan en un <strong>plazo de 5 minutos</strong>.</p>
+                </div>
+                <div class="payment-warning-item">
+                    <span class="payment-warning-icon">⏰</span>
+                    <p><strong>HORARIO DE GESTIÓN</strong><br>Las recargas de este paquete se gestionan manualmente de <strong>10:00 a. m. a 10:00 p. m.</strong></p>
+                </div>
+            </div>
+            <div class="payment-warning-footer">🚀 ¡Agradecemos tu paciencia y comprensión! 🚀</div>
+            <button type="button" class="payment-warning-ack" id="walletNoticeAcknowledge">OK, ENTIENDO ➡</button>
         </div>
     </div>
 

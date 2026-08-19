@@ -8,6 +8,10 @@
     var currentGame    = null;
     var selectedPackage = null;
     var appliedDiscountCode = '';
+    // Horario de atención de las recargas manuales, tal como lo devuelve el
+    // servidor con los paquetes. Solo se usa para los textos: quien decide si
+    // está abierto es el backend.
+    var manualSchedule = null;
     var usdRate = typeof window.USD_RATE_BS === 'number' ? window.USD_RATE_BS : 0;
     var defaultPackageId = (typeof window.DEFAULT_PACKAGE_ID === 'number' ? window.DEFAULT_PACKAGE_ID : null);
     var gamesViewportEl = document.getElementById('gamesViewport');
@@ -1035,6 +1039,7 @@
             })
             .then(function (data) {
                 console.log('Packages data:', data);
+                manualSchedule = (data.game && data.game.manual_schedule) || null;
                 applyGameToSidebar(data.game);
                 renderPackages(data.packages);
                 if (data.game && data.game.requires_manual_login_popup) {
@@ -1047,12 +1052,26 @@
                 } else {
                     closeGameSelectionPopup();
                 }
+                if (data.game && data.game.requires_wallet_notice) {
+                    openWalletNotice();
+                } else {
+                    closeWalletNotice();
+                }
             })
             .catch(function (err) {
                 console.error('Error fetching packages:', err);
                 document.getElementById('packagesGrid').innerHTML =
                     '<div class="empty-state" style="grid-column:1/-1">Error al cargar paquetes.</div>';
             });
+    }
+
+    /* Texto del aviso de fuera de horario, con las horas que configuró el
+       admin (y un respaldo por si el servidor no las mandó). */
+    function getClosedNoticeText() {
+        var openLabel = (manualSchedule && manualSchedule.open_label) || '10:00 a. m.';
+        var closeLabel = (manualSchedule && manualSchedule.close_label) || '10:00 p. m.';
+        return 'Estas recargas se hacen a mano y ahora estamos cerrados. ' +
+               'Atendemos de ' + openLabel + ' a ' + closeLabel + ', hora de Venezuela.';
     }
 
     /* ── Render Package Items ─────────────────────────────── */
@@ -1093,22 +1112,37 @@
             item.dataset.priceBase = String(parseFloat(pkg.price));
 
             var outOfStock = !!pkg.out_of_stock;
-            var stockBadge = outOfStock ? '<span class="pkg-stock-badge">Sin Stock</span>' : '';
+            // El paquete es manual y estamos fuera del horario de atención.
+            // Agotado manda sobre cerrado: si no hay stock, da igual la hora.
+            var closedNow = !outOfStock && !!pkg.closed_now;
+            var badge = '';
+            if (outOfStock) {
+                badge = '<span class="pkg-stock-badge">Agotado</span>';
+            } else if (closedNow) {
+                badge = '<span class="pkg-stock-badge is-closed">Cerrado</span>';
+            }
 
             item.innerHTML =
                 imgHtml +
-                stockBadge +
+                badge +
                 '<div class="pkg-info">' +
                     '<h4>' + escHtml(pkg.name) + '</h4>' +
                     '<span class="price"></span>' +
                     '<span class="price-usd"></span>' +
                 '</div>';
 
-            if (outOfStock) {
+            if (outOfStock || closedNow) {
                 item.classList.add('is-out-of-stock');
+                if (closedNow) item.classList.add('is-closed-now');
                 item.disabled = true;
                 item.setAttribute('aria-disabled', 'true');
-                item.title = 'Sin stock disponible por ahora';
+                item.title = closedNow ? getClosedNoticeText() : 'Agotado por ahora';
+                // El botón ya está disabled, así que el click no dispara nada:
+                // el CSS no necesita pointer-events:none y así el cursor
+                // not-allowed sí llega a verse al pasar por encima.
+                item.addEventListener('click', function (evt) {
+                    evt.preventDefault();
+                });
             } else {
                 item.addEventListener('click', function () {
                     selectPackage(pkg, item);
@@ -1137,6 +1171,14 @@
                 var sep = document.createElement('div');
                 sep.className = 'pkg-section-sep';
                 grid.appendChild(sep);
+            }
+            // Fuera de horario, un aviso arriba del bloque explica por qué
+            // estos paquetes están apagados: sin esto solo se ve el gris.
+            if (manualPkgs.some(function (pkg) { return !!pkg.closed_now; })) {
+                var notice = document.createElement('div');
+                notice.className = 'pkg-closed-notice';
+                notice.textContent = getClosedNoticeText();
+                grid.appendChild(notice);
             }
             manualPkgs.forEach(function (pkg) { grid.appendChild(buildItem(pkg)); });
         }
@@ -1747,7 +1789,11 @@
         } else if (knownCode) {
             setDiscountFeedback('Código reconocido. Selecciona un paquete para calcular el descuento.', 'is-success');
         } else {
-            setDiscountFeedback('Código no válido o inactivo.', 'is-error');
+            // El código no existe: se vacía el campo para que no viaje con la
+            // orden. Es la casilla donde el cliente pega su referencia por
+            // error, y antes ese valor llegaba hasta el final del checkout.
+            affInput.value = '';
+            setDiscountFeedback('Ese código no es válido. Si es tu referencia de pago, va más abajo, en "Coloca tu referencia aquí".', 'is-error');
         }
 
         syncDiscountPricingViews();
@@ -1877,6 +1923,17 @@
         manualInfoPopup.addEventListener('click', function (evt) {
             if (evt.target === manualInfoPopup) {
                 closeManualInfoPopup();
+            }
+        });
+    }
+
+    var walletNoticeModal = document.getElementById('walletNoticeModal');
+    var walletNoticeAck = document.getElementById('walletNoticeAcknowledge');
+    if (walletNoticeAck && walletNoticeModal) {
+        walletNoticeAck.addEventListener('click', closeWalletNotice);
+        walletNoticeModal.addEventListener('click', function (evt) {
+            if (evt.target === walletNoticeModal) {
+                closeWalletNotice();
             }
         });
     }
@@ -2045,6 +2102,7 @@
         if (evt.key === 'Escape') {
             closePhoneCountryMenu();
             closeManualInfoPopup();
+            closeWalletNotice();
             closeDiscountInfoPopup();
             closeGameSelectionPopup();
             closeRankingModal();
@@ -2062,6 +2120,22 @@
         if (!manualInfoPopup) return;
         manualInfoPopup.style.display = 'none';
         manualInfoPopup.setAttribute('aria-hidden', 'true');
+    }
+
+    /* Aviso de Wallet (Zinli, TikTok, Binance): plazo y horario de gestión.
+       Se muestra cada vez que se entra al producto, que es lo que se pidió. */
+    function openWalletNotice() {
+        var modal = document.getElementById('walletNoticeModal');
+        if (!modal) return;
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeWalletNotice() {
+        var modal = document.getElementById('walletNoticeModal');
+        if (!modal) return;
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
     }
 
     function openDiscountInfoPopup() {

@@ -136,6 +136,39 @@
         </div>
 
         <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
+        <h3 style="margin-bottom:16px;">Horario de las recargas manuales</h3>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="manual_open_hour">Abren a las (hora Venezuela)</label>
+                <select id="manual_open_hour" name="manual_open_hour">
+                    {% for h in range(24) %}
+                    <option value="{{ h }}" {% if manual_schedule_settings.manual_open_hour == h|string %}selected{% endif %}>
+                        {{ '%02d:00'|format(h) }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="manual_close_hour">Cierran a las (hora Venezuela)</label>
+                <select id="manual_close_hour" name="manual_close_hour">
+                    {% for h in range(24) %}
+                    <option value="{{ h }}" {% if manual_schedule_settings.manual_close_hour == h|string %}selected{% endif %}>
+                        {{ '%02d:00'|format(h) }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group form-span-2">
+                <p class="form-hint">
+                    Fuera de este horario, los paquetes que tienes que recargar a mano salen marcados como
+                    <strong>CERRADO</strong> y no se pueden comprar, para que nadie quede reclamando de madrugada.
+                    No afecta a los paquetes con stock de PINs ni a los que entrega Revendedores: esos siguen
+                    vendiéndose las 24 horas. Si pones la misma hora de apertura y cierre, se atiende siempre.
+                </p>
+            </div>
+        </div>
+
+        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
         <h3 style="margin-bottom:16px;">Popup "Únete a nuestra comunidad"</h3>
         <div class="form-grid-2">
             <div class="form-group">

@@ -396,6 +396,10 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 .stat-label { display: block; font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 .stat-revenue .stat-value { color: var(--success); }
 .stat-pending .stat-value  { color: var(--warning); }
+/* Pagadas que esperan la recarga manual: se entra directo al filtro. */
+.stat-to-deliver { text-decoration: none; color: inherit; }
+.stat-to-deliver .stat-value { color: #38bdf8; }
+.stat-to-deliver:hover { border-color: #38bdf8; }
 
 .alert-section { margin-bottom: 16px; }
 .alert {
@@ -819,6 +823,13 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 .status-approved  { background: rgba(34,197,94,.15);  color: var(--success); }
 .status-completed { background: rgba(139,92,246,.15); color: #a78bfa; }
 .status-rejected  { background: rgba(239,68,68,.15);  color: var(--danger); }
+/* Pago verificado pero recarga manual todavía sin hacer. */
+.status-paid-pending {
+    background: rgba(56,189,248,.15);
+    color: #38bdf8;
+    margin-left: 6px;
+    font-size: 11px;
+}
 
 /* Action buttons */
 .action-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -907,6 +918,19 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 }
 .filter-tab:hover { border-color: var(--accent); color: var(--text-primary); }
 .filter-tab.active { background: rgba(139,92,246,.15); border-color: var(--accent); color: var(--accent); }
+/* "Por entregar": pagadas que esperan la recarga manual. */
+.filter-tab-deliver { display: inline-flex; align-items: center; gap: 6px; }
+.filter-tab-deliver .filter-tab-count {
+    background: #38bdf8;
+    color: #06202e;
+    font-size: 11px;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: center;
+    padding: 1px 6px;
+    border-radius: 9px;
+}
+.filter-tab-deliver.active { background: rgba(56,189,248,.15); border-color: #38bdf8; color: #38bdf8; }
 .filters-bar {
     margin-bottom: 10px;
     display: flex;
@@ -1428,3 +1452,29 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
         justify-items: start;
     }
 }
+
+/* ─── Stock PINs: pantalla de código de acceso ─────────────────────────── */
+.pins-unlock-card {
+    max-width: 460px;
+    margin: 40px auto;
+    text-align: center;
+}
+.pins-unlock-icon { font-size: 40px; line-height: 1; margin-bottom: 12px; }
+.pins-unlock-card h3 { margin-bottom: 8px; }
+.pins-unlock-text { margin: 0 auto 22px; max-width: 40ch; }
+.pins-unlock-form { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+.pins-unlock-form input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .12em;
+}
+.pins-unlock-form .btn { width: 100%; justify-content: center; }
+.pins-unlock-lockout {
+    background: rgba(239,68,68,.12);
+    border: 1px solid rgba(239,68,68,.35);
+    color: var(--danger);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    font-size: 13px;
+    margin: 0;
+}
+.nav-lock-hint { margin-left: auto; font-size: 12px; opacity: .75; }

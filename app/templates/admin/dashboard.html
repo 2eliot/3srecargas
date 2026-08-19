@@ -12,6 +12,13 @@
             <span class="stat-label">Pendientes</span>
         </div>
     </div>
+    <a href="{{ url_for('admin_bp.orders', status='to_deliver') }}" class="stat-card stat-to-deliver">
+        <div class="stat-icon">📦</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ to_deliver }}</span>
+            <span class="stat-label">Pagadas · por entregar</span>
+        </div>
+    </a>
     <div class="stat-card stat-approved">
         <div class="stat-icon">✅</div>
         <div class="stat-info">

@@ -6,8 +6,16 @@ from flask_login import current_user
 from sqlalchemy import or_
 
 from ..models import (
-    db, Game, Package, Category, PaymentMethod, Setting, RevendedoresItemMapping,
+    db, Game, Package, Category, PaymentMethod, Setting,
     Order, RankingArchive,
+)
+from ..utils.availability import (
+    format_hour,
+    get_manual_schedule,
+    manual_service_is_open,
+    package_ids_with_auto_mapping,
+    package_is_closed_now,
+    package_is_out_of_stock,
 )
 from ..utils.timezone import now_ve, ve_day_start_utc_naive
 from ..utils.push_notifications import get_vapid_public_key, subscribe as push_subscribe, unsubscribe as push_unsubscribe
@@ -553,19 +561,15 @@ def api_packages(game_id):
 
     # Determine which packages have an active auto-mapping (revendedores)
     pkg_ids = [p.id for p in packages]
-    auto_mapped_ids = set(
-        m.store_package_id for m in
-        RevendedoresItemMapping.query.filter(
-            RevendedoresItemMapping.store_package_id.in_(pkg_ids),
-            RevendedoresItemMapping.active == True,
-            RevendedoresItemMapping.auto_enabled == True,
-        ).all()
-    ) if pkg_ids else set()
+    auto_mapped_ids = package_ids_with_auto_mapping(pkg_ids)
 
     category_slug = (game.category.slug if game.category else '').lower()
     is_tarjetas = (category_slug == 'tarjetas')
     is_wallet = (category_slug == 'wallet')
     has_stock_delivery = any(bool(p.is_automated and int(p.pin_count or 0) > 0) for p in packages)
+
+    manual_schedule = get_manual_schedule()
+    manual_open_now = manual_service_is_open(schedule=manual_schedule)
 
     pkg_list = []
     for p in packages:
@@ -574,14 +578,37 @@ def api_packages(game_id):
         # Sin stock de verdad = paquete automatizado por PINs, sin PINs
         # libres, y sin un mapeo de Revendedores que sirva de respaldo. Si
         # tiene mapeo, igual se puede completar aunque el stock esté en 0.
-        d['out_of_stock'] = bool(
-            p.is_automated and int(p.pin_count or 0) <= 0 and p.id not in auto_mapped_ids
+        # La misma regla la aplica el checkout antes de aceptar la compra.
+        d['out_of_stock'] = package_is_out_of_stock(
+            p, auto_mapped_ids=auto_mapped_ids, is_tarjetas=is_tarjetas
+        )
+        # Los paquetes que recarga un admin a mano se apagan fuera del
+        # horario de atención: si nadie los puede procesar, es mejor no
+        # venderlos que dejar al cliente reclamando de madrugada.
+        d['closed_now'] = package_is_closed_now(
+            p, auto_mapped_ids=auto_mapped_ids, is_tarjetas=is_tarjetas,
+            schedule=manual_schedule,
         )
         pkg_list.append(d)
 
     game_dict['requires_manual_login_popup'] = bool(
         pkg_list and not is_tarjetas and not is_wallet and not has_stock_delivery and not any(pkg.get('is_auto') for pkg in pkg_list)
     )
+
+    # Zinli, TikTok, Binance y todo lo de Wallet se gestiona a mano: el
+    # cliente tiene que saber el plazo y el horario antes de pagar. Es un
+    # aviso distinto al de recarga manual (ese pide datos de inicio de
+    # sesión), por eso va en su propio flag y no reutiliza el anterior.
+    game_dict['requires_wallet_notice'] = bool(pkg_list and is_wallet)
+
+    # El front lo usa para el badge "CERRADO" y para el texto del aviso.
+    game_dict['manual_schedule'] = {
+        'open_hour': manual_schedule['open_hour'],
+        'close_hour': manual_schedule['close_hour'],
+        'open_label': format_hour(manual_schedule['open_hour']),
+        'close_label': format_hour(manual_schedule['close_hour']),
+        'is_open_now': manual_open_now,
+    }
 
     return jsonify({
         'game': game_dict,

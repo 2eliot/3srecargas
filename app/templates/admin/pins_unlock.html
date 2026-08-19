@@ -1,0 +1,31 @@
+{% extends 'admin/base.html' %}
+{% block title %}Stock PINs{% endblock %}
+{% block page_title %}Stock PINs — Acceso restringido{% endblock %}
+
+{% block content %}
+<div class="admin-card pins-unlock-card">
+    <div class="pins-unlock-icon">🔒</div>
+    <h3>Esta sección pide un código</h3>
+    <p class="form-hint pins-unlock-text">
+        Los códigos del stock solo los ve quien tenga la clave de acceso. Escríbela para entrar:
+        en cuanto salgas de esta sección se vuelve a pedir.
+    </p>
+
+    {% if locked_out %}
+    <p class="pins-unlock-lockout">
+        Se agotaron los intentos. Cierra sesión y vuelve a entrar para intentarlo de nuevo.
+    </p>
+    {% else %}
+    <form method="POST" action="{{ url_for('admin_bp.pins_unlock') }}" class="pins-unlock-form" autocomplete="off">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <div class="form-group">
+            <label for="access_code">Código de acceso</label>
+            <input type="password" id="access_code" name="access_code"
+                   autocomplete="off" autofocus required
+                   placeholder="Escribe el código">
+        </div>
+        <button type="submit" class="btn btn-primary">Entrar a Stock PINs</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}
