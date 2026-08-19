@@ -1134,14 +1134,53 @@
             ctx.textBaseline = 'middle';
             ctx.fillStyle = '#ffffff';
 
-            var text = (isMiss ? '✕ ' : '◆ ') + parts.main;
+            // Espacio real para el texto: del borde hasta donde empieza el
+            // botón GO. Sin este tope, un premio de nombre largo se metía
+            // debajo del GO y quedaba cortado.
+            var inicio = radius - 16;
+            var disponible = inicio - (center * 0.34) - 6;
             var fontSize = size < 300 ? 11 : 13;
-            ctx.font = '900 ' + fontSize + "px 'Outfit', Inter, sans-serif";
-            while (ctx.measureText(text).width > radius - 40 && fontSize > 8) {
-                fontSize -= 1;
-                ctx.font = '900 ' + fontSize + "px 'Outfit', Inter, sans-serif";
+
+            function usarFuente(px) {
+                fontSize = px;
+                ctx.font = '900 ' + px + "px 'Outfit', Inter, sans-serif";
             }
-            ctx.fillText(text, radius - 18, 0);
+            usarFuente(fontSize);
+
+            var icono = isMiss ? '✕ ' : '◆ ';
+            var lineas = [icono + parts.main];
+
+            // Si no entra de una, se parte en dos líneas por el último
+            // espacio que quepa; recién si aún no entra se recorta.
+            if (ctx.measureText(lineas[0]).width > disponible) {
+                var palabras = String(parts.main).split(' ');
+                if (palabras.length > 1) {
+                    var corte = Math.ceil(palabras.length / 2);
+                    lineas = [
+                        icono + palabras.slice(0, corte).join(' '),
+                        palabras.slice(corte).join(' ')
+                    ];
+                }
+                while (
+                    Math.max.apply(null, lineas.map(function (l) { return ctx.measureText(l).width; })) > disponible
+                    && fontSize > 8
+                ) {
+                    usarFuente(fontSize - 1);
+                }
+                lineas = lineas.map(function (linea) {
+                    var texto = linea;
+                    while (ctx.measureText(texto).width > disponible && texto.length > 4) {
+                        texto = texto.slice(0, -1);
+                    }
+                    return texto === linea ? texto : texto.replace(/\s+$/, '') + '…';
+                });
+            }
+
+            var alto = fontSize + 2;
+            var desde = -((lineas.length - 1) * alto) / 2;
+            lineas.forEach(function (linea, i) {
+                ctx.fillText(linea, inicio, desde + (i * alto));
+            });
             ctx.restore();
         });
 

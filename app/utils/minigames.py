@@ -1,4 +1,5 @@
 import json
+import random
 from datetime import datetime
 
 from flask import current_app
@@ -36,10 +37,21 @@ MINIGAME_SLOTS = [
 ]
 MINIGAME_SLOT_KEYS = {item['slot_key'] for item in MINIGAME_SLOTS}
 
-# Relleno visual para que la ruleta se vea con varios premios, tal
-# como se pidió ("que estén varios premios pero que el único que sea
-# ganable sea el primer paquete"). Estos nunca se entregan de verdad.
-MINIGAME_DECORATIVE_LABELS = ['Bono Sorpresa', 'Súper Premio', 'Extra']
+# Relleno visual para que la ruleta se vea llena de premios, tal como se
+# pidió ("que estén varios premios pero que el único que sea ganable sea el
+# primer paquete"). Estos NUNCA se entregan: el único premio real es el
+# paquete que el admin configuró para cada juego.
+#
+# Cada entrada del catálogo ocupa dos sectores (un FAILED y el premio), así
+# que con el premio real más estos rellenos la rueda queda en 12 sectores.
+# Si se agregan más, el texto empieza a no caber en el canvas.
+MINIGAME_DECORATIVE_LABELS = [
+    'Bono Sorpresa',
+    'Súper Premio',
+    'Premio VIP',
+    'Mega Bono',
+    'Extra',
+]
 
 DEFAULT_MINIGAME_WIN_INTERVAL = 50
 
@@ -219,11 +231,14 @@ def build_minigame_result_payload(game_key, reward, choice_index=None, catalog=N
     if game_key == 'ruleta':
         segments = build_minigame_roulette_segments(catalog)
         target_label = reward_label if reward_kind == 'game_prize' else 'FAILED'
-        target_index = 0
-        for index, label in enumerate(segments):
-            if label.lower() == str(target_label).lower():
-                target_index = index
-                break
+        coincidencias = [
+            index for index, label in enumerate(segments)
+            if label.lower() == str(target_label).lower()
+        ]
+        # Al perder hay varios FAILED donde parar: se elige uno al azar para
+        # que la rueda no frene siempre en el mismo sector, que es lo que
+        # delataría que el resultado ya venía decidido.
+        target_index = random.choice(coincidencias) if coincidencias else 0
         return {
             'segments': segments,
             'target_index': target_index,
