@@ -225,6 +225,174 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 
 .header-actions { display: flex; gap: 6px; align-items: center; }
 
+/* ── Hamburguesa + panel lateral ──────────────────────────── */
+/* Las acciones se amontonaban en el header, sobre todo en teléfono.
+   Ahora el header lleva solo el logo y este botón. */
+.nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(255,255,255,.02), rgba(255,255,255,.005));
+    border: 1px solid rgba(255,0,0,.4);
+    backdrop-filter: blur(6px) saturate(190%);
+    cursor: pointer;
+    box-shadow: 0 1px 6px rgba(0,0,0,.35);
+    transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+.nav-toggle:hover,
+.nav-toggle[aria-expanded="true"] {
+    border-color: var(--nx-red);
+    box-shadow: 0 0 14px rgba(255,0,0,.35);
+    background: rgba(255,0,0,.08);
+}
+.nav-toggle-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 17px;
+}
+.nav-toggle-bars span {
+    display: block;
+    height: 2px;
+    border-radius: 2px;
+    background: #fff;
+    transition: transform .25s ease, opacity .2s ease;
+}
+/* Abierto: las barras se cruzan en una X. */
+.nav-toggle[aria-expanded="true"] .nav-toggle-bars span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.nav-toggle[aria-expanded="true"] .nav-toggle-bars span:nth-child(2) { opacity: 0; }
+.nav-toggle[aria-expanded="true"] .nav-toggle-bars span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+.site-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    background: rgba(0,0,0,.68);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    transition: opacity .25s ease;
+}
+.site-drawer-overlay[hidden] { display: none; }
+.site-drawer-overlay.is-open { opacity: 1; }
+
+.site-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 1110;
+    width: min(84vw, 310px);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, #14070a 0%, #090408 100%);
+    border-left: 1px solid rgba(255,0,0,.35);
+    box-shadow: -18px 0 44px rgba(0,0,0,.6);
+    transform: translateX(100%);
+    transition: transform .28s cubic-bezier(.22,.75,.28,1);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.site-drawer.is-open { transform: translateX(0); }
+
+.site-drawer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+}
+.site-drawer-title {
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 12px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.55);
+}
+.site-drawer-close {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.1);
+    color: #fff;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color .2s ease, background .2s ease;
+}
+.site-drawer-close:hover { border-color: var(--nx-red); background: rgba(255,0,0,.12); }
+
+.site-drawer-nav { display: flex; flex-direction: column; gap: 6px; padding: 14px 12px 24px; }
+
+.drawer-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 11px 12px;
+    border-radius: 13px;
+    background: rgba(255,255,255,.02);
+    border: 1px solid rgba(255,255,255,.06);
+    color: #fff;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color .2s ease, background .2s ease, transform .15s ease;
+}
+.drawer-item:hover,
+.drawer-item:focus-visible {
+    border-color: rgba(255,0,0,.5);
+    background: rgba(255,0,0,.07);
+}
+.drawer-item:active { transform: scale(.985); }
+
+.drawer-item-icon {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.drawer-item-icon svg { width: 17px; height: 17px; }
+.drawer-icon-home { background: rgba(148,163,184,.18); color: #cbd5e1; }
+.drawer-icon-points { background: rgba(59,130,246,.2); color: #60a5fa; }
+.drawer-icon-ranking { background: rgba(245,158,11,.2); color: #fbbf24; }
+.drawer-icon-user,
+.drawer-icon-login { background: rgba(255,0,0,.2); color: var(--nx-red); }
+
+.drawer-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.drawer-item-text strong {
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 13px;
+    letter-spacing: .01em;
+}
+.drawer-item-text small {
+    font-size: 10.5px;
+    color: rgba(255,255,255,.45);
+    line-height: 1.35;
+}
+
+.drawer-sep {
+    height: 1px;
+    background: rgba(255,255,255,.07);
+    margin: 8px 4px;
+}
+
+body.drawer-open { overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+    .site-drawer, .site-drawer-overlay, .nav-toggle-bars span { transition: none; }
+}
+
 .header-action-btn,
 .header-action-link {
     display: inline-flex !important;

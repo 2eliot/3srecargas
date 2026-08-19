@@ -62,57 +62,102 @@
                     <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
                 {% endif %}
             </a>
-                <div class="header-actions">
-                  <button type="button" class="header-action-btn" id="openPointsModalBtn">
-                    <span class="header-action-icon header-action-icon-points">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="nav-toggle" id="navToggle"
+                    aria-label="Abrir menú" aria-expanded="false" aria-controls="siteDrawer">
+                <span class="nav-toggle-bars" aria-hidden="true"><span></span><span></span><span></span></span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Panel lateral: antes estas acciones iban sueltas en el header y se
+         amontonaban. Ahora viven aquí, con su nombre completo. -->
+    <div class="site-drawer-overlay" id="siteDrawerOverlay" hidden></div>
+    <aside class="site-drawer" id="siteDrawer" aria-hidden="true" aria-label="Menú">
+        <div class="site-drawer-head">
+            <span class="site-drawer-title">Menú</span>
+            <button type="button" class="site-drawer-close" id="siteDrawerClose" aria-label="Cerrar menú">✕</button>
+        </div>
+        <nav class="site-drawer-nav">
+            <a href="{{ url_for('main_bp.index') }}" class="drawer-item">
+                <span class="drawer-item-icon drawer-icon-home">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 10.5 12 3l9 7.5"/><path d="M5 10v10h14V10"/>
+                    </svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Inicio</strong>
+                    <small>Volver a la tienda</small>
+                </span>
+            </a>
+
+            <button type="button" class="drawer-item" id="openPointsModalBtn">
+                <span class="drawer-item-icon drawer-icon-points">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="9"/>
                         <path d="M12 7v5l3 3"/>
-                      </svg>
-                    </span>
-                    <span class="header-action-label" data-short="Puntos">Canjear Puntos</span>
-                  </button>
-                  {% if HAS_ACTIVE_RANKING %}
-                  <button type="button" class="header-action-btn" id="openRankingModalBtn">
-                    <span class="header-action-icon header-action-icon-ranking">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    </svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Canjear puntos</strong>
+                    <small>Cambia tus puntos por premios</small>
+                </span>
+            </button>
+
+            {% if HAS_ACTIVE_RANKING %}
+            <button type="button" class="drawer-item" id="openRankingModalBtn">
+                <span class="drawer-item-icon drawer-icon-ranking">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M8 21h8"/>
                         <path d="M12 17v4"/>
                         <path d="M7 4h10v4a5 5 0 0 1-10 0z"/>
                         <path d="M5 6H3a2 2 0 0 0 0 4h2"/>
                         <path d="M19 6h2a2 2 0 0 1 0 4h-2"/>
-                      </svg>
-                    </span>
-                    <span class="header-action-label" data-short="Rank">Ranking</span>
-                  </button>
-                  {% endif %}
-                  {% if current_user.is_authenticated %}
-                    {% if current_user.__class__.__name__ == 'AdminUser' %}
-                    <a href="{{ url_for('admin_bp.dashboard') }}" class="header-action-btn header-action-link">
-                      <span class="header-action-icon header-action-icon-user">
+                    </svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Ranking</strong>
+                    <small>Los que más recargan del mes</small>
+                </span>
+            </button>
+            {% endif %}
+
+            <div class="drawer-sep"></div>
+
+            {% if current_user.is_authenticated %}
+                {% if current_user.__class__.__name__ == 'AdminUser' %}
+                <a href="{{ url_for('admin_bp.dashboard') }}" class="drawer-item">
+                    <span class="drawer-item-icon drawer-icon-user">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                      </span>
-                      <span class="header-action-label" data-short="Admin">Panel Admin</span>
-                    </a>
-                    {% else %}
-                    <a href="{{ url_for('auth_bp.profile') }}" class="header-action-btn header-action-link">
-                      <span class="header-action-icon header-action-icon-user">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                      </span>
-                      <span class="header-action-label" data-short="Perfil">Mi Perfil</span>
-                    </a>
-                    {% endif %}
-                  {% else %}
-                  <a href="{{ url_for('auth_bp.login') }}" class="header-action-btn header-action-link">
-                    <span class="header-action-icon header-action-icon-login">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
                     </span>
-                    <span class="header-action-label" data-short="Entrar">Iniciar Sesión</span>
-                  </a>
-                  {% endif %}
-                </div>
-        </div>
-    </header>
+                    <span class="drawer-item-text">
+                        <strong>Panel admin</strong>
+                        <small>Órdenes, stock y ajustes</small>
+                    </span>
+                </a>
+                {% else %}
+                <a href="{{ url_for('auth_bp.profile') }}" class="drawer-item">
+                    <span class="drawer-item-icon drawer-icon-user">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </span>
+                    <span class="drawer-item-text">
+                        <strong>Mi perfil</strong>
+                        <small>Tus datos y tus órdenes</small>
+                    </span>
+                </a>
+                {% endif %}
+            {% else %}
+            <a href="{{ url_for('auth_bp.login') }}" class="drawer-item">
+                <span class="drawer-item-icon drawer-icon-login">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Iniciar sesión</strong>
+                    <small>Entra para ver tu historial</small>
+                </span>
+            </a>
+            {% endif %}
+        </nav>
+    </aside>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -324,6 +369,68 @@
     <script>
       window.SUPPORT_WHATSAPP_URL = {{ SUPPORT_WHATSAPP_URL|tojson }};
       window.HAS_ACTIVE_RANKING = {{ 'true' if HAS_ACTIVE_RANKING else 'false' }};
+    </script>
+
+    <!-- Panel lateral del header. Va aquí y no en main.js porque base.html lo
+         usan todas las páginas de la tienda y el menú tiene que abrir igual
+         en todas. -->
+    <script>
+    (function () {
+        var toggle = document.getElementById('navToggle');
+        var drawer = document.getElementById('siteDrawer');
+        var overlay = document.getElementById('siteDrawerOverlay');
+        var closeBtn = document.getElementById('siteDrawerClose');
+        if (!toggle || !drawer || !overlay) return;
+
+        var lastFocused = null;
+
+        function openDrawer() {
+            lastFocused = document.activeElement;
+            overlay.hidden = false;
+            // Un frame de margen para que la transición del overlay corra.
+            requestAnimationFrame(function () {
+                overlay.classList.add('is-open');
+                drawer.classList.add('is-open');
+            });
+            drawer.setAttribute('aria-hidden', 'false');
+            toggle.setAttribute('aria-expanded', 'true');
+            toggle.setAttribute('aria-label', 'Cerrar menú');
+            document.body.classList.add('drawer-open');
+            if (closeBtn) closeBtn.focus();
+        }
+
+        function closeDrawer() {
+            overlay.classList.remove('is-open');
+            drawer.classList.remove('is-open');
+            drawer.setAttribute('aria-hidden', 'true');
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.setAttribute('aria-label', 'Abrir menú');
+            document.body.classList.remove('drawer-open');
+            window.setTimeout(function () {
+                if (!drawer.classList.contains('is-open')) overlay.hidden = true;
+            }, 280);
+            if (lastFocused && lastFocused.focus) lastFocused.focus();
+        }
+
+        function isOpen() { return drawer.classList.contains('is-open'); }
+
+        toggle.addEventListener('click', function () {
+            if (isOpen()) closeDrawer(); else openDrawer();
+        });
+        overlay.addEventListener('click', closeDrawer);
+        if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+
+        // Elegir una opción cierra el panel. Los botones de puntos y ranking
+        // abren su modal desde main.js, así que el panel tiene que quitarse
+        // de en medio o quedaría encima.
+        drawer.addEventListener('click', function (evt) {
+            if (evt.target.closest('.drawer-item')) closeDrawer();
+        });
+
+        document.addEventListener('keydown', function (evt) {
+            if (evt.key === 'Escape' && isOpen()) closeDrawer();
+        });
+    })();
     </script>
     
     <!-- Main JS loaded at end of body for DOM readiness -->
