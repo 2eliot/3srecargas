@@ -641,15 +641,29 @@
         closeModal(pointsModal);
     }
 
+    // Casillas de relleno: todas son fallo. Antes decían "Extra" y "Bono",
+    // que se leían como premios y contradecían el mensaje de "sin premio"
+    // cuando la tira frenaba encima de una.
     var POINTS_STRIP_DECORATIVE = [
-        { icon: '🎲', label: 'Suerte' },
-        { icon: '⭐', label: 'Extra' },
-        { icon: '🔸', label: 'Bono' },
+        { icon: '✕', label: 'Fallaste' },
         { icon: '🎯', label: 'Casi' },
+        { icon: '✕', label: 'Nada' },
+        { icon: '🎲', label: 'Suerte' },
     ];
-    var POINTS_STRIP_TOTAL = 24;
+    var POINTS_STRIP_TOTAL = 26;
     var POINTS_STRIP_WINNER_INDEX = 20;
+    var POINTS_STRIP_ITEM_WIDTH = 76;
     var POINTS_STRIP_ITEM_STRIDE = 84; // 76px de ancho + 8px de gap
+    // La tira arranca centrada en este ítem, no en el primero. El track está
+    // anclado en left:50% (donde está el indicador), así que en la posición
+    // 0 la mitad izquierda del visor quedaba vacía y se veía un hueco negro.
+    var POINTS_STRIP_START_INDEX = 3;
+    var pointsStripAnimation = null;
+
+    /* Cuánto hay que desplazar la tira para dejar ese ítem bajo el indicador. */
+    function pointsStripOffsetFor(index) {
+        return (index * POINTS_STRIP_ITEM_STRIDE) + (POINTS_STRIP_ITEM_WIDTH / 2);
+    }
 
     function buildPointsStrip(prizeLabel, targetIcon, targetLabel) {
         var track = pointsEl('pointsStripTrack');
@@ -664,32 +678,71 @@
             }
         }
         track.innerHTML = html;
+        resetPointsStrip(track);
+    }
+
+    /* Deja la tira en su posición de arranque, con ítems visibles a ambos
+       lados del indicador. */
+    function resetPointsStrip(track) {
+        if (pointsStripAnimation) {
+            pointsStripAnimation.cancel();
+            pointsStripAnimation = null;
+        }
+        var ganadorPrevio = track.querySelector('.is-winner');
+        if (ganadorPrevio) ganadorPrevio.classList.remove('is-winner');
         track.style.transition = 'none';
-        track.style.transform = 'translateX(0px)';
+        track.style.transform = 'translateX(-' + pointsStripOffsetFor(POINTS_STRIP_START_INDEX) + 'px)';
     }
 
     function spinPointsStripTo(won) {
         var track = pointsEl('pointsStripTrack');
         if (!track) return;
-        var offset = POINTS_STRIP_WINNER_INDEX * POINTS_STRIP_ITEM_STRIDE + (POINTS_STRIP_ITEM_STRIDE / 2);
 
-        // La tira se queda parada donde aterrizó, así que a partir del
-        // segundo giro se le pedía el mismo translate que ya tenía y el
-        // navegador no animaba nada: salía el mensaje de golpe. Se devuelve
-        // al inicio sin transición antes de volver a lanzarla.
-        var ganadorPrevio = track.querySelector('.is-winner');
-        if (ganadorPrevio) ganadorPrevio.classList.remove('is-winner');
+        // La tira caía SIEMPRE en la casilla del premio, se ganara o no: se
+        // veía el premio bajo el indicador y debajo el mensaje de que no
+        // hubo suerte. Al perder aterriza en una casilla de relleno.
+        var destino = POINTS_STRIP_WINNER_INDEX;
+        if (!won) {
+            var perdedores = [-2, -1, 1, 2]
+                .map(function (d) { return POINTS_STRIP_WINNER_INDEX + d; })
+                // La casilla del premio queda fuera sí o sí, y el índice
+                // tiene que existir en la tira.
+                .filter(function (i) {
+                    return i !== POINTS_STRIP_WINNER_INDEX && i >= 0 && i < POINTS_STRIP_TOTAL;
+                });
+            destino = perdedores.length
+                ? perdedores[Math.floor(Math.random() * perdedores.length)]
+                : POINTS_STRIP_WINNER_INDEX;
+        }
+
+        var desde = pointsStripOffsetFor(POINTS_STRIP_START_INDEX);
+        var hasta = pointsStripOffsetFor(destino);
+
+        resetPointsStrip(track);
+        void track.offsetWidth;   // reflow: sin esto el navegador une los dos estados
         track.style.transition = 'none';
-        track.style.transform = 'translateX(0px)';
 
-        // Forzar reflow para que la transición de aterrizaje sí se anime.
-        void track.offsetWidth;
-        track.style.transition = 'transform 3.2s cubic-bezier(.12,.72,.14,1)';
-        track.style.transform = 'translateX(-' + offset + 'px)';
+        // Giro orgánico: arranca fuerte, desacelera largo, se pasa un poco
+        // y vuelve, como una tira real que frena por fricción.
+        var recorrido = hasta - desde;
+        var pasado = hasta + 22;
+        pointsStripAnimation = track.animate([
+            { transform: 'translateX(-' + desde + 'px)', offset: 0 },
+            { transform: 'translateX(-' + (desde + recorrido * 0.55) + 'px)', offset: 0.35 },
+            { transform: 'translateX(-' + (desde + recorrido * 0.92) + 'px)', offset: 0.72 },
+            { transform: 'translateX(-' + pasado + 'px)', offset: 0.9 },
+            { transform: 'translateX(-' + (hasta - 6) + 'px)', offset: 0.96 },
+            { transform: 'translateX(-' + hasta + 'px)', offset: 1 }
+        ], {
+            duration: 3400,
+            easing: 'cubic-bezier(.17,.78,.24,1)',
+            fill: 'forwards'
+        });
+
         window.setTimeout(function () {
             var winnerEl = track.querySelector('[data-target="1"]');
             if (winnerEl && won) winnerEl.classList.add('is-winner');
-        }, 3300);
+        }, 3450);
     }
 
     function showPointsBalance(data) {
@@ -804,7 +857,9 @@
                         }
                         resultEl.style.display = 'block';
                     }
-                }, 3300);
+                    // Un pelo después de que la tira frena (3400ms), para que
+                    // el mensaje no se adelante al resultado que se ve.
+                }, 3500);
             })
             .catch(function () {
                 pointsState.spinning = false;
