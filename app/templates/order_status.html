@@ -1079,11 +1079,14 @@
             ];
     }
 
+    // Mismo orden que build_minigame_roulette_segments en el servidor: el
+    // premio primero, para que la rueda que se ve antes de girar sea la
+    // misma que devuelve el backend al jugar.
     function buildRouletteSegmentsFromCatalog() {
         var labels = [];
         getMinigameRewardCatalog().forEach(function (reward) {
+            labels.push((reward && reward.label) || 'Premio');
             labels.push('FAILED');
-            labels.push((reward && reward.label) || 'Cupón');
         });
         return labels;
     }
@@ -1112,10 +1115,11 @@
         list.forEach(function (label, index) {
             var parts = parseRouletteLabel(label);
             var isMiss = parts.main === 'FAILED';
-            // ctx.arc empieza a las 3 en punto y el puntero está arriba: sin
-            // este cuarto de vuelta la rueda frenaría dos sectores corridos
-            // respecto al que decidió el servidor.
-            var startAngle = (index * arc) - (Math.PI / 2);
+            // ctx.arc empieza a las 3 en punto y el puntero está arriba: de
+            // ahí el cuarto de vuelta. El medio sector extra centra el
+            // sector 0 bajo la flecha, para que la rueda arranque apuntando
+            // a un premio y no a la línea que separa dos.
+            var startAngle = (index * arc) - (Math.PI / 2) - (arc / 2);
 
             ctx.beginPath();
             ctx.moveTo(center, center);
@@ -1259,8 +1263,27 @@
 
     /* Modal del resultado del giro, encima de la tarjeta que queda guardada. */
     function showRouletteResultModal(opportunity) {
-        var won = opportunity && opportunity.result_kind === 'game_prize';
-        var prize = (opportunity && opportunity.reward_label) || 'tu premio';
+        // Solo se anuncia premio si de verdad se ganó. El texto de perder
+        // decía "¡SIGUIENTE INTENTO!", que se leía como un anuncio positivo
+        // y prometía otro giro que no existe: la oportunidad es una sola por
+        // orden, y así contradecía a la tarjeta que queda debajo.
+        var won = !!(opportunity && opportunity.result_kind === 'game_prize');
+        var rawPrize = (opportunity && opportunity.reward_label) || '';
+        var pendiente = /pendiente de entrega/i.test(rawPrize);
+        var prize = rawPrize.replace(/\s*\(pendiente de entrega\)\s*/i, '').trim() || 'tu premio';
+
+        var titulo, texto;
+        if (won) {
+            titulo = '¡FELICIDADES!';
+            texto = pendiente
+                ? 'Ganaste ' + escapeHtml(prize) + '. Te lo entregamos en breve al mismo ID de esta recarga.'
+                : '¡Ganaste ' + escapeHtml(prize) + '! Ya se envió al mismo ID con el que hiciste esta recarga.';
+        } else {
+            titulo = 'No hubo premio';
+            texto = 'Usaste el giro de esta orden y esta vez no salió premio. '
+                  + 'Con tu próxima recarga tienes un giro nuevo.';
+        }
+
         var existing = document.getElementById('rouletteResultModal');
         if (existing) existing.remove();
 
@@ -1270,14 +1293,8 @@
         modal.innerHTML =
             '<div class="roulette-result-card" role="dialog" aria-modal="true">' +
                 '<div class="roulette-result-icon ' + (won ? 'win' : 'miss') + '">' + (won ? '♦' : '✕') + '</div>' +
-                '<h2 class="roulette-result-title ' + (won ? 'win' : 'miss') + '">' +
-                    (won ? '¡FELICIDADES!' : '¡SIGUIENTE INTENTO!') +
-                '</h2>' +
-                '<p class="roulette-result-text">' +
-                    (won
-                        ? '¡Te ganaste ' + escapeHtml(prize) + ' en tu giro instantáneo!'
-                        : 'Esta vez no hubo suerte. ¡Gracias por participar en la dinámica!') +
-                '</p>' +
+                '<h2 class="roulette-result-title ' + (won ? 'win' : 'miss') + '">' + titulo + '</h2>' +
+                '<p class="roulette-result-text">' + texto + '</p>' +
                 '<button type="button" class="roulette-result-close">Aceptar</button>' +
             '</div>';
 
@@ -1295,10 +1312,13 @@
     }
 
     function getRouletteLandingRotation(targetIndex, segmentCount, extraTurns) {
+        // Con los sectores ya centrados en el dibujo, el centro del sector i
+        // queda a i*ángulo desde arriba: basta con girar eso en negativo
+        // para dejarlo bajo la flecha.
         var segmentAngle = getRouletteSegmentAngle(segmentCount);
         var safeIndex = Number(targetIndex || 0);
         var turns = Number(extraTurns || 0) * 360;
-        return turns - ((safeIndex * segmentAngle) + (segmentAngle / 2));
+        return turns - (safeIndex * segmentAngle);
     }
 
     function setRouletteWheelInstant(wheel, targetIndex, segmentCount) {

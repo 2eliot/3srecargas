@@ -672,6 +672,16 @@
         var track = pointsEl('pointsStripTrack');
         if (!track) return;
         var offset = POINTS_STRIP_WINNER_INDEX * POINTS_STRIP_ITEM_STRIDE + (POINTS_STRIP_ITEM_STRIDE / 2);
+
+        // La tira se queda parada donde aterrizó, así que a partir del
+        // segundo giro se le pedía el mismo translate que ya tenía y el
+        // navegador no animaba nada: salía el mensaje de golpe. Se devuelve
+        // al inicio sin transición antes de volver a lanzarla.
+        var ganadorPrevio = track.querySelector('.is-winner');
+        if (ganadorPrevio) ganadorPrevio.classList.remove('is-winner');
+        track.style.transition = 'none';
+        track.style.transform = 'translateX(0px)';
+
         // Forzar reflow para que la transición de aterrizaje sí se anime.
         void track.offsetWidth;
         track.style.transition = 'transform 3.2s cubic-bezier(.12,.72,.14,1)';

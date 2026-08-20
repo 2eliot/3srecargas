@@ -205,11 +205,17 @@ def get_minigame_reward_catalog_for_order(order):
 
 
 def build_minigame_roulette_segments(catalog):
+    """Sectores de la ruleta, alternando premio y fallo.
+
+    El premio real va primero a propósito: en reposo la flecha apunta al
+    sector 0, así que la rueda arranca mostrando el premio de verdad y no
+    un FAILED.
+    """
     labels = []
     for reward in catalog:
-        labels.append('FAILED')
         labels.append(reward.get('label') or 'Premio')
-    return labels or ['FAILED', 'Premio']
+        labels.append('FAILED')
+    return labels or ['Premio', 'FAILED']
 
 
 def build_slot_reels_for_reward(reward):
