@@ -78,13 +78,36 @@ def _ffmania_check_id(uid: str):
 
 
 def scrape_ffmania_nick(uid: str) -> str:
+    """Resuelve el nick de un ID de Free Fire.
+
+    Prueba primero el scraping HTML de /cuenta/{uid}.html: no dispara el
+    bloqueo por captcha que a veces cae sobre el endpoint JSON (visto
+    2026-08-24, probablemente por el volumen acumulado de las 4 webs que
+    comparten la IP del VPS — perfil-free-fire-check-id.php empezó a
+    responder 422 {"error":"captcha_required"} para toda consulta) y ya
+    cubre la gran mayoría de los casos reales: casi todo jugador que
+    alguien va a verificar ya tiene su perfil cacheado en FFMania de una
+    consulta anterior de cualquiera, no solo nuestra.
+
+    Si el HTML no lo tiene (ID nuevo o muy poco consultado, /cuenta/ da
+    404), se intenta el endpoint JSON como último recurso — es el único
+    camino con lookup en vivo, aunque en ese momento puede estar bloqueado
+    por el mismo captcha.
+    """
+    nick = _scrape_html_profile(uid)
+    if nick:
+        return nick
+
     found, nick = _ffmania_check_id(uid)
     if found is True:
         return nick
-    if found is False:
-        return ""
-    # Fallback: scraping HTML de /cuenta/{uid}.html — solo sirve para perfiles
-    # que FFMania ya tiene en su caché; los IDs nuevos dan 404 aquí.
+    return ""
+
+
+def _scrape_html_profile(uid: str) -> str:
+    """Scraping de /cuenta/{uid}.html — solo sirve para perfiles que FFMania
+    ya tiene cacheados; los IDs nuevos dan 404 aquí (ver comentario en
+    scrape_ffmania_nick)."""
     url = f"https://www.freefiremania.com.br/cuenta/{uid}.html"
     req = urllib.request.Request(
         url,
@@ -98,10 +121,10 @@ def scrape_ffmania_nick(uid: str) -> str:
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read() or b""
-    except urllib.error.HTTPError as e:
-        if int(getattr(e, "code", 0) or 0) == 404:
-            return ""
-        raise
+    except Exception:
+        # 404 (ID nuevo, sin cachear), bloqueo temporal, timeout, lo que sea:
+        # no es motivo para reventar la request de verificación completa.
+        return ""
     html_txt = raw.decode("utf-8", errors="ignore")
 
     # Convert HTML to plain-ish text to make extraction resilient to markup changes/ads.

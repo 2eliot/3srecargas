@@ -67,8 +67,13 @@ def store_player_verify():
     except Exception:
         return jsonify({"ok": False, "error": "No se pudo verificar el ID"}), 502
 
-    # Cache both hits and misses for short time to reduce external traffic
-    _player_cache_set(cache_key, nick, ttl_seconds=600)
+    # Los hits se cachean largo (el nick no cambia). Los misses se cachean
+    # corto: un "no encontrado" puede deberse a que FFMania todavía no
+    # indexó ese ID o a un bloqueo temporal de su lado (ver
+    # scrape_ffmania_nick) — 10 min de caché negativo dejaba a alguien que
+    # sí reintentaba viendo el mismo "no encontrado" mucho después de que
+    # ya hubiera dejado de aplicar.
+    _player_cache_set(cache_key, nick, ttl_seconds=600 if nick else 45)
     if not nick:
         return jsonify({"ok": False, "error": "ID no encontrado"}), 404
     return jsonify({"ok": True, "uid": uid, "nick": nick, "cached": False})
