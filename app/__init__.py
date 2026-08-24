@@ -761,26 +761,49 @@ def _init_default_data(app):
             Category(name='Wallet', slug='wallet', icon='👛'),
         ]:
             db.session.add(cat)
-    
+
+    # Checkpoint: confirma admin/categorías antes de los bloques de abajo,
+    # que pueden hacer rollback si chocan por una carrera entre workers (ver
+    # comentario abajo) — sin este commit, ese rollback también se llevaría
+    # puesto lo de arriba en un primer arranque con la BD 100% vacía.
+    db.session.commit()
+
     # Escalera de rangos y tabla de tramos de vistas del panel de mini
     # influencer: valores de arranque razonables, el admin los ajusta luego
     # desde /admin/minis sin tocar código.
-    if MiniRank.query.count() == 0:
-        for rank in [
-            MiniRank(name='Bronce', uses_required=100, bonus_amount=5, sort_order=1),
-            MiniRank(name='Plata', uses_required=250, bonus_amount=12, sort_order=2),
-            MiniRank(name='Oro', uses_required=500, bonus_amount=25, sort_order=3),
-        ]:
-            db.session.add(rank)
+    #
+    # Con gunicorn -w 3 los 3 workers llaman a create_app() casi al mismo
+    # tiempo en el primer arranque con la tabla vacía: más de un worker
+    # puede ver count()==0 antes de que otro confirme su INSERT, y el
+    # segundo choca contra el UNIQUE de mini_ranks.name (visto en
+    # producción el 2026-08-24: tumbó el worker con IntegrityError). Se
+    # aisla cada bloque en su propio try/flush/except para que un choque
+    # así no aborte el resto de _init_default_data ni tumbe el worker — el
+    # resultado final es el mismo, la tabla queda sembrada una sola vez.
+    try:
+        if MiniRank.query.count() == 0:
+            for rank in [
+                MiniRank(name='Bronce', uses_required=100, bonus_amount=5, sort_order=1),
+                MiniRank(name='Plata', uses_required=250, bonus_amount=12, sort_order=2),
+                MiniRank(name='Oro', uses_required=500, bonus_amount=25, sort_order=3),
+            ]:
+                db.session.add(rank)
+            db.session.flush()
+    except Exception:
+        db.session.rollback()
 
-    if MiniViewTier.query.count() == 0:
-        for tier in [
-            MiniViewTier(min_views=1000, max_views=9999, reward_amount=1, sort_order=1),
-            MiniViewTier(min_views=10000, max_views=49999, reward_amount=4, sort_order=2),
-            MiniViewTier(min_views=50000, max_views=99999, reward_amount=15, sort_order=3),
-            MiniViewTier(min_views=100000, max_views=None, reward_amount=37, sort_order=4),
-        ]:
-            db.session.add(tier)
+    try:
+        if MiniViewTier.query.count() == 0:
+            for tier in [
+                MiniViewTier(min_views=1000, max_views=9999, reward_amount=1, sort_order=1),
+                MiniViewTier(min_views=10000, max_views=49999, reward_amount=4, sort_order=2),
+                MiniViewTier(min_views=50000, max_views=99999, reward_amount=15, sort_order=3),
+                MiniViewTier(min_views=100000, max_views=None, reward_amount=37, sort_order=4),
+            ]:
+                db.session.add(tier)
+            db.session.flush()
+    except Exception:
+        db.session.rollback()
 
     # Crear código de descuento de prueba si no existe
     if Discount.query.count() == 0:
