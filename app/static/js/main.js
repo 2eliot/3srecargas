@@ -1318,8 +1318,12 @@
             el.style.display = 'block';
         }
         if (btn) {
-            btn.textContent = 'Revisar ID';
-            btn.disabled = true;
+            // Habilitado a propósito: a veces el ID todavía no está indexado
+            // del lado de FFMania (cuentas nuevas o poco consultadas) y basta
+            // con reintentar en unos segundos. Antes quedaba deshabilitado
+            // mostrando "Revisar ID" sin que el clic hiciera nada.
+            btn.textContent = 'Reintentar';
+            btn.disabled = false;
         }
     }
     function resetNickUI() {
@@ -1449,6 +1453,7 @@
 
         if (btn && !btn.dataset.verifyBound) {
             btn.setAttribute('aria-hidden', 'false');
+            btn.addEventListener('click', function() { doVerifyPlayer({ silent: false }); });
             btn.dataset.verifyBound = '1';
         }
         if (input && !input.dataset.verifyBound) {
