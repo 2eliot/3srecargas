@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+{% block title %}Mini influencers — 3S Recargas{% endblock %}
+
+{% block content %}
+<div class="nx-store mn-page">
+
+    <a href="{{ url_for('main_bp.index') }}" class="rdm-back">← Volver a la tienda</a>
+
+    <section class="glass-panel rdm-card">
+        <div class="rdm-head">
+            <span class="rdm-kicker">Mini influencers</span>
+            <h1 class="rdm-title">Tu panel de mini</h1>
+            <p class="rdm-sub">Entra si ya tienes cuenta, o solicita unirte con tu canal o red social.</p>
+        </div>
+
+        <div class="mn-tabs" role="tablist">
+            <button type="button" class="mn-tab is-active" id="mnTabLoginBtn" role="tab" aria-selected="true">Entrar</button>
+            <button type="button" class="mn-tab" id="mnTabRegisterBtn" role="tab" aria-selected="false">Solicitar</button>
+        </div>
+
+        <!-- Login -->
+        <div class="mn-tab-panel rdm-step" id="mnPanelLogin">
+            <label class="rdm-label" for="mnLoginEmail">Correo</label>
+            <input type="email" id="mnLoginEmail" class="glass-input" placeholder="tu@correo.com" autocomplete="username">
+
+            <label class="rdm-label" for="mnLoginPassword">Contraseña</label>
+            <input type="password" id="mnLoginPassword" class="glass-input" placeholder="••••••••" autocomplete="current-password">
+
+            <p class="rdm-feedback" id="mnLoginFeedback" aria-live="polite"></p>
+
+            <button type="button" class="rdm-btn red-glow-pill" id="mnLoginBtn">
+                <span class="rdm-btn-label">Entrar</span>
+            </button>
+        </div>
+
+        <!-- Registro -->
+        <div class="mn-tab-panel rdm-step" id="mnPanelRegister" hidden>
+            <label class="rdm-label" for="mnRegChannel">Nombre de tu canal o cuenta</label>
+            <input type="text" id="mnRegChannel" class="glass-input" placeholder="Ej. Juan Gaming" maxlength="100">
+
+            <div class="mn-field-grid mn-cols-2">
+                <div>
+                    <label class="rdm-label" for="mnRegEmail">Correo</label>
+                    <input type="email" id="mnRegEmail" class="glass-input" placeholder="tu@correo.com" autocomplete="username">
+                </div>
+                <div>
+                    <label class="rdm-label" for="mnRegPassword">Contraseña</label>
+                    <input type="password" id="mnRegPassword" class="glass-input" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+                </div>
+            </div>
+
+            <label class="rdm-label" for="mnRegChannelUrl">Link de tu canal/red social</label>
+            <input type="url" id="mnRegChannelUrl" class="glass-input" placeholder="https://tiktok.com/@tucuenta" maxlength="255">
+
+            <label class="rdm-label" for="mnRegWhatsapp">Tu WhatsApp</label>
+            <input type="text" id="mnRegWhatsapp" class="glass-input" placeholder="04XX-XXXXXXX" maxlength="50">
+
+            <label class="rdm-label" for="mnRegNote">Cuéntanos de qué trata tu contenido</label>
+            <textarea id="mnRegNote" class="glass-input" rows="3" maxlength="1000" placeholder="Ej. Hago videos de Free Fire con mis códigos de recarga..."></textarea>
+
+            <p class="rdm-feedback" id="mnRegFeedback" aria-live="polite"></p>
+
+            <button type="button" class="rdm-btn red-glow-pill" id="mnRegBtn">
+                <span class="rdm-btn-label">Enviar solicitud</span>
+            </button>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    function setFeedback(el, msg, kind) {
+        if (!el) return;
+        el.textContent = msg || '';
+        el.classList.remove('is-error', 'is-success');
+        if (msg && kind) el.classList.add(kind);
+    }
+
+    function setBusy(btn, on, labelBusy) {
+        if (!btn) return;
+        btn.disabled = on;
+        var label = btn.querySelector('.rdm-btn-label');
+        if (!label) return;
+        if (on) {
+            label.dataset.prev = label.textContent;
+            label.textContent = labelBusy || 'Un momento...';
+        } else if (label.dataset.prev) {
+            label.textContent = label.dataset.prev;
+        }
+    }
+
+    function postJson(url, payload) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload || {})
+        }).then(function (r) {
+            return r.json().catch(function () {
+                throw new Error('No se pudo contactar al servidor.');
+            }).then(function (data) {
+                if (!r.ok || !data.ok) throw new Error(data.message || 'Algo salió mal.');
+                return data;
+            });
+        });
+    }
+
+    /* Tabs */
+    var tabLoginBtn = document.getElementById('mnTabLoginBtn');
+    var tabRegisterBtn = document.getElementById('mnTabRegisterBtn');
+    var panelLogin = document.getElementById('mnPanelLogin');
+    var panelRegister = document.getElementById('mnPanelRegister');
+
+    function showTab(which) {
+        var isLogin = which === 'login';
+        panelLogin.hidden = !isLogin;
+        panelRegister.hidden = isLogin;
+        tabLoginBtn.classList.toggle('is-active', isLogin);
+        tabRegisterBtn.classList.toggle('is-active', !isLogin);
+        tabLoginBtn.setAttribute('aria-selected', String(isLogin));
+        tabRegisterBtn.setAttribute('aria-selected', String(!isLogin));
+    }
+    tabLoginBtn.addEventListener('click', function () { showTab('login'); });
+    tabRegisterBtn.addEventListener('click', function () { showTab('register'); });
+
+    /* Login */
+    var loginBtn = document.getElementById('mnLoginBtn');
+    var loginFeedback = document.getElementById('mnLoginFeedback');
+
+    function submitLogin() {
+        var email = document.getElementById('mnLoginEmail').value.trim();
+        var password = document.getElementById('mnLoginPassword').value;
+        if (!email || !password) {
+            setFeedback(loginFeedback, 'Escribe tu correo y contraseña.', 'is-error');
+            return;
+        }
+        setBusy(loginBtn, true, 'Entrando...');
+        setFeedback(loginFeedback, '');
+        postJson('{{ url_for("minis_bp.mini_login_submit") }}', {email: email, password: password})
+            .then(function (data) { window.location.href = data.redirect || '{{ url_for("minis_bp.panel") }}'; })
+            .catch(function (err) { setFeedback(loginFeedback, err.message, 'is-error'); })
+            .finally(function () { setBusy(loginBtn, false); });
+    }
+    loginBtn.addEventListener('click', submitLogin);
+    document.getElementById('mnLoginPassword').addEventListener('keydown', function (evt) {
+        if (evt.key === 'Enter') { evt.preventDefault(); submitLogin(); }
+    });
+
+    /* Registro */
+    var regBtn = document.getElementById('mnRegBtn');
+    var regFeedback = document.getElementById('mnRegFeedback');
+
+    regBtn.addEventListener('click', function () {
+        var payload = {
+            channel_name: document.getElementById('mnRegChannel').value.trim(),
+            email: document.getElementById('mnRegEmail').value.trim(),
+            password: document.getElementById('mnRegPassword').value,
+            channel_url: document.getElementById('mnRegChannelUrl').value.trim(),
+            whatsapp_phone: document.getElementById('mnRegWhatsapp').value.trim(),
+            application_note: document.getElementById('mnRegNote').value.trim()
+        };
+        setBusy(regBtn, true, 'Enviando...');
+        setFeedback(regFeedback, '');
+        postJson('{{ url_for("minis_bp.mini_register_submit") }}', payload)
+            .then(function (data) {
+                setFeedback(regFeedback, data.message, 'is-success');
+                document.getElementById('mnRegPassword').value = '';
+            })
+            .catch(function (err) { setFeedback(regFeedback, err.message, 'is-error'); })
+            .finally(function () { setBusy(regBtn, false); });
+    });
+})();
+</script>
+{% endblock %}

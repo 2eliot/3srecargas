@@ -350,6 +350,14 @@ def get_checkout_discount_result(code, package_price, player_id=None, email=None
         return result
 
     if affiliate:
+        # Anti-abuso: un afiliado no puede aplicarse su propio código para
+        # generarse comisión comprándose a sí mismo. Es un guard best-effort
+        # por email (el único dato de identidad que llega hasta aquí desde
+        # el checkout) — no hay vínculo player_id<->afiliado en este repo.
+        if email and affiliate.email and email.strip().lower() == affiliate.email.strip().lower():
+            result['error'] = 'No puedes usar tu propio código de afiliado.'
+            return result
+
         rate = float(affiliate.client_discount_rate or 0)
         if rate <= 0:
             rate = float(affiliate.commission_rate or 0)

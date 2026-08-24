@@ -12,9 +12,10 @@ from .timezone import now_ve
 
 # Los paquetes que se recargan a mano solo se venden dentro del horario de
 # atención: fuera de él nadie puede procesarlos y el cliente se queda
-# reclamando de madrugada. Por defecto, de 10:00 a. m. a 10:00 p. m. (hora
-# de Venezuela), que es el horario que anuncia la propia web.
-DEFAULT_MANUAL_OPEN_HOUR = 10
+# reclamando de madrugada. Por defecto, de 5:00 a. m. a 10:00 p. m. (hora
+# de Venezuela) — cierra de 10 p. m. a 5 a. m., como pedía el documento
+# original (una decisión posterior lo había dejado en 10 a. m.-10 p. m.).
+DEFAULT_MANUAL_OPEN_HOUR = 5
 DEFAULT_MANUAL_CLOSE_HOUR = 22
 
 

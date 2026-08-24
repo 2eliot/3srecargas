@@ -19,9 +19,18 @@ from ..models import (
     Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting, Discount,
     OrderMiniGameOpportunity, PlayerPoints, PointsPrizeMapping, PointsSpinLog,
     RevendedoresCatalogItem, RevendedoresItemMapping, GiftCode,
+    AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier,
 )
 from ..utils.availability import format_hour, get_manual_schedule
 from ..utils.gift_codes import create_batch as create_gift_batch, format_code as format_gift_code
+from ..utils.mini_influencers import (
+    award_rank_bonus,
+    approve_withdrawal as approve_mini_withdrawal,
+    get_rank_progress,
+    reject_withdrawal as reject_mini_withdrawal,
+    review_mini_video,
+    suggested_reward_for_views,
+)
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
 from ..utils.minigames import (
     get_minigame_slot_defs,
@@ -1623,7 +1632,15 @@ def gift_codes_batch_disable():
 @admin_bp.route('/affiliates')
 @login_required
 def affiliates():
-    all_affiliates = Affiliate.query.order_by(Affiliate.created_at.desc()).all()
+    # Los minis (auto-registrados en /minis) se gestionan aparte en
+    # /admin/minis: no listarlos aquí evita que el botón "Pagar" de esta
+    # pantalla (que pone balance=0 directo) le pise el flujo de retiro.
+    all_affiliates = (
+        Affiliate.query
+        .filter(or_(Affiliate.is_mini.is_(False), Affiliate.is_mini.is_(None)))
+        .order_by(Affiliate.created_at.desc())
+        .all()
+    )
     discount_codes = Discount.query.order_by(Discount.created_at.desc()).all()
     return render_template(
         'admin/affiliates.html',
@@ -1710,6 +1727,180 @@ def affiliate_update_balance(aff_id):
     db.session.commit()
     flash(f'Monto actualizado para {aff.name}: ${new_balance:.2f}', 'success')
     return redirect(url_for('admin_bp.affiliates'))
+
+
+# ─── Mini influencers (/minis) ───────────────────────────────────────────────
+
+@admin_bp.route('/minis')
+@login_required
+def minis():
+    section = request.args.get('section', 'solicitudes')
+
+    pending_applications = (
+        Affiliate.query.filter_by(is_mini=True, status='pending')
+        .order_by(Affiliate.created_at.desc()).all()
+    )
+    reviewed_applications = (
+        Affiliate.query.filter(Affiliate.is_mini.is_(True), Affiliate.status.in_(['approved', 'rejected']))
+        .order_by(Affiliate.created_at.desc()).limit(100).all()
+    )
+
+    pending_videos = MiniVideo.query.filter_by(status='pending').order_by(MiniVideo.created_at.desc()).all()
+    reviewed_videos = (
+        MiniVideo.query.filter(MiniVideo.status.in_(['approved', 'rejected']))
+        .order_by(MiniVideo.created_at.desc()).limit(100).all()
+    )
+
+    pending_withdrawals = AffiliateWithdrawal.query.filter_by(status='pending').order_by(AffiliateWithdrawal.created_at.desc()).all()
+    reviewed_withdrawals = (
+        AffiliateWithdrawal.query.filter(AffiliateWithdrawal.status.in_(['approved', 'rejected']))
+        .order_by(AffiliateWithdrawal.created_at.desc()).limit(100).all()
+    )
+
+    approved_minis = Affiliate.query.filter_by(is_mini=True, status='approved').order_by(Affiliate.name.asc()).all()
+    rank_progress_by_id = {a.id: get_rank_progress(a) for a in approved_minis}
+    ranks = MiniRank.query.order_by(MiniRank.sort_order.asc(), MiniRank.uses_required.asc()).all()
+
+    return render_template(
+        'admin/minis.html',
+        section=section,
+        pending_applications=pending_applications,
+        reviewed_applications=reviewed_applications,
+        pending_videos=pending_videos,
+        reviewed_videos=reviewed_videos,
+        pending_withdrawals=pending_withdrawals,
+        reviewed_withdrawals=reviewed_withdrawals,
+        approved_minis=approved_minis,
+        rank_progress_by_id=rank_progress_by_id,
+        ranks=ranks,
+        suggested_reward_for_views=suggested_reward_for_views,
+    )
+
+
+@admin_bp.route('/minis/<int:aff_id>/approve', methods=['POST'])
+@login_required
+def mini_approve(aff_id):
+    aff = Affiliate.query.get_or_404(aff_id)
+    if not aff.is_mini:
+        flash('Ese afiliado no es un mini influencer.', 'danger')
+        return redirect(url_for('admin_bp.minis'))
+    if aff.status == 'approved':
+        flash('Esa solicitud ya estaba aprobada.', 'warning')
+        return redirect(url_for('admin_bp.minis'))
+
+    code = (request.form.get('code') or '').strip().upper()
+    if not code:
+        flash('El código es obligatorio.', 'danger')
+        return redirect(url_for('admin_bp.minis'))
+    if Affiliate.query.filter(Affiliate.code == code, Affiliate.id != aff.id).first():
+        flash('Ese código ya está en uso por otro afiliado.', 'danger')
+        return redirect(url_for('admin_bp.minis'))
+
+    try:
+        client_discount_rate = float(request.form.get('client_discount_rate', 2.0))
+        commission_rate = float(request.form.get('commission_rate', 1.0))
+    except ValueError:
+        flash('Los porcentajes deben ser números.', 'danger')
+        return redirect(url_for('admin_bp.minis'))
+
+    aff.code = code
+    aff.client_discount_rate = client_discount_rate
+    aff.commission_rate = commission_rate
+    aff.status = 'approved'
+    aff.is_active = True
+    aff.rejection_reason = None
+    aff.reviewed_at = datetime.utcnow()
+    db.session.commit()
+    flash(f'Mini influencer "{aff.name}" aprobado con código {code}.', 'success')
+    return redirect(url_for('admin_bp.minis'))
+
+
+@admin_bp.route('/minis/<int:aff_id>/reject', methods=['POST'])
+@login_required
+def mini_reject(aff_id):
+    aff = Affiliate.query.get_or_404(aff_id)
+    if not aff.is_mini:
+        flash('Ese afiliado no es un mini influencer.', 'danger')
+        return redirect(url_for('admin_bp.minis'))
+    if aff.status != 'pending':
+        flash('Esa solicitud ya fue procesada.', 'warning')
+        return redirect(url_for('admin_bp.minis'))
+
+    aff.status = 'rejected'
+    aff.is_active = False
+    aff.rejection_reason = (request.form.get('rejection_reason') or '').strip() or None
+    aff.reviewed_at = datetime.utcnow()
+    db.session.commit()
+    flash(f'Solicitud de "{aff.name}" rechazada.', 'success')
+    return redirect(url_for('admin_bp.minis'))
+
+
+@admin_bp.route('/minis/videos/<int:video_id>/review', methods=['POST'])
+@login_required
+def mini_video_review(video_id):
+    video = MiniVideo.query.get_or_404(video_id)
+    ok, error = review_mini_video(
+        video,
+        (request.form.get('action') or '').strip(),
+        reward_amount=request.form.get('reward_amount'),
+        note=request.form.get('note') or '',
+    )
+    flash(error if not ok else 'Video revisado.', 'danger' if not ok else 'success')
+    return redirect(url_for('admin_bp.minis', section='videos'))
+
+
+@admin_bp.route('/minis/<int:aff_id>/rank-award', methods=['POST'])
+@login_required
+def mini_rank_award(aff_id):
+    aff = Affiliate.query.get_or_404(aff_id)
+    if not aff.is_mini:
+        flash('Ese afiliado no es un mini influencer.', 'danger')
+        return redirect(url_for('admin_bp.minis'))
+
+    rank_name = (request.form.get('rank_name') or '').strip()
+    amount_raw = request.form.get('bonus_amount')
+    try:
+        amount = float(amount_raw) if amount_raw not in (None, '') else None
+    except ValueError:
+        flash('Monto inválido.', 'danger')
+        return redirect(url_for('admin_bp.minis'))
+
+    ok, error = award_rank_bonus(aff, rank_name, amount)
+    flash(error if not ok else f'Bono de rango "{rank_name}" pagado.', 'danger' if not ok else 'success')
+    return redirect(url_for('admin_bp.minis'))
+
+
+@admin_bp.route('/minis/retiros/<int:w_id>/approve', methods=['POST'])
+@login_required
+def mini_withdrawal_approve(w_id):
+    withdrawal = AffiliateWithdrawal.query.get_or_404(w_id)
+    ok, error = approve_mini_withdrawal(withdrawal)
+    flash(error if not ok else 'Retiro aprobado.', 'danger' if not ok else 'success')
+    return redirect(url_for('admin_bp.minis', section='retiros'))
+
+
+@admin_bp.route('/minis/retiros/<int:w_id>/reject', methods=['POST'])
+@login_required
+def mini_withdrawal_reject(w_id):
+    withdrawal = AffiliateWithdrawal.query.get_or_404(w_id)
+    ok, error = reject_mini_withdrawal(withdrawal, request.form.get('rejection_reason') or '')
+    flash(error if not ok else 'Retiro rechazado.', 'danger' if not ok else 'success')
+    return redirect(url_for('admin_bp.minis', section='retiros'))
+
+
+@admin_bp.app_context_processor
+def _inject_minis_pending_state():
+    """Para el badge de pendientes en el menú lateral, junto al link de Minis."""
+    try:
+        return {
+            'minis_pending_count': (
+                Affiliate.query.filter_by(is_mini=True, status='pending').count()
+                + MiniVideo.query.filter_by(status='pending').count()
+                + AffiliateWithdrawal.query.filter_by(status='pending').count()
+            )
+        }
+    except Exception:
+        return {'minis_pending_count': 0}
 
 
 @admin_bp.route('/discount-codes/add', methods=['POST'])

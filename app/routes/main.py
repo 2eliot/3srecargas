@@ -515,6 +515,15 @@ def index():
         or 'https://wa.me/19543789224'
     )
 
+    # El aviso de Wallet anuncia este horario en texto plano: se calcula acá
+    # en vez de hardcodearlo en la plantilla para que nunca vuelva a
+    # desincronizarse del horario real que configura el admin en Ajustes
+    # (eso pasó antes: el popup decía 10am-10pm mientras el horario real era
+    # otro).
+    manual_schedule = get_manual_schedule()
+    manual_open_label = format_hour(manual_schedule['open_hour'])
+    manual_close_label = format_hour(manual_schedule['close_hour'])
+
     return render_template(
         'index.html',
         games=games,
@@ -528,6 +537,8 @@ def index():
         checkout_payment_video=checkout_payment_video,
         promo_banner=promo_banner,
         promo_banner_link=promo_banner_link,
+        manual_open_label=manual_open_label,
+        manual_close_label=manual_close_label,
         community_popup_enabled=community_popup_enabled,
         community_popup_interval_hours=community_popup_interval_hours,
         community_popup_whatsapp_url=community_popup_whatsapp_url,

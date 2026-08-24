@@ -1478,6 +1478,16 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
     margin: 0;
 }
 .nav-lock-hint { margin-left: auto; font-size: 12px; opacity: .75; }
+.nav-badge-count {
+    margin-left: auto;
+    background: rgba(245,158,11,.2);
+    color: var(--warning);
+    font-size: 10.5px;
+    font-weight: 800;
+    padding: 1px 7px;
+    border-radius: 999px;
+    line-height: 1.6;
+}
 
 /* Códigos de regalo: el código se lee y se copia, así que monoespaciado. */
 .gift-code-cell {

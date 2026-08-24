@@ -1,0 +1,381 @@
+{% extends 'admin/base.html' %}
+{% block title %}Minis{% endblock %}
+{% block page_title %}Mini influencers{% endblock %}
+
+{% block content %}
+<div class="filters-bar">
+    <div class="filter-tabs">
+        <a href="{{ url_for('admin_bp.minis', section='solicitudes') }}" class="filter-tab {% if section == 'solicitudes' %}active{% endif %}">
+            Solicitudes
+            {% if pending_applications %}<span class="filter-tab-count">{{ pending_applications|length }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('admin_bp.minis', section='aprobados') }}" class="filter-tab {% if section == 'aprobados' %}active{% endif %}">Aprobados</a>
+        <a href="{{ url_for('admin_bp.minis', section='videos') }}" class="filter-tab {% if section == 'videos' %}active{% endif %}">
+            Videos
+            {% if pending_videos %}<span class="filter-tab-count">{{ pending_videos|length }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('admin_bp.minis', section='retiros') }}" class="filter-tab {% if section == 'retiros' %}active{% endif %}">
+            Retiros
+            {% if pending_withdrawals %}<span class="filter-tab-count">{{ pending_withdrawals|length }}</span>{% endif %}
+        </a>
+    </div>
+</div>
+
+{% if section == 'solicitudes' %}
+<div class="admin-card">
+    <div class="card-header"><h3>Pendientes de revisión</h3></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Canal</th><th>Contacto</th><th>Link</th><th>Nota</th><th>Fecha</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+                {% for aff in pending_applications %}
+                <tr>
+                    <td><strong>{{ aff.name }}</strong></td>
+                    <td>{{ aff.email or '—' }}<br><small>{{ aff.whatsapp_phone or '' }}</small></td>
+                    <td><a href="{{ aff.channel_url }}" target="_blank" rel="noopener">Ver canal</a></td>
+                    <td style="max-width:220px;">{{ aff.application_note or '—' }}</td>
+                    <td>{{ aff.created_at.strftime('%d/%m/%Y') if aff.created_at else '' }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-success"
+                                    onclick="openApproveModal({{ aff.id }}, '{{ aff.code }}')">Aprobar</button>
+                            <button class="btn-sm btn-danger"
+                                    onclick="openRejectModal({{ aff.id }}, '{{ aff.name }}')">Rechazar</button>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="empty-row">No hay solicitudes pendientes.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Historial</h3></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Canal</th><th>Código</th><th>Estado</th><th>Revisado</th></tr></thead>
+            <tbody>
+                {% for aff in reviewed_applications %}
+                <tr>
+                    <td>{{ aff.name }}</td>
+                    <td><code class="ref-code">{{ aff.code }}</code></td>
+                    <td><span class="badge {% if aff.status == 'approved' %}badge-active{% else %}badge-danger{% endif %}">{{ 'Aprobado' if aff.status == 'approved' else 'Rechazado' }}</span></td>
+                    <td>{{ aff.reviewed_at.strftime('%d/%m/%Y') if aff.reviewed_at else '—' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="empty-row">Sin historial todavía.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal: aprobar -->
+<div class="modal-overlay" id="approveMiniModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3>Aprobar mini influencer</h3><button onclick="closeModal('approveMiniModal')">✕</button></div>
+        <form method="POST" id="approveMiniForm">
+            <div class="form-group">
+                <label>Código *</label>
+                <input type="text" name="code" id="approveMiniCode" required style="text-transform:uppercase" maxlength="20">
+                <p class="form-hint">El mini compartirá: tudominio.com/r/CÓDIGO. Viene precargado con uno provisorio, puedes dejarlo o cambiarlo.</p>
+            </div>
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label>Descuento al cliente (%)</label>
+                    <input type="number" name="client_discount_rate" value="2" step="0.5" min="0" max="100">
+                </div>
+                <div class="form-group">
+                    <label>Comisión del mini (%)</label>
+                    <input type="number" name="commission_rate" value="1" step="0.5" min="0" max="100">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('approveMiniModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Aprobar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: rechazar -->
+<div class="modal-overlay" id="rejectMiniModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3>Rechazar solicitud</h3><button onclick="closeModal('rejectMiniModal')">✕</button></div>
+        <form method="POST" id="rejectMiniForm">
+            <div class="form-group">
+                <label>Motivo (opcional, se lo mostramos al solicitante)</label>
+                <textarea name="rejection_reason" rows="3"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('rejectMiniModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-danger">Rechazar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if section == 'aprobados' %}
+<div class="admin-card">
+    <div class="card-header"><h3>Minis aprobados</h3></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr><th>Canal</th><th>Código</th><th>Balance</th><th>Total ganado</th><th>Rango</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+                {% for aff in approved_minis %}
+                {% set progress = rank_progress_by_id.get(aff.id) %}
+                <tr>
+                    <td><strong>{{ aff.name }}</strong><br><small>{{ aff.email or '' }}</small></td>
+                    <td><code class="ref-code">{{ aff.code }}</code></td>
+                    <td class="{{ 'text-success' if aff.balance > 0 }}">${{ '%.2f'|format(aff.balance or 0) }}</td>
+                    <td>${{ '%.2f'|format(aff.total_earned or 0) }}</td>
+                    <td>
+                        {{ progress.current.name if progress and progress.current else 'Sin rango' }}
+                        ({{ progress.uses if progress else 0 }} usos)
+                    </td>
+                    <td>
+                        {% if progress and progress.unpaid %}
+                        <button class="btn-sm btn-success"
+                                onclick="openRankModal({{ aff.id }}, '{{ progress.unpaid[0].name }}', {{ progress.unpaid[0].bonus_amount }})">
+                            Pagar {{ progress.unpaid[0].name }}
+                        </button>
+                        {% else %}
+                        <span class="badge badge-inactive">Al día</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="empty-row">Todavía no hay minis aprobados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if ranks %}
+<div class="admin-card">
+    <div class="card-header"><h3>Escalera de rangos</h3></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Rango</th><th>Usos requeridos</th><th>Bono</th></tr></thead>
+            <tbody>
+                {% for r in ranks %}
+                <tr><td>{{ r.name }}</td><td>{{ r.uses_required }}</td><td>${{ '%.2f'|format(r.bonus_amount) }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Modal: pagar rango -->
+<div class="modal-overlay" id="rankMiniModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3>Pagar bono de rango</h3><button onclick="closeModal('rankMiniModal')">✕</button></div>
+        <form method="POST" id="rankMiniForm">
+            <input type="hidden" name="rank_name" id="rankMiniName">
+            <div class="form-group">
+                <label>Monto a acreditar ($)</label>
+                <input type="number" name="bonus_amount" id="rankMiniAmount" step="0.01" min="0">
+                <p class="form-hint">Precargado con el monto sugerido del rango; puedes ajustarlo antes de confirmar.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('rankMiniModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Pagar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if section == 'videos' %}
+<div class="admin-card">
+    <div class="card-header"><h3>Pendientes de revisión</h3></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Mini</th><th>Video</th><th>Vistas declaradas</th><th>Sugerido</th><th>Fecha</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for v in pending_videos %}
+                <tr>
+                    <td>{{ v.affiliate.name if v.affiliate else '—' }}</td>
+                    <td><a href="{{ v.url }}" target="_blank" rel="noopener">{{ v.platform|capitalize }}</a></td>
+                    <td>{{ v.views_declared }}</td>
+                    <td>${{ '%.2f'|format(suggested_reward_for_views(v.views_declared)) }}</td>
+                    <td>{{ v.created_at.strftime('%d/%m/%Y') if v.created_at else '' }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-success" onclick="openVideoModal({{ v.id }}, 'approve', {{ suggested_reward_for_views(v.views_declared) }})">Aprobar</button>
+                            <button class="btn-sm btn-danger" onclick="openVideoModal({{ v.id }}, 'reject')">Rechazar</button>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="empty-row">No hay videos pendientes.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Historial</h3></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Mini</th><th>Video</th><th>Estado</th><th>Monto</th></tr></thead>
+            <tbody>
+                {% for v in reviewed_videos %}
+                <tr>
+                    <td>{{ v.affiliate.name if v.affiliate else '—' }}</td>
+                    <td><a href="{{ v.url }}" target="_blank" rel="noopener">{{ v.platform|capitalize }}</a></td>
+                    <td><span class="badge {% if v.status == 'approved' %}badge-active{% else %}badge-danger{% endif %}">{{ 'Aprobado' if v.status == 'approved' else 'Rechazado' }}</span></td>
+                    <td>${{ '%.2f'|format(v.reward_amount or 0) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="empty-row">Sin historial todavía.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal: revisar video -->
+<div class="modal-overlay" id="videoMiniModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3 id="videoMiniTitle">Revisar video</h3><button onclick="closeModal('videoMiniModal')">✕</button></div>
+        <form method="POST" id="videoMiniForm">
+            <input type="hidden" name="action" id="videoMiniAction">
+            <div class="form-group" id="videoMiniAmountGroup">
+                <label>Monto a acreditar ($)</label>
+                <input type="number" name="reward_amount" id="videoMiniAmount" step="0.01" min="0" value="0">
+            </div>
+            <div class="form-group">
+                <label>Nota (opcional)</label>
+                <textarea name="note" rows="2"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('videoMiniModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary" id="videoMiniSubmit">Confirmar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if section == 'retiros' %}
+<div class="admin-card">
+    <div class="card-header"><h3>Pendientes de revisión</h3></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Mini</th><th>Monto</th><th>Método</th><th>Datos de cobro</th><th>Fecha</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for w in pending_withdrawals %}
+                <tr>
+                    <td>{{ w.affiliate.name if w.affiliate else '—' }}</td>
+                    <td>${{ '%.2f'|format(w.amount) }}</td>
+                    <td>{{ w.method }}</td>
+                    <td style="max-width:220px;">{{ w.payout_details }}</td>
+                    <td>{{ w.created_at.strftime('%d/%m/%Y') if w.created_at else '' }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <form method="POST" action="{{ url_for('admin_bp.mini_withdrawal_approve', w_id=w.id) }}" style="display:inline">
+                                <button class="btn-sm btn-success" type="submit" onclick="return confirm('¿Aprobar este retiro?')">Aprobar</button>
+                            </form>
+                            <button class="btn-sm btn-danger" onclick="openWithdrawalRejectModal({{ w.id }})">Rechazar</button>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="empty-row">No hay retiros pendientes.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Historial</h3></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Mini</th><th>Monto</th><th>Estado</th></tr></thead>
+            <tbody>
+                {% for w in reviewed_withdrawals %}
+                <tr>
+                    <td>{{ w.affiliate.name if w.affiliate else '—' }}</td>
+                    <td>${{ '%.2f'|format(w.amount) }}</td>
+                    <td><span class="badge {% if w.status == 'approved' %}badge-active{% else %}badge-danger{% endif %}">{{ 'Aprobado' if w.status == 'approved' else 'Rechazado' }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="empty-row">Sin historial todavía.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal: rechazar retiro -->
+<div class="modal-overlay" id="withdrawalRejectModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3>Rechazar retiro</h3><button onclick="closeModal('withdrawalRejectModal')">✕</button></div>
+        <form method="POST" id="withdrawalRejectForm">
+            <div class="form-group">
+                <label>Motivo (opcional)</label>
+                <textarea name="rejection_reason" rows="3"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('withdrawalRejectModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-danger">Rechazar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function openApproveModal(id, code) {
+    document.getElementById('approveMiniForm').action = '/admin/minis/' + id + '/approve';
+    document.getElementById('approveMiniCode').value = code;
+    openModal('approveMiniModal');
+}
+
+function openRejectModal(id) {
+    document.getElementById('rejectMiniForm').action = '/admin/minis/' + id + '/reject';
+    openModal('rejectMiniModal');
+}
+
+function openRankModal(id, rankName, bonusAmount) {
+    document.getElementById('rankMiniForm').action = '/admin/minis/' + id + '/rank-award';
+    document.getElementById('rankMiniName').value = rankName;
+    document.getElementById('rankMiniAmount').value = bonusAmount;
+    openModal('rankMiniModal');
+}
+
+function openVideoModal(id, action, suggestedAmount) {
+    document.getElementById('videoMiniForm').action = '/admin/minis/videos/' + id + '/review';
+    document.getElementById('videoMiniAction').value = action;
+    var isApprove = action === 'approve';
+    document.getElementById('videoMiniTitle').textContent = isApprove ? 'Aprobar video' : 'Rechazar video';
+    document.getElementById('videoMiniAmountGroup').style.display = isApprove ? 'block' : 'none';
+    document.getElementById('videoMiniAmount').value = suggestedAmount || 0;
+    document.getElementById('videoMiniSubmit').className = isApprove ? 'btn-primary' : 'btn-danger';
+    openModal('videoMiniModal');
+}
+
+function openWithdrawalRejectModal(id) {
+    document.getElementById('withdrawalRejectForm').action = '/admin/minis/retiros/' + id + '/reject';
+    openModal('withdrawalRejectModal');
+}
+</script>
+{% endblock %}

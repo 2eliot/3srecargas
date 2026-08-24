@@ -1133,7 +1133,7 @@
     /* Texto del aviso de fuera de horario, con las horas que configuró el
        admin (y un respaldo por si el servidor no las mandó). */
     function getClosedNoticeText() {
-        var openLabel = (manualSchedule && manualSchedule.open_label) || '10:00 a. m.';
+        var openLabel = (manualSchedule && manualSchedule.open_label) || '5:00 a. m.';
         var closeLabel = (manualSchedule && manualSchedule.close_label) || '10:00 p. m.';
         return 'Estas recargas se hacen a mano y ahora estamos cerrados. ' +
                'Atendemos de ' + openLabel + ' a ' + closeLabel + ', hora de Venezuela.';

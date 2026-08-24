@@ -1,0 +1,286 @@
+{% extends 'base.html' %}
+{% block title %}Mi panel de mini — 3S Recargas{% endblock %}
+
+{% block content %}
+<div class="nx-store mn-page">
+
+    <a href="{{ url_for('main_bp.index') }}" class="rdm-back">← Volver a la tienda</a>
+
+    <section class="glass-panel rdm-card">
+        <div class="rdm-head">
+            <span class="rdm-kicker">Mini influencer</span>
+            <h1 class="rdm-title">Hola, {{ affiliate.name }}</h1>
+            {% if affiliate.status == 'approved' %}
+            <p class="rdm-sub">Comparte tu código, sube tus videos y pide tu retiro cuando quieras.</p>
+            {% endif %}
+        </div>
+
+        {% if affiliate.status == 'pending' %}
+        <div class="mn-status-banner is-pending">
+            <strong>Tu solicitud está en revisión</strong>
+            <span>Te avisamos por WhatsApp en cuanto la aprobemos. Vuelve a entrar más tarde para ver tu código.</span>
+        </div>
+        {% elif affiliate.status == 'rejected' %}
+        <div class="mn-status-banner is-rejected">
+            <strong>Tu solicitud fue rechazada</strong>
+            {% if affiliate.rejection_reason %}<span>Motivo: {{ affiliate.rejection_reason }}</span>{% endif %}
+        </div>
+        {% else %}
+
+        <!-- Perfil -->
+        <div class="mn-stat-row">
+            <div class="mn-stat">
+                <span>Tu código</span>
+                <div class="mn-code-row">
+                    <strong>{{ affiliate.code }}</strong>
+                    <button type="button" class="mn-copy-btn" id="mnCopyCode">Copiar link</button>
+                </div>
+            </div>
+            <div class="mn-stat">
+                <span>Balance disponible</span>
+                <strong class="is-accent">${{ '%.2f'|format(affiliate.balance or 0) }}</strong>
+            </div>
+        </div>
+        <div class="mn-stat-row">
+            <div class="mn-stat">
+                <span>Descuento para tu comunidad</span>
+                <strong>{{ affiliate.client_discount_rate or 0 }}%</strong>
+            </div>
+            <div class="mn-stat">
+                <span>Total ganado</span>
+                <strong>${{ '%.2f'|format(affiliate.total_earned or 0) }}</strong>
+            </div>
+        </div>
+
+        <!-- Rango -->
+        {% if rank_progress %}
+        <div class="mn-section">
+            <div class="mn-section-head">
+                <h3>Tu rango</h3>
+                <p>{{ rank_progress.uses }} compras con tu código</p>
+            </div>
+            <div class="mn-progress-head">
+                <strong>{{ rank_progress.current.name if rank_progress.current else 'Sin rango aún' }}</strong>
+                {% if rank_progress.next %}
+                <small>Faltan {{ rank_progress.uses_to_next }} para {{ rank_progress.next.name }}</small>
+                {% else %}
+                <small>Rango máximo alcanzado</small>
+                {% endif %}
+            </div>
+            <div class="mn-progress-track"><div class="mn-progress-fill" style="width: {{ rank_progress.progress_percent }}%;"></div></div>
+            {% if rank_progress.unpaid %}
+            <p class="rdm-feedback is-success" style="margin-top:10px;">
+                Tienes {{ rank_progress.unpaid|length }} bono(s) de rango pendiente(s) de pago — te lo acreditamos pronto.
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Videos -->
+        <div class="mn-section">
+            <div class="mn-section-head">
+                <h3>Bono por video</h3>
+                <p>Sube el link de cada video donde menciones la tienda. Lo revisamos y, según su alcance, te acreditamos un bono.</p>
+            </div>
+
+            <label class="rdm-label" for="mnVideoUrl">Link del video</label>
+            <input type="url" id="mnVideoUrl" class="glass-input" placeholder="https://www.tiktok.com/@tu/video/..." maxlength="500">
+
+            <label class="rdm-label" for="mnVideoViews">Vistas aproximadas (opcional)</label>
+            <input type="number" id="mnVideoViews" class="glass-input" placeholder="0" min="0" step="1">
+
+            <p class="rdm-feedback" id="mnVideoFeedback" aria-live="polite"></p>
+
+            <button type="button" class="rdm-btn red-glow-pill" id="mnVideoBtn" style="margin-top:6px;">
+                <span class="rdm-btn-label">Enviar video</span>
+            </button>
+
+            {% if view_tiers %}
+            <p class="rdm-sub" style="margin-top:14px; text-align:left; max-width:none;">
+                Tabla de referencia (el monto real lo confirmamos al revisar tu video):
+                {% for tier in view_tiers %}
+                <br>· {{ tier.min_views }}{% if tier.max_views %}–{{ tier.max_views }}{% else %}+{% endif %} vistas → hasta ${{ '%.2f'|format(tier.reward_amount) }}
+                {% endfor %}
+            </p>
+            {% endif %}
+
+            <div class="mn-list" id="mnVideoList">
+                {% for video in videos %}
+                <div class="mn-list-item" data-video-id="{{ video.id }}">
+                    <div class="mn-list-main">
+                        <strong>{{ video.platform|capitalize }} · {{ video.url }}</strong>
+                        <small>
+                            {{ video.views_declared }} vistas declaradas
+                            {% if video.status == 'approved' %}· bono ${{ '%.2f'|format(video.reward_amount or 0) }}{% endif %}
+                        </small>
+                    </div>
+                    <span class="status-{{ video.status }}" style="padding:3px 9px; border-radius:999px; font-size:10px; font-weight:800; text-transform:uppercase;">
+                        {{ {'pending': 'Pendiente', 'approved': 'Aprobado', 'rejected': 'Rechazado'}[video.status] }}
+                    </span>
+                    {% if video.status == 'pending' %}
+                    <button type="button" class="mn-list-del" data-delete-video="{{ video.id }}" title="Eliminar">✕</button>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p class="mn-list-empty">Aún no subiste ningún video.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Retiro -->
+        <div class="mn-section">
+            <div class="mn-section-head">
+                <h3>Retirar balance</h3>
+                <p>Tienes ${{ '%.2f'|format(affiliate.balance or 0) }} disponibles.</p>
+            </div>
+
+            {% if has_pending_withdrawal %}
+            <p class="rdm-feedback is-success">Ya tienes un retiro en revisión — espera a que se resuelva antes de pedir otro.</p>
+            {% elif not payment_methods %}
+            <p class="mn-list-empty">No hay métodos de pago activos por ahora. Escríbenos por soporte.</p>
+            {% else %}
+            <label class="rdm-label" for="mnWithdrawAmount">Monto a retirar</label>
+            <input type="number" id="mnWithdrawAmount" class="glass-input" placeholder="0.00" min="0" step="0.01" max="{{ affiliate.balance or 0 }}">
+
+            <label class="rdm-label" for="mnWithdrawMethod">Método de pago</label>
+            <select id="mnWithdrawMethod" class="glass-input">
+                {% for method in payment_methods %}
+                <option value="{{ method.code }}">{{ method.name }}</option>
+                {% endfor %}
+            </select>
+
+            <label class="rdm-label" for="mnWithdrawDetails">Datos donde quieres recibir el pago</label>
+            <textarea id="mnWithdrawDetails" class="glass-input" rows="2" maxlength="500" placeholder="Ej. Binance Pay ID, cuenta, cédula, teléfono..."></textarea>
+
+            <p class="rdm-feedback" id="mnWithdrawFeedback" aria-live="polite"></p>
+
+            <button type="button" class="rdm-btn red-glow-pill" id="mnWithdrawBtn" style="margin-top:6px;">
+                <span class="rdm-btn-label">Pedir retiro</span>
+            </button>
+            {% endif %}
+
+            <div class="mn-list">
+                {% for w in withdrawals %}
+                <div class="mn-list-item">
+                    <div class="mn-list-main">
+                        <strong>${{ '%.2f'|format(w.amount) }} · {{ w.method }}</strong>
+                        <small>{{ w.created_at.strftime('%d/%m/%Y') if w.created_at else '' }}</small>
+                    </div>
+                    <span class="status-{{ w.status }}" style="padding:3px 9px; border-radius:999px; font-size:10px; font-weight:800; text-transform:uppercase;">
+                        {{ {'pending': 'Pendiente', 'approved': 'Aprobado', 'rejected': 'Rechazado'}[w.status] }}
+                    </span>
+                </div>
+                {% else %}
+                <p class="mn-list-empty">Aún no pediste ningún retiro.</p>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="mn-section" style="text-align:center;">
+            <form method="POST" action="{{ url_for('minis_bp.logout') }}">
+                <button type="submit" class="rdm-link-btn">Cerrar sesión</button>
+            </form>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    function setFeedback(el, msg, kind) {
+        if (!el) return;
+        el.textContent = msg || '';
+        el.classList.remove('is-error', 'is-success');
+        if (msg && kind) el.classList.add(kind);
+    }
+
+    function setBusy(btn, on, labelBusy) {
+        if (!btn) return;
+        btn.disabled = on;
+        var label = btn.querySelector('.rdm-btn-label');
+        if (!label) return;
+        if (on) {
+            label.dataset.prev = label.textContent;
+            label.textContent = labelBusy || 'Un momento...';
+        } else if (label.dataset.prev) {
+            label.textContent = label.dataset.prev;
+        }
+    }
+
+    function postJson(url, payload) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload || {})
+        }).then(function (r) {
+            return r.json().catch(function () {
+                throw new Error('No se pudo contactar al servidor.');
+            }).then(function (data) {
+                if (!r.ok || !data.ok) throw new Error(data.message || 'Algo salió mal.');
+                return data;
+            });
+        });
+    }
+
+    var copyBtn = document.getElementById('mnCopyCode');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+            var link = window.location.origin + '/r/{{ affiliate.code }}';
+            navigator.clipboard.writeText(link).then(function () {
+                var prev = copyBtn.textContent;
+                copyBtn.textContent = '¡Copiado!';
+                setTimeout(function () { copyBtn.textContent = prev; }, 1500);
+            }).catch(function () {});
+        });
+    }
+
+    /* Videos */
+    var videoBtn = document.getElementById('mnVideoBtn');
+    if (videoBtn) {
+        videoBtn.addEventListener('click', function () {
+            var feedback = document.getElementById('mnVideoFeedback');
+            var url = document.getElementById('mnVideoUrl').value.trim();
+            var views = document.getElementById('mnVideoViews').value || 0;
+            if (!url) { setFeedback(feedback, 'Escribe el link del video.', 'is-error'); return; }
+            setBusy(videoBtn, true, 'Enviando...');
+            setFeedback(feedback, '');
+            postJson('{{ url_for("minis_bp.mini_video_add") }}', {url: url, views_declared: parseInt(views, 10) || 0})
+                .then(function () { window.location.reload(); })
+                .catch(function (err) { setFeedback(feedback, err.message, 'is-error'); })
+                .finally(function () { setBusy(videoBtn, false); });
+        });
+    }
+
+    document.querySelectorAll('[data-delete-video]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!window.confirm('¿Borrar este video?')) return;
+            var id = btn.getAttribute('data-delete-video');
+            postJson('{{ url_for("minis_bp.mini_video_delete", video_id=0) }}'.replace('/0', '/' + id), {})
+                .then(function () { window.location.reload(); })
+                .catch(function (err) { window.alert(err.message); });
+        });
+    });
+
+    /* Retiro */
+    var withdrawBtn = document.getElementById('mnWithdrawBtn');
+    if (withdrawBtn) {
+        withdrawBtn.addEventListener('click', function () {
+            var feedback = document.getElementById('mnWithdrawFeedback');
+            var amount = parseFloat(document.getElementById('mnWithdrawAmount').value || '0');
+            var method = document.getElementById('mnWithdrawMethod').value;
+            var details = document.getElementById('mnWithdrawDetails').value.trim();
+            if (!amount || amount <= 0) { setFeedback(feedback, 'Escribe un monto válido.', 'is-error'); return; }
+            if (!details) { setFeedback(feedback, 'Escribe dónde quieres recibir el pago.', 'is-error'); return; }
+            setBusy(withdrawBtn, true, 'Enviando...');
+            setFeedback(feedback, '');
+            postJson('{{ url_for("minis_bp.mini_withdraw") }}', {amount: amount, method: method, payout_details: details})
+                .then(function () { window.location.reload(); })
+                .catch(function (err) { setFeedback(feedback, err.message, 'is-error'); })
+                .finally(function () { setBusy(withdrawBtn, false); });
+        });
+    }
+})();
+</script>
+{% endblock %}

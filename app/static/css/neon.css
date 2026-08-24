@@ -377,6 +377,7 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 .drawer-icon-redeem { background: rgba(16,185,129,.2); color: #34d399; }
 .drawer-icon-points { background: rgba(59,130,246,.2); color: #60a5fa; }
 .drawer-icon-ranking { background: rgba(245,158,11,.2); color: #fbbf24; }
+.drawer-icon-mini { background: rgba(168,85,247,.2); color: #c084fc; }
 .drawer-icon-user,
 .drawer-icon-login { background: rgba(255,0,0,.2); color: var(--nx-red); }
 
@@ -3072,4 +3073,125 @@ body.drawer-open { overflow: hidden; }
 @media (max-width: 380px) {
     .rdm-code-input { font-size: 18px !important; letter-spacing: .12em !important; }
     .rdm-title { font-size: 22px; }
+}
+
+/* ─── Autoservicio de mini influencers (/minis) ───────────────────────────
+   Reusa el kit de /redimir (.rdm-back/.rdm-kicker/.rdm-title/.rdm-sub/
+   .rdm-label/.rdm-feedback/.rdm-btn/.rdm-link-btn) para la tipografía y
+   los botones: es la misma "página de formulario simple" que esa, solo
+   con secciones nuevas (tabs, panel de estado, listas). */
+.mn-page { max-width: 620px; margin: 0 auto; padding: 14px 12px 40px; }
+.mn-page .rdm-card { padding: 22px 18px 18px; }
+
+.mn-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    margin-bottom: 18px;
+}
+.mn-tab {
+    flex: 1 1 0;
+    border: 0;
+    background: none;
+    padding: 10px 6px;
+    border-radius: 9px;
+    font-family: var(--nx-font-display);
+    font-size: 11.5px;
+    font-weight: 900;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.55);
+    cursor: pointer;
+}
+.mn-tab.is-active { background: var(--nx-red); color: #fff; }
+.mn-tab-panel[hidden] { display: none; }
+
+.mn-field-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 560px) {
+    .mn-field-grid.mn-cols-2 { grid-template-columns: 1fr 1fr; }
+}
+
+/* Estado de la solicitud (pending/rejected) mostrado en vez del panel. */
+.mn-status-banner {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px 18px;
+    border-radius: 13px;
+    text-align: center;
+}
+.mn-status-banner.is-pending { background: rgba(245,158,11,.09); border: 1px solid rgba(245,158,11,.35); }
+.mn-status-banner.is-rejected { background: rgba(239,68,68,.09); border: 1px solid rgba(239,68,68,.35); }
+.mn-status-banner strong { font-family: var(--nx-font-display); font-size: 15px; color: #fff; }
+.mn-status-banner span { font-size: 12px; color: rgba(255,255,255,.6); line-height: 1.5; }
+
+/* Perfil: código + link para compartir + saldo. */
+.mn-stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.mn-stat {
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.08);
+}
+.mn-stat span { display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.45); margin-bottom: 4px; }
+.mn-stat strong { font-family: "Space Grotesk", monospace; font-size: 18px; color: #fff; }
+.mn-stat strong.is-accent { color: var(--nx-red); }
+
+.mn-code-row { display: flex; align-items: center; gap: 8px; }
+.mn-copy-btn {
+    flex: 0 0 auto;
+    border: 1px solid rgba(255,255,255,.15);
+    background: rgba(255,255,255,.04);
+    color: #fff;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 10.5px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+/* Progreso de rango */
+.mn-progress-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.mn-progress-head strong { font-family: var(--nx-font-display); font-size: 13px; color: #fff; }
+.mn-progress-head small { font-size: 11px; color: rgba(255,255,255,.5); }
+.mn-progress-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+.mn-progress-fill { height: 100%; background: linear-gradient(90deg, var(--nx-red-dark), var(--nx-red)); border-radius: 999px; }
+
+.mn-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.07); }
+.mn-section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.mn-section-head h3 { font-family: var(--nx-font-display); font-size: 14px; font-weight: 900; color: #fff; margin: 0; }
+.mn-section-head p { font-size: 11.5px; color: rgba(255,255,255,.5); margin: 2px 0 0; }
+
+.mn-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.mn-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 11px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.08);
+}
+.mn-list-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mn-list-main strong { font-size: 12.5px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 34ch; }
+.mn-list-main small { font-size: 10.5px; color: rgba(255,255,255,.45); }
+.mn-list-empty { font-size: 12px; color: rgba(255,255,255,.4); text-align: center; padding: 14px 0; }
+.mn-list-del {
+    flex: 0 0 auto;
+    border: 0;
+    background: none;
+    color: rgba(255,255,255,.35);
+    font-size: 15px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+}
+.mn-list-del:hover { color: #fb7185; }
+
+@media (max-width: 380px) {
+    .mn-stat-row { grid-template-columns: 1fr; }
 }

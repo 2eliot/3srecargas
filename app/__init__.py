@@ -5,7 +5,7 @@ from flask_login import current_user
 from flask_login import LoginManager
 from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
-from .models import db, AdminUser, User, Category, Discount, Setting
+from .models import db, AdminUser, User, Category, Discount, Setting, Affiliate
 from .utils.timezone import VENEZUELA_TIMEZONE, format_ve
 from config import Config
 
@@ -86,6 +86,8 @@ def create_app(config_class=Config):
                 return User.query.get(user_pk)
             if user_type == 'admin':
                 return AdminUser.query.get(user_pk)
+            if user_type == 'mini':
+                return Affiliate.query.get(user_pk)
             return None
 
         try:
@@ -103,6 +105,8 @@ def create_app(config_class=Config):
 
         if request.path.startswith('/admin'):
             return redirect(url_for('admin_bp.login', next=request.url))
+        if request.path.startswith('/minis'):
+            return redirect(url_for('minis_bp.login', next=request.url))
         return redirect(url_for('auth_bp.login', next=request.url))
 
     from .routes.main import main_bp, archive_previous_month_rankings_if_needed, has_visible_public_rankings
@@ -112,6 +116,7 @@ def create_app(config_class=Config):
     from .routes.auth import auth_bp
     from .routes.verify import verify_bp
     from .routes.redeem import redeem_bp
+    from .routes.minis import minis_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
@@ -120,6 +125,7 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp)
     app.register_blueprint(verify_bp)
     app.register_blueprint(redeem_bp)
+    app.register_blueprint(minis_bp, url_prefix='/minis')
 
     @app.template_filter('datetime_ve')
     def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):
@@ -208,6 +214,7 @@ def create_app(config_class=Config):
         _ensure_minigame_opportunity_columns()
         _ensure_points_columns()
         _ensure_affiliate_columns()
+        _ensure_mini_influencer_columns()
         _ensure_one_per_player_columns()
         _ensure_payment_verification_columns()
         _ensure_ai_reference_columns()
@@ -485,6 +492,54 @@ def _ensure_affiliate_columns():
         db.session.rollback()
 
 
+def _ensure_mini_influencer_columns():
+    """Columnas del autoservicio de mini influencers sobre `affiliates`
+    (login propio, estado de solicitud, datos de la solicitud). Un afiliado
+    creado antes de este cambio no tiene ninguna de estas columnas seteadas
+    y sigue funcionando igual: is_mini queda NULL/False y status NULL, el
+    código de la app trata NULL como 'approved'/'no es mini' donde aplica."""
+    try:
+        if _ensure_postgres_columns('affiliates', [
+            'password_hash VARCHAR(255)',
+            "status VARCHAR(20) DEFAULT 'approved'",
+            'is_mini BOOLEAN DEFAULT FALSE',
+            'channel_url VARCHAR(255)',
+            'whatsapp_phone VARCHAR(50)',
+            'application_note TEXT',
+            'rejection_reason TEXT',
+            'reviewed_at TIMESTAMP',
+            'ranks_paid TEXT',
+        ]):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(affiliates)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'password_hash' not in existing:
+            db.session.execute(text('ALTER TABLE affiliates ADD COLUMN password_hash VARCHAR(255)'))
+        if 'status' not in existing:
+            db.session.execute(text("ALTER TABLE affiliates ADD COLUMN status VARCHAR(20) DEFAULT 'approved'"))
+        if 'is_mini' not in existing:
+            db.session.execute(text('ALTER TABLE affiliates ADD COLUMN is_mini BOOLEAN DEFAULT 0'))
+        if 'channel_url' not in existing:
+            db.session.execute(text('ALTER TABLE affiliates ADD COLUMN channel_url VARCHAR(255)'))
+        if 'whatsapp_phone' not in existing:
+            db.session.execute(text('ALTER TABLE affiliates ADD COLUMN whatsapp_phone VARCHAR(50)'))
+        if 'application_note' not in existing:
+            db.session.execute(text('ALTER TABLE affiliates ADD COLUMN application_note TEXT'))
+        if 'rejection_reason' not in existing:
+            db.session.execute(text('ALTER TABLE affiliates ADD COLUMN rejection_reason TEXT'))
+        if 'reviewed_at' not in existing:
+            db.session.execute(text('ALTER TABLE affiliates ADD COLUMN reviewed_at DATETIME'))
+        if 'ranks_paid' not in existing:
+            db.session.execute(text('ALTER TABLE affiliates ADD COLUMN ranks_paid TEXT'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _ensure_one_per_player_columns():
     """Marca de 'solo 1 uso por ID' para códigos de descuento y de afiliado,
     pensada para regalarlos a usuarios nuevos sin que se puedan reutilizar
@@ -678,7 +733,7 @@ def _ensure_revendedores_mapping_columns():
 
 
 def _init_default_data(app):
-    from .models import AdminUser, Category
+    from .models import AdminUser, Category, MiniRank, MiniViewTier
     import os
 
     if AdminUser.query.count() == 0:
@@ -707,6 +762,26 @@ def _init_default_data(app):
         ]:
             db.session.add(cat)
     
+    # Escalera de rangos y tabla de tramos de vistas del panel de mini
+    # influencer: valores de arranque razonables, el admin los ajusta luego
+    # desde /admin/minis sin tocar código.
+    if MiniRank.query.count() == 0:
+        for rank in [
+            MiniRank(name='Bronce', uses_required=100, bonus_amount=5, sort_order=1),
+            MiniRank(name='Plata', uses_required=250, bonus_amount=12, sort_order=2),
+            MiniRank(name='Oro', uses_required=500, bonus_amount=25, sort_order=3),
+        ]:
+            db.session.add(rank)
+
+    if MiniViewTier.query.count() == 0:
+        for tier in [
+            MiniViewTier(min_views=1000, max_views=9999, reward_amount=1, sort_order=1),
+            MiniViewTier(min_views=10000, max_views=49999, reward_amount=4, sort_order=2),
+            MiniViewTier(min_views=50000, max_views=99999, reward_amount=15, sort_order=3),
+            MiniViewTier(min_views=100000, max_views=None, reward_amount=37, sort_order=4),
+        ]:
+            db.session.add(tier)
+
     # Crear código de descuento de prueba si no existe
     if Discount.query.count() == 0:
         test_discount = Discount(

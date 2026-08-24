@@ -299,7 +299,7 @@ class Discount(db.Model):
         return self.calculate_discount(amount) > 0
 
 
-class Affiliate(db.Model):
+class Affiliate(db.Model, UserMixin):
     __tablename__ = 'affiliates'
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False)
@@ -314,6 +314,33 @@ class Affiliate(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     commissions = db.relationship('AffiliateCommission', backref='affiliate')
 
+    # --- Autoservicio de mini influencers (login propio en /minis) ---
+    # Un afiliado creado a mano desde /admin/affiliates (is_mini=False) no
+    # tiene password_hash ni pasa por 'pending': nace 'approved' para no
+    # romper el flujo admin-managed que ya existe. Un mini se auto-registra
+    # en /minis, nace 'pending' e is_mini=True, y solo entra a su panel una
+    # vez que el admin lo aprueba.
+    password_hash = db.Column(db.String(255))
+    status = db.Column(db.String(20), default='approved')  # pending | approved | rejected
+    is_mini = db.Column(db.Boolean, default=False)
+    channel_url = db.Column(db.String(255))
+    whatsapp_phone = db.Column(db.String(50))
+    application_note = db.Column(db.Text)
+    rejection_reason = db.Column(db.Text)
+    reviewed_at = db.Column(db.DateTime)
+    # Lista separada por comas de nombres de MiniRank ya pagados, para no
+    # pagar el mismo bono de rango dos veces (ver award_rank_bonus).
+    ranks_paid = db.Column(db.Text)
+
+    def get_id(self):
+        return f'mini:{self.id}'
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return bool(self.password_hash) and check_password_hash(self.password_hash, password)
+
 
 class AffiliateCommission(db.Model):
     __tablename__ = 'affiliate_commissions'
@@ -324,6 +351,68 @@ class AffiliateCommission(db.Model):
     is_paid = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     order = db.relationship('Order')
+
+
+class MiniVideo(db.Model):
+    """Link de video que un mini influencer sube como prueba de alcance.
+
+    views_declared es autoreportado por el mini y nunca se usa para pagar
+    solo: reward_amount lo fija el admin a mano al aprobar (tierRewardCents
+    de la tabla de tramos es solo una sugerencia en el panel, ver
+    app/utils/mini_influencers.py)."""
+    __tablename__ = 'mini_videos'
+    id = db.Column(db.Integer, primary_key=True)
+    affiliate_id = db.Column(db.Integer, db.ForeignKey('affiliates.id'), nullable=False)
+    url = db.Column(db.String(500), nullable=False)
+    platform = db.Column(db.String(20), default='otro')
+    views_declared = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(20), default='pending')  # pending | approved | rejected
+    reward_amount = db.Column(db.Numeric(10, 2), default=0)
+    note = db.Column(db.Text)
+    reviewed_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    affiliate = db.relationship('Affiliate', backref='mini_videos')
+
+
+class AffiliateWithdrawal(db.Model):
+    """Solicitud de retiro del balance de un afiliado/mini. El débito real
+    solo ocurre al aprobar (ver approve_withdrawal), nunca al crear."""
+    __tablename__ = 'affiliate_withdrawals'
+    id = db.Column(db.Integer, primary_key=True)
+    affiliate_id = db.Column(db.Integer, db.ForeignKey('affiliates.id'), nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    method = db.Column(db.String(50))  # PaymentMethod.code de un método activo
+    payout_details = db.Column(db.Text)  # datos de cobro en texto libre (cuenta/cédula/teléfono)
+    status = db.Column(db.String(20), default='pending')  # pending | approved | rejected
+    rejection_reason = db.Column(db.Text)
+    reviewed_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    affiliate = db.relationship('Affiliate', backref='withdrawals')
+
+
+class MiniViewTier(db.Model):
+    """Tramo "vistas de un video -> recompensa sugerida" que se muestra en
+    el panel del mini. Es solo referencia: el admin igual fija el monto real
+    a mano en cada video (ver MiniVideo.reward_amount)."""
+    __tablename__ = 'mini_view_tiers'
+    id = db.Column(db.Integer, primary_key=True)
+    min_views = db.Column(db.Integer, nullable=False)
+    max_views = db.Column(db.Integer)  # NULL = sin techo, "o más"
+    reward_amount = db.Column(db.Numeric(10, 2), nullable=False)
+    sort_order = db.Column(db.Integer, default=100)
+
+
+class MiniRank(db.Model):
+    """Escalera de rangos (Bronce/Plata/Oro...) por cantidad de órdenes ya
+    aprobadas/completadas que usaron el código del mini. bonus_amount se
+    paga una sola vez por rango (ver Affiliate.ranks_paid)."""
+    __tablename__ = 'mini_ranks'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False, unique=True)
+    uses_required = db.Column(db.Integer, nullable=False)
+    bonus_amount = db.Column(db.Numeric(10, 2), nullable=False)
+    sort_order = db.Column(db.Integer, default=100)
 
 
 class PaymentMethod(db.Model):
