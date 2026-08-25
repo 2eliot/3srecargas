@@ -8,10 +8,12 @@ get_id()='mini:<id>' en Affiliate y las ramas nuevas en
 app/__init__.py::load_user/unauthorized_handler).
 """
 
+import re
 from datetime import datetime
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
+from sqlalchemy.exc import IntegrityError
 
 from ..models import Affiliate, AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier, PaymentMethod, db
 from ..utils.mini_influencers import (
@@ -27,6 +29,11 @@ from ..utils.mini_influencers import (
 )
 
 minis_bp = Blueprint('minis_bp', __name__)
+
+# Código elegido a mano por el mini al registrarse: mismo tipo de charset que
+# ya acepta el admin al tipear uno a mano en /admin/affiliates, con un largo
+# que entra sin problema en Affiliate.code (String(20)).
+CODE_PATTERN = re.compile(r'^[A-Z0-9_-]{3,20}$')
 
 
 def _client_ip():
@@ -107,6 +114,7 @@ def mini_register_submit():
     channel_url = (data.get('channel_url') or '').strip()[:255]
     whatsapp_phone = (data.get('whatsapp_phone') or '').strip()[:50]
     application_note = (data.get('application_note') or '').strip()[:1000]
+    desired_code = (data.get('code') or '').strip().upper()
 
     if not channel_name:
         return jsonify({'ok': False, 'message': 'Escribe el nombre de tu canal o cuenta.'}), 400
@@ -121,6 +129,9 @@ def mini_register_submit():
     if not application_note:
         return jsonify({'ok': False, 'message': 'Cuéntanos de qué trata tu contenido.'}), 400
 
+    if desired_code and not CODE_PATTERN.match(desired_code):
+        return jsonify({'ok': False, 'message': 'El código debe tener 3-20 caracteres: letras, números, guion o guion bajo.'}), 400
+
     existing = Affiliate.query.filter(
         Affiliate.is_mini.is_(True),
         db.func.lower(Affiliate.email) == email,
@@ -129,10 +140,22 @@ def mini_register_submit():
         register_failed_attempt(ip)
         return jsonify({'ok': False, 'message': 'Ya existe una solicitud con ese correo.'}), 409
 
+    # El código se valida y reserva al final, justo antes del INSERT: así una
+    # colisión de carrera entre dos registros con el mismo código deseado la
+    # resuelve la constraint UNIQUE de la base (el segundo ve el error de
+    # abajo), no una condición leída-y-luego-escrita en dos pasos.
+    if desired_code:
+        if Affiliate.query.filter_by(code=desired_code).first():
+            register_failed_attempt(ip)
+            return jsonify({'ok': False, 'message': 'Ese código ya está en uso, elige otro.'}), 409
+        code = desired_code
+    else:
+        code = generate_temp_code()
+
     affiliate = Affiliate(
         name=channel_name,
         email=email,
-        code=generate_temp_code(),
+        code=code,
         commission_rate=0,
         client_discount_rate=0,
         is_active=False,
@@ -144,7 +167,15 @@ def mini_register_submit():
     )
     affiliate.set_password(password)
     db.session.add(affiliate)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Dos registros con el mismo código deseado casi al mismo tiempo: el
+        # chequeo de arriba no alcanza a verlos a ambos, pero la constraint
+        # UNIQUE de la columna sí — el segundo cae acá en vez de duplicar.
+        db.session.rollback()
+        register_failed_attempt(ip)
+        return jsonify({'ok': False, 'message': 'Ese código ya está en uso, elige otro.'}), 409
 
     clear_attempts(ip)
     return jsonify({'ok': True, 'message': 'Tu solicitud quedó registrada. Te avisaremos cuando sea aprobada.'})

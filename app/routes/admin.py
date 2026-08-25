@@ -1760,6 +1760,7 @@ def minis():
     approved_minis = Affiliate.query.filter_by(is_mini=True, status='approved').order_by(Affiliate.name.asc()).all()
     rank_progress_by_id = {a.id: get_rank_progress(a) for a in approved_minis}
     ranks = MiniRank.query.order_by(MiniRank.sort_order.asc(), MiniRank.uses_required.asc()).all()
+    view_tiers = MiniViewTier.query.order_by(MiniViewTier.sort_order.asc(), MiniViewTier.min_views.asc()).all()
 
     return render_template(
         'admin/minis.html',
@@ -1773,8 +1774,170 @@ def minis():
         approved_minis=approved_minis,
         rank_progress_by_id=rank_progress_by_id,
         ranks=ranks,
+        view_tiers=view_tiers,
         suggested_reward_for_views=suggested_reward_for_views,
     )
+
+
+@admin_bp.route('/minis/<int:aff_id>/password', methods=['POST'])
+@login_required
+def mini_set_password(aff_id):
+    aff = Affiliate.query.get_or_404(aff_id)
+    if not aff.is_mini:
+        flash('Ese afiliado no es un mini influencer.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='aprobados'))
+
+    new_password = request.form.get('new_password') or ''
+    if len(new_password) < 6:
+        flash('La contraseña debe tener al menos 6 caracteres.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='aprobados'))
+
+    aff.set_password(new_password)
+    db.session.commit()
+    flash(f'Contraseña de "{aff.name}" actualizada.', 'success')
+    return redirect(url_for('admin_bp.minis', section='aprobados'))
+
+
+# ─── Config: tramos de vistas y rangos ────────────────────────────────────────
+
+@admin_bp.route('/minis/tiers/add', methods=['POST'])
+@login_required
+def mini_tier_add():
+    try:
+        min_views = int(request.form.get('min_views') or 0)
+        max_views_raw = (request.form.get('max_views') or '').strip()
+        max_views = int(max_views_raw) if max_views_raw else None
+        reward_amount = float(request.form.get('reward_amount') or 0)
+        sort_order = int(request.form.get('sort_order') or 100)
+    except ValueError:
+        flash('Revisa los números del tramo.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    if min_views < 0 or reward_amount < 0 or (max_views is not None and max_views < min_views):
+        flash('Ese tramo no es válido.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    db.session.add(MiniViewTier(
+        min_views=min_views, max_views=max_views, reward_amount=reward_amount, sort_order=sort_order,
+    ))
+    db.session.commit()
+    flash('Tramo agregado.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/tiers/<int:tier_id>/edit', methods=['POST'])
+@login_required
+def mini_tier_edit(tier_id):
+    tier = MiniViewTier.query.get_or_404(tier_id)
+    try:
+        min_views = int(request.form.get('min_views') or 0)
+        max_views_raw = (request.form.get('max_views') or '').strip()
+        max_views = int(max_views_raw) if max_views_raw else None
+        reward_amount = float(request.form.get('reward_amount') or 0)
+        sort_order = int(request.form.get('sort_order') or tier.sort_order or 100)
+    except ValueError:
+        flash('Revisa los números del tramo.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    if min_views < 0 or reward_amount < 0 or (max_views is not None and max_views < min_views):
+        flash('Ese tramo no es válido.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    tier.min_views = min_views
+    tier.max_views = max_views
+    tier.reward_amount = reward_amount
+    tier.sort_order = sort_order
+    db.session.commit()
+    flash('Tramo actualizado.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/tiers/<int:tier_id>/delete', methods=['POST'])
+@login_required
+def mini_tier_delete(tier_id):
+    tier = MiniViewTier.query.get_or_404(tier_id)
+    db.session.delete(tier)
+    db.session.commit()
+    flash('Tramo eliminado.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/ranks/add', methods=['POST'])
+@login_required
+def mini_rank_add():
+    name = (request.form.get('name') or '').strip()[:50]
+    if not name:
+        flash('El rango necesita un nombre.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+    if MiniRank.query.filter(db.func.lower(MiniRank.name) == name.lower()).first():
+        flash('Ya existe un rango con ese nombre.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    try:
+        uses_required = int(request.form.get('uses_required') or 0)
+        bonus_amount = float(request.form.get('bonus_amount') or 0)
+        sort_order = int(request.form.get('sort_order') or 100)
+    except ValueError:
+        flash('Revisa los números del rango.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    if uses_required <= 0 or bonus_amount < 0:
+        flash('Ese rango no es válido.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    db.session.add(MiniRank(
+        name=name, uses_required=uses_required, bonus_amount=bonus_amount, sort_order=sort_order,
+    ))
+    db.session.commit()
+    flash('Rango agregado.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/ranks/<int:rank_id>/edit', methods=['POST'])
+@login_required
+def mini_rank_edit(rank_id):
+    rank = MiniRank.query.get_or_404(rank_id)
+    name = (request.form.get('name') or '').strip()[:50]
+    if not name:
+        flash('El rango necesita un nombre.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+    if MiniRank.query.filter(db.func.lower(MiniRank.name) == name.lower(), MiniRank.id != rank.id).first():
+        flash('Ya existe un rango con ese nombre.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    try:
+        uses_required = int(request.form.get('uses_required') or 0)
+        bonus_amount = float(request.form.get('bonus_amount') or 0)
+        sort_order = int(request.form.get('sort_order') or rank.sort_order or 100)
+    except ValueError:
+        flash('Revisa los números del rango.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    if uses_required <= 0 or bonus_amount < 0:
+        flash('Ese rango no es válido.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    # Si se renombra un rango ya pagado a alguien, Affiliate.ranks_paid guarda
+    # el nombre viejo: ese mini se vería "sin pagar" bajo el nombre nuevo. No
+    # hay forma de saberlo sin recorrer todos los afiliados, así que queda
+    # como advertencia en el hint del formulario, no como bloqueo aquí.
+    rank.name = name
+    rank.uses_required = uses_required
+    rank.bonus_amount = bonus_amount
+    rank.sort_order = sort_order
+    db.session.commit()
+    flash('Rango actualizado.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/ranks/<int:rank_id>/delete', methods=['POST'])
+@login_required
+def mini_rank_delete(rank_id):
+    rank = MiniRank.query.get_or_404(rank_id)
+    db.session.delete(rank)
+    db.session.commit()
+    flash('Rango eliminado.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
 
 
 @admin_bp.route('/minis/<int:aff_id>/approve', methods=['POST'])

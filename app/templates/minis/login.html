@@ -55,6 +55,13 @@
             <label class="rdm-label" for="mnRegWhatsapp">Tu WhatsApp</label>
             <input type="text" id="mnRegWhatsapp" class="glass-input" placeholder="04XX-XXXXXXX" maxlength="50">
 
+            <label class="rdm-label" for="mnRegCode">Código que quieres usar (opcional)</label>
+            <input type="text" id="mnRegCode" class="glass-input" placeholder="Ej. JUANFF" maxlength="20"
+                   style="text-transform:uppercase" autocomplete="off">
+            <p class="rdm-sub" style="margin:0 0 4px; text-align:left; max-width:none;">
+                3-20 caracteres: letras, números, guion o guion bajo. Si lo dejas vacío te asignamos uno — el admin puede ajustarlo al aprobar tu solicitud.
+            </p>
+
             <label class="rdm-label" for="mnRegNote">Cuéntanos de qué trata tu contenido</label>
             <textarea id="mnRegNote" class="glass-input" rows="3" maxlength="1000" placeholder="Ej. Hago videos de Free Fire con mis códigos de recarga..."></textarea>
 
@@ -158,6 +165,7 @@
             password: document.getElementById('mnRegPassword').value,
             channel_url: document.getElementById('mnRegChannelUrl').value.trim(),
             whatsapp_phone: document.getElementById('mnRegWhatsapp').value.trim(),
+            code: document.getElementById('mnRegCode').value.trim(),
             application_note: document.getElementById('mnRegNote').value.trim()
         };
         setBusy(regBtn, true, 'Enviando...');

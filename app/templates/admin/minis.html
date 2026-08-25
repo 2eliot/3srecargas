@@ -18,6 +18,7 @@
             Retiros
             {% if pending_withdrawals %}<span class="filter-tab-count">{{ pending_withdrawals|length }}</span>{% endif %}
         </a>
+        <a href="{{ url_for('admin_bp.minis', section='config') }}" class="filter-tab {% if section == 'config' %}active{% endif %}">Config</a>
     </div>
 </div>
 
@@ -142,14 +143,18 @@
                         ({{ progress.uses if progress else 0 }} usos)
                     </td>
                     <td>
-                        {% if progress and progress.unpaid %}
-                        <button class="btn-sm btn-success"
-                                onclick="openRankModal({{ aff.id }}, '{{ progress.unpaid[0].name }}', {{ progress.unpaid[0].bonus_amount }})">
-                            Pagar {{ progress.unpaid[0].name }}
-                        </button>
-                        {% else %}
-                        <span class="badge badge-inactive">Al día</span>
-                        {% endif %}
+                        <div class="action-btns">
+                            {% if progress and progress.unpaid %}
+                            <button class="btn-sm btn-success"
+                                    onclick="openRankModal({{ aff.id }}, '{{ progress.unpaid[0].name }}', {{ progress.unpaid[0].bonus_amount }})">
+                                Pagar {{ progress.unpaid[0].name }}
+                            </button>
+                            {% else %}
+                            <span class="badge badge-inactive">Al día</span>
+                            {% endif %}
+                            <button class="btn-sm btn-outline"
+                                    onclick="openPasswordModal({{ aff.id }}, '{{ aff.name }}')">Cambiar clave</button>
+                        </div>
                     </td>
                 </tr>
                 {% else %}
@@ -160,21 +165,23 @@
     </div>
 </div>
 
-{% if ranks %}
-<div class="admin-card">
-    <div class="card-header"><h3>Escalera de rangos</h3></div>
-    <div class="table-wrap">
-        <table class="admin-table">
-            <thead><tr><th>Rango</th><th>Usos requeridos</th><th>Bono</th></tr></thead>
-            <tbody>
-                {% for r in ranks %}
-                <tr><td>{{ r.name }}</td><td>{{ r.uses_required }}</td><td>${{ '%.2f'|format(r.bonus_amount) }}</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<!-- Modal: cambiar contraseña -->
+<div class="modal-overlay" id="passwordMiniModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3 id="passwordMiniTitle">Cambiar contraseña</h3><button onclick="closeModal('passwordMiniModal')">✕</button></div>
+        <form method="POST" id="passwordMiniForm">
+            <div class="form-group">
+                <label>Contraseña nueva</label>
+                <input type="text" name="new_password" minlength="6" required placeholder="Mínimo 6 caracteres">
+                <p class="form-hint">Se la tienes que pasar al mini vos mismo — no se le avisa por correo.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('passwordMiniModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+        </form>
     </div>
 </div>
-{% endif %}
 
 <!-- Modal: pagar rango -->
 <div class="modal-overlay" id="rankMiniModal" style="display:none">
@@ -190,6 +197,140 @@
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('rankMiniModal')" class="btn-secondary">Cancelar</button>
                 <button type="submit" class="btn-primary">Pagar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if section == 'config' %}
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Tramos de vistas → recompensa</h3>
+        <button class="btn-primary btn-sm" onclick="openTierAddModal()">+ Nuevo tramo</button>
+    </div>
+    <p class="form-hint" style="padding:0 20px;">Solo son sugerencia para cuando revisas un video — el monto real siempre lo confirmás vos en ese momento.</p>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Desde</th><th>Hasta</th><th>Recompensa</th><th>Orden</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for t in view_tiers %}
+                <tr>
+                    <td>{{ t.min_views }}</td>
+                    <td>{{ t.max_views if t.max_views is not none else 'sin techo' }}</td>
+                    <td>${{ '%.2f'|format(t.reward_amount) }}</td>
+                    <td>{{ t.sort_order }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-outline"
+                                    onclick="openTierEditModal({{ t.id }}, {{ t.min_views }}, {{ t.max_views if t.max_views is not none else 'null' }}, {{ t.reward_amount }}, {{ t.sort_order }})">Editar</button>
+                            <form method="POST" action="{{ url_for('admin_bp.mini_tier_delete', tier_id=t.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit" onclick="return confirm('¿Borrar este tramo?')">Borrar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty-row">No hay tramos configurados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Escalera de rangos</h3>
+        <button class="btn-primary btn-sm" onclick="openRankAddModal()">+ Nuevo rango</button>
+    </div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Rango</th><th>Usos requeridos</th><th>Bono</th><th>Orden</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for r in ranks %}
+                <tr>
+                    <td>{{ r.name }}</td>
+                    <td>{{ r.uses_required }}</td>
+                    <td>${{ '%.2f'|format(r.bonus_amount) }}</td>
+                    <td>{{ r.sort_order }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-outline"
+                                    onclick="openRankEditModal({{ r.id }}, '{{ r.name }}', {{ r.uses_required }}, {{ r.bonus_amount }}, {{ r.sort_order }})">Editar</button>
+                            <form method="POST" action="{{ url_for('admin_bp.mini_rank_delete', rank_id=r.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit" onclick="return confirm('¿Borrar este rango?')">Borrar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty-row">No hay rangos configurados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal: tramo (agregar/editar) -->
+<div class="modal-overlay" id="tierMiniModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3 id="tierMiniTitle">Nuevo tramo</h3><button onclick="closeModal('tierMiniModal')">✕</button></div>
+        <form method="POST" id="tierMiniForm">
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label>Vistas desde *</label>
+                    <input type="number" name="min_views" id="tierMiniMin" min="0" step="1" required>
+                </div>
+                <div class="form-group">
+                    <label>Vistas hasta</label>
+                    <input type="number" name="max_views" id="tierMiniMax" min="0" step="1" placeholder="vacío = sin techo">
+                </div>
+            </div>
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label>Recompensa ($) *</label>
+                    <input type="number" name="reward_amount" id="tierMiniReward" min="0" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Orden</label>
+                    <input type="number" name="sort_order" id="tierMiniSort" step="1" value="100">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('tierMiniModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: rango (agregar/editar) -->
+<div class="modal-overlay" id="rankConfigModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3 id="rankConfigTitle">Nuevo rango</h3><button onclick="closeModal('rankConfigModal')">✕</button></div>
+        <form method="POST" id="rankConfigForm">
+            <div class="form-group">
+                <label>Nombre *</label>
+                <input type="text" name="name" id="rankConfigName" maxlength="50" required>
+                <p class="form-hint">Si le cambiás el nombre a un rango ya pagado, ese pago no se va a reconocer bajo el nombre nuevo.</p>
+            </div>
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label>Usos requeridos *</label>
+                    <input type="number" name="uses_required" id="rankConfigUses" min="1" step="1" required>
+                </div>
+                <div class="form-group">
+                    <label>Bono ($) *</label>
+                    <input type="number" name="bonus_amount" id="rankConfigBonus" min="0" step="0.01" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Orden</label>
+                <input type="number" name="sort_order" id="rankConfigSort" step="1" value="100">
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('rankConfigModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar</button>
             </div>
         </form>
     </div>
@@ -376,6 +517,49 @@ function openVideoModal(id, action, suggestedAmount) {
 function openWithdrawalRejectModal(id) {
     document.getElementById('withdrawalRejectForm').action = '/admin/minis/retiros/' + id + '/reject';
     openModal('withdrawalRejectModal');
+}
+
+function openPasswordModal(id, name) {
+    document.getElementById('passwordMiniForm').action = '/admin/minis/' + id + '/password';
+    document.getElementById('passwordMiniTitle').textContent = 'Cambiar contraseña — ' + name;
+    document.getElementById('passwordMiniForm').reset();
+    openModal('passwordMiniModal');
+}
+
+function openTierAddModal() {
+    document.getElementById('tierMiniForm').action = '/admin/minis/tiers/add';
+    document.getElementById('tierMiniTitle').textContent = 'Nuevo tramo';
+    document.getElementById('tierMiniForm').reset();
+    document.getElementById('tierMiniSort').value = 100;
+    openModal('tierMiniModal');
+}
+
+function openTierEditModal(id, minViews, maxViews, reward, sortOrder) {
+    document.getElementById('tierMiniForm').action = '/admin/minis/tiers/' + id + '/edit';
+    document.getElementById('tierMiniTitle').textContent = 'Editar tramo';
+    document.getElementById('tierMiniMin').value = minViews;
+    document.getElementById('tierMiniMax').value = maxViews === null ? '' : maxViews;
+    document.getElementById('tierMiniReward').value = reward;
+    document.getElementById('tierMiniSort').value = sortOrder;
+    openModal('tierMiniModal');
+}
+
+function openRankAddModal() {
+    document.getElementById('rankConfigForm').action = '/admin/minis/ranks/add';
+    document.getElementById('rankConfigTitle').textContent = 'Nuevo rango';
+    document.getElementById('rankConfigForm').reset();
+    document.getElementById('rankConfigSort').value = 100;
+    openModal('rankConfigModal');
+}
+
+function openRankEditModal(id, name, usesRequired, bonusAmount, sortOrder) {
+    document.getElementById('rankConfigForm').action = '/admin/minis/ranks/' + id + '/edit';
+    document.getElementById('rankConfigTitle').textContent = 'Editar rango';
+    document.getElementById('rankConfigName').value = name;
+    document.getElementById('rankConfigUses').value = usesRequired;
+    document.getElementById('rankConfigBonus').value = bonusAmount;
+    document.getElementById('rankConfigSort').value = sortOrder;
+    openModal('rankConfigModal');
 }
 </script>
 {% endblock %}
