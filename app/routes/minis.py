@@ -210,6 +210,42 @@ def panel():
     )
 
 
+@minis_bp.route('/codigo', methods=['POST'])
+@login_required
+def mini_update_code():
+    affiliate = current_user
+    if affiliate.status != 'approved':
+        return jsonify({'ok': False, 'message': 'Tu perfil todavía no está activo.'}), 403
+
+    data = request.get_json(silent=True) or {}
+    code = (data.get('code') or '').strip().upper()
+    if not code:
+        return jsonify({'ok': False, 'message': 'Escribe el código que quieres usar.'}), 400
+    if not CODE_PATTERN.match(code):
+        return jsonify({'ok': False, 'message': 'El código debe tener 3-20 caracteres: letras, números, guion o guion bajo.'}), 400
+
+    if code == affiliate.code:
+        return jsonify({'ok': True, 'code': affiliate.code, 'message': 'Ya estabas usando ese código.'})
+
+    if Affiliate.query.filter(Affiliate.code == code, Affiliate.id != affiliate.id).first():
+        return jsonify({'ok': False, 'message': 'Ese código ya está en uso, elige otro.'}), 409
+
+    old_code = affiliate.code
+    affiliate.code = code
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Carrera con otro cambio/registro casi simultáneo con el mismo código.
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': 'Ese código ya está en uso, elige otro.'}), 409
+
+    return jsonify({
+        'ok': True,
+        'code': affiliate.code,
+        'message': f'Código actualizado. Los links que compartiste con "{old_code}" dejan de funcionar.',
+    })
+
+
 @minis_bp.route('/videos', methods=['POST'])
 @login_required
 def mini_video_add():

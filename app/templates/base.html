@@ -184,6 +184,18 @@
                 </span>
             </a>
             {% endif %}
+
+            {% if not (current_user.is_authenticated and current_user.__class__.__name__ == 'Affiliate') %}
+            <a href="{{ url_for('minis_bp.login') }}" class="drawer-item">
+                <span class="drawer-item-icon drawer-icon-mini">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Soy mini influencer</strong>
+                    <small>Sube tus videos y gana bonos</small>
+                </span>
+            </a>
+            {% endif %}
         </nav>
     </aside>
 

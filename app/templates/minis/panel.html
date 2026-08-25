@@ -31,10 +31,18 @@
         <div class="mn-stat-row">
             <div class="mn-stat">
                 <span>Tu código</span>
-                <div class="mn-code-row">
-                    <strong>{{ affiliate.code }}</strong>
+                <div class="mn-code-row" id="mnCodeViewRow">
+                    <strong id="mnCodeDisplay">{{ affiliate.code }}</strong>
                     <button type="button" class="mn-copy-btn" id="mnCopyCode">Copiar link</button>
+                    <button type="button" class="mn-copy-btn" id="mnEditCodeBtn">Editar</button>
                 </div>
+                <div class="mn-code-row" id="mnCodeEditRow" hidden style="margin-top:8px;">
+                    <input type="text" id="mnCodeInput" class="glass-input" maxlength="20"
+                           style="text-transform:uppercase;" value="{{ affiliate.code }}" autocomplete="off">
+                    <button type="button" class="mn-copy-btn" id="mnCodeSaveBtn">Guardar</button>
+                    <button type="button" class="mn-copy-btn" id="mnCodeCancelBtn">Cancelar</button>
+                </div>
+                <p class="rdm-feedback" id="mnCodeFeedback" aria-live="polite"></p>
             </div>
             <div class="mn-stat">
                 <span>Balance disponible</span>
@@ -233,6 +241,45 @@
                 copyBtn.textContent = '¡Copiado!';
                 setTimeout(function () { copyBtn.textContent = prev; }, 1500);
             }).catch(function () {});
+        });
+    }
+
+    /* Editar código propio */
+    var codeViewRow = document.getElementById('mnCodeViewRow');
+    var codeEditRow = document.getElementById('mnCodeEditRow');
+    var editCodeBtn = document.getElementById('mnEditCodeBtn');
+    var codeInput = document.getElementById('mnCodeInput');
+    var codeSaveBtn = document.getElementById('mnCodeSaveBtn');
+    var codeCancelBtn = document.getElementById('mnCodeCancelBtn');
+    var codeFeedback = document.getElementById('mnCodeFeedback');
+
+    if (editCodeBtn) {
+        editCodeBtn.addEventListener('click', function () {
+            codeViewRow.hidden = true;
+            codeEditRow.hidden = false;
+            setFeedback(codeFeedback, '');
+            codeInput.focus();
+            codeInput.select();
+        });
+    }
+    if (codeCancelBtn) {
+        codeCancelBtn.addEventListener('click', function () {
+            codeInput.value = document.getElementById('mnCodeDisplay').textContent.trim();
+            codeEditRow.hidden = true;
+            codeViewRow.hidden = false;
+            setFeedback(codeFeedback, '');
+        });
+    }
+    if (codeSaveBtn) {
+        codeSaveBtn.addEventListener('click', function () {
+            var code = codeInput.value.trim().toUpperCase();
+            if (!code) { setFeedback(codeFeedback, 'Escribe el código que quieres usar.', 'is-error'); return; }
+            setBusy(codeSaveBtn, true, 'Guardando...');
+            setFeedback(codeFeedback, '');
+            postJson('{{ url_for("minis_bp.mini_update_code") }}', {code: code})
+                .then(function () { window.location.reload(); })
+                .catch(function (err) { setFeedback(codeFeedback, err.message, 'is-error'); })
+                .finally(function () { setBusy(codeSaveBtn, false); });
         });
     }
 
