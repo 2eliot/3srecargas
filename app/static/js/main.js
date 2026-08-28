@@ -765,7 +765,11 @@
         var spinBtn = pointsEl('pointsSpinBtn');
         if (spinBtn) spinBtn.disabled = data.balance < data.spin_cost;
 
-        buildPointsStrip(prizeLabel, '🎁', prizeLabel);
+        // El casillero premio de la tira no debe revelar el premio real
+        // (ej. "110💎") antes de girar, o ya no hay sorpresa. Solo dice
+        // "Premio" a secas; el valor real se muestra recién en el mensaje
+        // de "¡Ganaste!" tras el giro.
+        buildPointsStrip(prizeLabel, '🎁', 'Premio');
     }
 
     function handlePointsLookup() {
