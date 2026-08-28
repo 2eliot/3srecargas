@@ -117,6 +117,7 @@ def create_app(config_class=Config):
     from .routes.verify import verify_bp
     from .routes.redeem import redeem_bp
     from .routes.minis import minis_bp
+    from .routes.revendedores_webhook import revendedores_webhook_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
@@ -126,6 +127,7 @@ def create_app(config_class=Config):
     app.register_blueprint(verify_bp)
     app.register_blueprint(redeem_bp)
     app.register_blueprint(minis_bp, url_prefix='/minis')
+    app.register_blueprint(revendedores_webhook_bp)
 
     @app.template_filter('datetime_ve')
     def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):
