@@ -348,9 +348,9 @@
     aspect-ratio: 1;
     padding: 12px;
     border-radius: 50%;
-    background: linear-gradient(180deg, #1f2937 0%, #030712 100%);
-    border: 4px solid #374151;
-    box-shadow: 0 0 25px rgba(220, 38, 38, .4), 0 22px 40px rgba(0,0,0,.5);
+    background: radial-gradient(circle, #121212 0%, #000000 70%);
+    border: 4px solid #000000;
+    box-shadow: 0 0 35px rgba(255, 0, 0, .5), inset 0 0 20px rgba(200, 0, 0, .4), 0 22px 40px rgba(0,0,0,.5);
 }
 
 .roulette-pointer {
@@ -360,11 +360,11 @@
     width: 30px;
     height: 38px;
     transform: translateX(-50%);
-    background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+    background: linear-gradient(180deg, #ff0000 0%, #c80000 100%);
     clip-path: polygon(50% 100%, 0 0, 100% 0);
     border-radius: 2px;
     z-index: 5;
-    filter: drop-shadow(0 6px 14px rgba(251, 191, 36, .5));
+    filter: drop-shadow(0 6px 14px rgba(255, 0, 0, .6));
 }
 
 .roulette-wheel {
@@ -394,9 +394,9 @@
     height: 84px;
     margin: -42px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #111827 0%, #000 100%);
-    border: 4px solid #f59e0b;
-    color: #fbbf24;
+    background: linear-gradient(135deg, #ff0000 0%, #c80000 50%, #800000 100%);
+    border: 4px solid #000000;
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -405,7 +405,7 @@
     letter-spacing: .08em;
     cursor: pointer;
     z-index: 6;
-    box-shadow: 0 0 30px rgba(234, 179, 8, .5), 0 8px 18px rgba(0,0,0,.5);
+    box-shadow: 0 0 30px rgba(255, 0, 0, .7), 0 8px 18px rgba(0,0,0,.5);
     transition: transform .15s ease;
 }
 
@@ -456,11 +456,11 @@
     font-size: 30px;
 }
 
-.roulette-result-icon.win { background: rgba(245,158,11,.2); color: #fbbf24; border: 1px solid rgba(245,158,11,.4); }
+.roulette-result-icon.win { background: rgba(255,0,0,.2); color: #ff3b3b; border: 1px solid rgba(255,0,0,.4); }
 .roulette-result-icon.miss { background: rgba(239,68,68,.2); color: #f87171; border: 1px solid rgba(239,68,68,.4); }
 
 .roulette-result-title { font-size: 22px; font-weight: 900; margin-bottom: 8px; }
-.roulette-result-title.win { color: #fbbf24; }
+.roulette-result-title.win { color: #ff3b3b; }
 .roulette-result-title.miss { color: #ef4444; }
 .roulette-result-text { font-size: 13px; color: #d1d5db; margin-bottom: 22px; }
 
@@ -1125,10 +1125,10 @@
             ctx.moveTo(center, center);
             ctx.arc(center, center, radius, startAngle, startAngle + arc);
             ctx.closePath();
-            ctx.fillStyle = isMiss ? '#dc2626' : '#111111';
+            ctx.fillStyle = isMiss ? '#141414' : '#0a0a0a';
             ctx.fill();
             ctx.lineWidth = 2;
-            ctx.strokeStyle = '#1f2937';
+            ctx.strokeStyle = '#ff0000';
             ctx.stroke();
 
             ctx.save();
@@ -1191,7 +1191,7 @@
         ctx.beginPath();
         ctx.arc(center, center, radius - 2, 0, 2 * Math.PI);
         ctx.lineWidth = 6;
-        ctx.strokeStyle = '#374151';
+        ctx.strokeStyle = '#ff0000';
         ctx.stroke();
     }
 

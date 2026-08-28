@@ -1845,8 +1845,8 @@ body.drawer-open { overflow: hidden; }
     margin: 0 24px 12px;
     padding: 14px 16px;
     border-radius: 12px;
-    background: linear-gradient(135deg, rgba(59,130,246,.14), rgba(29,78,216,.06));
-    border: 1px solid rgba(96,165,250,.35);
+    background: rgba(5,5,5,.9);
+    border: 1px solid rgba(255,0,0,.25);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1855,7 +1855,7 @@ body.drawer-open { overflow: hidden; }
 .points-balance-label { display: block; font-family: var(--nx-font-display); font-weight: 900; font-size: 13px; color: #fff; }
 .points-balance-id { display: block; font-size: 11px; color: var(--nx-muted); font-family: monospace; }
 .points-balance-amount { text-align: right; }
-.points-balance-amount strong { display: block; font-family: var(--nx-font-display); font-weight: 900; font-size: 22px; color: #60a5fa; line-height: 1; }
+.points-balance-amount strong { display: block; font-family: var(--nx-font-display); font-weight: 900; font-size: 22px; color: #fff; line-height: 1; }
 .points-balance-amount span { font-size: 10px; color: var(--nx-muted); text-transform: uppercase; letter-spacing: .06em; }
 
 /* Tira horizontal tipo apertura de caja (CS:GO). El ítem que cae bajo el
@@ -1866,8 +1866,9 @@ body.drawer-open { overflow: hidden; }
     margin: 0 24px 16px;
     border-radius: 12px;
     overflow: hidden;
-    background: rgba(0,0,0,.35);
-    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(2,2,2,.9);
+    border: 1px solid rgba(255,0,0,.35);
+    box-shadow: inset 0 0 25px rgba(0,0,0,.9);
 }
 .points-strip-pointer {
     position: absolute;
@@ -1906,8 +1907,8 @@ body.drawer-open { overflow: hidden; }
     width: 76px;
     height: 76px;
     border-radius: 10px;
-    background: linear-gradient(135deg, rgba(255,255,255,.05), rgba(255,255,255,.01));
-    border: 1px solid rgba(255,255,255,.15);
+    background: #0c0c0c;
+    border: 1px solid rgba(255,0,0,.15);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1918,8 +1919,8 @@ body.drawer-open { overflow: hidden; }
 }
 .points-strip-item .icon { font-size: 22px; line-height: 1; }
 .points-strip-item .label { font-size: 9px; font-weight: 700; color: var(--nx-muted); line-height: 1.2; word-break: break-word; }
-.points-strip-item.is-prize { border-color: rgba(96,165,250,.6); background: linear-gradient(135deg, rgba(59,130,246,.22), rgba(29,78,216,.08)); }
-.points-strip-item.is-prize .label { color: #93c5fd; }
+.points-strip-item.is-prize { border-color: rgba(255,0,0,.5); background: linear-gradient(135deg, rgba(255,0,0,.18), rgba(153,0,0,.06)); }
+.points-strip-item.is-prize .label { color: #ff8080; }
 .points-strip-item.is-winner { border-color: var(--nx-red); box-shadow: 0 0 18px rgba(255,0,0,.6); }
 
 /* Modal video tutorial */

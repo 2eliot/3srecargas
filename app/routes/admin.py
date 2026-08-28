@@ -849,7 +849,14 @@ def _apply_order_filters(
     # a mano, así que siguen pendientes esperando que un admin las haga.
     # Antes se perdían entre el resto de las pendientes y el cliente terminaba
     # reclamando por WhatsApp.
-    if status_filter == 'to_deliver':
+    if status_filter in ('to_deliver', 'pending'):
+        # 'pending' usa el mismo criterio que 'to_deliver' a propósito: una
+        # orden 'pending' sin pago verificado es solo un checkout que el
+        # cliente empezó y nunca pagó (o que sigue esperando su verificación
+        # automática) — no es algo que el admin tenga que hacer algo con
+        # ella todavía, así que no debe mezclarse con las que sí hay que
+        # entregar. "Pendientes" pasa a significar lo mismo que "por
+        # entregar": pagada, esperando la recarga manual.
         query = query.filter(
             Order.status == 'pending',
             Order.payment_verified_at.isnot(None),
@@ -1996,6 +2003,34 @@ def mini_reject(aff_id):
     db.session.commit()
     flash(f'Solicitud de "{aff.name}" rechazada.', 'success')
     return redirect(url_for('admin_bp.minis'))
+
+
+@admin_bp.route('/minis/<int:aff_id>/delete', methods=['POST'])
+@login_required
+def mini_delete(aff_id):
+    aff = Affiliate.query.get_or_404(aff_id)
+    if not aff.is_mini:
+        flash('Ese afiliado no es un mini influencer.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='aprobados'))
+
+    name = aff.name
+
+    # Las órdenes que entraron con el código de este mini son historial real
+    # de la tienda: no se borran, solo se les quita el vínculo con la cuenta
+    # que se está eliminando.
+    Order.query.filter_by(affiliate_id=aff.id).update({'affiliate_id': None})
+
+    for video in MiniVideo.query.filter_by(affiliate_id=aff.id).all():
+        db.session.delete(video)
+    for commission in AffiliateCommission.query.filter_by(affiliate_id=aff.id).all():
+        db.session.delete(commission)
+    for withdrawal in AffiliateWithdrawal.query.filter_by(affiliate_id=aff.id).all():
+        db.session.delete(withdrawal)
+
+    db.session.delete(aff)
+    db.session.commit()
+    flash(f'Cuenta mini "{name}" eliminada.', 'success')
+    return redirect(url_for('admin_bp.minis', section='aprobados'))
 
 
 @admin_bp.route('/minis/videos/<int:video_id>/review', methods=['POST'])
