@@ -357,43 +357,45 @@ def process_revendedores_queue(order, base_state=None, force=False):
             except Exception:
                 rev_data = {}
             rev_ok = rev_data.get('ok', False)
+            rev_status = (rev_data.get('status') or '').strip().lower()
+
+            # ⚠️ La API whitelabel responde el 202 "en proceso" con ok=False,
+            # status='procesando' y pending=True (juegos dinámicos que el
+            # proveedor confirma después). NO es un fallo: antes esto caía en
+            # la rama de error de abajo, anotaba "Intento N falló: your
+            # request has been submited..." y quemaba un reintento, aunque la
+            # recarga siguiera viva y terminara completándose. El webhook de
+            # Revendedores o el scheduler confirman después vía order-status.
+            if rev_status == 'procesando' or rev_data.get('pending'):
+                player_name = rev_data.get('player_name', '')
+                ref_no = rev_data.get('reference_no', '')
+                step.update({
+                    'success': False,
+                    'pending_verification': True,
+                    'rev_attempt': rev_attempt,
+                    'external_order_id': ext_order_id,
+                    'player_name': player_name,
+                    'reference_no': ref_no,
+                    'order_id': rev_data.get('order_id'),
+                    'error': 'Recarga aceptada pero en estado "procesando" en Revendedores. Verificar manualmente.',
+                })
+                auto_resp['pending_verification'] = True
+                auto_resp['current_step_index'] = step_index
+                auto_resp['external_order_id'] = ext_order_id
+                auto_resp['last_error'] = step['error']
+                order.automation_response = json.dumps(auto_resp)
+                order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Recarga en estado "procesando" (intento {rev_attempt}). Ref: {ref_no or "N/A"}, Player: {player_name or "N/A"}. Pendiente de verificación.').strip()
+                db.session.commit()
+                return {
+                    'ok': False,
+                    'changed': False,
+                    'pending_verification': True,
+                    'current_step_index': step_index,
+                    'message': f'Revendedores aceptó la recarga en el paso {step_index + 1} pero está en estado "procesando". Verifica manualmente antes de continuar.',
+                    'category': 'warning',
+                }
 
             if rev_ok:
-                rev_status = (rev_data.get('status') or '').strip().lower()
-
-                # ⚠️ rev_ok=True solo significa que Revendedores aceptó la solicitud.
-                # La recarga puede estar en cola/procesando y fallar después.
-                # Solo marcar como completado si el status es 'completada' explícitamente,
-                # o si la API no devuelve campo status (retrocompatibilidad).
-                if rev_status == 'procesando':
-                    player_name = rev_data.get('player_name', '')
-                    ref_no = rev_data.get('reference_no', '')
-                    step.update({
-                        'success': False,
-                        'pending_verification': True,
-                        'rev_attempt': rev_attempt,
-                        'external_order_id': ext_order_id,
-                        'player_name': player_name,
-                        'reference_no': ref_no,
-                        'order_id': rev_data.get('order_id'),
-                        'error': 'Recarga aceptada pero en estado "procesando" en Revendedores. Verificar manualmente.',
-                    })
-                    auto_resp['pending_verification'] = True
-                    auto_resp['current_step_index'] = step_index
-                    auto_resp['external_order_id'] = ext_order_id
-                    auto_resp['last_error'] = step['error']
-                    order.automation_response = json.dumps(auto_resp)
-                    order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Recarga en estado "procesando" (intento {rev_attempt}). Ref: {ref_no or "N/A"}, Player: {player_name or "N/A"}. Pendiente de verificación.').strip()
-                    db.session.commit()
-                    return {
-                        'ok': False,
-                        'changed': False,
-                        'pending_verification': True,
-                        'current_step_index': step_index,
-                        'message': f'Revendedores aceptó la recarga en el paso {step_index + 1} pero está en estado "procesando". Verifica manualmente antes de continuar.',
-                        'category': 'warning',
-                    }
-
                 # rev_status vacío (API antigua) o 'completada' → éxito real
                 player_name = rev_data.get('player_name', '')
                 ref_no = rev_data.get('reference_no', '')
