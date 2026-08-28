@@ -996,32 +996,55 @@ def orders_latest():
     newest = query.order_by(Order.id.desc()).limit(20).all()
     newest.reverse()
 
-    payload = []
-    for o in newest:
-        payload.append({
-            'id': o.id,
-            'order_number': o.order_number,
-            'game': o.game.name if o.game else '',
-            'package': o.package.name if o.package else '',
-            'player_id': o.player_id or '',
-            'player_nickname': o.player_nickname or '',
-            'zone_id': o.zone_id or '',
-            'email': o.email or '',
-            'phone': o.phone or '',
-            'payment_method': (o.payment_method or '').title(),
-            'payment_reference': o.payment_reference or '',
-            'amount': float(o.amount or 0),
-            'affiliate_code': (o.affiliate.code if o.affiliate else ''),
-            'status': o.status,
-            'status_label': o.status_label,
-            'status_class': o.status_class,
-            'created_at': format_ve(o.created_at, '%d/%m/%Y %H:%M'),
-            'automation_response': o.automation_response or '',
-            'pin_delivered': o.pin_delivered or '',
-            'can_send_delivery_proof': order_supports_delivery_proof(o),
-        })
+    return jsonify({'ok': True, 'orders': [_order_row_payload(o) for o in newest]})
 
-    return jsonify({'ok': True, 'orders': payload})
+
+def _order_row_payload(o):
+    return {
+        'id': o.id,
+        'order_number': o.order_number,
+        'game': o.game.name if o.game else '',
+        'package': o.package.name if o.package else '',
+        'player_id': o.player_id or '',
+        'player_nickname': o.player_nickname or '',
+        'zone_id': o.zone_id or '',
+        'email': o.email or '',
+        'phone': o.phone or '',
+        'payment_method': (o.payment_method or '').title(),
+        'payment_reference': o.payment_reference or '',
+        'amount': float(o.amount or 0),
+        'affiliate_code': (o.affiliate.code if o.affiliate else ''),
+        'status': o.status,
+        'status_label': o.status_label,
+        'status_class': o.status_class,
+        'payment_verified': bool(o.payment_verified_at),
+        'created_at': format_ve(o.created_at, '%d/%m/%Y %H:%M'),
+        'automation_response': o.automation_response or '',
+        'pin_delivered': o.pin_delivered or '',
+        'can_send_delivery_proof': order_supports_delivery_proof(o),
+    }
+
+
+@admin_bp.route('/orders/refresh')
+@login_required
+def orders_refresh():
+    """Estado fresco de las órdenes que la tabla tiene en pantalla.
+
+    El polling de /orders/latest solo AÑADE filas nuevas (nacen 'pending');
+    cuando la recarga automática las completa segundos después, la fila
+    quedaba con el badge "Pendiente" para siempre y el admin veía muchas
+    pendientes que el filtro (que sí consulta la DB) no encontraba."""
+    ids = []
+    for part in (request.args.get('ids') or '').split(','):
+        part = part.strip()
+        if part.isdigit():
+            ids.append(int(part))
+    ids = ids[:60]
+    if not ids:
+        return jsonify({'ok': True, 'orders': []})
+
+    rows = Order.query.filter(Order.id.in_(ids)).all()
+    return jsonify({'ok': True, 'orders': [_order_row_payload(o) for o in rows]})
 
 
 @admin_bp.route('/orders/<int:order_id>')

@@ -7,6 +7,9 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required
 from ..models import db, Game, Setting
 from ..player_verify import (
+    VERIFY_NAME_TIMEOUT_S,
+    player_lookup_singleflight,
+    revendedores_verify_name_nick,
     scrape_ffmania_nick,
     scrape_smileone_bloodstrike_nick,
     _player_cache_get,
@@ -55,27 +58,45 @@ def store_player_verify():
     if not game or not game.is_active:
         return jsonify({"ok": False, "error": "Juego no encontrado"}), 404
 
-    cache_key = f"ffmania:{uid}"
+    cache_key = f"ffid_verify:{uid}"
     cached = _player_cache_get(cache_key)
     if cached is not None:
         if not cached:
             return jsonify({"ok": False, "error": "ID no encontrado"}), 404
         return jsonify({"ok": True, "uid": uid, "nick": cached, "cached": True})
 
+    # Fuente principal: API verify-name de Revendedores (verificación real
+    # contra Hype, mismo sistema que Inefablestore). FFMania quedó solo como
+    # red de seguridad si Revendedores/el bot están caídos.
+    base_url = current_app.config.get('REVENDEDORES_BASE_URL', '')
+    api_key = current_app.config.get('REVENDEDORES_API_KEY', '')
     try:
-        nick = scrape_ffmania_nick(uid)
+        # wait_timeout alto: el primer lookup de un ID puede tardar ~40s
+        # (Playwright en el bot); los seguidores concurrentes deben esperar
+        # el resultado real en vez de recibir None y cachear un 404 falso.
+        nick = player_lookup_singleflight(
+            cache_key,
+            lambda: revendedores_verify_name_nick(uid, base_url, api_key),
+            wait_timeout=VERIFY_NAME_TIMEOUT_S + 10,
+        )
     except Exception:
-        return jsonify({"ok": False, "error": "No se pudo verificar el ID"}), 502
+        try:
+            nick = scrape_ffmania_nick(uid)
+        except Exception:
+            nick = ""
+        if not nick:
+            # Con Revendedores caído, el "no encontrado" de FFMania no es
+            # confiable (captcha/índice incompleto): no cachear negativo.
+            return jsonify({"ok": False, "error": "No se pudo verificar el ID"}), 502
+        _player_cache_set(cache_key, nick, ttl_seconds=600)
+        return jsonify({"ok": True, "uid": uid, "nick": nick, "cached": False})
 
-    # Los hits se cachean largo (el nick no cambia). Los misses se cachean
-    # corto: un "no encontrado" puede deberse a que FFMania todavía no
-    # indexó ese ID o a un bloqueo temporal de su lado (ver
-    # scrape_ffmania_nick) — 10 min de caché negativo dejaba a alguien que
-    # sí reintentaba viendo el mismo "no encontrado" mucho después de que
-    # ya hubiera dejado de aplicar.
-    _player_cache_set(cache_key, nick, ttl_seconds=600 if nick else 45)
     if not nick:
+        # El 404 de Hype es autoritativo (a diferencia de FFMania), pero se
+        # cachea corto por si fue una rareza transitoria del bot.
+        _player_cache_set(cache_key, nick, ttl_seconds=45)
         return jsonify({"ok": False, "error": "ID no encontrado"}), 404
+    _player_cache_set(cache_key, nick, ttl_seconds=600)
     return jsonify({"ok": True, "uid": uid, "nick": nick, "cached": False})
 
 

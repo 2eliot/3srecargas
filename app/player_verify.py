@@ -4,7 +4,9 @@ Free Fire: usa el endpoint JSON perfil-free-fire-check-id.php de FFMania
 (el patrón viejo /cuenta/{uid}.html quedó como fallback: solo responde para
 perfiles ya cacheados por el sitio; IDs nuevos dan 404 ahí).
 """
+import os
 import re
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -35,6 +37,85 @@ def _player_cache_set(key: str, val, ttl_seconds: int = 600):
         _PLAYER_SCRAPE_CACHE[key] = {"val": val, "exp": time.time() + int(ttl_seconds or 0)}
     except Exception:
         pass
+
+
+# ── Singleflight ─────────────────────────────────────────────────────────────
+# El primer lookup de un ID vía Revendedores puede tardar ~15-45s (el bot usa
+# Playwright). Si varios requests del mismo worker piden el mismo ID a la vez,
+# solo uno hace la llamada real y el resto espera su resultado, en vez de
+# disparar N lookups o cachear un negativo falso.
+
+_PLAYER_LOOKUP_LOCK = threading.Lock()
+_PLAYER_LOOKUP_INFLIGHT = {}
+
+
+def player_lookup_singleflight(key: str, loader, wait_timeout: float = 6.5):
+    created = False
+    with _PLAYER_LOOKUP_LOCK:
+        state = _PLAYER_LOOKUP_INFLIGHT.get(key)
+        if not state:
+            state = {"event": threading.Event(), "result": None, "error": None}
+            _PLAYER_LOOKUP_INFLIGHT[key] = state
+            created = True
+    if created:
+        try:
+            state["result"] = loader()
+            return state["result"]
+        except Exception as exc:
+            state["error"] = exc
+            raise
+        finally:
+            state["event"].set()
+            with _PLAYER_LOOKUP_LOCK:
+                _PLAYER_LOOKUP_INFLIGHT.pop(key, None)
+    state["event"].wait(wait_timeout)
+    if state.get("error"):
+        raise state["error"]
+    return state.get("result")
+
+
+# ── Free Fire vía API de Revendedores (verify-name) ──────────────────────────
+
+# Timeout de lectura del verify-name de Revendedores: el primer lookup de un ID
+# pasa por el bot con Playwright (~15-45s); los repetidos salen del cache de
+# Revendedores (7 días) en <1s.
+VERIFY_NAME_TIMEOUT_S = float(os.environ.get("REVENDEDORES_VERIFY_NAME_TIMEOUT_SECONDS", "75"))
+
+
+def revendedores_verify_name_nick(uid: str, base_url: str, api_key: str) -> str:
+    """Consulta el nick de Free Fire vía la API de Revendedores
+    (POST /api/v1/freefire-id/verify-name, add-on 'API Verif. ID').
+
+    Reemplaza el scraping de FFMania como fuente principal: la verificación es
+    real contra Hype a través de Revendedores, sin depender del índice/captcha
+    de freefiremania.com.br. Devuelve "" si el ID no existe según Hype; lanza
+    excepción si el servicio no está disponible (para que el caller decida el
+    fallback sin cachear un negativo falso).
+    """
+    base_url = (base_url or "").strip().rstrip("/")
+    api_key = (api_key or "").strip()
+    if not base_url or not api_key:
+        raise RuntimeError("REVENDEDORES_BASE_URL/REVENDEDORES_API_KEY no configurados")
+
+    resp = _requests_lib.post(
+        f"{base_url}/api/v1/freefire-id/verify-name",
+        json={"player_id": str(uid).strip()},
+        headers={"X-API-Key": api_key, "Content-Type": "application/json"},
+        timeout=(5, VERIFY_NAME_TIMEOUT_S),
+    )
+    if resp.status_code == 404:
+        return ""  # Hype confirmó que el ID no existe
+    if resp.status_code == 200:
+        try:
+            data = resp.json()
+        except ValueError:
+            data = {}
+        if data.get("ok"):
+            return str(data.get("player_name") or "").strip()
+        return ""
+    # 403 (add-on apagado), 429 (rate limit), 5xx (bot caído): servicio no
+    # disponible — que el caller haga fallback o responda 502.
+    raise RuntimeError(f"verify-name HTTP {resp.status_code}: {(resp.text or '')[:200]}")
 
 
 # ── Free Fire (FFMania) scraper ──────────────────────────────────────────────

@@ -374,7 +374,11 @@ function _renderOrderRow(o) {
     html += '<td><code class="ref-code">' + _escapeHtml(o.payment_reference) + '</code></td>';
     html += '<td><strong>$' + (Number(o.amount || 0).toFixed(2)) + '</strong></td>';
     html += '<td>' + aff + '</td>';
-    html += '<td><span class="status-badge ' + _escapeHtml(o.status_class) + '">' + _escapeHtml(o.status_label) + '</span></td>';
+    var statusHtml = '<span class="status-badge ' + _escapeHtml(o.status_class) + '">' + _escapeHtml(o.status_label) + '</span>';
+    if (o.status === 'pending' && o.payment_verified) {
+        statusHtml += ' <span class="status-badge status-paid-pending" title="El pago ya se verificó: falta hacer la recarga">Pagada · falta entregar</span>';
+    }
+    html += '<td>' + statusHtml + '</td>';
     html += '<td>' + _escapeHtml(o.created_at) + '</td>';
     html += '<td>' + actions + '</td>';
     html += '</tr>';
@@ -485,7 +489,51 @@ function _kickAutoVerification(scopeEl) {
         return max;
     }
 
+    /* Las filas nuevas nacen "Pendiente" y la recarga automática las completa
+       segundos después sin que la tabla se entere: refrescar el estado de las
+       filas que siguen mostrando el badge pendiente para que la vista coincida
+       con lo que el filtro "Pendientes" consulta en la DB. */
+    function refreshPendingRows() {
+        var ids = [];
+        tbody.querySelectorAll('tr[data-order-id]').forEach(function(tr) {
+            var badge = tr.querySelector('.status-badge');
+            if (badge && badge.classList.contains('status-pending')) {
+                ids.push(tr.getAttribute('data-order-id'));
+            }
+        });
+        if (!ids.length) return;
+        fetch('/admin/orders/refresh?ids=' + encodeURIComponent(ids.join(',')))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || !data.ok || !Array.isArray(data.orders)) return;
+                data.orders.forEach(function(o) {
+                    var tr = tbody.querySelector('tr[data-order-id="' + o.id + '"]');
+                    if (!tr) return;
+                    if (o.status === 'pending') {
+                        // Sigue pendiente: solo reflejar el pago verificado si apareció
+                        if (o.payment_verified && !tr.querySelector('.status-paid-pending')) {
+                            var badge = tr.querySelector('.status-badge');
+                            if (badge) {
+                                badge.insertAdjacentHTML('afterend', ' <span class="status-badge status-paid-pending" title="El pago ya se verificó: falta hacer la recarga">Pagada · falta entregar</span>');
+                            }
+                        }
+                        return;
+                    }
+                    // Dejó de estar pendiente: en las vistas de pendientes la fila
+                    // ya no pertenece; en el resto se redibuja con su estado real.
+                    if (statusFilter === 'pending' || statusFilter === 'to_deliver') {
+                        tr.remove();
+                        return;
+                    }
+                    tr.outerHTML = _renderOrderRow(o);
+                });
+                _rebindApproveSubmitHandlers(tbody);
+            })
+            .catch(function() {});
+    }
+
     function tick() {
+        refreshPendingRows();
         var sinceId = getMaxId();
         var url = '/admin/orders/latest?since_id=' + encodeURIComponent(String(sinceId));
         if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
