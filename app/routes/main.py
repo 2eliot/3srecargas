@@ -17,6 +17,7 @@ from ..utils.availability import (
     package_is_closed_now,
     package_is_out_of_stock,
 )
+from ..utils.points import package_points_preview
 from ..utils.timezone import now_ve, ve_day_start_utc_naive
 from ..utils.push_notifications import get_vapid_public_key, subscribe as push_subscribe, unsubscribe as push_unsubscribe
 
@@ -582,6 +583,10 @@ def api_packages(game_id):
     manual_schedule = get_manual_schedule()
     manual_open_now = manual_service_is_open(schedule=manual_schedule)
 
+    # Las tarjetas y las wallet no otorgan puntos (award_points_for_order las
+    # descarta), así que tampoco deben prometerlos en la tarjeta del paquete.
+    points_eligible = not is_tarjetas and not is_wallet
+
     pkg_list = []
     for p in packages:
         d = p.to_dict()
@@ -600,6 +605,7 @@ def api_packages(game_id):
             p, auto_mapped_ids=auto_mapped_ids, is_tarjetas=is_tarjetas,
             schedule=manual_schedule,
         )
+        d['points'] = package_points_preview(p) if points_eligible else 0
         pkg_list.append(d)
 
     game_dict['requires_manual_login_popup'] = bool(

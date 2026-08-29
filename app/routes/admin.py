@@ -668,6 +668,21 @@ def _normalize_package_announcement_type(raw_value):
     return value if value in PACKAGE_ANNOUNCEMENT_TYPES else ''
 
 
+def _normalize_package_points(raw_value):
+    """Campo "puntos" del paquete: vacío = usar el rate global de puntos.
+
+    Devuelve None para vacío/basura, que es lo que la tarjeta y el abono
+    interpretan como "calcúlalo con el rate"."""
+    value = (raw_value or '').strip()
+    if not value:
+        return None
+    try:
+        points = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return points if points >= 0 else None
+
+
 @admin_bp.route('/packages/add', methods=['POST'])
 @login_required
 def package_add():
@@ -700,6 +715,7 @@ def package_add():
         game_id=int(game_id), name=name, price=base_price, usd_price=usd_price,
         description=description, is_automated=is_automated,
         sort_order=sort_order, image=image, announcement_type=announcement_type or None,
+        points_reward=_normalize_package_points(request.form.get('points_reward')),
     )
     db.session.add(pkg)
     db.session.commit()
@@ -731,6 +747,7 @@ def package_edit(pkg_id):
     pkg.sort_order = int(request.form.get('sort_order', pkg.sort_order))
     pkg.is_active = bool(request.form.get('is_active'))
     pkg.announcement_type = _normalize_package_announcement_type(request.form.get('announcement_type')) or None
+    pkg.points_reward = _normalize_package_points(request.form.get('points_reward'))
 
     if request.form.get('remove_image'):
         if pkg.image:

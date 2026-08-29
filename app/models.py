@@ -95,6 +95,11 @@ class Package(db.Model):
     # None/'' = sin aviso, 'one_time_purchase' = "solo se compra una vez en
     # tu cuenta", 'redeem_code' = "es un código que debes canjear tú mismo".
     announcement_type = db.Column(db.String(30))
+    # Puntos que otorga comprar este paquete. None = no está fijado a mano y
+    # se calcula con el rate global (monto pagado × points_per_dollar); un
+    # número lo deja clavado sin importar el monto, el método de pago ni el
+    # descuento, que es justo lo que la tarjeta le prometió al cliente.
+    points_reward = db.Column(db.Integer)
     pins = db.relationship('Pin', backref='package', lazy='dynamic')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -114,6 +119,7 @@ class Package(db.Model):
             'is_automated': self.is_automated,
             'pin_count': self.pin_count if self.is_automated else None,
             'announcement_type': self.announcement_type or '',
+            'points_reward': self.points_reward,
         }
 
 

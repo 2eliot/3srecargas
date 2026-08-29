@@ -1180,6 +1180,14 @@
             item.dataset.priceUsd = String(priceUsd);
             item.dataset.priceBase = String(parseFloat(pkg.price));
 
+            // Los puntos que deja la compra. El backend ya manda 0 en lo que
+            // no otorga puntos (tarjetas y wallet), asi que aqui basta con no
+            // pintar el badge cuando no hay nada que prometer.
+            var pkgPoints = parseInt(pkg.points, 10);
+            var pointsHtml = (!isNaN(pkgPoints) && pkgPoints > 0)
+                ? '<span class="pkg-points">+' + pkgPoints + ' pts</span>'
+                : '';
+
             var outOfStock = !!pkg.out_of_stock;
             // El paquete es manual y estamos fuera del horario de atención.
             // Agotado manda sobre cerrado: si no hay stock, da igual la hora.
@@ -1198,6 +1206,7 @@
                     '<h4>' + escHtml(pkg.name) + '</h4>' +
                     '<span class="price"></span>' +
                     '<span class="price-usd"></span>' +
+                    pointsHtml +
                 '</div>';
 
             if (outOfStock || closedNow) {

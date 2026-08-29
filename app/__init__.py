@@ -213,6 +213,7 @@ def create_app(config_class=Config):
         _ensure_game_columns()
         _ensure_package_pricing_columns()
         _ensure_package_announcement_column()
+        _ensure_package_points_column()
         _ensure_minigame_opportunity_columns()
         _ensure_points_columns()
         _ensure_affiliate_columns()
@@ -417,6 +418,23 @@ def _ensure_package_announcement_column():
         existing = {r[1] for r in rows}
         if 'announcement_type' not in existing:
             db.session.execute(text('ALTER TABLE packages ADD COLUMN announcement_type VARCHAR(30)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_package_points_column():
+    try:
+        if _ensure_postgres_columns('packages', ['points_reward INTEGER']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(packages)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'points_reward' not in existing:
+            db.session.execute(text('ALTER TABLE packages ADD COLUMN points_reward INTEGER'))
             db.session.commit()
     except Exception:
         db.session.rollback()

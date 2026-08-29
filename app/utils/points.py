@@ -49,6 +49,46 @@ def get_points_win_interval():
         return DEFAULT_POINTS_WIN_INTERVAL
 
 
+def get_package_fixed_points(package):
+    """Puntos clavados a mano para el paquete, o None si usa el rate global.
+
+    0 es un valor válido y significativo: es como se apaga el premio de un
+    paquete puntual sin tener que tocar el rate de toda la tienda."""
+    if package is None:
+        return None
+    raw = getattr(package, 'points_reward', None)
+    if raw is None or raw == '':
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 0 else None
+
+
+def calculate_points_for_purchase(amount, package=None):
+    """Puntos que otorga una compra.
+
+    Si el paquete tiene su cifra fija, esa manda y no depende del monto: así
+    el cliente recibe exactamente los puntos que la tarjeta le prometió,
+    aunque haya usado un descuento o un método de pago con precio distinto.
+    Si no, se calcula con el rate global sobre lo que efectivamente pagó."""
+    fixed = get_package_fixed_points(package)
+    if fixed is not None:
+        return fixed
+    return int(round(float(amount or 0) * get_points_per_dollar_rate()))
+
+
+def package_points_preview(package):
+    """Los puntos que se le anuncian al cliente en la tarjeta del paquete.
+
+    Para el fallback por rate usa el precio base del paquete, que es el mismo
+    que la tarjeta muestra convertido a Bs."""
+    if package is None:
+        return 0
+    return calculate_points_for_purchase(package.price, package)
+
+
 def order_qualifies_for_points(order):
     """Solo recargas por ID de juego (no códigos, no wallet) cuentan para
     puntos, y solo una vez que el pago quedó verificado/completado."""
@@ -74,9 +114,7 @@ def award_points_for_order(order):
     if not order_qualifies_for_points(order):
         return None
 
-    rate = get_points_per_dollar_rate()
-    amount = float(order.amount or 0)
-    points = int(round(amount * rate))
+    points = calculate_points_for_purchase(order.amount, order.package)
     order.points_awarded = True
     if points <= 0:
         return None
