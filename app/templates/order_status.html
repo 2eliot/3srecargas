@@ -333,50 +333,133 @@
     text-transform: uppercase;
 }
 
-/* Ruleta: canvas negro/rojo con aro gris, flecha ambar arriba y el GO
-   central como boton real. El sector ganador lo decide el servidor; aqui
-   solo se anima hasta el que ya vino resuelto. */
+/* Ruleta neon: marco con anillo conico rojo, aro punteado girando lento,
+   flecha arriba y el GO central como boton real. Replica el mockup que pidio
+   el cliente; el sector ganador lo sigue decidiendo el servidor y aqui solo
+   se anima hasta el que ya vino resuelto. */
+@keyframes rouletteNeonPulse {
+    0%, 100% { box-shadow: 0 0 25px rgba(239, 68, 68, .4), inset 0 0 15px rgba(239, 68, 68, .2); }
+    50%      { box-shadow: 0 0 45px rgba(220, 38, 38, .7), inset 0 0 25px rgba(220, 38, 38, .4); }
+}
+
+@keyframes rouletteSpinGlow {
+    0%, 100% { box-shadow: 0 0 35px rgba(239, 68, 68, .6), inset 0 0 20px rgba(239, 68, 68, .4); }
+    50%      { box-shadow: 0 0 75px rgba(255, 0, 0, .95), inset 0 0 40px rgba(239, 68, 68, .8); }
+}
+
+@keyframes rouletteRingSpin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+@keyframes rouletteShakeBox {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    20% { transform: rotate(-15deg) scale(1.15); }
+    40% { transform: rotate(15deg) scale(1.15); }
+    60% { transform: rotate(-10deg) scale(1.15); }
+    80% { transform: rotate(10deg) scale(1.15); }
+}
+
+@keyframes roulettePopIn {
+    0%   { transform: scale(.3); opacity: 0; }
+    70%  { transform: scale(1.1); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
 .roulette-shell {
     display: grid;
     justify-items: center;
-    gap: 18px;
+    gap: 14px;
+    width: 100%;
+}
+
+/* Fila de arriba: de que va el juego y el aviso de que solo hay un giro. */
+.roulette-intro {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+}
+
+.roulette-intro h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 800;
+    color: #e5e7eb;
+}
+
+.roulette-intro p {
+    margin: 2px 0 0;
+    font-size: 11.5px;
+    color: #9ca3af;
+}
+
+.roulette-chance {
+    flex: none;
+    background: rgba(239, 68, 68, .1);
+    border: 1px solid rgba(239, 68, 68, .3);
+    color: #fca5a5;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
 }
 
 .roulette-wheel-wrap {
     position: relative;
-    width: min(100%, 360px);
+    width: min(100%, 340px);
     aspect-ratio: 1;
-    padding: 12px;
+    padding: 10px;
     border-radius: 50%;
-    background: radial-gradient(circle, #121212 0%, #000000 70%);
+    background:
+        radial-gradient(circle, #121212 0%, #000000 70%),
+        conic-gradient(from 0deg, #ef4444, #b91c1c, #f87171, #991b1b, #ef4444);
     border: 4px solid #000000;
-    box-shadow: 0 0 35px rgba(255, 0, 0, .5), inset 0 0 20px rgba(200, 0, 0, .4), 0 22px 40px rgba(0,0,0,.5);
+    animation: rouletteNeonPulse 4s infinite ease-in-out;
+    transition: box-shadow .3s ease;
+}
+
+/* Mientras gira, el glow del marco late mucho mas fuerte. */
+.roulette-wheel-wrap.is-spinning {
+    animation: rouletteSpinGlow .4s infinite ease-in-out;
+}
+
+/* Aro punteado que gira solo, muy lento, por detras de la rueda. */
+.roulette-wheel-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px dashed rgba(239, 68, 68, .3);
+    pointer-events: none;
+    animation: rouletteRingSpin 35s linear infinite;
 }
 
 .roulette-pointer {
     position: absolute;
-    top: -6px;
+    top: -12px;
     left: 50%;
-    width: 30px;
-    height: 38px;
+    width: 0;
+    height: 0;
     transform: translateX(-50%);
-    background: linear-gradient(180deg, #ff0000 0%, #c80000 100%);
-    clip-path: polygon(50% 100%, 0 0, 100% 0);
-    border-radius: 2px;
-    z-index: 5;
-    filter: drop-shadow(0 6px 14px rgba(255, 0, 0, .6));
+    border-left: 12px solid transparent;
+    border-right: 12px solid transparent;
+    border-top: 22px solid #ef4444;
+    filter: drop-shadow(0 0 12px rgba(239, 68, 68, .9));
+    z-index: 30;
 }
 
 .roulette-wheel {
     position: absolute;
-    inset: 12px;
+    inset: 10px;
     border-radius: 50%;
-    transition: transform 4.2s cubic-bezier(.12,.88,.18,1);
-    filter: drop-shadow(0 10px 20px rgba(0, 0, 0, .5));
-}
-
-.roulette-wheel.is-spinning {
-    filter: drop-shadow(0 14px 26px rgba(220, 38, 38, .35));
+    /* Sobre el aro punteado, que asoma por el borde del marco. */
+    z-index: 10;
+    transition: transform 4.2s cubic-bezier(.12, .88, .18, 1);
 }
 
 .roulette-wheel-canvas {
@@ -390,35 +473,43 @@
 .roulette-center {
     position: absolute;
     inset: 50%;
-    width: 84px;
-    height: 84px;
-    margin: -42px;
+    width: 72px;
+    height: 72px;
+    margin: -36px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #ff0000 0%, #c80000 50%, #800000 100%);
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #991b1b 100%);
     border: 4px solid #000000;
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 900;
-    letter-spacing: .08em;
+    letter-spacing: .12em;
     cursor: pointer;
-    z-index: 6;
-    box-shadow: 0 0 30px rgba(255, 0, 0, .7), 0 8px 18px rgba(0,0,0,.5);
-    transition: transform .15s ease;
+    z-index: 20;
+    box-shadow: 0 0 25px rgba(239, 68, 68, .7);
+    transition: all .3s ease;
 }
 
-.roulette-center:hover:not(:disabled) { transform: scale(1.06); }
+.roulette-center:hover:not(:disabled) {
+    background: linear-gradient(135deg, #f87171 0%, #ef4444 50%, #b91c1c 100%);
+    box-shadow: 0 0 35px rgba(239, 68, 68, .8);
+    transform: scale(1.05);
+}
+
 .roulette-center:active:not(:disabled) { transform: scale(.95); }
-.roulette-center:disabled { opacity: .55; cursor: default; }
+.roulette-center:disabled { opacity: .5; cursor: not-allowed; }
 
 .roulette-hint {
     font-size: 12px;
-    font-weight: 700;
-    letter-spacing: .04em;
-    color: rgba(255,255,255,.5);
+    font-weight: 500;
+    letter-spacing: .02em;
+    color: #9ca3af;
+    text-align: center;
 }
+
+.roulette-hint b { color: #f87171; font-weight: 800; }
 
 /* Modal de resultado del giro. */
 .roulette-result-modal {
@@ -429,52 +520,151 @@
     align-items: center;
     justify-content: center;
     padding: 16px;
-    background: rgba(0,0,0,.8);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, .9);
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    transition: opacity .3s ease;
 }
 
 .roulette-result-modal.is-open { display: flex; }
+.roulette-result-modal.is-visible { opacity: 1; }
 
 .roulette-result-card {
+    position: relative;
     width: min(100%, 380px);
-    background: #111827;
-    border: 1px solid #1f2937;
-    border-radius: 18px;
-    padding: 26px 22px;
+    background: #0a0a0a;
+    border: 1px solid rgba(239, 68, 68, .4);
+    border-radius: 24px;
+    padding: 28px 26px;
     text-align: center;
-    box-shadow: 0 26px 60px rgba(0,0,0,.6);
+    box-shadow: 0 0 50px rgba(239, 68, 68, .3);
+    overflow: hidden;
+    transform: scale(.95);
+    transition: transform .3s ease;
 }
 
-.roulette-result-icon {
-    width: 64px;
-    height: 64px;
-    margin: 0 auto 16px;
+.roulette-result-modal.is-visible .roulette-result-card { transform: scale(1); }
+
+.roulette-result-glow {
+    position: absolute;
+    top: -64px;
+    left: 50%;
+    width: 160px;
+    height: 160px;
+    transform: translateX(-50%);
+    background: rgba(239, 68, 68, .2);
     border-radius: 50%;
+    filter: blur(48px);
+    pointer-events: none;
+}
+
+/* El regalo se abre por pasos: tiembla, revienta y termina en fiesta. */
+.roulette-gift-stage {
+    position: relative;
+    margin: 20px 0;
+    min-height: 120px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 30px;
 }
 
-.roulette-result-icon.win { background: rgba(255,0,0,.2); color: #ff3b3b; border: 1px solid rgba(255,0,0,.4); }
-.roulette-result-icon.miss { background: rgba(239,68,68,.2); color: #f87171; border: 1px solid rgba(239,68,68,.4); }
+.roulette-gift-emoji {
+    font-size: 72px;
+    line-height: 1;
+    transition: transform .3s ease;
+}
 
-.roulette-result-title { font-size: 22px; font-weight: 900; margin-bottom: 8px; }
-.roulette-result-title.win { color: #ff3b3b; }
-.roulette-result-title.miss { color: #ef4444; }
-.roulette-result-text { font-size: 13px; color: #d1d5db; margin-bottom: 22px; }
+.roulette-gift-emoji.is-shaking { animation: rouletteShakeBox .5s ease-in-out infinite; }
+.roulette-gift-emoji.is-popping { animation: roulettePopIn .5s cubic-bezier(.175, .885, .32, 1.275) forwards; }
+
+.roulette-result-title {
+    position: relative;
+    font-size: 24px;
+    font-weight: 900;
+    letter-spacing: .02em;
+    color: #ffffff;
+    margin-bottom: 8px;
+}
+
+.roulette-result-text {
+    position: relative;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: #d1d5db;
+    margin-bottom: 24px;
+}
+
+/* El dato util (a que ID llega el premio, que el giro ya se gasto) no cabe
+   en el titulo del mockup, asi que va aqui debajo sin robarle el momento. */
+.roulette-result-note {
+    position: relative;
+    display: block;
+    margin-top: 10px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: #9ca3af;
+}
 
 .roulette-result-close {
+    position: relative;
     width: 100%;
-    padding: 12px 0;
-    border-radius: 12px;
+    padding: 13px 0;
+    border-radius: 16px;
     border: 0;
-    background: linear-gradient(90deg, #dc2626, #b91c1c);
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #991b1b 100%);
     color: #fff;
     font-weight: 800;
-    font-size: 14px;
+    font-size: 13.5px;
+    letter-spacing: .08em;
     cursor: pointer;
-    box-shadow: 0 10px 24px rgba(220,38,38,.3);
+    box-shadow: 0 0 25px rgba(239, 68, 68, .6);
+    transition: all .3s ease;
+}
+
+.roulette-result-close:hover {
+    background: linear-gradient(135deg, #f87171 0%, #ef4444 50%, #b91c1c 100%);
+    box-shadow: 0 0 35px rgba(239, 68, 68, .8);
+}
+
+/* Cabecera del juego: el rayo, el juego que eligio el cliente y para que es. */
+.roulette-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding-bottom: 14px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid rgba(239, 68, 68, .2);
+}
+
+.roulette-head-icon {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: rgba(239, 68, 68, .1);
+    border: 1px solid rgba(239, 68, 68, .4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
+
+.roulette-head-body h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #ffffff;
+}
+
+.roulette-head-body p {
+    margin: 2px 0 0;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: #f87171;
 }
 
 .slot-machine-shell {
@@ -1079,6 +1269,15 @@
             ];
     }
 
+    // Iconos de la ruleta, en un solo sitio: los usa el canvas, la cabecera
+    // y la secuencia de apertura del regalo del modal.
+    var ROULETTE_PRIZE_ICON = '🎁';
+    var ROULETTE_MISS_ICON = '❌';
+    var ROULETTE_OPENING_ICON = '📦✨';
+    var ROULETTE_PARTY_ICON = '🎉🎁🎉';
+    var ROULETTE_BOLT_ICON = '⚡';
+    var ROULETTE_TARGET_ICON = '🎯';
+
     // Mismo orden que build_minigame_roulette_segments en el servidor: el
     // premio primero, para que la rueda que se ve antes de girar sea la
     // misma que devuelve el backend al jugar.
@@ -1091,10 +1290,10 @@
         return labels;
     }
 
-    /* Dibuja la rueda en canvas: sectores negros para premio y rojos para
-       fallo, aro gris exterior y el texto acostado hacia el borde. Se
-       redibuja con la resolucion real de la pantalla para que no salga
-       borroso al rotar. */
+    /* Dibuja la rueda en canvas: sectores negros para premio y grises para
+       fallo, borde rojo y solo el icono dentro de cada casilla. El nombre del
+       premio no se pinta a proposito: la sorpresa se revela en el modal, y de
+       paso ningun premio de nombre largo queda cortado bajo el GO. */
     function drawRouletteWheel(canvas, labels) {
         if (!canvas || !canvas.getContext) return;
         var list = (labels && labels.length) ? labels : ['FAILED', 'PREMIO'];
@@ -1128,70 +1327,28 @@
             ctx.fillStyle = isMiss ? '#141414' : '#0a0a0a';
             ctx.fill();
             ctx.lineWidth = 2;
-            ctx.strokeStyle = '#ff0000';
+            ctx.strokeStyle = '#ef4444';
             ctx.stroke();
 
             ctx.save();
             ctx.translate(center, center);
             ctx.rotate(startAngle + (arc / 2));
-            ctx.textAlign = 'right';
+            ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#ffffff';
-
-            // Espacio real para el texto: del borde hasta donde empieza el
-            // botón GO. Sin este tope, un premio de nombre largo se metía
-            // debajo del GO y quedaba cortado.
-            var inicio = radius - 16;
-            var disponible = inicio - (center * 0.34) - 6;
-            var fontSize = size < 300 ? 11 : 13;
-
-            function usarFuente(px) {
-                fontSize = px;
-                ctx.font = '900 ' + px + "px 'Outfit', Inter, sans-serif";
-            }
-            usarFuente(fontSize);
-
-            var icono = isMiss ? '✕ ' : '◆ ';
-            var lineas = [icono + parts.main];
-
-            // Si no entra de una, se parte en dos líneas por el último
-            // espacio que quepa; recién si aún no entra se recorta.
-            if (ctx.measureText(lineas[0]).width > disponible) {
-                var palabras = String(parts.main).split(' ');
-                if (palabras.length > 1) {
-                    var corte = Math.ceil(palabras.length / 2);
-                    lineas = [
-                        icono + palabras.slice(0, corte).join(' '),
-                        palabras.slice(corte).join(' ')
-                    ];
-                }
-                while (
-                    Math.max.apply(null, lineas.map(function (l) { return ctx.measureText(l).width; })) > disponible
-                    && fontSize > 8
-                ) {
-                    usarFuente(fontSize - 1);
-                }
-                lineas = lineas.map(function (linea) {
-                    var texto = linea;
-                    while (ctx.measureText(texto).width > disponible && texto.length > 4) {
-                        texto = texto.slice(0, -1);
-                    }
-                    return texto === linea ? texto : texto.replace(/\s+$/, '') + '…';
-                });
-            }
-
-            var alto = fontSize + 2;
-            var desde = -((lineas.length - 1) * alto) / 2;
-            lineas.forEach(function (linea, i) {
-                ctx.fillText(linea, inicio, desde + (i * alto));
-            });
+            // Todo proporcional al radio para que se vea igual en un móvil
+            // chico que en el canvas grande del escritorio.
+            ctx.font = Math.round(radius * 0.175) + "px 'Outfit', Inter, sans-serif";
+            ctx.fillText(isMiss ? ROULETTE_MISS_ICON : ROULETTE_PRIZE_ICON, radius * 0.7, 0);
             ctx.restore();
         });
 
+        // Hub central negro con aro rojo, justo debajo del botón GO.
         ctx.beginPath();
-        ctx.arc(center, center, radius - 2, 0, 2 * Math.PI);
-        ctx.lineWidth = 6;
-        ctx.strokeStyle = '#ff0000';
+        ctx.arc(center, center, radius * 0.253, 0, 2 * Math.PI);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#ef4444';
         ctx.stroke();
     }
 
@@ -1243,10 +1400,25 @@
         var payload = (opportunity && opportunity.result_payload) || {};
         var labels = payload.segments || buildRouletteSegmentsFromCatalog();
         var played = !!(opportunity && opportunity.played);
+        var label = opportunity && opportunity.selected_game_label ? opportunity.selected_game_label : 'Mini juego';
         return '' +
-            '<div class="minigame-stage">' + buildStageHeader(opportunity) +
+            '<div class="minigame-stage">' +
+                '<div class="roulette-head">' +
+                    '<div class="roulette-head-icon">' + ROULETTE_BOLT_ICON + '</div>' +
+                    '<div class="roulette-head-body">' +
+                        '<h3>' + escapeHtml(label) + '</h3>' +
+                        '<p>Tu mini juego seleccionado</p>' +
+                    '</div>' +
+                '</div>' +
                 '<div class="roulette-shell">' +
-                    '<div class="roulette-wheel-wrap">' +
+                    '<div class="roulette-intro">' +
+                        '<div>' +
+                            '<h4>Ruleta</h4>' +
+                            '<p>Gira y descubre si te toca premio instantáneo.</p>' +
+                        '</div>' +
+                        '<span class="roulette-chance">' + ROULETTE_TARGET_ICON + ' 1 sola oportunidad</span>' +
+                    '</div>' +
+                    '<div class="roulette-wheel-wrap" id="rouletteWheelWrap">' +
                         '<div class="roulette-pointer"></div>' +
                         '<div class="roulette-wheel" id="rouletteWheel">' +
                             '<canvas class="roulette-wheel-canvas" id="rouletteCanvas" aria-hidden="true"></canvas>' +
@@ -1255,13 +1427,17 @@
                             (played ? ' disabled' : '') + ' aria-label="Girar la ruleta">GO</button>' +
                     '</div>' +
                     '<p class="roulette-hint">' +
-                        (played ? 'Ya usaste tu giro en esta orden.' : 'Pulsa GO para girar. Tienes una sola oportunidad.') +
+                        (played
+                            ? 'Ya usaste tu giro en esta orden.'
+                            : 'Pulsa <b>GO</b> para girar. Tienes una sola oportunidad.') +
                     '</p>' +
                 '</div>' +
             '</div>';
     }
 
-    /* Modal del resultado del giro, encima de la tarjeta que queda guardada. */
+    /* Modal del resultado del giro, encima de la tarjeta que queda guardada.
+       Al ganar, el regalo se abre por pasos (tiembla, revienta, fiesta) como
+       en el diseño; al perder se queda la equis quieta. */
     function showRouletteResultModal(opportunity) {
         // Solo se anuncia premio si de verdad se ganó. El texto de perder
         // decía "¡SIGUIENTE INTENTO!", que se leía como un anuncio positivo
@@ -1272,16 +1448,17 @@
         var pendiente = /pendiente de entrega/i.test(rawPrize);
         var prize = rawPrize.replace(/\s*\(pendiente de entrega\)\s*/i, '').trim() || 'tu premio';
 
-        var titulo, texto;
+        var titulo, texto, nota;
         if (won) {
-            titulo = '¡FELICIDADES!';
-            texto = pendiente
-                ? 'Ganaste ' + escapeHtml(prize) + '. Te lo entregamos en breve al mismo ID de esta recarga.'
-                : '¡Ganaste ' + escapeHtml(prize) + '! Ya se envió al mismo ID con el que hiciste esta recarga.';
+            titulo = '¡Ganaste ' + escapeHtml(prize) + '!';
+            texto = '¡Felicidades! Has desbloqueado tu premio.';
+            nota = pendiente
+                ? 'Te lo entregamos en breve al mismo ID de esta recarga.'
+                : 'Ya se envió al mismo ID con el que hiciste esta recarga.';
         } else {
-            titulo = 'No hubo premio';
-            texto = 'Usaste el giro de esta orden y esta vez no salió premio. '
-                  + 'Con tu próxima recarga tienes un giro nuevo.';
+            titulo = '¡Fallo en el Sistema!';
+            texto = 'La órbita no ha arrojado premio esta vez.';
+            nota = 'Usaste el giro de esta orden. Con tu próxima recarga tienes un giro nuevo.';
         }
 
         var existing = document.getElementById('rouletteResultModal');
@@ -1292,17 +1469,47 @@
         modal.id = 'rouletteResultModal';
         modal.innerHTML =
             '<div class="roulette-result-card" role="dialog" aria-modal="true">' +
-                '<div class="roulette-result-icon ' + (won ? 'win' : 'miss') + '">' + (won ? '♦' : '✕') + '</div>' +
-                '<h2 class="roulette-result-title ' + (won ? 'win' : 'miss') + '">' + titulo + '</h2>' +
-                '<p class="roulette-result-text">' + texto + '</p>' +
-                '<button type="button" class="roulette-result-close">Aceptar</button>' +
+                '<div class="roulette-result-glow"></div>' +
+                '<div class="roulette-gift-stage">' +
+                    '<div class="roulette-gift-emoji" id="rouletteGiftEmoji">' +
+                        (won ? ROULETTE_PRIZE_ICON : ROULETTE_MISS_ICON) +
+                    '</div>' +
+                '</div>' +
+                '<h2 class="roulette-result-title">' + titulo + '</h2>' +
+                '<p class="roulette-result-text">' + texto +
+                    '<span class="roulette-result-note">' + nota + '</span>' +
+                '</p>' +
+                '<button type="button" class="roulette-result-close">CONTINUAR</button>' +
             '</div>';
 
-        function close() { modal.remove(); }
+        var timers = [];
+        function close() {
+            timers.forEach(clearTimeout);
+            timers = [];
+            modal.classList.remove('is-visible');
+            setTimeout(function () { modal.remove(); }, 300);
+        }
         modal.addEventListener('click', function (evt) {
             if (evt.target === modal || evt.target.classList.contains('roulette-result-close')) close();
         });
         document.body.appendChild(modal);
+
+        // La tarjeta entra con su fade+scale en vez de aparecer de golpe.
+        requestAnimationFrame(function () { modal.classList.add('is-visible'); });
+
+        if (!won) return;
+
+        var giftEmoji = modal.querySelector('#rouletteGiftEmoji');
+        if (!giftEmoji) return;
+        giftEmoji.className = 'roulette-gift-emoji is-shaking';
+        timers.push(setTimeout(function () {
+            giftEmoji.textContent = ROULETTE_OPENING_ICON;
+            giftEmoji.className = 'roulette-gift-emoji is-popping';
+        }, 600));
+        timers.push(setTimeout(function () {
+            giftEmoji.textContent = ROULETTE_PARTY_ICON;
+            giftEmoji.className = 'roulette-gift-emoji';
+        }, 1400));
     }
 
     function getRouletteSegmentAngle(segmentCount) {
@@ -1337,6 +1544,8 @@
         var overshootRotation = finalRotation + 8;
         var settleRotation = finalRotation - 3;
 
+        var wrap = document.getElementById('rouletteWheelWrap');
+        if (wrap) wrap.classList.add('is-spinning');
         wheel.classList.add('is-spinning');
         wheel.style.transition = 'none';
         wheel.style.transform = 'rotate(0deg)';
@@ -1357,6 +1566,7 @@
         return animation.finished.catch(function () {
             return null;
         }).then(function () {
+            if (wrap) wrap.classList.remove('is-spinning');
             wheel.classList.remove('is-spinning');
             wheel.style.transform = 'rotate(' + finalRotation + 'deg)';
         });
