@@ -849,14 +849,12 @@ def _apply_order_filters(
     # a mano, así que siguen pendientes esperando que un admin las haga.
     # Antes se perdían entre el resto de las pendientes y el cliente terminaba
     # reclamando por WhatsApp.
-    if status_filter in ('to_deliver', 'pending'):
-        # 'pending' usa el mismo criterio que 'to_deliver' a propósito: una
-        # orden 'pending' sin pago verificado es solo un checkout que el
-        # cliente empezó y nunca pagó (o que sigue esperando su verificación
-        # automática) — no es algo que el admin tenga que hacer algo con
-        # ella todavía, así que no debe mezclarse con las que sí hay que
-        # entregar. "Pendientes" pasa a significar lo mismo que "por
-        # entregar": pagada, esperando la recarga manual.
+    #
+    # "Pendientes" sí vuelve a ser literal (todas las 'pending'): compartir el
+    # criterio de 'to_deliver' escondía las pendientes cuyo pago aún no se
+    # verificó — salían en "Todas" con su badge Pendiente pero la pestaña
+    # aparecía vacía, que es justo donde el admin las va a buscar.
+    if status_filter == 'to_deliver':
         query = query.filter(
             Order.status == 'pending',
             Order.payment_verified_at.isnot(None),
