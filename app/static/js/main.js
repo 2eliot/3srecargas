@@ -641,108 +641,152 @@
         closeModal(pointsModal);
     }
 
-    // Casillas de relleno: todas son fallo. Antes decían "Extra" y "Bono",
-    // que se leían como premios y contradecían el mensaje de "sin premio"
-    // cuando la tira frenaba encima de una.
-    var POINTS_STRIP_DECORATIVE = [
-        { icon: '✕', label: 'Fallaste' },
-        { icon: '🎯', label: 'Casi' },
-        { icon: '✕', label: 'Nada' },
-        { icon: '🎲', label: 'Suerte' },
+    // Relleno de la tira: cajas de premio y de nada, mezcladas. La casilla
+    // de premio dice "PREMIO" a secas y nunca el premio real (ej. "110💎"):
+    // el valor se revela recién en el modal, después del giro.
+    var POINTS_ITEM_PRIZE = { icon: '🎁', label: 'PREMIO', prize: true };
+    var POINTS_ITEM_MISS = { icon: '❌', label: 'NADA', prize: false };
+    var POINTS_ITEM_POOL = [
+        POINTS_ITEM_MISS, POINTS_ITEM_PRIZE,
+        POINTS_ITEM_MISS, POINTS_ITEM_PRIZE,
+        POINTS_ITEM_MISS, POINTS_ITEM_PRIZE
     ];
-    var POINTS_STRIP_TOTAL = 26;
-    var POINTS_STRIP_WINNER_INDEX = 20;
-    var POINTS_STRIP_ITEM_WIDTH = 76;
-    var POINTS_STRIP_ITEM_STRIDE = 84; // 76px de ancho + 8px de gap
-    // La tira arranca centrada en este ítem, no en el primero. El track está
-    // anclado en left:50% (donde está el indicador), así que en la posición
-    // 0 la mitad izquierda del visor quedaba vacía y se veía un hueco negro.
-    var POINTS_STRIP_START_INDEX = 3;
-    var pointsStripAnimation = null;
+    var POINTS_STRIP_TOTAL = 70;
+    var POINTS_STRIP_WINNER_INDEX = 52;
+    var POINTS_STRIP_ITEM_WIDTH = 112;
+    var POINTS_STRIP_ITEM_STRIDE = 124; // 112px de ancho + 12px de gap
+    var POINTS_STRIP_SPIN_MS = 4600;    // los 4.5s de la transicion + margen
+    var pointsStripItems = [];
 
-    /* Cuánto hay que desplazar la tira para dejar ese ítem bajo el indicador. */
-    function pointsStripOffsetFor(index) {
-        return (index * POINTS_STRIP_ITEM_STRIDE) + (POINTS_STRIP_ITEM_WIDTH / 2);
+    /* Cuánto hay que desplazar la tira para dejar ese ítem bajo el láser.
+       El láser está en el centro del visor, así que se descuenta media
+       ventana y se recentra sobre la caja. */
+    function pointsStripOffsetFor(index, jitter) {
+        var track = pointsEl('pointsStripTrack');
+        var ancho = (track && track.parentElement) ? track.parentElement.clientWidth : 0;
+        return (index * POINTS_STRIP_ITEM_STRIDE)
+            - (ancho / 2)
+            + (POINTS_STRIP_ITEM_WIDTH / 2)
+            + (jitter || 0);
     }
 
-    function buildPointsStrip(prizeLabel, targetIcon, targetLabel) {
+    function renderPointsStrip() {
         var track = pointsEl('pointsStripTrack');
         if (!track) return;
-        var html = '';
-        for (var i = 0; i < POINTS_STRIP_TOTAL; i++) {
-            if (i === POINTS_STRIP_WINNER_INDEX) {
-                html += '<div class="points-strip-item is-prize" data-target="1"><span class="icon">' + escHtml(targetIcon) + '</span><span class="label">' + escHtml(targetLabel) + '</span></div>';
-            } else {
-                var decor = POINTS_STRIP_DECORATIVE[i % POINTS_STRIP_DECORATIVE.length];
-                html += '<div class="points-strip-item"><span class="icon">' + decor.icon + '</span><span class="label">' + decor.label + '</span></div>';
-            }
-        }
-        track.innerHTML = html;
-        resetPointsStrip(track);
+        track.innerHTML = pointsStripItems.map(function (item) {
+            return '<div class="points-strip-item">' +
+                '<span class="icon">' + item.icon + '</span>' +
+                '<span class="label">' + escHtml(item.label) + '</span>' +
+            '</div>';
+        }).join('');
     }
 
-    /* Deja la tira en su posición de arranque, con ítems visibles a ambos
-       lados del indicador. */
-    function resetPointsStrip(track) {
-        if (pointsStripAnimation) {
-            pointsStripAnimation.cancel();
-            pointsStripAnimation = null;
+    /* Arma la tira de cero y la deja en su posición de arranque. */
+    function buildPointsStrip() {
+        var track = pointsEl('pointsStripTrack');
+        if (!track) return;
+        pointsStripItems = [];
+        for (var i = 0; i < POINTS_STRIP_TOTAL; i++) {
+            pointsStripItems.push(POINTS_ITEM_POOL[Math.floor(Math.random() * POINTS_ITEM_POOL.length)]);
         }
-        var ganadorPrevio = track.querySelector('.is-winner');
-        if (ganadorPrevio) ganadorPrevio.classList.remove('is-winner');
+        renderPointsStrip();
         track.style.transition = 'none';
-        track.style.transform = 'translateX(-' + pointsStripOffsetFor(POINTS_STRIP_START_INDEX) + 'px)';
+        track.style.transform = 'translateX(0px)';
     }
 
     function spinPointsStripTo(won) {
         var track = pointsEl('pointsStripTrack');
+        var viewport = track ? track.parentElement : null;
         if (!track) return;
 
-        // La tira caía SIEMPRE en la casilla del premio, se ganara o no: se
-        // veía el premio bajo el indicador y debajo el mensaje de que no
-        // hubo suerte. Al perder aterriza en una casilla de relleno.
-        var destino = POINTS_STRIP_WINNER_INDEX;
-        if (!won) {
-            var perdedores = [-2, -1, 1, 2]
-                .map(function (d) { return POINTS_STRIP_WINNER_INDEX + d; })
-                // La casilla del premio queda fuera sí o sí, y el índice
-                // tiene que existir en la tira.
-                .filter(function (i) {
-                    return i !== POINTS_STRIP_WINNER_INDEX && i >= 0 && i < POINTS_STRIP_TOTAL;
-                });
-            destino = perdedores.length
-                ? perdedores[Math.floor(Math.random() * perdedores.length)]
-                : POINTS_STRIP_WINNER_INDEX;
-        }
+        // La casilla donde para es la que manda: se reescribe con el
+        // resultado que ya decidió el servidor, para que lo que se ve bajo
+        // el láser diga exactamente lo mismo que el mensaje de después.
+        pointsStripItems[POINTS_STRIP_WINNER_INDEX] = won ? POINTS_ITEM_PRIZE : POINTS_ITEM_MISS;
+        renderPointsStrip();
 
-        var desde = pointsStripOffsetFor(POINTS_STRIP_START_INDEX);
-        var hasta = pointsStripOffsetFor(destino);
+        var card = pointsEl('pointsModal') ? pointsEl('pointsModal').querySelector('.points-modal-card') : null;
+        if (viewport) viewport.classList.add('is-rolling');
+        if (card) card.classList.add('is-rolling');
 
-        resetPointsStrip(track);
-        void track.offsetWidth;   // reflow: sin esto el navegador une los dos estados
         track.style.transition = 'none';
+        track.style.transform = 'translateX(0px)';
+        void track.offsetWidth;   // reflow: sin esto el navegador une los dos estados
 
-        // Giro orgánico: arranca fuerte, desacelera largo, se pasa un poco
-        // y vuelve, como una tira real que frena por fricción.
-        var recorrido = hasta - desde;
-        var pasado = hasta + 22;
-        pointsStripAnimation = track.animate([
-            { transform: 'translateX(-' + desde + 'px)', offset: 0 },
-            { transform: 'translateX(-' + (desde + recorrido * 0.55) + 'px)', offset: 0.35 },
-            { transform: 'translateX(-' + (desde + recorrido * 0.92) + 'px)', offset: 0.72 },
-            { transform: 'translateX(-' + pasado + 'px)', offset: 0.9 },
-            { transform: 'translateX(-' + (hasta - 6) + 'px)', offset: 0.96 },
-            { transform: 'translateX(-' + hasta + 'px)', offset: 1 }
-        ], {
-            duration: 3400,
-            easing: 'cubic-bezier(.17,.78,.24,1)',
-            fill: 'forwards'
-        });
+        // Un pelín descentrada a propósito: una caja real no frena clavada
+        // en el medio.
+        var jitter = (Math.random() * 20) - 10;
+        track.style.transition = 'transform 4.5s cubic-bezier(.08, .82, .15, 1)';
+        track.style.transform = 'translateX(-' + pointsStripOffsetFor(POINTS_STRIP_WINNER_INDEX, jitter) + 'px)';
 
         window.setTimeout(function () {
-            var winnerEl = track.querySelector('[data-target="1"]');
+            if (viewport) viewport.classList.remove('is-rolling');
+            if (card) card.classList.remove('is-rolling');
+            var items = track.querySelectorAll('.points-strip-item');
+            var winnerEl = items[POINTS_STRIP_WINNER_INDEX];
             if (winnerEl && won) winnerEl.classList.add('is-winner');
-        }, 3450);
+        }, POINTS_STRIP_SPIN_MS);
+    }
+
+    /* Modal del resultado: al ganar el regalo se abre por pasos (tiembla,
+       revienta, aparece el premio); al perder se queda la equis quieta. */
+    function showPointsResultModal(won, rewardLabel, gameName) {
+        var previo = document.getElementById('pointsResultModal');
+        if (previo) previo.remove();
+
+        var premio = String(rewardLabel || 'tu premio').trim();
+        var modal = document.createElement('div');
+        modal.className = 'points-result-modal is-open';
+        modal.id = 'pointsResultModal';
+        modal.innerHTML =
+            '<div class="points-result-card" role="dialog" aria-modal="true">' +
+                '<div class="points-result-glow"></div>' +
+                '<div class="points-gift-stage">' +
+                    '<div class="points-gift-emoji" id="pointsGiftEmoji">' + (won ? '🎁' : '❌') + '</div>' +
+                '</div>' +
+                '<h3 class="points-result-title" id="pointsResultTitle">' +
+                    (won ? '¡Abriendo Regalo!' : '¡Fallaste!') +
+                '</h3>' +
+                '<p class="points-result-text" id="pointsResultDesc">' +
+                    (won
+                        ? 'Descubriendo tu premio exclusivo...'
+                        : 'No has obtenido recompensa en esta caja.') +
+                '</p>' +
+                '<button type="button" class="points-result-close">CONTINUAR</button>' +
+            '</div>';
+
+        var timers = [];
+        function cerrar() {
+            timers.forEach(window.clearTimeout);
+            timers = [];
+            modal.classList.remove('is-visible');
+            window.setTimeout(function () { modal.remove(); }, 300);
+            // La tira vuelve a barajarse para el siguiente giro.
+            buildPointsStrip();
+        }
+        modal.addEventListener('click', function (evt) {
+            if (evt.target === modal || evt.target.classList.contains('points-result-close')) cerrar();
+        });
+        document.body.appendChild(modal);
+        window.requestAnimationFrame(function () { modal.classList.add('is-visible'); });
+
+        if (!won) return;
+
+        var emoji = modal.querySelector('#pointsGiftEmoji');
+        var titulo = modal.querySelector('#pointsResultTitle');
+        var desc = modal.querySelector('#pointsResultDesc');
+        emoji.className = 'points-gift-emoji is-shaking';
+        timers.push(window.setTimeout(function () {
+            emoji.textContent = '📦✨';
+            emoji.className = 'points-gift-emoji is-popping';
+        }, 800));
+        timers.push(window.setTimeout(function () {
+            emoji.textContent = '🎁💎';
+            emoji.className = 'points-gift-emoji';
+            titulo.textContent = '¡Ganaste ' + premio + '!';
+            desc.textContent = '¡Felicidades! Se procesará al mismo ID'
+                + (gameName ? ' de ' + gameName : '') + '.';
+        }, 1600));
     }
 
     function showPointsBalance(data) {
@@ -765,11 +809,12 @@
         var spinBtn = pointsEl('pointsSpinBtn');
         if (spinBtn) spinBtn.disabled = data.balance < data.spin_cost;
 
-        // El casillero premio de la tira no debe revelar el premio real
-        // (ej. "110💎") antes de girar, o ya no hay sorpresa. Solo dice
-        // "Premio" a secas; el valor real se muestra recién en el mensaje
-        // de "¡Ganaste!" tras el giro.
-        buildPointsStrip(prizeLabel, '🎁', 'Premio');
+        var statusEl = pointsEl('pointsStatusMsg');
+        if (statusEl) {
+            statusEl.innerHTML = 'Pulsa <b>GIRAR</b> para abrir tu caja (' + data.spin_cost + ' puntos).';
+        }
+
+        buildPointsStrip();
     }
 
     function handlePointsLookup() {
@@ -844,7 +889,9 @@
                 }
 
                 var result = res.data.result;
+                var statusEl = pointsEl('pointsStatusMsg');
                 pointsEl('pointsBalanceValue').textContent = result.points_balance;
+                if (statusEl) statusEl.textContent = 'Abriendo caja...';
                 spinPointsStripTo(result.won);
 
                 window.setTimeout(function () {
@@ -852,18 +899,19 @@
                         spinBtn.disabled = result.points_balance < pointsState.spinCost;
                         spinBtn.textContent = 'GIRAR';
                     }
-                    if (resultEl) {
-                        if (result.won) {
-                            resultEl.textContent = '¡Ganaste ' + result.reward_label + '! Se procesará al mismo ID.';
-                        } else {
-                            resultEl.textContent = 'Sin premio esta vez. ¡Sigue acumulando puntos!';
-                            resultEl.classList.add('is-miss');
-                        }
-                        resultEl.style.display = 'block';
+                    if (statusEl) {
+                        statusEl.innerHTML = 'Pulsa <b>GIRAR</b> para abrir tu caja ('
+                            + pointsState.spinCost + ' puntos).';
                     }
-                    // Un pelo después de que la tira frena (3400ms), para que
-                    // el mensaje no se adelante al resultado que se ve.
-                }, 3500);
+                    var gameLabel = pointsEl('pointsSpinGameLabel');
+                    showPointsResultModal(
+                        result.won,
+                        result.reward_label,
+                        gameLabel ? gameLabel.textContent : ''
+                    );
+                    // Justo cuando la tira frena, para que el modal no se
+                    // adelante al resultado que se ve bajo el láser.
+                }, POINTS_STRIP_SPIN_MS);
             })
             .catch(function () {
                 pointsState.spinning = false;
