@@ -99,9 +99,16 @@
     </div>
 </div>
 
-<div class="admin-card" style="margin-bottom:20px;">
+<div class="admin-card" id="saldos" style="margin-bottom:20px;">
     <div class="card-header">
         <h2>Saldos más altos</h2>
+        <p class="form-hint">
+            {% if balances_total %}
+            Mostrando {{ balances_start_index }}-{{ balances_end_index }} de {{ balances_total }} saldos.
+            {% else %}
+            Todavía nadie acumula puntos.
+            {% endif %}
+        </p>
     </div>
     <div class="table-wrap">
         <table class="admin-table">
@@ -121,11 +128,47 @@
             </tbody>
         </table>
     </div>
+
+    {% if balances_total_pages > 1 %}
+    <div class="orders-pagination">
+        <a class="orders-pagination-link {% if balances_page == 1 %}is-disabled{% endif %}"
+           href="{% if balances_page > 1 %}{{ url_for('admin_bp.points', balances_page=balances_page - 1, spins_page=spins_page) }}#saldos{% else %}#{% endif %}">Anterior</a>
+
+        {% if balances_page_numbers[0] > 1 %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.points', balances_page=1, spins_page=spins_page) }}#saldos">1</a>
+        {% if balances_page_numbers[0] > 2 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        {% endif %}
+
+        {% for page_number in balances_page_numbers %}
+        <a class="orders-pagination-link {% if page_number == balances_page %}is-active{% endif %}"
+           href="{{ url_for('admin_bp.points', balances_page=page_number, spins_page=spins_page) }}#saldos">{{ page_number }}</a>
+        {% endfor %}
+
+        {% if balances_page_numbers[-1] < balances_total_pages %}
+        {% if balances_page_numbers[-1] < balances_total_pages - 1 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.points', balances_page=balances_total_pages, spins_page=spins_page) }}#saldos">{{ balances_total_pages }}</a>
+        {% endif %}
+
+        <a class="orders-pagination-link {% if balances_page == balances_total_pages %}is-disabled{% endif %}"
+           href="{% if balances_page < balances_total_pages %}{{ url_for('admin_bp.points', balances_page=balances_page + 1, spins_page=spins_page) }}#saldos{% else %}#{% endif %}">Siguiente</a>
+    </div>
+    {% endif %}
 </div>
 
-<div class="admin-card">
+<div class="admin-card" id="giros">
     <div class="card-header">
         <h2>Giros recientes</h2>
+        <p class="form-hint">
+            {% if spins_total %}
+            Mostrando {{ spins_start_index }}-{{ spins_end_index }} de {{ spins_total }} giros.
+            {% else %}
+            Todavía no hay giros registrados.
+            {% endif %}
+        </p>
     </div>
     <div class="table-wrap">
         <table class="admin-table">
@@ -166,6 +209,35 @@
             </tbody>
         </table>
     </div>
+
+    {% if spins_total_pages > 1 %}
+    <div class="orders-pagination">
+        <a class="orders-pagination-link {% if spins_page == 1 %}is-disabled{% endif %}"
+           href="{% if spins_page > 1 %}{{ url_for('admin_bp.points', balances_page=balances_page, spins_page=spins_page - 1) }}#giros{% else %}#{% endif %}">Anterior</a>
+
+        {% if spins_page_numbers[0] > 1 %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.points', balances_page=balances_page, spins_page=1) }}#giros">1</a>
+        {% if spins_page_numbers[0] > 2 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        {% endif %}
+
+        {% for page_number in spins_page_numbers %}
+        <a class="orders-pagination-link {% if page_number == spins_page %}is-active{% endif %}"
+           href="{{ url_for('admin_bp.points', balances_page=balances_page, spins_page=page_number) }}#giros">{{ page_number }}</a>
+        {% endfor %}
+
+        {% if spins_page_numbers[-1] < spins_total_pages %}
+        {% if spins_page_numbers[-1] < spins_total_pages - 1 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.points', balances_page=balances_page, spins_page=spins_total_pages) }}#giros">{{ spins_total_pages }}</a>
+        {% endif %}
+
+        <a class="orders-pagination-link {% if spins_page == spins_total_pages %}is-disabled{% endif %}"
+           href="{% if spins_page < spins_total_pages %}{{ url_for('admin_bp.points', balances_page=balances_page, spins_page=spins_page + 1) }}#giros{% else %}#{% endif %}">Siguiente</a>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
 

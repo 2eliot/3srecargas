@@ -1528,7 +1528,21 @@ def gift_codes():
     if game_id:
         query = query.join(Package).filter(Package.game_id == game_id)
 
-    codes = query.limit(500).all()
+    # Los códigos canjeados se acumulan: se pagina en vez de cortar en 500.
+    page = request.args.get('page', type=int) or 1
+    if page < 1:
+        page = 1
+    page_size = 50
+    total_filtered = query.order_by(None).count()
+    total_pages = max(1, (total_filtered + page_size - 1) // page_size)
+    if page > total_pages:
+        page = total_pages
+
+    codes = query.offset((page - 1) * page_size).limit(page_size).all()
+
+    page_numbers = list(range(max(1, page - 2), min(total_pages, page + 2) + 1))
+    start_index = ((page - 1) * page_size) + 1 if total_filtered else 0
+    end_index = min(page * page_size, total_filtered) if total_filtered else 0
 
     total = GiftCode.query.count()
     usados = GiftCode.query.filter(GiftCode.is_used.is_(True)).count()
@@ -1565,6 +1579,12 @@ def gift_codes():
     return render_template(
         'admin/gift_codes.html',
         codes=codes,
+        current_page=page,
+        total_filtered=total_filtered,
+        total_pages=total_pages,
+        page_numbers=page_numbers,
+        start_index=start_index,
+        end_index=end_index,
         games=games,
         packages_by_game=packages_by_game,
         batches=lotes,
@@ -3116,21 +3136,59 @@ def points():
         .all()
     )
 
-    recent_spins = (
+    # Los giros se acumulan sin parar: se muestran por páginas en vez de
+    # recortarlos a los últimos 100.
+    spins_page = request.args.get('spins_page', type=int) or 1
+    if spins_page < 1:
+        spins_page = 1
+    spins_page_size = 30
+
+    spins_query = (
         PointsSpinLog.query
         .options(joinedload(PointsSpinLog.game), joinedload(PointsSpinLog.prize_order))
         .order_by(PointsSpinLog.created_at.desc())
-        .limit(100)
+    )
+    spins_total = PointsSpinLog.query.count()
+    spins_total_pages = max(1, (spins_total + spins_page_size - 1) // spins_page_size)
+    if spins_page > spins_total_pages:
+        spins_page = spins_total_pages
+
+    recent_spins = (
+        spins_query
+        .offset((spins_page - 1) * spins_page_size)
+        .limit(spins_page_size)
         .all()
     )
+    spins_page_numbers = list(range(
+        max(1, spins_page - 2), min(spins_total_pages, spins_page + 2) + 1
+    ))
+    spins_start_index = ((spins_page - 1) * spins_page_size) + 1 if spins_total else 0
+    spins_end_index = min(spins_page * spins_page_size, spins_total) if spins_total else 0
+
+    # Los saldos también se acumulan: se paginan en vez de cortar en 50.
+    balances_page = request.args.get('balances_page', type=int) or 1
+    if balances_page < 1:
+        balances_page = 1
+    balances_page_size = 30
+
+    balances_total = PlayerPoints.query.count()
+    balances_total_pages = max(1, (balances_total + balances_page_size - 1) // balances_page_size)
+    if balances_page > balances_total_pages:
+        balances_page = balances_total_pages
 
     top_balances = (
         PlayerPoints.query
         .options(joinedload(PlayerPoints.game))
         .order_by(PlayerPoints.points_balance.desc())
-        .limit(50)
+        .offset((balances_page - 1) * balances_page_size)
+        .limit(balances_page_size)
         .all()
     )
+    balances_page_numbers = list(range(
+        max(1, balances_page - 2), min(balances_total_pages, balances_page + 2) + 1
+    ))
+    balances_start_index = ((balances_page - 1) * balances_page_size) + 1 if balances_total else 0
+    balances_end_index = min(balances_page * balances_page_size, balances_total) if balances_total else 0
 
     return render_template(
         'admin/points.html',
@@ -3138,7 +3196,19 @@ def points():
         packages_by_game_id=packages_by_game_id,
         mappings=mappings,
         recent_spins=recent_spins,
+        spins_page=spins_page,
+        spins_total=spins_total,
+        spins_total_pages=spins_total_pages,
+        spins_page_numbers=spins_page_numbers,
+        spins_start_index=spins_start_index,
+        spins_end_index=spins_end_index,
         top_balances=top_balances,
+        balances_page=balances_page,
+        balances_total=balances_total,
+        balances_total_pages=balances_total_pages,
+        balances_page_numbers=balances_page_numbers,
+        balances_start_index=balances_start_index,
+        balances_end_index=balances_end_index,
         points_per_dollar=get_points_per_dollar_rate(),
         points_spin_cost=get_points_spin_cost(),
         points_win_interval=get_points_win_interval(),

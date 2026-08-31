@@ -5,7 +5,7 @@ pide el ID del jugador. La entrega es automática, por el mismo camino que
 una compra normal.
 """
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..models import Game, Setting
 from ..utils.gift_codes import (
@@ -35,6 +35,11 @@ def _client_ip():
     return forwarded or (request.remote_addr or '')
 
 
+def _setting(key, default=''):
+    row = Setting.query.filter_by(key=key).first()
+    return ((row.value if row else '') or default).strip()
+
+
 def _game_payload(game):
     if not game:
         return None
@@ -44,6 +49,36 @@ def _game_payload(game):
         'requires_zone_id': bool(game.requires_zone_id),
         'player_id_label': game.player_id_label or 'Player ID',
         'zone_id_label': game.zone_id_label or 'Zone ID',
+        'player_id_input_type': (game.player_id_input_type or 'numeric'),
+        'category_slug': (game.category.slug if game.category else ''),
+    }
+
+
+def _verify_payload(game):
+    """Misma configuración de verificación que usa la tienda (heredada de
+    Inefablestore): Free Fire contra /store/player/verify y Blood Strike
+    contra su ruta hermana. Aquí solo se dice si aplica y a qué endpoint;
+    el front hace el resto igual que en el checkout."""
+    disabled = {'enabled': False, 'endpoint': '', 'numeric_only': False}
+    if not game:
+        return disabled
+
+    slug = (game.category.slug if game.category else '') or ''
+    input_type = (game.player_id_input_type or 'numeric').lower()
+    numeric_only = input_type == 'numeric' and slug.lower() not in ('wallet', 'tarjetas')
+
+    ff_game_id = _setting('active_login_game_id')
+    bs_game_id = _setting('bs_package_id')
+    is_ff = bool(ff_game_id) and ff_game_id == str(game.id)
+    is_bs = bool(bs_game_id) and bs_game_id == str(game.id)
+    scrape_enabled = bool(current_app.config.get('SCRAPE_ENABLED', True))
+
+    if not (scrape_enabled and numeric_only and (is_ff or is_bs)):
+        return disabled
+    return {
+        'enabled': True,
+        'endpoint': '/store/player/verify/bloodstrike' if is_bs else '/store/player/verify',
+        'numeric_only': True,
     }
 
 
@@ -85,11 +120,6 @@ def validate():
     # equivocó un par de veces antes de dar con el correcto.
     clear_attempts(ip)
 
-    active_login_game_id = (
-        Setting.query.filter_by(key='active_login_game_id').first()
-    )
-    verify_game_id = (active_login_game_id.value if active_login_game_id else '') or ''
-
     return jsonify({
         'ok': True,
         'code': format_code(gift.code),
@@ -99,7 +129,7 @@ def validate():
             'image': package.image or None,
         },
         'game': _game_payload(game),
-        'can_verify_id': bool(verify_game_id and str(game.id) == str(verify_game_id)),
+        'verify': _verify_payload(game),
     })
 
 
@@ -166,7 +196,9 @@ def history():
     if len(player_id) > 100:
         return jsonify({'ok': False, 'message': 'Ese ID no es válido.'}), 400
 
-    canjes = get_redemption_history(player_id)
+    # Se traen holgados: el historial se pagina en el front, así que 20
+    # se quedaba corto en cuanto alguien acumula canjes.
+    canjes = get_redemption_history(player_id, limit=200)
     return jsonify({
         'ok': True,
         'player_id': player_id,

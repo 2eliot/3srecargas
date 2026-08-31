@@ -36,9 +36,13 @@
             </div>
 
             <label class="rdm-label" for="rdmPlayerId" id="rdmPlayerLabel">Tu ID de jugador</label>
-            <input type="text" id="rdmPlayerId" class="glass-input"
-                   placeholder="Ingresa tu ID" autocomplete="off" maxlength="60" inputmode="numeric">
-            <p class="rdm-nick" id="rdmNick" hidden></p>
+            <div class="nx-player-row">
+                <input type="text" id="rdmPlayerId" class="glass-input"
+                       placeholder="Ingresa tu ID" autocomplete="off" maxlength="60" inputmode="numeric">
+                <button type="button" class="verify-btn glass-subpanel" id="rdmVerifyBtn"
+                        style="display:none">Esperando ID</button>
+            </div>
+            <p class="player-nickname rdm-nick" id="rdmNick" style="display:none"></p>
 
             <div id="rdmZoneWrap" hidden>
                 <label class="rdm-label" for="rdmZoneId" id="rdmZoneLabel">Zone ID</label>
@@ -89,6 +93,11 @@
             </div>
             <p class="rdm-feedback" id="rdmHistoryFeedback" aria-live="polite"></p>
             <div class="rdm-history-list" id="rdmHistoryList"></div>
+            <div class="rdm-history-pager" id="rdmHistoryPager" hidden>
+                <button type="button" class="rdm-pager-btn" id="rdmHistoryPrev" aria-label="Anterior">‹</button>
+                <span class="rdm-pager-info" id="rdmHistoryPageInfo">1 / 1</span>
+                <button type="button" class="rdm-pager-btn" id="rdmHistoryNext" aria-label="Siguiente">›</button>
+            </div>
         </div>
     </div>
 
@@ -112,6 +121,7 @@
     var zoneInput = document.getElementById('rdmZoneId');
     var zoneLabel = document.getElementById('rdmZoneLabel');
     var nickEl = document.getElementById('rdmNick');
+    var verifyBtn = document.getElementById('rdmVerifyBtn');
     var redeemBtn = document.getElementById('rdmRedeemBtn');
     var changeCodeBtn = document.getElementById('rdmChangeCodeBtn');
 
@@ -199,9 +209,10 @@
                     zoneWrap.hidden = true;
                 }
 
+                configurarVerificacion(data);
+
                 stepCode.hidden = true;
                 stepPlayer.hidden = false;
-                nickEl.hidden = true;
                 setFeedback(playerFeedback, '');
                 playerInput.focus();
             })
@@ -213,26 +224,193 @@
 
     checkBtn.addEventListener('click', validarCodigo);
 
-    /* Verificación del nick, solo en el juego que la tiene disponible. */
-    var verifyTimer = null;
+    /* ── Verificación del ID (mismo sistema que la tienda) ──────────────
+       Portado tal cual del checkout: cache en localStorage compartido con
+       la tienda, rebote de 900 ms, aborto de la petición anterior y sello
+       de secuencia para que una respuesta vieja no pise a la nueva. */
+    var verifyState = {
+        verifying: false,
+        verifiedNick: '',
+        lastUidRequested: '',
+        lastUidVerified: '',
+        inflightController: null,
+        verifyTimer: null,
+        requestSeq: 0,
+        enabled: false,
+        endpoint: '/store/player/verify',
+        numericOnly: true,
+        gameId: null
+    };
+
+    function verifyCacheKey(uid) {
+        return 'ffnick:' + String(uid || '').trim();
+    }
+    function getVerifyCachedNick(uid) {
+        try { return (localStorage.getItem(verifyCacheKey(uid)) || '').toString().trim(); } catch (_) { return ''; }
+    }
+    function setVerifyCachedNick(uid, nick) {
+        try { localStorage.setItem(verifyCacheKey(uid), (nick || '').toString()); } catch (_) {}
+    }
+
+    function setNickUIOk(nick) {
+        verifyState.verifiedNick = nick || '';
+        if (!nick) return;
+        nickEl.style.color = '#22c55e';
+        nickEl.textContent = 'Nick: ' + nick;
+        nickEl.style.display = 'block';
+        verifyBtn.textContent = 'Verificado';
+        verifyBtn.disabled = true;
+    }
+    function setNickUILoading() {
+        nickEl.style.color = '#94a3b8';
+        nickEl.textContent = 'Verificando...';
+        nickEl.style.display = 'block';
+        verifyBtn.textContent = 'Verificando...';
+        verifyBtn.disabled = true;
+    }
+    function setNickUIErr(msg) {
+        verifyState.verifiedNick = '';
+        nickEl.style.color = '#fca5a5';
+        nickEl.textContent = msg || 'No se pudo verificar';
+        nickEl.style.display = 'block';
+        // Habilitado a propósito: a veces el ID todavía no está indexado del
+        // lado del proveedor y basta con reintentar en unos segundos.
+        verifyBtn.textContent = 'Reintentar';
+        verifyBtn.disabled = false;
+    }
+    function resetNickUI() {
+        verifyState.verifiedNick = '';
+        verifyState.lastUidVerified = '';
+        nickEl.textContent = '';
+        nickEl.style.display = 'none';
+        verifyBtn.textContent = 'Esperando ID';
+        verifyBtn.disabled = true;
+    }
+
+    function cancelarVerificacion() {
+        if (verifyState.verifyTimer) {
+            clearTimeout(verifyState.verifyTimer);
+            verifyState.verifyTimer = null;
+        }
+        if (verifyState.inflightController) {
+            try { verifyState.inflightController.abort(); } catch (_) {}
+            verifyState.inflightController = null;
+        }
+        verifyState.verifying = false;
+        verifyState.lastUidRequested = '';
+    }
+
+    /* Ajusta el bloque de verificación al juego del código validado. */
+    function configurarVerificacion(data) {
+        cancelarVerificacion();
+        var cfg = (data && data.verify) || {};
+        verifyState.enabled = !!cfg.enabled;
+        verifyState.endpoint = cfg.endpoint || '/store/player/verify';
+        verifyState.numericOnly = cfg.numeric_only !== false;
+        verifyState.gameId = data && data.game ? String(data.game.id) : null;
+
+        if (verifyState.enabled) {
+            verifyBtn.style.display = '';
+            resetNickUI();
+        } else {
+            verifyBtn.style.display = 'none';
+            verifyState.verifiedNick = '';
+            verifyState.lastUidVerified = '';
+            nickEl.textContent = '';
+            nickEl.style.display = 'none';
+        }
+    }
+
+    function scheduleAutoVerify(delayMs) {
+        if (!verifyState.enabled) return;
+        if (verifyState.verifyTimer) {
+            clearTimeout(verifyState.verifyTimer);
+            verifyState.verifyTimer = null;
+        }
+        var uid = (playerInput.value || '').trim();
+        if (!uid) {
+            if (verifyState.inflightController) {
+                try { verifyState.inflightController.abort(); } catch (_) {}
+                verifyState.inflightController = null;
+            }
+            resetNickUI();
+            return;
+        }
+        verifyState.verifyTimer = setTimeout(verificarId, delayMs);
+    }
+
+    function verificarId() {
+        if (!verifyState.enabled) return;
+        var uid = (playerInput.value || '').trim();
+        if (!uid) { setNickUIErr('Ingresa tu ID'); return; }
+        if (verifyState.numericOnly && !/^\d+$/.test(uid)) { setNickUIErr('El ID debe ser numérico'); return; }
+        if (uid === verifyState.lastUidRequested && verifyState.verifying) return;
+
+        var cached = getVerifyCachedNick(uid);
+        if (cached) {
+            verifyState.lastUidVerified = uid;
+            setNickUIOk(cached);
+            return;
+        }
+
+        if (verifyState.inflightController) {
+            try { verifyState.inflightController.abort(); } catch (_) {}
+            verifyState.inflightController = null;
+        }
+        verifyState.inflightController = new AbortController();
+        verifyState.lastUidRequested = uid;
+        verifyState.verifying = true;
+        verifyState.requestSeq += 1;
+        var requestSeq = verifyState.requestSeq;
+
+        setNickUILoading();
+
+        var url = verifyState.endpoint +
+            '?gid=' + encodeURIComponent(verifyState.gameId || '') +
+            '&uid=' + encodeURIComponent(uid);
+
+        fetch(url, {signal: verifyState.inflightController.signal})
+            .then(function (res) {
+                return res.json().then(function (data) {
+                    if (requestSeq !== verifyState.requestSeq || uid !== verifyState.lastUidRequested) return;
+                    if (!res.ok || !data || !data.ok) throw new Error((data && data.error) || 'No se pudo verificar');
+                    var nick = (data.nick || '').toString().trim();
+                    if (!nick) throw new Error('ID no encontrado');
+                    setVerifyCachedNick(uid, nick);
+                    verifyState.lastUidVerified = uid;
+                    setNickUIOk(nick);
+                });
+            })
+            .catch(function (e) {
+                if (e && e.name === 'AbortError') return;
+                if (requestSeq !== verifyState.requestSeq) return;
+                setNickUIErr((e && e.message) ? e.message : 'No se pudo verificar');
+                setVerifyCachedNick(uid, '');
+            })
+            .finally(function () {
+                if (requestSeq !== verifyState.requestSeq) return;
+                verifyState.verifying = false;
+            });
+    }
+
+    verifyBtn.addEventListener('click', function () { verificarId(); });
+
     playerInput.addEventListener('input', function () {
-        nickEl.hidden = true;
         setFeedback(playerFeedback, '');
-        if (!validated || !validated.can_verify_id) return;
-        var uid = playerInput.value.trim();
-        if (verifyTimer) clearTimeout(verifyTimer);
-        if (!/^\d{6,}$/.test(uid)) return;
-        verifyTimer = setTimeout(function () {
-            fetch('/store/player/verify?uid=' + encodeURIComponent(uid) + '&gid=' + encodeURIComponent(validated.game.id))
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    if (data && data.ok && data.nick) {
-                        nickEl.textContent = '✓ ' + data.nick;
-                        nickEl.hidden = false;
-                    }
-                })
-                .catch(function () { /* si falla, se canjea igual */ });
-        }, 500);
+        if (verifyState.enabled && verifyState.numericOnly) {
+            var limpio = String(playerInput.value || '').replace(/\D+/g, '');
+            if (playerInput.value !== limpio) playerInput.value = limpio;
+        }
+        if (!verifyState.enabled) return;
+        if (!(playerInput.value || '').trim()) { resetNickUI(); return; }
+        resetNickUI();
+        scheduleAutoVerify(900);
+    });
+
+    playerInput.addEventListener('blur', function () {
+        var uid = (playerInput.value || '').trim();
+        if (!uid || uid === verifyState.lastUidVerified) return;
+        scheduleAutoVerify(0);
     });
 
     playerInput.addEventListener('keydown', function (evt) {
@@ -261,7 +439,7 @@
             code: validated.code,
             player_id: playerId,
             zone_id: zoneId,
-            nickname: nickEl.hidden ? '' : nickEl.textContent.replace('✓ ', '')
+            nickname: verifyState.verifiedNick || ''
         })
             .then(function (data) {
                 stepPlayer.hidden = true;
@@ -293,6 +471,8 @@
 
     changeCodeBtn.addEventListener('click', function () {
         validated = null;
+        cancelarVerificacion();
+        resetNickUI();
         stepPlayer.hidden = true;
         stepCode.hidden = false;
         codeInput.value = '';
@@ -303,6 +483,8 @@
 
     document.getElementById('rdmAnotherBtn').addEventListener('click', function () {
         validated = null;
+        cancelarVerificacion();
+        resetNickUI();
         stepDone.hidden = true;
         stepCode.hidden = false;
         codeInput.value = '';
@@ -317,6 +499,62 @@
     var histId = document.getElementById('rdmHistoryId');
     var histList = document.getElementById('rdmHistoryList');
     var histFeedback = document.getElementById('rdmHistoryFeedback');
+    var histPager = document.getElementById('rdmHistoryPager');
+    var histPageInfo = document.getElementById('rdmHistoryPageInfo');
+    var histPrev = document.getElementById('rdmHistoryPrev');
+    var histNext = document.getElementById('rdmHistoryNext');
+
+    var HIST_PAGE_SIZE = 5;   // los canjes se acumulan: se muestran de a poco
+    var histItems = [];
+    var histPage = 1;
+
+    function histTotalPages() {
+        return Math.max(1, Math.ceil(histItems.length / HIST_PAGE_SIZE));
+    }
+
+    function pintarHistorial() {
+        var totalPages = histTotalPages();
+        if (histPage > totalPages) histPage = totalPages;
+        if (histPage < 1) histPage = 1;
+
+        if (!histItems.length) {
+            histList.innerHTML = '<p class="rdm-history-empty">No hay canjes con ese ID.</p>';
+            histPager.hidden = true;
+            return;
+        }
+
+        var inicio = (histPage - 1) * HIST_PAGE_SIZE;
+        histList.innerHTML = histItems.slice(inicio, inicio + HIST_PAGE_SIZE).map(function (item) {
+            return '' +
+                '<div class="rdm-history-item">' +
+                    '<div class="rdm-history-main">' +
+                        '<strong>' + esc(item.package) + '</strong>' +
+                        '<small>' + esc(item.game) + ' · ' + esc(item.date) + '</small>' +
+                    '</div>' +
+                    '<span class="rdm-history-tag ' + (item.delivered ? 'is-ok' : 'is-wait') + '">' +
+                        (item.delivered ? 'Entregado' : 'En proceso') +
+                    '</span>' +
+                '</div>';
+        }).join('');
+
+        // Con una sola página el paginador solo estorba.
+        histPager.hidden = totalPages < 2;
+        histPageInfo.textContent = histPage + ' / ' + totalPages;
+        histPrev.disabled = histPage <= 1;
+        histNext.disabled = histPage >= totalPages;
+    }
+
+    function irAPagina(delta) {
+        var totalPages = histTotalPages();
+        var destino = histPage + delta;
+        if (destino < 1 || destino > totalPages) return;
+        histPage = destino;
+        pintarHistorial();
+        histModal.querySelector('.rdm-modal-card').scrollTop = 0;
+    }
+
+    histPrev.addEventListener('click', function () { irAPagina(-1); });
+    histNext.addEventListener('click', function () { irAPagina(1); });
 
     function abrirHistorial() {
         histModal.hidden = false;
@@ -347,28 +585,18 @@
         }
         setFeedback(histFeedback, 'Buscando...');
         histList.innerHTML = '';
+        histPager.hidden = true;
 
         postJson('{{ url_for("redeem_bp.history") }}', {player_id: pid})
             .then(function (data) {
                 setFeedback(histFeedback, '');
-                if (!data.items.length) {
-                    histList.innerHTML = '<p class="rdm-history-empty">No hay canjes con ese ID.</p>';
-                    return;
-                }
-                histList.innerHTML = data.items.map(function (item) {
-                    return '' +
-                        '<div class="rdm-history-item">' +
-                            '<div class="rdm-history-main">' +
-                                '<strong>' + esc(item.package) + '</strong>' +
-                                '<small>' + esc(item.game) + ' · ' + esc(item.date) + '</small>' +
-                            '</div>' +
-                            '<span class="rdm-history-tag ' + (item.delivered ? 'is-ok' : 'is-wait') + '">' +
-                                (item.delivered ? 'Entregado' : 'En proceso') +
-                            '</span>' +
-                        '</div>';
-                }).join('');
+                histItems = data.items || [];
+                histPage = 1;
+                pintarHistorial();
             })
             .catch(function (err) {
+                histItems = [];
+                histPager.hidden = true;
                 setFeedback(histFeedback, err.message, 'is-error');
             });
     }

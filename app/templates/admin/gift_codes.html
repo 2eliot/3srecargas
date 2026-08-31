@@ -104,10 +104,19 @@
 
 <div class="admin-card">
     <div class="card-header">
-        <h3>
-            Códigos
-            {% if batch_filter %}<span class="badge badge-active">{{ batch_filter }}</span>{% endif %}
-        </h3>
+        <div>
+            <h3>
+                Códigos
+                {% if batch_filter %}<span class="badge badge-active">{{ batch_filter }}</span>{% endif %}
+            </h3>
+            <p class="form-hint">
+                {% if total_filtered %}
+                Mostrando {{ start_index }}-{{ end_index }} de {{ total_filtered }} códigos.
+                {% else %}
+                No hay códigos para mostrar.
+                {% endif %}
+            </p>
+        </div>
         <div class="action-btns">
             <a href="{{ url_for('admin_bp.gift_codes_export', batch=batch_filter or None) }}"
                class="btn-sm btn-outline">Descargar sin usar (.txt)</a>
@@ -190,6 +199,35 @@
             </tbody>
         </table>
     </div>
+
+    {% if total_pages > 1 %}
+    <div class="orders-pagination">
+        <a class="orders-pagination-link {% if current_page == 1 %}is-disabled{% endif %}"
+           href="{% if current_page > 1 %}{{ url_for('admin_bp.gift_codes', page=current_page - 1, status=status_filter or None, batch=batch_filter or None, game_id=game_id or None) }}{% else %}#{% endif %}">Anterior</a>
+
+        {% if page_numbers[0] > 1 %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.gift_codes', page=1, status=status_filter or None, batch=batch_filter or None, game_id=game_id or None) }}">1</a>
+        {% if page_numbers[0] > 2 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        {% endif %}
+
+        {% for page_number in page_numbers %}
+        <a class="orders-pagination-link {% if page_number == current_page %}is-active{% endif %}"
+           href="{{ url_for('admin_bp.gift_codes', page=page_number, status=status_filter or None, batch=batch_filter or None, game_id=game_id or None) }}">{{ page_number }}</a>
+        {% endfor %}
+
+        {% if page_numbers[-1] < total_pages %}
+        {% if page_numbers[-1] < total_pages - 1 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.gift_codes', page=total_pages, status=status_filter or None, batch=batch_filter or None, game_id=game_id or None) }}">{{ total_pages }}</a>
+        {% endif %}
+
+        <a class="orders-pagination-link {% if current_page == total_pages %}is-disabled{% endif %}"
+           href="{% if current_page < total_pages %}{{ url_for('admin_bp.gift_codes', page=current_page + 1, status=status_filter or None, batch=batch_filter or None, game_id=game_id or None) }}{% else %}#{% endif %}">Siguiente</a>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
 
