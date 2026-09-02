@@ -19,6 +19,7 @@ from ..utils.availability import (
 )
 from ..utils.points import package_points_preview
 from ..utils.timezone import now_ve, ve_day_start_utc_naive
+from ..utils.version import build_version
 from ..utils.push_notifications import get_vapid_public_key, subscribe as push_subscribe, unsubscribe as push_unsubscribe
 
 main_bp = Blueprint('main_bp', __name__)
@@ -474,6 +475,17 @@ def index():
     if not category:
         category = Category.query.filter_by(slug='juegos').first()
 
+    # Enlace directo a un producto: /?juego=free-fire abre la tienda con ese
+    # juego ya seleccionado. La categoría se toma del juego (no del ?cat=)
+    # para que la tarjeta esté sí o sí en la grilla que se pinta; si el slug
+    # no existe o el juego está apagado, se entra a la tienda normal.
+    game_slug = (request.args.get('juego') or '').strip().lower()
+    preselect_game = None
+    if game_slug:
+        preselect_game = Game.query.filter_by(slug=game_slug, is_active=True).first()
+        if preselect_game and preselect_game.category:
+            category = preselect_game.category
+
     games = _get_games_for_category(category)
     categories = Category.query.all()
     payment_methods = (
@@ -543,6 +555,7 @@ def index():
         community_popup_enabled=community_popup_enabled,
         community_popup_interval_hours=community_popup_interval_hours,
         community_popup_whatsapp_url=community_popup_whatsapp_url,
+        preselect_game_slug=(preselect_game.slug if preselect_game else ''),
     )
 
 
@@ -685,6 +698,21 @@ def api_rankings():
     archive_previous_month_rankings_if_needed()
     rankings = get_public_rankings_payload()
     return jsonify({'rankings': rankings})
+
+
+@main_bp.route('/api/version')
+def api_version():
+    """Versión desplegada del sitio.
+
+    La consulta el navegador cuando vuelve a una pestaña que llevaba horas
+    abierta: si no coincide con la que cargó, esa pestaña está vieja y se
+    recarga sola (solo si no hay nada a medio llenar).
+    """
+    response = jsonify({'version': build_version()})
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 @main_bp.route('/sw.js')

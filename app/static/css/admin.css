@@ -1502,3 +1502,21 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
     white-space: nowrap;
 }
 .text-muted { color: var(--text-muted); font-size: 11.5px; }
+
+/* Celda "Canjeado por": ID, nombre del jugador y el botón que lo busca. */
+.gift-redeemer {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+.gift-nick {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.gift-nick.is-ok { color: #4ade80; }
+.gift-nick.is-error { color: #fca5a5; font-weight: 500; }
+.gift-nick.is-loading { color: var(--text-muted); font-weight: 500; }
+.gift-verify-btn { white-space: nowrap; }
+.gift-redeemer-date { font-size: 11px; }

@@ -36,34 +36,20 @@ def _set_setting(key, value, description=""):
     db.session.commit()
 
 
-# ── Free Fire verification (same path as Inefable: /store/player/verify) ─────
+# ── Verificación compartida ──────────────────────────────────────────────────
 
-@verify_bp.route('/store/player/verify')
-def store_player_verify():
-    if not current_app.config.get('SCRAPE_ENABLED', True):
-        return jsonify({"ok": False, "error": "Verificación deshabilitada"}), 403
-
-    uid = (request.args.get("uid") or "").strip()
-    gid_raw = (request.args.get("gid") or "").strip()
-    if not uid or not uid.isdigit():
-        return jsonify({"ok": False, "error": "ID inválido"}), 400
-    if not gid_raw or not gid_raw.isdigit():
-        return jsonify({"ok": False, "error": "Juego inválido"}), 400
-
-    active_login_game_id = (_get_setting("active_login_game_id", "") or "").strip()
-    if not active_login_game_id or active_login_game_id != gid_raw:
-        return jsonify({"ok": False, "error": "Verificación no disponible para este juego"}), 403
-
+def _verify_free_fire(uid, gid_raw):
+    """Free Fire contra la API verify-name de Revendedores. (payload, status)."""
     game = Game.query.get(int(gid_raw))
     if not game or not game.is_active:
-        return jsonify({"ok": False, "error": "Juego no encontrado"}), 404
+        return {"ok": False, "error": "Juego no encontrado"}, 404
 
     cache_key = f"ffid_verify:{uid}"
     cached = _player_cache_get(cache_key)
     if cached is not None:
         if not cached:
-            return jsonify({"ok": False, "error": "ID no encontrado"}), 404
-        return jsonify({"ok": True, "uid": uid, "nick": cached, "cached": True})
+            return {"ok": False, "error": "ID no encontrado"}, 404
+        return {"ok": True, "uid": uid, "nick": cached, "cached": True}, 200
 
     # Fuente principal: API verify-name de Revendedores (verificación real
     # contra Hype, mismo sistema que Inefablestore). FFMania quedó solo como
@@ -87,49 +73,102 @@ def store_player_verify():
         if not nick:
             # Con Revendedores caído, el "no encontrado" de FFMania no es
             # confiable (captcha/índice incompleto): no cachear negativo.
-            return jsonify({"ok": False, "error": "No se pudo verificar el ID"}), 502
+            return {"ok": False, "error": "No se pudo verificar el ID"}, 502
         _player_cache_set(cache_key, nick, ttl_seconds=600)
-        return jsonify({"ok": True, "uid": uid, "nick": nick, "cached": False})
+        return {"ok": True, "uid": uid, "nick": nick, "cached": False}, 200
 
     if not nick:
         # El 404 de Hype es autoritativo (a diferencia de FFMania), pero se
         # cachea corto por si fue una rareza transitoria del bot.
         _player_cache_set(cache_key, nick, ttl_seconds=45)
-        return jsonify({"ok": False, "error": "ID no encontrado"}), 404
+        return {"ok": False, "error": "ID no encontrado"}, 404
     _player_cache_set(cache_key, nick, ttl_seconds=600)
-    return jsonify({"ok": True, "uid": uid, "nick": nick, "cached": False})
+    return {"ok": True, "uid": uid, "nick": nick, "cached": False}, 200
+
+
+def _verify_bloodstrike(uid, gid_raw):
+    """Blood Strike contra Smile.One. (payload, status)."""
+    cache_key = f"bs_smileone:{uid}"
+    cached = _player_cache_get(cache_key)
+    if cached is not None:
+        if not cached:
+            return {"ok": False, "error": "ID no encontrado"}, 404
+        return {"ok": True, "uid": uid, "nick": cached, "cached": True}, 200
+
+    bs_server_id = (_get_setting("bs_server_id", "-1") or "-1").strip()
+    nick = scrape_smileone_bloodstrike_nick(uid, gid_raw, bs_server_id)
+
+    _player_cache_set(cache_key, nick, ttl_seconds=600)
+    if not nick:
+        return {"ok": False, "error": "ID no encontrado"}, 404
+    return {"ok": True, "uid": uid, "nick": nick, "cached": False}, 200
+
+
+def verify_player_nick(uid, gid_raw, mode='auto'):
+    """Verifica un ID de jugador y devuelve (payload, status) listo para JSON.
+
+    Es el mismo camino que usa la tienda; se comparte para que el panel pueda
+    verificar el ID de un canje sin duplicar la lógica ni la caché. `mode`
+    acota a quién le responde: las rutas públicas atienden solo a su juego
+    ('ff' o 'bs') y 'auto' deja que lo decida la configuración, que es lo que
+    necesita el admin cuando solo sabe de qué juego era el premio.
+    """
+    if not current_app.config.get('SCRAPE_ENABLED', True):
+        return {"ok": False, "error": "Verificación deshabilitada"}, 403
+
+    uid = (uid or "").strip()
+    gid_raw = (gid_raw or "").strip()
+    if not uid or not uid.isdigit():
+        return {"ok": False, "error": "ID inválido"}, 400
+    if not gid_raw or not gid_raw.isdigit():
+        return {"ok": False, "error": "Juego inválido"}, 400
+
+    ff_game_id = (_get_setting("active_login_game_id", "") or "").strip()
+    bs_game_id = (_get_setting("bs_package_id", "") or "").strip()
+    is_ff = mode in ('ff', 'auto') and bool(ff_game_id) and ff_game_id == gid_raw
+    is_bs = mode in ('bs', 'auto') and bool(bs_game_id) and bs_game_id == gid_raw
+
+    if is_ff:
+        return _verify_free_fire(uid, gid_raw)
+    if is_bs:
+        return _verify_bloodstrike(uid, gid_raw)
+    return {"ok": False, "error": "Verificación no disponible para este juego"}, 403
+
+
+def verifiable_game_ids():
+    """Juegos con verificación de ID configurada (Free Fire / Blood Strike).
+
+    El panel la usa para pintar el botón "Verificar ID" solo donde hay a
+    quién preguntarle el nombre.
+    """
+    if not current_app.config.get('SCRAPE_ENABLED', True):
+        return set()
+    ids = set()
+    for key in ("active_login_game_id", "bs_package_id"):
+        val = (_get_setting(key, "") or "").strip()
+        if val.isdigit():
+            ids.add(int(val))
+    return ids
+
+
+# ── Free Fire verification (same path as Inefable: /store/player/verify) ─────
+
+@verify_bp.route('/store/player/verify')
+def store_player_verify():
+    payload, status = verify_player_nick(
+        request.args.get("uid"), request.args.get("gid"), mode='ff'
+    )
+    return jsonify(payload), status
 
 
 # ── Blood Strike verification (same path: /store/player/verify/bloodstrike) ──
 
 @verify_bp.route('/store/player/verify/bloodstrike')
 def store_player_verify_bloodstrike():
-    if not current_app.config.get('SCRAPE_ENABLED', True):
-        return jsonify({"ok": False, "error": "Verificación deshabilitada"}), 403
-
-    uid = (request.args.get("uid") or "").strip()
-    gid_raw = (request.args.get("gid") or "").strip()
-    if not uid or not uid.isdigit():
-        return jsonify({"ok": False, "error": "ID inválido"}), 400
-
-    bs_package_id = (_get_setting("bs_package_id", "") or "").strip()
-    if not bs_package_id or bs_package_id != gid_raw:
-        return jsonify({"ok": False, "error": "Verificación no disponible para este juego"}), 403
-
-    cache_key = f"bs_smileone:{uid}"
-    cached = _player_cache_get(cache_key)
-    if cached is not None:
-        if not cached:
-            return jsonify({"ok": False, "error": "ID no encontrado"}), 404
-        return jsonify({"ok": True, "uid": uid, "nick": cached, "cached": True})
-
-    bs_server_id = (_get_setting("bs_server_id", "-1") or "-1").strip()
-    nick = scrape_smileone_bloodstrike_nick(uid, bs_package_id, bs_server_id)
-
-    _player_cache_set(cache_key, nick, ttl_seconds=600)
-    if not nick:
-        return jsonify({"ok": False, "error": "ID no encontrado"}), 404
-    return jsonify({"ok": True, "uid": uid, "nick": nick, "cached": False})
+    payload, status = verify_player_nick(
+        request.args.get("uid"), request.args.get("gid"), mode='bs'
+    )
+    return jsonify(payload), status
 
 
 # ── Admin config endpoints (mirror Inefable's admin config routes) ───────────

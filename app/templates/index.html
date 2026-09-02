@@ -44,6 +44,7 @@
                     {% for game in games %}
                     <div class="game-card {% if game.is_automated %}is-automated{% endif %}"
                          data-game-id="{{ game.id }}"
+                         data-game-slug="{{ game.slug }}"
                          data-game-name="{{ game.name }}">
                         <div class="game-img-wrapper">
                             {% if game.image %}
@@ -512,6 +513,7 @@
 {% block extra_js %}
 <script>
     window.ACTIVE_CATEGORY = "{{ active_category.slug }}";
+    window.PRESELECT_GAME = {{ (preselect_game_slug or '')|tojson }};
     window.USD_RATE_BS = {{ usd_rate|default(0)|safe }};
     window.DEFAULT_PACKAGE_ID = {{ default_package_id if default_package_id is not none else 'null'|safe }};
     window.NX_BINANCE_AUTO = {{ 'true' if binance_auto_enabled else 'false' }};

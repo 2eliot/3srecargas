@@ -172,8 +172,16 @@
                     </td>
                     <td data-label="Canjeado por">
                         {% if gc.is_used %}
-                        {{ gc.used_player_id }}{% if gc.used_nickname %}<br><span class="text-muted">{{ gc.used_nickname }}</span>{% endif %}
-                        <br><span class="text-muted">{{ gc.used_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
+                        <div class="gift-redeemer" data-code-id="{{ gc.id }}">
+                            <code class="ref-code">{{ gc.used_player_id }}</code>
+                            <span class="gift-nick" {% if not gc.used_nickname %}hidden{% endif %}>{{ gc.used_nickname or '' }}</span>
+                            {% if gc.package and gc.package.game and gc.package.game.id in verify_game_ids %}
+                            <button type="button" class="btn-sm btn-outline gift-verify-btn">
+                                {{ 'Actualizar nombre' if gc.used_nickname else 'Verificar ID' }}
+                            </button>
+                            {% endif %}
+                            <span class="text-muted gift-redeemer-date">{{ gc.used_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
+                        </div>
                         {% else %}—{% endif %}
                     </td>
                     <td data-label="Orden">
@@ -255,6 +263,50 @@
             opt.value = p.id;
             opt.textContent = p.name + ' — $' + p.price;
             packageSelect.appendChild(opt);
+        });
+    });
+})();
+
+// "Verificar ID": pregunta al mismo verificador que usa la tienda quién es
+// el dueño del ID con el que se canjeó el código y guarda el nombre, para
+// que la próxima vez ya salga escrito sin volver a pedirlo.
+(function () {
+    document.querySelectorAll('.gift-redeemer').forEach(function (fila) {
+        var btn = fila.querySelector('.gift-verify-btn');
+        if (!btn) return;
+        var nickEl = fila.querySelector('.gift-nick');
+
+        btn.addEventListener('click', function () {
+            var etiquetaPrevia = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Verificando…';
+            nickEl.hidden = false;
+            nickEl.className = 'gift-nick is-loading';
+            nickEl.textContent = 'Consultando…';
+
+            fetch('/admin/gift-codes/' + fila.dataset.codeId + '/verify-id', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+                .then(function (r) {
+                    return r.json().catch(function () {
+                        throw new Error('No se pudo contactar al servidor.');
+                    }).then(function (data) {
+                        if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo verificar.');
+                        return data;
+                    });
+                })
+                .then(function (data) {
+                    nickEl.className = 'gift-nick is-ok';
+                    nickEl.textContent = data.nick || '';
+                    btn.textContent = 'Actualizar nombre';
+                })
+                .catch(function (err) {
+                    nickEl.className = 'gift-nick is-error';
+                    nickEl.textContent = err.message;
+                    btn.textContent = etiquetaPrevia;
+                })
+                .finally(function () { btn.disabled = false; });
         });
     });
 })();

@@ -7,6 +7,7 @@ from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
 from .models import db, AdminUser, User, Category, Discount, Setting, Affiliate
 from .utils.timezone import VENEZUELA_TIMEZONE, format_ve
+from .utils.version import build_version
 from config import Config
 
 login_manager = LoginManager()
@@ -149,6 +150,21 @@ def create_app(config_class=Config):
                 version = 0
             static_version_cache[filename] = version
         return f"{url_for('static', filename=filename)}?v={version}"
+
+    app.add_template_global(build_version, 'app_version')
+
+    @app.after_request
+    def _no_cachear_html(response):
+        """El HTML siempre se revalida contra el servidor.
+
+        El CSS/JS ya se cachea bien (van con ?v=mtime), pero si el navegador
+        se queda con el HTML viejo apunta a los archivos viejos y el cliente
+        sigue viendo la tienda de la semana pasada. Solo toca text/html: los
+        estáticos y las respuestas JSON conservan sus propias cabeceras.
+        """
+        if response.mimetype == 'text/html':
+            response.headers.setdefault('Cache-Control', 'no-cache, must-revalidate')
+        return response
 
     @app.context_processor
     def inject_settings():

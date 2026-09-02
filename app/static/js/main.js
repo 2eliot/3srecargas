@@ -4,6 +4,7 @@
     'use strict';
 
     var activeGameId   = null;
+    var activeGameSlug = '';
     var activeCategory = window.ACTIVE_CATEGORY || 'juegos';
     var currentGame    = null;
     var selectedPackage = null;
@@ -219,6 +220,7 @@
             activeCategory = cat;
 
             closePackages();
+            updateCategoryUrl(cat);
             loadGames(cat);
         });
     });
@@ -1042,6 +1044,45 @@
         syncPhoneHiddenValue();
     }
 
+    /* ── Enlace directo al juego ──────────────────────────────
+       Al elegir un producto la barra de direcciones pasa a /?juego=<slug>:
+       se copia de ahí como cualquier enlace y el que la abra entra con ese
+       juego ya seleccionado. También hace que recargar no pierda la
+       selección. replaceState y no pushState: cada tarjeta tocada no debe
+       convertirse en un paso más del botón "atrás" del teléfono. */
+    function gameShareUrl(slug) {
+        var url = new URL(window.location.href);
+        // El juego ya dice a qué categoría pertenece; el ?cat= solo estorba.
+        url.searchParams.delete('cat');
+        if (slug) {
+            url.searchParams.set('juego', slug);
+        } else {
+            url.searchParams.delete('juego');
+        }
+        return url.toString();
+    }
+
+    function updateCategoryUrl(slug) {
+        // Sin juego abierto, lo que vale la pena conservar en el enlace es
+        // la pestaña de categoría que se está mirando.
+        try {
+            var url = new URL(window.location.href);
+            url.searchParams.delete('juego');
+            if (slug && slug !== 'juegos') {
+                url.searchParams.set('cat', slug);
+            } else {
+                url.searchParams.delete('cat');
+            }
+            window.history.replaceState(null, '', url.toString());
+        } catch (_) {}
+    }
+
+    function updateGameUrl(slug) {
+        try {
+            window.history.replaceState(null, '', gameShareUrl(slug));
+        } catch (_) {}
+    }
+
     /* ── Render Game Cards ────────────────────────────────── */
     function renderGames(games) {
         var grid = document.getElementById('gamesGrid');
@@ -1057,6 +1098,7 @@
             var card = document.createElement('div');
             card.className = 'game-card' + (game.is_automated ? ' is-automated' : '');
             card.dataset.gameId   = game.id;
+            card.dataset.gameSlug = game.slug || '';
             card.dataset.gameName = game.name;
 
             var imgHtml = game.image
@@ -1088,6 +1130,8 @@
         });
         card.classList.add('active');
         activeGameId = gameId;
+        activeGameSlug = card.dataset.gameSlug || '';
+        updateGameUrl(activeGameSlug);
 
         showPackagesPanel(card, card.dataset.gameName);
         fetchPackages(gameId);
@@ -1970,6 +2014,8 @@
         var panel = document.getElementById('packagesPanel');
         if (panel) panel.style.display = 'none';
         activeGameId = null;
+        activeGameSlug = '';
+        updateGameUrl('');
         document.querySelectorAll('.game-card').forEach(function (c) {
             c.classList.remove('active');
         });
@@ -2015,9 +2061,26 @@
         card.addEventListener('click', function () { handleGameClick(card); });
     });
 
-    // Seleccionar automáticamente el primer juego al cargar
+    // Al cargar se abre un juego solo: el que venga en el enlace
+    // (/?juego=<slug>) y, si no vino ninguno, el primero de la fila.
     if (initialCards.length > 0) {
-        handleGameClick(initialCards[0]);
+        var slugPedido = (window.PRESELECT_GAME || '').toString().trim();
+        var cardPedida = null;
+        if (slugPedido) {
+            initialCards.forEach(function (card) {
+                if (!cardPedida && card.dataset.gameSlug === slugPedido) cardPedida = card;
+            });
+        }
+        handleGameClick(cardPedida || initialCards[0]);
+        if (cardPedida && cardPedida.scrollIntoView) {
+            // El juego compartido puede estar fuera de la parte visible del
+            // carrusel: se trae a la vista para que se note cuál se abrió.
+            try {
+                cardPedida.scrollIntoView({block: 'nearest', inline: 'center'});
+            } catch (_) {
+                cardPedida.scrollIntoView();
+            }
+        }
     }
 
     /* ── Affiliate code: auto-uppercase ──────────────────── */

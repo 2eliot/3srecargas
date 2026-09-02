@@ -476,5 +476,10 @@
     
     <!-- Main JS loaded at end of body for DOM readiness -->
     <script src="{{ static_v('js/main.js') }}"></script>
+
+    <!-- Sello del despliegue + vigía que recarga las pestañas que quedaron
+         viejas (nunca en medio de un pago; ver version-watch.js). -->
+    <script>window.APP_VERSION = {{ app_version()|tojson }};</script>
+    <script src="{{ static_v('js/version-watch.js') }}"></script>
 </body>
 </html>

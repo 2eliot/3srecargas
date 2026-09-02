@@ -1287,6 +1287,7 @@ STOCK_PINS_ENDPOINTS = {
     'admin_bp.gift_codes_export',
     'admin_bp.gift_code_toggle',
     'admin_bp.gift_codes_batch_disable',
+    'admin_bp.gift_code_verify_id',
 }
 
 
@@ -1576,9 +1577,15 @@ def gift_codes():
             'price': str(pkg.price),
         })
 
+    # Solo los juegos con verificación configurada (Free Fire / Blood Strike)
+    # muestran el botón: en el resto no hay a quién preguntarle el nombre.
+    from .verify import verifiable_game_ids
+    verify_game_ids = verifiable_game_ids()
+
     return render_template(
         'admin/gift_codes.html',
         codes=codes,
+        verify_game_ids=verify_game_ids,
         current_page=page,
         total_filtered=total_filtered,
         total_pages=total_pages,
@@ -1670,6 +1677,45 @@ def gift_code_toggle(code_id):
             'success' if gift.is_active else 'warning',
         )
     return redirect(request.referrer or url_for('admin_bp.gift_codes'))
+
+
+@admin_bp.route('/gift-codes/<int:code_id>/verify-id', methods=['POST'])
+@login_required
+def gift_code_verify_id(code_id):
+    """Busca el nombre del jugador detrás del ID con el que se canjeó un
+    código y lo deja guardado.
+
+    Los canjes viejos —y los de quien escribió el ID sin esperar a que la
+    tienda lo verificara— quedaron con el número pelado; desde el panel no
+    hay forma de saber a quién se le entregó. Este botón lo resuelve por el
+    mismo camino que usa la tienda, así que el nombre es el real del juego.
+
+    No usa @stock_pins_required a propósito: ese decorador redirige, y aquí
+    responde JSON a un fetch. La clave se comprueba igual, a mano.
+    """
+    from .verify import verify_player_nick
+
+    if not stock_pins_is_unlocked():
+        return jsonify({
+            'ok': False,
+            'error': 'Tu acceso a Stock PINs expiró. Vuelve a ingresar el código.',
+        }), 403
+
+    gift = GiftCode.query.get_or_404(code_id)
+    player_id = (gift.used_player_id or '').strip()
+    if not gift.is_used or not player_id:
+        return jsonify({'ok': False, 'error': 'Ese código todavía no fue canjeado.'}), 400
+
+    game = gift.package.game if gift.package else None
+    if not game:
+        return jsonify({'ok': False, 'error': 'El premio ya no tiene un juego asociado.'}), 400
+
+    payload, status = verify_player_nick(player_id, str(game.id))
+    nick = (payload.get('nick') or '').strip()[:120] if payload.get('ok') else ''
+    if nick and nick != (gift.used_nickname or ''):
+        gift.used_nickname = nick
+        db.session.commit()
+    return jsonify(payload), status
 
 
 @admin_bp.route('/gift-codes/batch-disable', methods=['POST'])
