@@ -1996,6 +1996,15 @@
             }
         }
 
+        // El servidor redondea el descuento de afiliado a centavos (ver
+        // get_checkout_discount_result); si aquí no se hace igual, el total
+        // en Bs sale unos bolívares distinto al de la orden.
+        if ((discount.source || 'discount') === 'affiliate') {
+            amount = Math.round(amount * 100) / 100;
+            if (amount <= 0) amount = 0.01;
+            if (amount > numericPrice) amount = Math.round(numericPrice * 100) / 100;
+        }
+
         if (!(amount > 0)) {
             return null;
         }
