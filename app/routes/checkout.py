@@ -501,12 +501,6 @@ def _parse_seen_amount(raw):
     return value
 
 
-def _format_quote_amount(amount, currency):
-    if currency == 'usd':
-        return '$' + format(float(amount), '.2f')
-    return 'Bs ' + format(int(round(float(amount))), ',').replace(',', '.')
-
-
 def seen_amount_matches_quote(seen_amount, seen_currency, seen_usd, quote):
     """True si lo que mostró el navegador coincide con la cotización actual.
 
@@ -597,49 +591,37 @@ def checkout(package_id):
             if not payment_method:
                 return _init_error('Debes seleccionar un método de pago.')
 
-            # ¿El total que el cliente tiene delante es el de hoy? Una pestaña
-            # abierta hace días lo calculó con la tasa/precios de entonces.
-            # Si no coincide, no se sigue: el navegador refresca el catálogo
-            # y le muestra el monto nuevo antes de que pague.
+            # Se anota si el total que el cliente tiene delante no es el de hoy
+            # (pestaña abierta hace días, o una diferencia de cálculo entre el
+            # navegador y el servidor). Solo se registra: bloquear la compra
+            # con un aviso dejó a clientes sin poder pagar, así que la orden
+            # sigue y se cobra siempre el precio actual del servidor.
             seen_amount = _parse_seen_amount(request.form.get('seen_amount'))
             seen_usd = _parse_seen_amount(request.form.get('seen_usd'))
             if seen_amount is not None or seen_usd is not None:
-                seen_currency = (request.form.get('seen_currency') or 'bs').strip().lower()
-                init_method = PaymentMethod.query.filter_by(code=payment_method.lower()).first()
-                init_binance_auto = (
-                    payment_method.lower() == 'binance'
-                    and is_binance_auto_enabled(current_app._get_current_object())
-                )
-                quote = compute_checkout_quote(
-                    package, game, init_method, usd_rate,
-                    ((aff_code or '').strip()).upper(),
-                    player_id=player_id if not is_wallet else None,
-                    email=player_id if is_wallet else email,
-                    binance_auto=init_binance_auto,
-                )
-                if not seen_amount_matches_quote(seen_amount, seen_currency, seen_usd, quote):
-                    new_label = _format_quote_amount(quote['display_amount'], quote['display_currency'])
-                    current_app.logger.warning(
-                        '[checkout] precio visto distinto al actual: paquete=%s metodo=%s visto=%s %s actual=%s %s',
-                        package.id, payment_method, seen_amount, seen_currency,
-                        quote['display_amount'], quote['display_currency'],
+                try:
+                    seen_currency = (request.form.get('seen_currency') or 'bs').strip().lower()
+                    init_method = PaymentMethod.query.filter_by(code=payment_method.lower()).first()
+                    init_binance_auto = (
+                        payment_method.lower() == 'binance'
+                        and is_binance_auto_enabled(current_app._get_current_object())
                     )
-                    payload = {
-                        'ok': False,
-                        'code': 'price_changed',
-                        'message': (
-                            'Los precios se actualizaron mientras tenías la tienda abierta. '
-                            'El monto de este paquete ahora es ' + new_label + '. '
-                            'Revísalo antes de pagar.'
-                        ),
-                        'new_amount': quote['display_amount'],
-                        'new_currency': quote['display_currency'],
-                        'new_label': new_label,
-                    }
-                    if wants_json:
-                        return jsonify(payload), 409
-                    flash(payload['message'], 'warning')
-                    return redirect(url_for('main_bp.index'))
+                    quote = compute_checkout_quote(
+                        package, game, init_method, usd_rate,
+                        ((aff_code or '').strip()).upper(),
+                        player_id=player_id if not is_wallet else None,
+                        email=player_id if is_wallet else email,
+                        binance_auto=init_binance_auto,
+                    )
+                    if not seen_amount_matches_quote(seen_amount, seen_currency, seen_usd, quote):
+                        current_app.logger.warning(
+                            '[checkout] precio visto distinto al actual: paquete=%s metodo=%s visto=%s %s usd_visto=%s actual=%s %s usd_actual=%.2f codigo=%r',
+                            package.id, payment_method, seen_amount, seen_currency, seen_usd,
+                            quote['display_amount'], quote['display_currency'], quote['final_amount'],
+                            (aff_code or ''),
+                        )
+                except Exception:
+                    current_app.logger.exception('[checkout] no se pudo comparar el precio visto')
 
             category_slug = (game.category.slug if game.category else '').lower()
             tarjetas_without_id = category_slug == 'tarjetas'

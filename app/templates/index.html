@@ -1162,11 +1162,7 @@
                 return res.json().catch(function () { throw new Error('Respuesta inválida del servidor.'); });
             })
             .then(function (data) {
-                if (!data.ok) {
-                    var err = new Error(data.message || 'No se pudo iniciar el pago.');
-                    err.code = data.code || '';
-                    throw err;
-                }
+                if (!data.ok) throw new Error(data.message || 'No se pudo iniciar el pago.');
                 return fetch(actionUrl + '?format=json').then(function (r) { return r.json(); });
             })
             .then(function (data) {
@@ -1222,14 +1218,7 @@
             })
             .catch(function (err) {
                 invalidatePrepared();
-                if (err && err.code === 'price_changed') {
-                    // Repinta paquetes, tasa y total con lo de hoy antes de
-                    // dejar que lo intente otra vez.
-                    if (typeof window.nxRefreshCatalog === 'function') window.nxRefreshCatalog(true);
-                    showToast('⚠️ ' + err.message, 12000);
-                } else {
-                    showToast('⚠️ ' + (err.message || 'Error al confirmar la orden.'));
-                }
+                showToast('⚠️ ' + (err.message || 'Error al confirmar la orden.'));
                 restoreSubmitButton();
             });
     });
