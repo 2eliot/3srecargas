@@ -1294,6 +1294,35 @@
         fetchPackages(activeGameId, { keepSelection: true });
     }
 
+    /* Repinta las tarjetas de juego de la categoría activa sin tocar el
+       panel de paquetes ni la selección: sirve para que una imagen o un
+       juego nuevo aparezcan sin recargar la página. */
+    function refreshGames() {
+        var grid = document.getElementById('gamesGrid');
+        if (!grid) return;
+        var scrollBefore = gamesViewportEl ? gamesViewportEl.scrollLeft : 0;
+        fetch('/api/games?category=' + encodeURIComponent(activeCategory), { cache: 'no-store', credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !Array.isArray(data.games) || !data.games.length) return;
+                renderGames(data.games);
+                if (activeGameId) {
+                    var activeCard = grid.querySelector('.game-card[data-game-id="' + activeGameId + '"]');
+                    if (activeCard) activeCard.classList.add('active');
+                }
+                if (gamesViewportEl) gamesViewportEl.scrollLeft = scrollBefore;
+            })
+            .catch(function () { /* se queda lo que ya se ve */ });
+    }
+
+    /* Refresco en silencio de todo lo que pinta main.js: juegos, paquetes
+       y tasa. Lo llama version-watch.js cuando cambia el sello del
+       catálogo (el admin tocó precios, imágenes, paquetes o la tasa). */
+    function softRefreshCatalog() {
+        refreshGames();
+        refreshCatalog(true);
+    }
+
     document.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'visible') refreshCatalog(false);
     });
@@ -1308,6 +1337,7 @@
     // el servidor responde que el precio cambió.
     window.nxShownTotal = function () { return lastShownTotal; };
     window.nxRefreshCatalog = refreshCatalog;
+    window.nxSoftRefresh = softRefreshCatalog;
 
     /* Texto del aviso de fuera de horario, con las horas que configuró el
        admin (y un respaldo por si el servidor no las mandó). */

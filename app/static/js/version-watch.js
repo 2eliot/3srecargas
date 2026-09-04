@@ -1,28 +1,32 @@
 /* ── 3S Recargas — refresco de pestañas viejas ───────────────────────────
    El problema: la gente deja la tienda abierta en el teléfono y vuelve
-   días después. El navegador no recarga nada solo, así que siguen viendo
+   días después. El navegador no recarga nada solo, así que seguían viendo
    (y usando) la web de cuando la abrieron: diseño, imágenes, paquetes,
    precios y tasa. Chrome en Android ni siquiera la descarta: la pestaña
    queda viva en memoria y la restaura tal cual.
 
-   La regla: cada vez que el cliente vuelve a la pestaña, y además cada
-   5 minutos mientras la tiene delante, se le pregunta al servidor qué
-   versión hay. Si es otra y no hay nada a medio hacer, se recarga. Si el
-   cliente está escribiendo su ID, tiene un paquete elegido, está subiendo
-   el comprobante o tiene un popup abierto, NO se toca: perder un pago a
-   medias es mucho peor que ver la web vieja un rato más. Se vuelve a
-   intentar en el siguiente chequeo.
+   Esquema (el mismo que usa King Recargas): cada 60 s con la pestaña
+   visible, y cada vez que el cliente vuelve a ella, se pregunta al
+   servidor por la versión. Son dos sellos: `deploy.catalogo`.
 
-   La versión incluye el sello del catálogo (precios, tasa, imágenes de
-   juegos y paquetes, métodos de pago, banners), así que un cambio del
-   admin también dispara la recarga, no solo un deploy.
+   - Cambió el CATÁLOGO (el admin tocó precios, tasa, paquetes, imágenes,
+     métodos): se refrescan juegos, paquetes y tasa en silencio, sin
+     recargar y sin perder nada de lo que el cliente tenga escrito. Lo hace
+     main.js (window.nxSoftRefresh). Lo que main.js no repinta (banner,
+     logo, métodos de pago) llega con una recarga completa en cuanto no
+     moleste.
+   - Cambió el DEPLOY (código nuevo): recarga completa, pero solo cuando no
+     haya nada a medio hacer. Si el cliente está escribiendo su ID, tiene
+     un paquete elegido, está subiendo el comprobante o tiene un popup
+     abierto, NO se toca: perder un pago a medias es mucho peor que ver la
+     web vieja un rato más. Se reintenta en el siguiente chequeo.
    ──────────────────────────────────────────────────────────────────── */
 
 (function () {
     'use strict';
 
-    var ESPERA_ENTRE_CHEQUEOS_MS = 90 * 1000;      // no preguntar en ráfaga
-    var CADA_CUANTO_MS = 5 * 60 * 1000;            // chequeo periódico
+    var CADA_CUANTO_MS = 60 * 1000;                // sondeo con la pestaña visible
+    var ESPERA_ENTRE_CHEQUEOS_MS = 20 * 1000;      // no preguntar en ráfaga al cambiar de pestaña
     var CALMA_PARA_RECARGAR_MS = 15 * 1000;        // en el periódico, no recargar mientras interactúa
 
     var versionCargada = (window.APP_VERSION || '').toString();
@@ -32,7 +36,10 @@
     var ultimoChequeo = 0;
     var comprobando = false;
     var formularioTocado = false;
-    var versionNuevaVista = false;   // ya sabemos que hay otra versión; falta el momento
+    var recargaPendiente = false;   // hay versión nueva; falta el momento de recargar
+
+    function parteDeploy(v) { var i = v.indexOf('.'); return i === -1 ? v : v.slice(0, i); }
+    function parteCatalogo(v) { var i = v.indexOf('.'); return i === -1 ? '' : v.slice(i + 1); }
 
     ['click', 'keydown', 'mousemove', 'touchstart', 'scroll'].forEach(function (evento) {
         window.addEventListener(evento, function () {
@@ -100,20 +107,33 @@
         return false;
     }
 
-    function recargarSiSePuede() {
+    function recargarSiSePuede(desdePeriodico) {
+        if (desdePeriodico && Date.now() - ultimaActividad < CALMA_PARA_RECARGAR_MS) return false;
         if (estaOcupado()) return false;
         window.location.reload();
         return true;
     }
 
-    function comprobarVersion(desdePeriodico) {
-        // Si ya sabemos que hay versión nueva, no hace falta volver a
-        // preguntar: solo esperar el momento en que no moleste.
-        if (versionNuevaVista) {
-            if (desdePeriodico && Date.now() - ultimaActividad < CALMA_PARA_RECARGAR_MS) return;
-            recargarSiSePuede();
+    function aplicarVersion(versionServidor, desdePeriodico) {
+        if (parteDeploy(versionServidor) !== parteDeploy(versionCargada)) {
+            // Código nuevo: solo sirve la recarga completa.
+            recargaPendiente = true;
+            recargarSiSePuede(desdePeriodico);
             return;
         }
+        if (parteCatalogo(versionServidor) !== parteCatalogo(versionCargada)) {
+            // El admin cambió algo del catálogo: se repinta al instante sin
+            // recargar. La recarga completa queda pendiente para lo que
+            // main.js no repinta, y solo cuando no moleste.
+            versionCargada = versionServidor;
+            if (typeof window.nxSoftRefresh === 'function') window.nxSoftRefresh();
+            recargaPendiente = true;
+            recargarSiSePuede(desdePeriodico);
+        }
+    }
+
+    function comprobarVersion(desdePeriodico) {
+        if (recargaPendiente && recargarSiSePuede(desdePeriodico)) return;
         if (comprobando) return;
         var ahora = Date.now();
         if (ahora - ultimoChequeo < ESPERA_ENTRE_CHEQUEOS_MS) return;
@@ -125,11 +145,7 @@
             .then(function (data) {
                 var versionServidor = (data && data.version ? data.version : '').toString();
                 if (!versionServidor || versionServidor === versionCargada) return;
-                versionNuevaVista = true;
-                // En el chequeo periódico se espera a que deje de tocar la
-                // pantalla; al volver a la pestaña se recarga de una vez.
-                if (desdePeriodico && Date.now() - ultimaActividad < CALMA_PARA_RECARGAR_MS) return;
-                recargarSiSePuede();
+                aplicarVersion(versionServidor, desdePeriodico);
             })
             .catch(function () { /* sin red: la pestaña se queda como está */ })
             .finally(function () { comprobando = false; });
