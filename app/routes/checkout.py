@@ -438,6 +438,89 @@ def get_game_bs_rate(game, fallback_rate=0.0):
     return game.get_bs_rate(fallback_rate)
 
 
+def compute_checkout_quote(package, game, method, usd_rate, discount_code, player_id=None, email=None, binance_auto=False):
+    """Lo que el cliente tiene que pagar por este paquete, ahora mismo.
+
+    Es el mismo cálculo que hacía la vista JSON del checkout; se sacó a una
+    función para poder compararlo con lo que el navegador mostró (ver
+    stage=init): una pestaña abierta hace días calcula el total con la
+    tasa y los precios de cuando se abrió, y hasta ahora el servidor no
+    se enteraba.
+    """
+    display_currency = 'bs'
+    if binance_auto:
+        # Binance auto se muestra y cobra en USDT.
+        display_currency = 'usd'
+    elif method and (method.account_currency or '').lower() == 'usd':
+        display_currency = 'usd'
+
+    package_checkout_price = get_package_checkout_price(package, method)
+    package_bs_rate = get_game_bs_rate(game, usd_rate)
+    original_amount = float(package_checkout_price)
+
+    discount_result = get_checkout_discount_result(
+        discount_code, package_checkout_price, player_id=player_id, email=email,
+    )
+    discount_amount = discount_result['discount_amount']
+    final_amount = max(original_amount - discount_amount, 0.0)
+
+    if display_currency == 'usd':
+        display_amount = final_amount
+        original_display = original_amount
+        discount_display = discount_amount
+    elif method and not bool(method.uses_rate):
+        display_amount = _normalize_bs_checkout_amount(final_amount)
+        original_display = _normalize_bs_checkout_amount(original_amount)
+        discount_display = _normalize_bs_checkout_amount(discount_amount)
+    else:
+        # Mantener consistente el monto mostrado con el monto que se guarda en la orden
+        # para evitar discrepancias al verificar en Pabilo.
+        display_amount = _normalize_bs_checkout_amount(final_amount * package_bs_rate)
+        original_display = _normalize_bs_checkout_amount(original_amount * package_bs_rate)
+        discount_display = _normalize_bs_checkout_amount(discount_amount * package_bs_rate)
+
+    return {
+        'display_currency': display_currency,
+        'display_amount': display_amount,
+        'original_display': original_display,
+        'discount_display': discount_display,
+        'final_amount': final_amount,
+        'original_amount': original_amount,
+        'discount_amount': discount_amount,
+        'discount_result': discount_result,
+    }
+
+
+def _parse_seen_amount(raw):
+    try:
+        value = float(str(raw or '').replace(',', '.').strip())
+    except (TypeError, ValueError):
+        return None
+    if value != value or value < 0:   # NaN o negativo
+        return None
+    return value
+
+
+def _format_quote_amount(amount, currency):
+    if currency == 'usd':
+        return '$' + format(float(amount), '.2f')
+    return 'Bs ' + format(int(round(float(amount))), ',').replace(',', '.')
+
+
+def seen_amount_matches_quote(seen_amount, seen_currency, seen_usd, quote):
+    """True si lo que mostró el navegador coincide con la cotización actual.
+
+    Compara en la moneda que vio el cliente; si esa no coincide con la del
+    servidor (p. ej. Binance auto en USDT), compara el total en USD.
+    """
+    if seen_amount is not None and seen_currency == quote['display_currency']:
+        tolerance = 0.011 if seen_currency == 'usd' else 0.5
+        return abs(seen_amount - float(quote['display_amount'])) <= tolerance
+    if seen_usd is not None:
+        return abs(seen_usd - float(quote['final_amount'])) <= 0.011
+    return True
+
+
 def _get_active_session_affiliate_code():
     code = (session.get('affiliate_code', '') or '').strip().upper()
     if not code:
@@ -513,6 +596,50 @@ def checkout(package_id):
 
             if not payment_method:
                 return _init_error('Debes seleccionar un método de pago.')
+
+            # ¿El total que el cliente tiene delante es el de hoy? Una pestaña
+            # abierta hace días lo calculó con la tasa/precios de entonces.
+            # Si no coincide, no se sigue: el navegador refresca el catálogo
+            # y le muestra el monto nuevo antes de que pague.
+            seen_amount = _parse_seen_amount(request.form.get('seen_amount'))
+            seen_usd = _parse_seen_amount(request.form.get('seen_usd'))
+            if seen_amount is not None or seen_usd is not None:
+                seen_currency = (request.form.get('seen_currency') or 'bs').strip().lower()
+                init_method = PaymentMethod.query.filter_by(code=payment_method.lower()).first()
+                init_binance_auto = (
+                    payment_method.lower() == 'binance'
+                    and is_binance_auto_enabled(current_app._get_current_object())
+                )
+                quote = compute_checkout_quote(
+                    package, game, init_method, usd_rate,
+                    ((aff_code or '').strip()).upper(),
+                    player_id=player_id if not is_wallet else None,
+                    email=player_id if is_wallet else email,
+                    binance_auto=init_binance_auto,
+                )
+                if not seen_amount_matches_quote(seen_amount, seen_currency, seen_usd, quote):
+                    new_label = _format_quote_amount(quote['display_amount'], quote['display_currency'])
+                    current_app.logger.warning(
+                        '[checkout] precio visto distinto al actual: paquete=%s metodo=%s visto=%s %s actual=%s %s',
+                        package.id, payment_method, seen_amount, seen_currency,
+                        quote['display_amount'], quote['display_currency'],
+                    )
+                    payload = {
+                        'ok': False,
+                        'code': 'price_changed',
+                        'message': (
+                            'Los precios se actualizaron mientras tenías la tienda abierta. '
+                            'El monto de este paquete ahora es ' + new_label + '. '
+                            'Revísalo antes de pagar.'
+                        ),
+                        'new_amount': quote['display_amount'],
+                        'new_currency': quote['display_currency'],
+                        'new_label': new_label,
+                    }
+                    if wants_json:
+                        return jsonify(payload), 409
+                    flash(payload['message'], 'warning')
+                    return redirect(url_for('main_bp.index'))
 
             category_slug = (game.category.slug if game.category else '').lower()
             tarjetas_without_id = category_slug == 'tarjetas'
@@ -904,46 +1031,21 @@ def checkout(package_id):
         and is_binance_auto_enabled(_app)
     )
 
-    display_currency = 'bs'
-    if binance_auto:
-        # Binance auto se muestra y cobra en USDT.
-        display_currency = 'usd'
-    elif selected_method and (selected_method.account_currency or '').lower() == 'usd':
-        display_currency = 'usd'
-
-    package_checkout_price = get_package_checkout_price(package, selected_method)
-    package_bs_rate = get_game_bs_rate(game, usd_rate)
-    usd_amount = float(package_checkout_price)
-    original_amount = usd_amount
-    
     # Calcular descuento si hay código (descuento explícito o afiliado)
     discount_code = ((affiliate_code or _get_active_session_affiliate_code() or '').strip()).upper()
     _preview_pkg_data = checkout_data.get(pkg_key) or {}
     _preview_player_id = (_preview_pkg_data.get('player_id') or '').strip()
-    discount_result = get_checkout_discount_result(
-        discount_code, package_checkout_price,
+    quote = compute_checkout_quote(
+        package, game, selected_method, usd_rate, discount_code,
         player_id=_preview_player_id if not is_wallet else None,
         email=_preview_player_id if is_wallet else (_preview_pkg_data.get('email') or '').strip(),
+        binance_auto=binance_auto,
     )
-    discount_amount = discount_result['discount_amount']
-    
-    final_amount = max(original_amount - discount_amount, 0.0)
-    
-    if display_currency == 'usd':
-        display_amount = final_amount
-        original_display = original_amount
-        discount_display = discount_amount
-    else:
-        if selected_method and not bool(selected_method.uses_rate):
-            display_amount = _normalize_bs_checkout_amount(final_amount)
-            original_display = _normalize_bs_checkout_amount(original_amount)
-            discount_display = _normalize_bs_checkout_amount(discount_amount)
-        else:
-            # Mantener consistente el monto mostrado con el monto que se guarda en la orden
-            # para evitar discrepancias al verificar en Pabilo.
-            display_amount = _normalize_bs_checkout_amount(final_amount * package_bs_rate)
-            original_display = _normalize_bs_checkout_amount(original_amount * package_bs_rate)
-            discount_display = _normalize_bs_checkout_amount(discount_amount * package_bs_rate)
+    display_currency = quote['display_currency']
+    display_amount = quote['display_amount']
+    original_display = quote['original_display']
+    discount_display = quote['discount_display']
+    discount_amount = quote['discount_amount']
 
     pkg_data = checkout_data.get(pkg_key) or {}
     player_nickname = (pkg_data.get('player_nickname') or '').strip()

@@ -597,7 +597,7 @@
     var extractionRequestId = 0;
 
     /* ── Utilidades ────────────────────────────────────────────────── */
-    function showToast(message) {
+    function showToast(message, durationMs) {
         if (!toast) return;
         toastMsg.textContent = message;
         toast.style.opacity = '1';
@@ -606,8 +606,10 @@
         toastTimeout = setTimeout(function () {
             toast.style.opacity = '0';
             toast.style.transform = 'translate(-50%, 80px)';
-        }, 2800);
+        }, durationMs || 2800);
     }
+    // main.js avisa por aquí cuando el refresco del catálogo cambió el monto.
+    window.nxShowToast = showToast;
 
     function legacyCopy(text) {
         var ta = document.createElement('textarea');
@@ -1145,12 +1147,26 @@
         var method = getCheckedMethod();
         fd.set('payment_method', method ? method.value : '');
 
+        // El total que el cliente tiene delante. El servidor lo compara con
+        // el precio de hoy: una pestaña abierta hace días lo calculó con la
+        // tasa de entonces, y sin esto la compra seguía igual.
+        var shown = (typeof window.nxShownTotal === 'function') ? window.nxShownTotal() : null;
+        if (shown && isFinite(shown.amount)) {
+            fd.set('seen_amount', String(shown.amount));
+            fd.set('seen_currency', shown.currency || 'bs');
+            if (isFinite(shown.usd)) fd.set('seen_usd', Number(shown.usd).toFixed(2));
+        }
+
         return fetch(actionUrl, { method: 'POST', body: fd })
             .then(function (res) {
                 return res.json().catch(function () { throw new Error('Respuesta inválida del servidor.'); });
             })
             .then(function (data) {
-                if (!data.ok) throw new Error(data.message || 'No se pudo iniciar el pago.');
+                if (!data.ok) {
+                    var err = new Error(data.message || 'No se pudo iniciar el pago.');
+                    err.code = data.code || '';
+                    throw err;
+                }
                 return fetch(actionUrl + '?format=json').then(function (r) { return r.json(); });
             })
             .then(function (data) {
@@ -1206,7 +1222,14 @@
             })
             .catch(function (err) {
                 invalidatePrepared();
-                showToast('⚠️ ' + (err.message || 'Error al confirmar la orden.'));
+                if (err && err.code === 'price_changed') {
+                    // Repinta paquetes, tasa y total con lo de hoy antes de
+                    // dejar que lo intente otra vez.
+                    if (typeof window.nxRefreshCatalog === 'function') window.nxRefreshCatalog(true);
+                    showToast('⚠️ ' + err.message, 12000);
+                } else {
+                    showToast('⚠️ ' + (err.message || 'Error al confirmar la orden.'));
+                }
                 restoreSubmitButton();
             });
     });

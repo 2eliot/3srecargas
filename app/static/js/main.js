@@ -14,6 +14,17 @@
     // está abierto es el backend.
     var manualSchedule = null;
     var usdRate = typeof window.USD_RATE_BS === 'number' ? window.USD_RATE_BS : 0;
+    // Frescura del catálogo. La gente deja la tienda abierta en el teléfono
+    // durante días y volvía a comprar con los precios y la tasa de cuando
+    // la abrió (el total en Bs se calcula aquí, en el navegador). Los
+    // paquetes y la tasa se vuelven a pedir al volver a la pestaña, al
+    // tocar un paquete o cada rato si llevan más de unos minutos cargados.
+    var CATALOG_STALE_MS = 5 * 60 * 1000;
+    var CATALOG_POLL_MS = 60 * 1000;
+    var catalogLoadedAt = 0;
+    var catalogRefreshing = false;
+    var packagesRequestSeq = 0;
+    var lastShownTotal = null;   // { currency, amount, usd } — lo que ve el cliente
     var defaultPackageId = (typeof window.DEFAULT_PACKAGE_ID === 'number' ? window.DEFAULT_PACKAGE_ID : null);
     var gamesViewportEl = document.getElementById('gamesViewport');
     var gamesGridEl = document.getElementById('gamesGrid');
@@ -1191,18 +1202,33 @@
     }
 
     /* ── Fetch Packages via AJAX ──────────────────────────── */
-    function fetchPackages(gameId) {
+    function fetchPackages(gameId, opts) {
+        opts = opts || {};
+        var seq = ++packagesRequestSeq;
+        var keepSelection = !!opts.keepSelection;
+        var previousPackageId = (keepSelection && selectedPackage) ? String(selectedPackage.id) : null;
+        var previousTotal = lastShownTotal ? (lastShownTotal.currency + ':' + lastShownTotal.amount) : null;
+        catalogRefreshing = true;
         console.log('Fetching packages for gameId:', gameId);
-        fetch('/api/packages/' + gameId)
-            .then(function (r) { 
+        fetch('/api/packages/' + gameId, { cache: 'no-store', credentials: 'same-origin' })
+            .then(function (r) {
                 console.log('Response status:', r.status);
-                return r.json(); 
+                return r.json();
             })
             .then(function (data) {
+                // Llegó tarde: el cliente ya cambió de juego.
+                if (seq !== packagesRequestSeq || gameId !== activeGameId) return;
                 console.log('Packages data:', data);
+                if (typeof data.usd_rate_bs === 'number' && data.usd_rate_bs > 0) {
+                    usdRate = data.usd_rate_bs;
+                }
+                catalogLoadedAt = Date.now();
                 manualSchedule = (data.game && data.game.manual_schedule) || null;
                 applyGameToSidebar(data.game);
                 renderPackages(data.packages);
+                if (previousPackageId) {
+                    reselectPackage(previousPackageId, previousTotal);
+                }
                 if (data.game && data.game.requires_manual_login_popup) {
                     openManualInfoPopup();
                 } else {
@@ -1220,11 +1246,68 @@
                 }
             })
             .catch(function (err) {
+                if (seq !== packagesRequestSeq) return;
                 console.error('Error fetching packages:', err);
+                if (keepSelection) return;   // el refresco silencioso no borra lo que ya se ve
                 document.getElementById('packagesGrid').innerHTML =
                     '<div class="empty-state" style="grid-column:1/-1">Error al cargar paquetes.</div>';
+            })
+            .finally(function () {
+                if (seq === packagesRequestSeq) catalogRefreshing = false;
             });
     }
+
+    /* Tras refrescar el catálogo, vuelve a dejar marcado el paquete que el
+       cliente tenía elegido (el click real hace que index.html repinte
+       método, datos de pago y monto) y avisa si el total cambió. */
+    function reselectPackage(packageId, previousTotal) {
+        var item = document.querySelector('.package-item[data-package-id="' + packageId + '"]');
+        if (!item || item.disabled) {
+            notifyCatalogChange('Este paquete ya no está disponible. Elige otro para continuar.');
+            return;
+        }
+        item.click();
+        var nowTotal = lastShownTotal ? (lastShownTotal.currency + ':' + lastShownTotal.amount) : null;
+        if (previousTotal && nowTotal && previousTotal !== nowTotal) {
+            notifyCatalogChange('⚠️ El precio se actualizó: el monto a pagar ahora es ' + formatShownTotal(lastShownTotal) + '. Revísalo antes de pagar.');
+        }
+    }
+
+    function formatShownTotal(total) {
+        if (!total) return '';
+        if (total.currency === 'usd') return '$' + Number(total.amount).toFixed(2);
+        return 'Bs ' + Math.round(Number(total.amount)).toLocaleString('es-VE');
+    }
+
+    function notifyCatalogChange(message) {
+        if (typeof window.nxShowToast === 'function') {
+            window.nxShowToast(message, 9000);
+        } else {
+            console.warn(message);
+        }
+    }
+
+    /* Vuelve a pedir paquetes + tasa si llevan un rato cargados. */
+    function refreshCatalog(force) {
+        if (!activeGameId || catalogRefreshing) return;
+        if (!force && catalogLoadedAt && (Date.now() - catalogLoadedAt) < CATALOG_STALE_MS) return;
+        fetchPackages(activeGameId, { keepSelection: true });
+    }
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') refreshCatalog(false);
+    });
+    window.addEventListener('pageshow', function (ev) {
+        if (ev.persisted) refreshCatalog(true);
+    });
+    setInterval(function () {
+        if (document.visibilityState === 'visible') refreshCatalog(false);
+    }, CATALOG_POLL_MS);
+
+    // index.html los usa: manda el monto visto al servidor y refresca si
+    // el servidor responde que el precio cambió.
+    window.nxShownTotal = function () { return lastShownTotal; };
+    window.nxRefreshCatalog = refreshCatalog;
 
     /* Texto del aviso de fuera de horario, con las horas que configuró el
        admin (y un respaldo por si el servidor no las mandó). */
@@ -1316,6 +1399,7 @@
             } else {
                 item.addEventListener('click', function () {
                     selectPackage(pkg, item);
+                    refreshCatalog(false);
                 });
             }
             return item;
@@ -1844,6 +1928,7 @@
         if (!totalEl) return;
 
         if (!price) {
+            lastShownTotal = null;
             totalEl.textContent = '-';
             if (totalBsEl) {
                 totalBsEl.classList.add('d-none');
@@ -1859,14 +1944,17 @@
         var currency = getSelectedPaymentCurrency();
         if (currency === 'usd') {
             totalEl.textContent = '$' + finalPrice.toFixed(2);
+            lastShownTotal = { currency: 'usd', amount: Number(finalPrice.toFixed(2)), usd: finalPrice };
             if (totalBsEl) totalBsEl.classList.add('d-none');
         } else {
             var bs = getSelectedPaymentMethodUsesRate() ? (finalPrice * getGameBsRate()) : finalPrice;
 
             if (!isNaN(bs)) {
                 totalEl.textContent = 'Bs ' + Math.round(bs).toLocaleString('es-VE');
+                lastShownTotal = { currency: 'bs', amount: Math.round(bs), usd: finalPrice };
             } else {
                 totalEl.textContent = 'Bs 0';
+                lastShownTotal = null;
             }
             if (totalBsEl) {
                 totalBsEl.classList.add('d-none');

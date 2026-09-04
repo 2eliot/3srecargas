@@ -19,7 +19,7 @@ from ..utils.availability import (
 )
 from ..utils.points import package_points_preview
 from ..utils.timezone import now_ve, ve_day_start_utc_naive
-from ..utils.version import build_version
+from ..utils.catalog_version import site_version
 from ..utils.push_notifications import get_vapid_public_key, subscribe as push_subscribe, unsubscribe as push_unsubscribe
 
 main_bp = Blueprint('main_bp', __name__)
@@ -559,6 +559,18 @@ def index():
     )
 
 
+def _no_store(response):
+    """Las respuestas de la tienda nunca se guardan en caché.
+
+    Sin esto, una pestaña restaurada desde caché podía volver a pintar
+    paquetes y precios de días atrás.
+    """
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
 @main_bp.route('/api/games')
 def api_games():
     cat_slug = request.args.get('category', 'juegos')
@@ -566,7 +578,7 @@ def api_games():
     if not category:
         return jsonify({'games': []})
     games = _get_games_for_category(category)
-    return jsonify({'games': [g.to_dict() for g in games]})
+    return _no_store(jsonify({'games': [g.to_dict() for g in games]}))
 
 
 @main_bp.route('/api/packages/<int:game_id>')
@@ -640,10 +652,20 @@ def api_packages(game_id):
         'is_open_now': manual_open_now,
     }
 
-    return jsonify({
+    # La tasa viaja con los paquetes para que una pestaña vieja pueda
+    # refrescar precios Y tasa con una sola llamada (ver refreshCatalog en
+    # main.js): la que trae el HTML es la de cuando se abrió la página.
+    usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
+    try:
+        usd_rate = float(usd_rate_setting.value) if usd_rate_setting else 0.0
+    except (TypeError, ValueError):
+        usd_rate = 0.0
+
+    return _no_store(jsonify({
         'game': game_dict,
         'packages': pkg_list,
-    })
+        'usd_rate_bs': usd_rate,
+    }))
 
 
 @main_bp.route('/api/discounts')
@@ -708,11 +730,7 @@ def api_version():
     abierta: si no coincide con la que cargó, esa pestaña está vieja y se
     recarga sola (solo si no hay nada a medio llenar).
     """
-    response = jsonify({'version': build_version()})
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    response.headers['Expires'] = '0'
-    return response
+    return _no_store(jsonify({'version': site_version()}))
 
 
 @main_bp.route('/sw.js')
