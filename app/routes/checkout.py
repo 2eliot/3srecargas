@@ -598,6 +598,14 @@ def checkout(package_id):
             # sigue y se cobra siempre el precio actual del servidor.
             seen_amount = _parse_seen_amount(request.form.get('seen_amount'))
             seen_usd = _parse_seen_amount(request.form.get('seen_usd'))
+            if wants_json and seen_amount is None and seen_usd is None:
+                # Solo mide: el index de antes del 3-sep no manda el monto
+                # visto. Sirve para saber cuántas pestañas viejas siguen
+                # comprando.
+                current_app.logger.info(
+                    '[frescura] stage=init sin monto visto (pagina anterior al 3-sep) paquete=%s ua=%s',
+                    package.id, (request.user_agent.string or '')[:90],
+                )
             if seen_amount is not None or seen_usd is not None:
                 try:
                     seen_currency = (request.form.get('seen_currency') or 'bs').strip().lower()
