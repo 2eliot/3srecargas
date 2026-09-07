@@ -18,7 +18,7 @@ from ..utils.availability import (
     package_is_out_of_stock,
 )
 from ..utils.points import package_points_preview
-from ..utils.timezone import now_ve, ve_day_start_utc_naive
+from ..utils.timezone import now_ve, ve_day_start_utc_naive, today_ve_str
 from ..utils.catalog_version import site_version
 from ..utils.push_notifications import get_vapid_public_key, subscribe as push_subscribe, unsubscribe as push_unsubscribe
 
@@ -559,6 +559,51 @@ def index():
     )
 
 
+def page_day_expired():
+    """True si la página que llama se abrió otro día (hora de Venezuela).
+
+    La tienda vive en una sola página y la gente la deja abierta días. En
+    vez de perseguir cada caso, la regla es simple: la web solo vale el día
+    en que se abrió. main.js manda el día en `X-Page-Day`; si no coincide
+    con hoy (o no viene, que es lo que pasa con las páginas anteriores a
+    este cambio) el servidor no le da paquetes y le pide recargar.
+    """
+    return (request.headers.get('X-Page-Day') or '').strip() != today_ve_str()
+
+
+def _expired_page_payload(game, usd_rate):
+    """Respuesta para una página de otro día: en vez de paquetes, una sola
+    tarjeta apagada que dice que recargue. Las páginas nuevas ni la pintan
+    (ven `page_expired` y recargan solas); las viejas la muestran tal cual."""
+    game_dict = game.to_dict()
+    game_dict.update({
+        'scrape_enabled': False,
+        'is_ff_verify': False,
+        'is_bs_verify': False,
+        'requires_manual_login_popup': False,
+        'requires_wallet_notice': False,
+        'manual_schedule': None,
+    })
+    return {
+        'game': game_dict,
+        'packages': [{
+            'id': 0,
+            'name': '⚠️ Esta página lleva abierta desde otro día. Recárgala para ver los paquetes y precios de hoy.',
+            'description': '',
+            'price': '0',
+            'usd_price': None,
+            'image': None,
+            'is_auto': True,
+            'out_of_stock': True,
+            'closed_now': False,
+            'points': 0,
+        }],
+        'usd_rate_bs': usd_rate,
+        'page_expired': True,
+        'page_day': today_ve_str(),
+    }
+
+
 def _no_store(response):
     """Las respuestas de la tienda nunca se guardan en caché.
 
@@ -584,6 +629,13 @@ def api_games():
 @main_bp.route('/api/packages/<int:game_id>')
 def api_packages(game_id):
     game = Game.query.filter_by(id=game_id, is_active=True).first_or_404()
+    if page_day_expired():
+        usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
+        try:
+            expired_rate = float(usd_rate_setting.value) if usd_rate_setting else 0.0
+        except (TypeError, ValueError):
+            expired_rate = 0.0
+        return _no_store(jsonify(_expired_page_payload(game, expired_rate)))
     packages = game.packages.filter_by(is_active=True).all()
 
     # Include verification config for this game
@@ -730,7 +782,12 @@ def api_version():
     abierta: si no coincide con la que cargó, esa pestaña está vieja y se
     recarga sola (solo si no hay nada a medio llenar).
     """
-    return _no_store(jsonify({'version': site_version()}))
+    return _no_store(jsonify({
+        'version': site_version(),
+        'day': today_ve_str(),
+        # La página que pregunta ya no es de hoy: que se recargue.
+        'reload': page_day_expired(),
+    }))
 
 
 @main_bp.route('/sw.js')

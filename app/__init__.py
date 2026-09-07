@@ -6,7 +6,7 @@ from flask_login import LoginManager
 from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
 from .models import db, AdminUser, User, Category, Discount, Setting, Affiliate
-from .utils.timezone import VENEZUELA_TIMEZONE, format_ve
+from .utils.timezone import VENEZUELA_TIMEZONE, format_ve, today_ve_str
 from .utils.catalog_version import register_catalog_version_hook, site_version
 from config import Config
 
@@ -152,6 +152,7 @@ def create_app(config_class=Config):
         return f"{url_for('static', filename=filename)}?v={version}"
 
     app.add_template_global(site_version, 'app_version')
+    app.add_template_global(today_ve_str, 'page_day_ve')
     register_catalog_version_hook()
 
     @app.after_request

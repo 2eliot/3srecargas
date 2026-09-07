@@ -29,6 +29,10 @@
     var catalogRefreshing = false;
     var packagesRequestSeq = 0;
     var lastShownTotal = null;   // { currency, amount, usd } — lo que ve el cliente
+    // Día (Venezuela) en que se abrió la página. Viaja en cada consulta:
+    // el servidor no atiende páginas de otro día (ver page_day_expired).
+    var PAGE_DAY = String(window.PAGE_DAY_VE || '');
+    function storeHeaders() { return { 'X-Page-Day': PAGE_DAY }; }
     var defaultPackageId = (typeof window.DEFAULT_PACKAGE_ID === 'number' ? window.DEFAULT_PACKAGE_ID : null);
     var gamesViewportEl = document.getElementById('gamesViewport');
     var gamesGridEl = document.getElementById('gamesGrid');
@@ -246,7 +250,7 @@
         grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Cargando...</div>';
         updateGamesCarouselNav();
 
-        fetch('/api/games?category=' + encodeURIComponent(category))
+        fetch('/api/games?category=' + encodeURIComponent(category), { headers: storeHeaders() })
             .then(function (r) { return r.json(); })
             .then(function (data) { renderGames(data.games); })
             .catch(function () {
@@ -1232,7 +1236,7 @@
         var previousTotal = lastShownTotal ? (lastShownTotal.currency + ':' + lastShownTotal.amount) : null;
         catalogRefreshing = true;
         console.log('Fetching packages for gameId:', gameId);
-        fetch('/api/packages/' + gameId, { cache: 'no-store', credentials: 'same-origin' })
+        fetch('/api/packages/' + gameId, { cache: 'no-store', credentials: 'same-origin', headers: storeHeaders() })
             .then(function (r) {
                 console.log('Response status:', r.status);
                 return r.json();
@@ -1241,6 +1245,11 @@
                 // Llegó tarde: el cliente ya cambió de juego.
                 if (seq !== packagesRequestSeq || gameId !== activeGameId) return;
                 console.log('Packages data:', data);
+                if (data && data.page_expired) {
+                    // Esta página es de otro día: se recarga y listo.
+                    window.location.reload();
+                    return;
+                }
                 if (quiet && !catalogChanged(data)) {
                     catalogLoadedAt = Date.now();
                     return;   // todo igual: no se toca la pantalla
@@ -1371,7 +1380,7 @@
         var grid = document.getElementById('gamesGrid');
         if (!grid) return;
         var scrollBefore = gamesViewportEl ? gamesViewportEl.scrollLeft : 0;
-        fetch('/api/games?category=' + encodeURIComponent(activeCategory), { cache: 'no-store', credentials: 'same-origin' })
+        fetch('/api/games?category=' + encodeURIComponent(activeCategory), { cache: 'no-store', credentials: 'same-origin', headers: storeHeaders() })
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (!data || !Array.isArray(data.games) || !data.games.length) return;

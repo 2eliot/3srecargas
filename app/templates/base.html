@@ -479,7 +479,7 @@
 
     <!-- Sello del despliegue + vigía que recarga las pestañas que quedaron
          viejas (nunca en medio de un pago; ver version-watch.js). -->
-    <script>window.APP_VERSION = {{ app_version()|tojson }};</script>
+    <script>window.APP_VERSION = {{ app_version()|tojson }}; window.PAGE_DAY_VE = {{ page_day_ve()|tojson }};</script>
     <script src="{{ static_v('js/version-watch.js') }}"></script>
 </body>
 </html>

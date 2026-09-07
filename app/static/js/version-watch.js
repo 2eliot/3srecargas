@@ -31,6 +31,26 @@
 
     var versionCargada = (window.APP_VERSION || '').toString();
     if (!versionCargada) return;   // sin sello no hay con qué comparar
+    var diaCargado = (window.PAGE_DAY_VE || '').toString();
+
+    // Día de hoy en Venezuela, 'AAAA-MM-DD', calculado en el navegador.
+    function diaVenezuela() {
+        try {
+            return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+        } catch (_) {
+            var d = new Date(Date.now() - 4 * 60 * 60 * 1000);
+            return d.toISOString().slice(0, 10);
+        }
+    }
+
+    // La web solo vale el día en que se abrió. Al día siguiente se recarga
+    // sí o sí; lo único que se respeta es un pago que ya se está enviando.
+    function recargaDeDia() {
+        var etapa = document.getElementById('nxStage');
+        if (etapa && etapa.value === 'confirm') return false;
+        window.location.reload();
+        return true;
+    }
 
     var ultimaActividad = Date.now();
     var ultimoChequeo = 0;
@@ -133,6 +153,7 @@
     }
 
     function comprobarVersion(desdePeriodico) {
+        if (diaCargado && diaVenezuela() !== diaCargado && recargaDeDia()) return;
         if (recargaPendiente && recargarSiSePuede(desdePeriodico)) return;
         if (comprobando) return;
         var ahora = Date.now();
@@ -140,9 +161,10 @@
         comprobando = true;
         ultimoChequeo = ahora;
 
-        fetch('/api/version', { cache: 'no-store', credentials: 'same-origin' })
+        fetch('/api/version', { cache: 'no-store', credentials: 'same-origin', headers: { 'X-Page-Day': diaCargado } })
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                if (data && data.reload && recargaDeDia()) return;
                 var versionServidor = (data && data.version ? data.version : '').toString();
                 if (!versionServidor || versionServidor === versionCargada) return;
                 aplicarVersion(versionServidor, desdePeriodico);

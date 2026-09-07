@@ -8,6 +8,12 @@ def now_ve() -> datetime:
     return datetime.now(VENEZUELA_TIMEZONE)
 
 
+def today_ve_str() -> str:
+    """Fecha de hoy en Venezuela, 'AAAA-MM-DD'. Es el sello de día de la tienda:
+    una página abierta otro día caduca (ver page_day_expired en main.py)."""
+    return now_ve().strftime('%Y-%m-%d')
+
+
 def now_ve_naive() -> datetime:
     """Return Venezuela local time as naive datetime (for legacy filename/code use)."""
     return now_ve().replace(tzinfo=None)
