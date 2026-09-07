@@ -568,7 +568,13 @@ def page_day_expired():
     con hoy (o no viene, que es lo que pasa con las páginas anteriores a
     este cambio) el servidor no le da paquetes y le pide recargar.
     """
-    return (request.headers.get('X-Page-Day') or '').strip() != today_ve_str()
+    day = request.headers.get('X-Page-Day')
+    if day is None:
+        return True            # no la manda: página anterior a este cambio
+    day = day.strip()
+    if not day:
+        return False           # la manda vacía: no se sabe, mejor no caducar
+    return day != today_ve_str()
 
 
 def _expired_page_payload(game, usd_rate):

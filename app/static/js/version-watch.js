@@ -46,11 +46,16 @@
 
     // La web solo vale el día en que se abrió. Al día siguiente se recarga
     // sí o sí; lo único que se respeta es un pago que ya se está enviando.
+    function recargaSegura(motivo) {
+        if (typeof window.nxSafeAutoReload === 'function') return window.nxSafeAutoReload(motivo);
+        window.location.reload();
+        return true;
+    }
+
     function recargaDeDia() {
         var etapa = document.getElementById('nxStage');
         if (etapa && etapa.value === 'confirm') return false;
-        window.location.reload();
-        return true;
+        return recargaSegura('cambio de dia');
     }
 
     var ultimaActividad = Date.now();
@@ -131,8 +136,7 @@
     function recargarSiSePuede(desdePeriodico) {
         if (desdePeriodico && Date.now() - ultimaActividad < CALMA_PARA_RECARGAR_MS) return false;
         if (estaOcupado()) return false;
-        window.location.reload();
-        return true;
+        return recargaSegura('version nueva');
     }
 
     function aplicarVersion(versionServidor, desdePeriodico) {
@@ -186,8 +190,7 @@
             return;
         }
         if (ocultaDesde && Date.now() - ocultaDesde >= AUSENCIA_PARA_RECARGAR_MS && !estaOcupado()) {
-            window.location.reload();
-            return;
+            if (recargaSegura('volvio a la pestana')) return;
         }
         comprobarVersion(false);
     });

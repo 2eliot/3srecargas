@@ -475,11 +475,13 @@
     </script>
     
     <!-- Main JS loaded at end of body for DOM readiness -->
+    <!-- Sello del despliegue y día de apertura: van ANTES de main.js porque
+         main.js los manda en cada consulta al servidor. -->
+    <script>window.APP_VERSION = {{ app_version()|tojson }}; window.PAGE_DAY_VE = {{ page_day_ve()|tojson }};</script>
     <script src="{{ static_v('js/main.js') }}"></script>
 
-    <!-- Sello del despliegue + vigía que recarga las pestañas que quedaron
-         viejas (nunca en medio de un pago; ver version-watch.js). -->
-    <script>window.APP_VERSION = {{ app_version()|tojson }}; window.PAGE_DAY_VE = {{ page_day_ve()|tojson }};</script>
+    <!-- Vigía que recarga las pestañas que quedaron viejas (nunca en medio
+         de un pago; ver version-watch.js). -->
     <script src="{{ static_v('js/version-watch.js') }}"></script>
 </body>
 </html>

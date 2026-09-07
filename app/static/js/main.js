@@ -31,8 +31,28 @@
     var lastShownTotal = null;   // { currency, amount, usd } — lo que ve el cliente
     // Día (Venezuela) en que se abrió la página. Viaja en cada consulta:
     // el servidor no atiende páginas de otro día (ver page_day_expired).
-    var PAGE_DAY = String(window.PAGE_DAY_VE || '');
-    function storeHeaders() { return { 'X-Page-Day': PAGE_DAY }; }
+    // Se lee en cada consulta (no al cargar): antes se capturaba vacío
+    // porque el HTML lo definía después de este archivo, y el servidor
+    // tomaba "vacío" como otro día -> recarga en bucle.
+    function pageDay() { return String(window.PAGE_DAY_VE || ''); }
+    function storeHeaders() { return { 'X-Page-Day': pageDay() }; }
+
+    /* Seguro anti-bucle: ninguna recarga automática se repite en menos de
+       un minuto. Si algo falla, la página se queda quieta en vez de
+       parpadear sin fin delante del cliente. */
+    function safeAutoReload(reason) {
+        var key = 'nx:auto-reload';
+        var last = 0;
+        try { last = parseInt(sessionStorage.getItem(key) || '0', 10) || 0; } catch (_) {}
+        if (Date.now() - last < 60 * 1000) {
+            console.warn('Recarga automática omitida (hubo una hace menos de 1 min):', reason);
+            return false;
+        }
+        try { sessionStorage.setItem(key, String(Date.now())); } catch (_) {}
+        window.location.reload();
+        return true;
+    }
+    window.nxSafeAutoReload = safeAutoReload;
     var defaultPackageId = (typeof window.DEFAULT_PACKAGE_ID === 'number' ? window.DEFAULT_PACKAGE_ID : null);
     var gamesViewportEl = document.getElementById('gamesViewport');
     var gamesGridEl = document.getElementById('gamesGrid');
@@ -1246,9 +1266,9 @@
                 if (seq !== packagesRequestSeq || gameId !== activeGameId) return;
                 console.log('Packages data:', data);
                 if (data && data.page_expired) {
-                    // Esta página es de otro día: se recarga y listo.
-                    window.location.reload();
-                    return;
+                    // Esta página es de otro día: se recarga y listo. Si ya
+                    // se recargó hace nada, se pinta lo que vino (la tarjeta).
+                    if (safeAutoReload('page_expired')) return;
                 }
                 if (quiet && !catalogChanged(data)) {
                     catalogLoadedAt = Date.now();
