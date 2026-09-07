@@ -28,6 +28,7 @@
     var CADA_CUANTO_MS = 60 * 1000;                // sondeo con la pestaña visible
     var ESPERA_ENTRE_CHEQUEOS_MS = 20 * 1000;      // no preguntar en ráfaga al cambiar de pestaña
     var CALMA_PARA_RECARGAR_MS = 15 * 1000;        // en el periódico, no recargar mientras interactúa
+    var AUSENCIA_PARA_RECARGAR_MS = 60 * 1000;     // al volver tras >1 min fuera, se recarga sin preguntar
 
     var versionCargada = (window.APP_VERSION || '').toString();
     if (!versionCargada) return;   // sin sello no hay con qué comparar
@@ -173,8 +174,22 @@
             .finally(function () { comprobando = false; });
     }
 
+    // Al volver a la pestaña después de un rato fuera, la página se recarga
+    // sola y listo: así cada "entrada" a la tienda es una página fresca, sin
+    // esperar sondeos. Solo se respeta una compra a medias (paquete elegido,
+    // datos escritos, comprobante, popup). Si estuvo fuera menos de un
+    // minuto (cambió de app y volvió), no se toca.
+    var ocultaDesde = 0;
     document.addEventListener('visibilitychange', function () {
-        if (document.visibilityState === 'visible') comprobarVersion(false);
+        if (document.visibilityState === 'hidden') {
+            ocultaDesde = Date.now();
+            return;
+        }
+        if (ocultaDesde && Date.now() - ocultaDesde >= AUSENCIA_PARA_RECARGAR_MS && !estaOcupado()) {
+            window.location.reload();
+            return;
+        }
+        comprobarVersion(false);
     });
 
     // Volver con el botón "atrás" restaura la página tal cual estaba en
