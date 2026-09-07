@@ -501,18 +501,35 @@ def _parse_seen_amount(raw):
     return value
 
 
-def seen_amount_matches_quote(seen_amount, seen_currency, seen_usd, quote):
-    """True si lo que mostró el navegador coincide con la cotización actual.
+def _format_quote_amount(amount, currency):
+    if currency == 'usd':
+        return '$' + format(float(amount), '.2f')
+    return 'Bs ' + format(int(round(float(amount))), ',').replace(',', '.')
+
+
+# Diferencia relativa a partir de la cual el monto visto se considera de
+# otra tasa. El redondeo del descuento de afiliado a centavos produce
+# diferencias de 0,2-0,5 %; un cambio de tasa real es de 1 % o más.
+STALE_AMOUNT_RATIO = 0.01
+
+
+def seen_amount_is_stale(seen_amount, seen_currency, seen_usd, quote):
+    """True si lo que mostró el navegador viene de otra tasa/precio.
 
     Compara en la moneda que vio el cliente; si esa no coincide con la del
     servidor (p. ej. Binance auto en USDT), compara el total en USD.
     """
     if seen_amount is not None and seen_currency == quote['display_currency']:
-        tolerance = 0.011 if seen_currency == 'usd' else 0.5
-        return abs(seen_amount - float(quote['display_amount'])) <= tolerance
+        actual = float(quote['display_amount'])
+        if actual <= 0:
+            return False
+        return abs(seen_amount - actual) / actual > STALE_AMOUNT_RATIO
     if seen_usd is not None:
-        return abs(seen_usd - float(quote['final_amount'])) <= 0.011
-    return True
+        actual = float(quote['final_amount'])
+        if actual <= 0:
+            return False
+        return abs(seen_usd - actual) / actual > STALE_AMOUNT_RATIO
+    return False
 
 
 def _get_active_session_affiliate_code():
@@ -591,22 +608,23 @@ def checkout(package_id):
             if not payment_method:
                 return _init_error('Debes seleccionar un método de pago.')
 
-            # Se anota si el total que el cliente tiene delante no es el de hoy
-            # (pestaña abierta hace días, o una diferencia de cálculo entre el
-            # navegador y el servidor). Solo se registra: bloquear la compra
-            # con un aviso dejó a clientes sin poder pagar, así que la orden
-            # sigue y se cobra siempre el precio actual del servidor.
+            # ¿El total que el cliente tiene delante es el de hoy? Las pestañas
+            # que llevan días abiertas calculan los Bs con la tasa de cuando se
+            # abrieron (se vieron compras con tasa 920-930 cuando la real era
+            # 945), y el vigía de aquellas versiones nunca las recarga porque
+            # tienen el ID escrito o un paquete elegido. La única forma de
+            # avisarles es aquí, antes de que paguen. Solo se frena cuando la
+            # diferencia es de tasa de verdad (más de 1 %): las diferencias de
+            # redondeo del descuento (0,2-0,5 %) siguen pasando.
             seen_amount = _parse_seen_amount(request.form.get('seen_amount'))
             seen_usd = _parse_seen_amount(request.form.get('seen_usd'))
-            if wants_json and seen_amount is None and seen_usd is None:
-                # Solo mide: el index de antes del 3-sep no manda el monto
-                # visto. Sirve para saber cuántas pestañas viejas siguen
-                # comprando.
-                current_app.logger.info(
-                    '[frescura] stage=init sin monto visto (pagina anterior al 3-sep) paquete=%s ua=%s',
-                    package.id, (request.user_agent.string or '')[:90],
-                )
-            if seen_amount is not None or seen_usd is not None:
+            stale_reason = ''
+            new_label = ''
+            if wants_json and seen_amount is None and seen_usd is None and not request.form.get('client_version'):
+                # El index de antes del 3-sep no manda ni el monto visto ni su
+                # versión: esa pestaña lleva días abierta sí o sí.
+                stale_reason = 'sin monto visto (index anterior al 3-sep)'
+            elif seen_amount is not None or seen_usd is not None:
                 try:
                     seen_currency = (request.form.get('seen_currency') or 'bs').strip().lower()
                     init_method = PaymentMethod.query.filter_by(code=payment_method.lower()).first()
@@ -621,15 +639,36 @@ def checkout(package_id):
                         email=player_id if is_wallet else email,
                         binance_auto=init_binance_auto,
                     )
-                    if not seen_amount_matches_quote(seen_amount, seen_currency, seen_usd, quote):
-                        current_app.logger.warning(
-                            '[checkout] precio visto distinto al actual: paquete=%s metodo=%s visto=%s %s usd_visto=%s actual=%s %s usd_actual=%.2f codigo=%r',
-                            package.id, payment_method, seen_amount, seen_currency, seen_usd,
-                            quote['display_amount'], quote['display_currency'], quote['final_amount'],
-                            (aff_code or ''),
+                    if seen_amount_is_stale(seen_amount, seen_currency, seen_usd, quote):
+                        new_label = _format_quote_amount(quote['display_amount'], quote['display_currency'])
+                        stale_reason = (
+                            'visto=%s %s usd_visto=%s actual=%s %s usd_actual=%.2f codigo=%r' % (
+                                seen_amount, seen_currency, seen_usd,
+                                quote['display_amount'], quote['display_currency'],
+                                quote['final_amount'], (aff_code or ''),
+                            )
                         )
                 except Exception:
                     current_app.logger.exception('[checkout] no se pudo comparar el precio visto')
+
+            if stale_reason:
+                current_app.logger.warning(
+                    '[checkout] pagina vieja frenada: paquete=%s metodo=%s %s ua=%s',
+                    package.id, payment_method, stale_reason, (request.user_agent.string or '')[:80],
+                )
+                message = 'Esta pantalla lleva tiempo abierta y los precios cambiaron. '
+                if new_label:
+                    message += 'El monto de este paquete ahora es ' + new_label + '. '
+                message += 'Recarga la página para continuar.'
+                if wants_json:
+                    return jsonify({
+                        'ok': False,
+                        'code': 'price_changed',
+                        'message': message,
+                        'new_label': new_label,
+                    }), 409
+                flash(message, 'warning')
+                return redirect(url_for('main_bp.index'))
 
             category_slug = (game.category.slug if game.category else '').lower()
             tarjetas_without_id = category_slug == 'tarjetas'

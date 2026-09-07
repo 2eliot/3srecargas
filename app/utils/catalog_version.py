@@ -16,7 +16,7 @@ import time
 
 from sqlalchemy import event
 
-from ..models import db, Category, Game, Package, PaymentMethod, Discount, Setting
+from ..models import db, Category, Game, Package, PaymentMethod, Setting
 from .version import build_version
 
 CATALOG_VERSION_KEY = 'catalog_version'
@@ -41,7 +41,10 @@ CATALOG_SETTING_KEYS = frozenset({
     'manual_close_hour',
 })
 
-_CATALOG_MODELS = (Category, Game, Package, PaymentMethod, Discount)
+# Discount queda fuera a propósito: cada compra con código sube su
+# `used_count`, y eso hacía cambiar el sello (y refrescar a todos) en
+# cada venta. Los descuentos se piden frescos en cada carga de todos modos.
+_CATALOG_MODELS = (Category, Game, Package, PaymentMethod)
 
 
 def _touches_catalog(obj):

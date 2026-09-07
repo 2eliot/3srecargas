@@ -1150,6 +1150,7 @@
         // El total que el cliente tiene delante. El servidor lo compara con
         // el precio de hoy: una pestaña abierta hace días lo calculó con la
         // tasa de entonces, y sin esto la compra seguía igual.
+        fd.set('client_version', String(window.APP_VERSION || ''));
         var shown = (typeof window.nxShownTotal === 'function') ? window.nxShownTotal() : null;
         if (shown && isFinite(shown.amount)) {
             fd.set('seen_amount', String(shown.amount));
@@ -1162,7 +1163,11 @@
                 return res.json().catch(function () { throw new Error('Respuesta inválida del servidor.'); });
             })
             .then(function (data) {
-                if (!data.ok) throw new Error(data.message || 'No se pudo iniciar el pago.');
+                if (!data.ok) {
+                    var err = new Error(data.message || 'No se pudo iniciar el pago.');
+                    err.code = data.code || '';
+                    throw err;
+                }
                 return fetch(actionUrl + '?format=json').then(function (r) { return r.json(); });
             })
             .then(function (data) {
@@ -1218,7 +1223,14 @@
             })
             .catch(function (err) {
                 invalidatePrepared();
-                showToast('⚠️ ' + (err.message || 'Error al confirmar la orden.'));
+                if (err && err.code === 'price_changed') {
+                    // Esta página sí sabe refrescarse sola: repinta paquetes,
+                    // tasa y total con lo de hoy y deja el aviso más tiempo.
+                    if (typeof window.nxRefreshCatalog === 'function') window.nxRefreshCatalog(true);
+                    showToast('⚠️ ' + err.message, 12000);
+                } else {
+                    showToast('⚠️ ' + (err.message || 'Error al confirmar la orden.'));
+                }
                 restoreSubmitButton();
             });
     });
