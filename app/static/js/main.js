@@ -1206,10 +1206,28 @@
     }
 
     /* ── Fetch Packages via AJAX ──────────────────────────── */
+    /* ¿Lo que trae el servidor difiere de lo que la página tiene en memoria?
+       Se miran la tasa, la tasa propia del juego y el paquete elegido. */
+    function catalogChanged(data) {
+        if (typeof data.usd_rate_bs === 'number' && data.usd_rate_bs > 0 && Math.abs(data.usd_rate_bs - usdRate) > 0.0001) return true;
+        var oldOverride = (currentGame && currentGame.bs_rate_override != null) ? String(currentGame.bs_rate_override) : '';
+        var newOverride = (data.game && data.game.bs_rate_override != null) ? String(data.game.bs_rate_override) : '';
+        if (parseFloat(oldOverride || '0') !== parseFloat(newOverride || '0')) return true;
+        if (selectedPackage) {
+            var fresh = (data.packages || []).filter(function (p) { return String(p.id) === String(selectedPackage.id); })[0];
+            if (!fresh) return true;
+            if (String(fresh.price) !== String(selectedPackage.price)) return true;
+            if (String(fresh.usd_price || '') !== String(selectedPackage.usd_price || '')) return true;
+            if (!!fresh.out_of_stock !== !!selectedPackage.out_of_stock || !!fresh.closed_now !== !!selectedPackage.closed_now) return true;
+        }
+        return false;
+    }
+
     function fetchPackages(gameId, opts) {
         opts = opts || {};
         var seq = ++packagesRequestSeq;
         var keepSelection = !!opts.keepSelection;
+        var quiet = !!opts.quiet;   // solo repintar si algo cambió
         var previousPackageId = (keepSelection && selectedPackage) ? String(selectedPackage.id) : null;
         var previousTotal = lastShownTotal ? (lastShownTotal.currency + ':' + lastShownTotal.amount) : null;
         catalogRefreshing = true;
@@ -1223,6 +1241,10 @@
                 // Llegó tarde: el cliente ya cambió de juego.
                 if (seq !== packagesRequestSeq || gameId !== activeGameId) return;
                 console.log('Packages data:', data);
+                if (quiet && !catalogChanged(data)) {
+                    catalogLoadedAt = Date.now();
+                    return;   // todo igual: no se toca la pantalla
+                }
                 if (typeof data.usd_rate_bs === 'number' && data.usd_rate_bs > 0) {
                     usdRate = data.usd_rate_bs;
                 }
@@ -1273,8 +1295,38 @@
         item.click();
         var nowTotal = lastShownTotal ? (lastShownTotal.currency + ':' + lastShownTotal.amount) : null;
         if (previousTotal && nowTotal && previousTotal !== nowTotal) {
-            notifyCatalogChange('⚠️ El precio se actualizó: el monto a pagar ahora es ' + formatShownTotal(lastShownTotal) + '. Revísalo antes de pagar.');
+            showPriceUpdateBanner('Los precios se actualizaron. El monto a pagar ahora es ' + formatShownTotal(lastShownTotal) + '.');
         }
+    }
+
+    /* Aviso fijo dentro del formulario de compra, con botón "Actualizar"
+       que recarga la página. El monto ya quedó corregido en pantalla; el
+       botón es para que el cliente lo confirme con la página limpia. */
+    function showPriceUpdateBanner(message) {
+        var form = document.getElementById('quickCheckoutForm');
+        if (!form) { notifyCatalogChange('⚠️ ' + message); return; }
+        var banner = document.getElementById('nxPriceUpdateBanner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'nxPriceUpdateBanner';
+            banner.setAttribute('role', 'status');
+            banner.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;border-radius:12px;' +
+                'background:rgba(255,196,0,.12);border:1px solid rgba(255,196,0,.55);color:#ffd766;font-size:13px;line-height:1.35;';
+            var text = document.createElement('span');
+            text.className = 'nx-price-update-text';
+            text.style.cssText = 'flex:1 1 180px;';
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = 'Actualizar';
+            btn.style.cssText = 'flex:0 0 auto;padding:8px 14px;border-radius:10px;border:0;font-weight:700;cursor:pointer;background:#ffc400;color:#1a1400;';
+            btn.addEventListener('click', function () { window.location.reload(); });
+            banner.appendChild(text);
+            banner.appendChild(btn);
+            form.insertBefore(banner, form.firstChild);
+        }
+        banner.querySelector('.nx-price-update-text').textContent = '⚠️ ' + message;
+        banner.style.display = 'flex';
+        try { banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
     }
 
     function formatShownTotal(total) {
@@ -1289,6 +1341,19 @@
         } else {
             console.warn(message);
         }
+    }
+
+    var selectCheckTimer = null;
+    function checkCatalogOnSelect() {
+        if (!activeGameId) return;
+        // La reselección tras un refresco también dispara click: no encadenar.
+        if (catalogRefreshing) return;
+        if (selectCheckTimer) clearTimeout(selectCheckTimer);
+        selectCheckTimer = setTimeout(function () {
+            selectCheckTimer = null;
+            if (!activeGameId || catalogRefreshing) return;
+            fetchPackages(activeGameId, { keepSelection: true, quiet: true });
+        }, 50);
     }
 
     /* Vuelve a pedir paquetes + tasa si llevan un rato cargados. */
@@ -1434,7 +1499,10 @@
             } else {
                 item.addEventListener('click', function () {
                     selectPackage(pkg, item);
-                    refreshCatalog(false, CATALOG_STALE_ON_SELECT_MS);
+                    // Cada selección consulta el servidor (como la página de
+                    // checkout de Inefablestore): si tasa o precio cambiaron,
+                    // se repinta y sale el aviso con "Actualizar".
+                    checkCatalogOnSelect();
                 });
             }
             return item;

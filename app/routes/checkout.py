@@ -651,24 +651,24 @@ def checkout(package_id):
                 except Exception:
                     current_app.logger.exception('[checkout] no se pudo comparar el precio visto')
 
+            stale_note = ''
             if stale_reason:
+                # No se frena: el cliente ya pagó cuando llega aquí (los datos
+                # de pago se muestran antes de tocar el servidor). La orden se
+                # crea con el precio actual y el admin ve en la nota lo que el
+                # cliente tenía en pantalla, para decidir con el comprobante.
                 current_app.logger.warning(
-                    '[checkout] pagina vieja frenada: paquete=%s metodo=%s %s ua=%s',
+                    '[checkout] pagina vieja: paquete=%s metodo=%s %s ua=%s',
                     package.id, payment_method, stale_reason, (request.user_agent.string or '')[:80],
                 )
-                message = 'Esta pantalla lleva tiempo abierta y los precios cambiaron. '
-                if new_label:
-                    message += 'El monto de este paquete ahora es ' + new_label + '. '
-                message += 'Recarga la página para continuar.'
-                if wants_json:
-                    return jsonify({
-                        'ok': False,
-                        'code': 'price_changed',
-                        'message': message,
-                        'new_label': new_label,
-                    }), 409
-                flash(message, 'warning')
-                return redirect(url_for('main_bp.index'))
+                if new_label and seen_amount is not None:
+                    seen_label = _format_quote_amount(seen_amount, seen_currency)
+                    stale_note = (
+                        'Pestaña vieja: el cliente veía ' + seen_label
+                        + ' y el precio actual era ' + new_label + '. Revisar el monto del comprobante.'
+                    )
+                else:
+                    stale_note = 'Pestaña anterior al 3-sep: el monto que vio el cliente no se conoce. Revisar el comprobante.'
 
             category_slug = (game.category.slug if game.category else '').lower()
             tarjetas_without_id = category_slug == 'tarjetas'
@@ -694,6 +694,7 @@ def checkout(package_id):
                 'phone': phone,
                 'payment_method': payment_method,
                 'affiliate_code': aff_code,
+                'stale_note': stale_note,
             }
 
             identity_meta = extract_customer_identifier_for_game(game, player_id=player_id, email=email)
@@ -946,6 +947,7 @@ def checkout(package_id):
             affiliate_id=affiliate.id if affiliate else None,
             idempotency_key=submitted_confirm_token,
             status='pending',
+            notes=((data.get('stale_note') or '').strip() or None),
         )
         db.session.add(order)
         try:
