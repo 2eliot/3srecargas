@@ -20,6 +20,10 @@
     // paquetes y la tasa se vuelven a pedir al volver a la pestaña, al
     // tocar un paquete o cada rato si llevan más de unos minutos cargados.
     var CATALOG_STALE_MS = 5 * 60 * 1000;
+    // Al elegir un paquete se pide el catálogo de nuevo si tiene más de un
+    // minuto: es el equivalente a la página de checkout de Inefablestore,
+    // que vuelve a pedir tasa y precios cada vez que se abre.
+    var CATALOG_STALE_ON_SELECT_MS = 60 * 1000;
     var CATALOG_POLL_MS = 60 * 1000;
     var catalogLoadedAt = 0;
     var catalogRefreshing = false;
@@ -1288,9 +1292,10 @@
     }
 
     /* Vuelve a pedir paquetes + tasa si llevan un rato cargados. */
-    function refreshCatalog(force) {
+    function refreshCatalog(force, maxAgeMs) {
         if (!activeGameId || catalogRefreshing) return;
-        if (!force && catalogLoadedAt && (Date.now() - catalogLoadedAt) < CATALOG_STALE_MS) return;
+        var maxAge = (typeof maxAgeMs === 'number') ? maxAgeMs : CATALOG_STALE_MS;
+        if (!force && catalogLoadedAt && (Date.now() - catalogLoadedAt) < maxAge) return;
         fetchPackages(activeGameId, { keepSelection: true });
     }
 
@@ -1429,7 +1434,7 @@
             } else {
                 item.addEventListener('click', function () {
                     selectPackage(pkg, item);
-                    refreshCatalog(false);
+                    refreshCatalog(false, CATALOG_STALE_ON_SELECT_MS);
                 });
             }
             return item;
