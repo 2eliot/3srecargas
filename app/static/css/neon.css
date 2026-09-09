@@ -610,25 +610,6 @@ body.drawer-open { overflow: hidden; }
 .copyright-bar .brand-name { color: var(--nx-red) !important; }
 
 /* ── Botón flotante WhatsApp ──────────────────────────────── */
-.nx-wa-float {
-    position: fixed;
-    bottom: 20px; right: 20px;
-    z-index: 900;
-    width: 56px; height: 56px;
-    border-radius: 50%;
-    background: var(--nx-red);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 0 25px rgba(255,0,0,0.8);
-    border: 1px solid rgba(255,255,255,0.4);
-    transition: transform .25s ease;
-    animation: nx-pulse-glow 2.5s infinite ease-in-out;
-}
-.nx-wa-float:hover { transform: scale(1.1); }
-.nx-wa-float svg { width: 28px; height: 28px; }
-
 /* ══════════════════════════════════════════════════════════
    TIENDA (index) — layout de una sola columna centrada
    ══════════════════════════════════════════════════════════ */
@@ -3624,20 +3605,21 @@ body.drawer-open { overflow: hidden; }
    que sigue disponible para quien prefiera ese camino. */
 .nx-chat-float {
     position: fixed;
-    bottom: 86px; right: 20px;
+    bottom: 20px; right: 20px;
     z-index: 900;
     width: 56px; height: 56px;
     padding: 0;
     border-radius: 50%;
     border: 1px solid rgba(255,255,255,0.4);
-    background: linear-gradient(135deg, var(--neon-primary, #7c3aed), var(--neon-secondary, #a855f7));
+    background: var(--nx-red);
     color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 0 25px rgba(124, 58, 237, 0.65);
+    box-shadow: 0 0 25px rgba(255,0,0,0.8);
     transition: transform .25s ease, filter .25s ease;
+    animation: nx-pulse-glow 2.5s infinite ease-in-out;
 }
 .nx-chat-float:hover { transform: scale(1.1); filter: brightness(1.1); }
 .nx-chat-float svg { width: 26px; height: 26px; }
@@ -3649,10 +3631,11 @@ body.drawer-open { overflow: hidden; }
     border-radius: 50%;
     background: #22c55e;
     border: 2px solid #0b0b12;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.35);
 }
 
 @media (max-width: 480px) {
-    .nx-chat-float { bottom: 80px; right: 14px; width: 50px; height: 50px; }
+    .nx-chat-float { bottom: 16px; right: 14px; width: 50px; height: 50px; }
     .nx-chat-float svg { width: 23px; height: 23px; }
 }
 
