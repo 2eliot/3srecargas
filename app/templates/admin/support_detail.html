@@ -130,7 +130,7 @@ video.sup-media{object-fit:contain;max-height:240px}
           </a>
           {% endif %}
         {% endif %}
-        {% if m.sender != 'system' %}<span class="sup-t">{{ m.created_at|datetime_ve('%d/%m %H:%M') }}</span>{% endif %}
+        {% if m.sender != 'system' %}<span class="sup-t">{{ m.time_label }}</span>{% endif %}
       </div>
       {% endfor %}
     </div>
@@ -288,8 +288,9 @@ video.sup-media{object-fit:contain;max-height:240px}
 
     function scrollDown() { thread.scrollTop = thread.scrollHeight; }
 
-    function timeLabel(iso) {
-        var d = new Date(iso);
+    function timeLabel(m) {
+        if (m.time_label) return m.time_label;
+        var d = new Date(m.created_at);
         return isNaN(d) ? '' : d.toLocaleString('es-VE', {
             day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
         });
@@ -340,7 +341,7 @@ video.sup-media{object-fit:contain;max-height:240px}
         if (m.sender !== 'system') {
             var t = document.createElement('span');
             t.className = 'sup-t';
-            t.textContent = timeLabel(m.created_at);
+            t.textContent = timeLabel(m);
             el.appendChild(t);
         }
 

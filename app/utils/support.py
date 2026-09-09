@@ -25,7 +25,7 @@ from werkzeug.utils import secure_filename
 from ..models import (
     db, Order, SupportChat, SupportChatTag, SupportMessage, SupportTag,
 )
-from .timezone import now_ve_naive
+from .timezone import format_ve, now_ve_naive
 
 logger = logging.getLogger(__name__)
 
@@ -531,13 +531,18 @@ def save_attachment(file):
 # ─── Serialización ───────────────────────────────────────────────────────────
 
 def serialize_message(message):
+    created = message.created_at or datetime.utcnow()
     return {
         'id': message.id,
         'sender': message.sender,
         'body': message.body or '',
         'attachment': message.attachment or '',
         'is_video': is_video_attachment(message.attachment),
-        'created_at': (message.created_at or datetime.utcnow()).isoformat() + 'Z',
+        'created_at': created.isoformat() + 'Z',
+        # Hora ya lista para pintar, en horario de Venezuela. El ISO se
+        # queda por si algun cliente quiere formatear a su manera, pero
+        # nadie deberia imprimirlo tal cual.
+        'time_label': format_ve(created, '%H:%M'),
     }
 
 

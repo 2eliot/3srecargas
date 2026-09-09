@@ -71,10 +71,14 @@
 
     function scrollDown() { thread.scrollTop = thread.scrollHeight; }
 
-    function timeLabel(iso) {
-        var d = new Date(iso);
-        if (isNaN(d)) return '';
-        return d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+    // La hora la formatea el servidor en horario de Venezuela; el reloj
+    // del telefono puede estar en otro huso y entonces cada mensaje
+    // parecia de otra hora.
+    function timeLabel(message) {
+        if (message.time_label) return message.time_label;
+        var d = new Date(message.created_at);
+        return isNaN(d) ? '' : d.toLocaleTimeString('es-VE',
+            { hour: '2-digit', minute: '2-digit' });
     }
 
     // textContent y nunca innerHTML: el cuerpo lo escribe una persona y
@@ -131,7 +135,7 @@
         if (message.sender !== 'system') {
             var time = document.createElement('span');
             time.className = 'sc-time';
-            time.textContent = timeLabel(message.created_at);
+            time.textContent = timeLabel(message);
             el.appendChild(time);
         }
 

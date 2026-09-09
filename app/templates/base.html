@@ -378,6 +378,7 @@
          pantalla propia y no un modal: el chat de una recarga manual no es
          un aviso de paso, el cliente ya pago y se queda ahi hasta que le
          resuelvan. El enlace de WhatsApp sigue en el pie. -->
+    {% if request.endpoint != 'support_bp.page' %}
     <a href="{{ url_for('support_bp.page') }}" id="openSupportModalBtn" class="nx-chat-float" aria-label="Chat de soporte">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round">
@@ -385,6 +386,7 @@
         </svg>
         <span class="nx-chat-float-dot" id="supportFloatDot" hidden></span>
     </a>
+    {% endif %}
 
     {% block extra_js %}{% endblock %}
     <script>

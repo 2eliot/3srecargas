@@ -117,7 +117,7 @@ def detail(chat_id):
     return render_template(
         'admin/support_detail.html',
         chat=chat,
-        messages=chat.messages,
+        messages=[support_service.serialize_message(m) for m in chat.messages],
         suggested_orders=support_service.find_matching_orders(chat),
         recent_orders=(Order.query
                        .filter(Order.player_id == chat.order.player_id)

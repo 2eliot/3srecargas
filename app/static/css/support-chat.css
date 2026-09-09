@@ -118,6 +118,12 @@
     flex-direction: column;
 }
 
+/* `display:flex` gana al `display:none` que el navegador aplica por
+   defecto a [hidden], asi que los dos pasos —el formulario del nombre y el
+   hilo— se pintaban uno encima del otro. Es el motivo de que en el movil
+   se vieran los mensajes atravesados sobre el formulario. */
+.sc-body[hidden] { display: none !important; }
+
 .sc-intro { text-align: center; padding: 30px 22px 14px; }
 .sc-intro-icon { font-size: 38px; margin-bottom: 8px; }
 .sc-intro h1 {
@@ -349,9 +355,17 @@ video.sc-media { object-fit: contain; max-height: 240px; }
 /* ── Movil: la pestana ocupa toda la pantalla, como una app ───────────── */
 
 @media (max-width: 640px) {
+    /* La ventana se saca del flujo y cubre la pantalla entera, cabecera de
+       la tienda incluida. Antes media 100dvh pero quedaba DEBAJO del header
+       del sitio, asi que la pagina sumaba mas alto que la pantalla: el
+       cuadro de escribir caia fuera y el chat quedaba a medias.
+       La flecha de la cabecera es la vuelta a la tienda. */
     .sc-wrap { padding: 0; max-width: none; }
     .sc-window {
-        height: 100dvh;
+        position: fixed;
+        inset: 0;
+        z-index: 950;
+        height: auto;
         min-height: 0;
         border: none;
         border-radius: 0;
@@ -360,4 +374,8 @@ video.sc-media { object-fit: contain; max-height: 240px; }
     .sc-back { display: block; }
     .sc-msg { max-width: 86%; }
     .sc-foot { display: none; }
+    .sc-intro { padding: 22px 18px 10px; }
+    .sc-intro-icon { font-size: 30px; }
+    .sc-intro h1 { font-size: 17px; }
+    .sc-start-form { padding: 6px 18px 18px; }
 }
