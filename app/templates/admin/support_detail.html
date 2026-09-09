@@ -40,8 +40,11 @@
 }
 .sup-msg{
     max-width:74%;padding:8px 12px 6px;border-radius:12px;font-size:.88rem;
-    line-height:1.45;word-break:break-word;white-space:pre-wrap;
+    line-height:1.45;word-break:break-word;
 }
+/* pre-wrap solo en el texto: en la burbuja conservaba la sangria de la
+   plantilla y estiraba cada mensaje corto a media pantalla. */
+.sup-msg-body{display:block;white-space:pre-wrap}
 .sup-msg.client{align-self:flex-start;background:rgba(255,255,255,.08);
     border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:3px}
 .sup-msg.admin{align-self:flex-end;background:linear-gradient(135deg,#6366f1,#8b5cf6);
@@ -116,7 +119,7 @@ video.sup-media{object-fit:contain;max-height:240px}
     <div class="sup-thread" id="supThread">
       {% for m in messages %}
       <div class="sup-msg {{ m.sender }}" data-id="{{ m.id }}">
-        {% if m.body %}{{ m.body }}{% endif %}
+        {%- if m.body %}<span class="sup-msg-body">{{ m.body }}</span>{% endif -%}
         {% if m.attachment %}
           {% if m.attachment.rsplit('.', 1)[-1]|lower in ['mp4','webm','mov','m4v'] %}
           <video class="sup-media" controls preload="metadata"
@@ -302,7 +305,13 @@ video.sup-media{object-fit:contain;max-height:240px}
         var el = document.createElement('div');
         el.className = 'sup-msg ' + m.sender;
         el.dataset.id = m.id;
-        if (m.body) el.textContent = m.body;
+
+        if (m.body) {
+            var body = document.createElement('span');
+            body.className = 'sup-msg-body';
+            body.textContent = m.body;
+            el.appendChild(body);
+        }
 
         if (m.attachment) {
             var url = '/static/uploads/' + m.attachment;

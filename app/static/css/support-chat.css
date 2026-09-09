@@ -20,7 +20,10 @@
     border-radius: 16px;
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, .1);
-    background: rgba(10, 10, 18, .82);
+    /* Opaco a proposito: en movil la ventana va fija encima de la
+       tienda, y con transparencia se leia el pie de pagina por detras
+       de los mensajes. */
+    background: #0a0a12;
     box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
 }
 
@@ -210,8 +213,16 @@
     font-size: 14px;
     line-height: 1.45;
     word-break: break-word;
-    white-space: pre-wrap;
     position: relative;
+}
+
+/* `pre-wrap` va SOLO en el texto del mensaje, nunca en la burbuja.
+   Puesto en la burbuja conservaba tambien los saltos de linea y la
+   sangria que la plantilla deja entre etiquetas, y un "buenas" de una
+   palabra se pintaba como un ladrillo de media pantalla. */
+.sc-msg-body {
+    display: block;
+    white-space: pre-wrap;
 }
 /* Miniatura, no la foto entera. Una captura de movil a tamano real
    ocupaba toda la pantalla y empujaba la conversacion fuera de vista; se

@@ -61,7 +61,7 @@
       <div class="sc-thread" id="scThread" aria-live="polite">
         {% for m in messages %}
         <div class="sc-msg {{ m.sender }}" data-id="{{ m.id }}">
-          {% if m.body %}<span class="sc-msg-body">{{ m.body }}</span>{% endif %}
+          {%- if m.body %}<span class="sc-msg-body">{{ m.body }}</span>{% endif -%}
           {% if m.attachment %}
           {% if m.is_video %}
           <video class="sc-media" src="{{ url_for('static', filename='uploads/' ~ m.attachment) }}"
