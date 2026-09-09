@@ -1030,13 +1030,18 @@
 
         {% if is_manual_order and order.status in ['pending', 'approved'] %}
         <div class="nx-manual-wa">
-            <h3>Finaliza tu pedido manual por WhatsApp</h3>
-            <p>Envíanos tu número de pedido para concretar la recarga con soporte.</p>
+            <h3>Finaliza tu pedido manual con soporte</h3>
+            <p>Abre el chat y concretamos la recarga. Los datos de tu pedido ya van escritos.</p>
             <button
                 type="button"
-                id="manualOrderWhatsAppBtn"
-                data-message="Hola, ya complete mi pedido manual y necesito finalizar la recarga.%0A%0ANumero de pedido: #{{ order.order_number }}%0AJuego: {{ order.game.name|replace('%', '%25')|replace('\n', ' ') }}%0APaquete adquirido: {{ order.package.name|replace('%', '%25')|replace('\n', ' ') }}{% if order.player_id %}%0A{{ order.game.player_id_label|replace('%', '%25')|replace('\n', ' ') }}: {{ order.player_id|replace('%', '%25')|replace('\n', ' ') }}{% endif %}{% if order.zone_id %}%0A{{ order.game.zone_id_label|replace('%', '%25')|replace('\n', ' ') }}: {{ order.zone_id|replace('%', '%25')|replace('\n', ' ') }}{% endif %}">
-                CONTINUAR PEDIDO EN WHATSAPP
+                id="manualOrderSupportBtn"
+                data-message="Hola, ya completé mi pedido manual y necesito finalizar la recarga.
+Número de pedido: #{{ order.order_number }}
+Juego: {{ order.game.name }}
+Paquete adquirido: {{ order.package.name }}{% if order.player_id %}
+{{ order.game.player_id_label }}: {{ order.player_id }}{% endif %}{% if order.zone_id %}
+{{ order.game.zone_id_label }}: {{ order.zone_id }}{% endif %}">
+                CONTINUAR PEDIDO EN EL CHAT
             </button>
         </div>
         {% endif %}
@@ -2154,34 +2159,46 @@
 </script>
 <script>
 (function () {
-    function normalizeWhatsAppTarget(raw) {
-        if (raw === null || raw === undefined) return '';
-        var text = String(raw).trim();
-        if (!text) return '';
+    // El pedido manual ya no sale a WhatsApp: abre el chat de soporte de la
+    // propia web. Asi la conversacion queda en la bandeja del admin, con la
+    // orden vinculada sola (el contexto la toma de CURRENT_ORDER_NUMBER) en
+    // vez de perderse en un hilo de WhatsApp que nadie puede etiquetar.
+    var btn = document.getElementById('manualOrderSupportBtn');
+    if (!btn) return;
 
-        var phoneParamMatch = text.match(/[?&]phone=(\d+)/i);
-        if (phoneParamMatch) {
-            return phoneParamMatch[1];
-        }
-
-        var waMatch = text.match(/wa\.me\/(\d+)/i);
-        if (waMatch) {
-            return waMatch[1];
-        }
-
-        return text.replace(/\D/g, '');
+    function abrirChat() {
+        if (typeof window.openSupportChat !== 'function') return false;
+        window.openSupportChat({ message: btn.getAttribute('data-message') || '' });
+        return true;
     }
 
-    var manualOrderWhatsAppBtn = document.getElementById('manualOrderWhatsAppBtn');
-    if (!manualOrderWhatsAppBtn) return;
-
-    manualOrderWhatsAppBtn.addEventListener('click', function () {
-        var target = normalizeWhatsAppTarget(window.SUPPORT_WHATSAPP_URL || '');
-        if (!target) return;
-        var rawMessage = manualOrderWhatsAppBtn.getAttribute('data-message') || '';
-        var url = 'https://wa.me/' + target + '?text=' + rawMessage;
-        window.open(url, '_blank', 'noopener');
+    btn.addEventListener('click', function () {
+        if (!abrirChat()) {
+            // main.js no cargo. Antes que dejar al cliente sin salida, el
+            // boton flotante sigue ahi: se lo decimos en vez de no hacer nada.
+            alert('Abre el chat con el botón rojo de la esquina para finalizar tu pedido.');
+        }
     });
+
+    // Al terminar la compra manual el chat se abre solo: el pedido no queda
+    // cerrado hasta hablar con soporte, y un boton que hay que descubrir
+    // deja a medias justo al cliente que ya pago.
+    //
+    // Una sola vez por pedido y por navegador. Sin esta marca, cada vez que
+    // el cliente recarga para ver si su orden avanzo —que en una orden
+    // pendiente es a menudo— le saltaria el modal encima.
+    var marca = 'store:support-auto-open:' + {{ order.order_number|tojson }};
+    var yaSeAbrio = false;
+    try { yaSeAbrio = localStorage.getItem(marca) === '1'; } catch (_) {}
+
+    if (!yaSeAbrio) {
+        // Un respiro para que la pagina termine de pintar: el modal
+        // apareciendo a mitad del render se siente como un fallo.
+        setTimeout(function () {
+            if (!abrirChat()) return;
+            try { localStorage.setItem(marca, '1'); } catch (_) {}
+        }, 1200);
+    }
 })();
 </script>
 {% if auto_verify_allowed %}

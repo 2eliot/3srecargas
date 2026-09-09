@@ -2569,6 +2569,27 @@
         if (supportReplyBody) supportReplyBody.focus();
     }
 
+    // Puerta de entrada al chat desde fuera de main.js. La usa la pagina
+    // del pedido para que una orden manual termine aqui en vez de en
+    // WhatsApp, con el mensaje ya escrito.
+    //
+    // Nunca pisa lo que el cliente haya tecleado: si ya empezo a escribir,
+    // su texto manda sobre el nuestro.
+    window.openSupportChat = function (options) {
+        var opts = options || {};
+        openSupportModal();
+
+        var text = String(opts.message || '').trim();
+        if (!text) return;
+
+        var inChat = supportChatEl && !supportChatEl.hidden;
+        var target = inChat ? supportReplyBody : supportFirstMessageInput;
+        if (target && !String(target.value || '').trim()) {
+            target.value = text;
+        }
+        if (target) target.focus();
+    };
+
     function supportPoll() {
         if (!supportState.token) return;
 

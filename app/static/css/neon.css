@@ -2863,10 +2863,12 @@ body.drawer-open { overflow: hidden; }
 .nx-binance-wait .hour { font-size: 26px; animation: nx-spin 1.6s linear infinite; }
 
 /* WhatsApp manual */
+/* Antes era verde WhatsApp, que es exactamente lo que el boton ya no
+   hace. Se pasa al rojo de marca, igual que el flotante del chat. */
 .nx-manual-wa {
     border-radius: 12px;
-    border: 1px solid rgba(16,185,129,.4);
-    background: rgba(16,185,129,.07);
+    border: 1px solid rgba(255,0,0,.35);
+    background: rgba(255,0,0,.07);
     padding: 14px;
     display: flex;
     flex-direction: column;
@@ -2879,8 +2881,8 @@ body.drawer-open { overflow: hidden; }
     width: 100%;
     padding: 11px 0;
     border-radius: 12px;
-    background: linear-gradient(90deg, #059669, #15803d);
-    border: 1px solid rgba(52,211,153,.4);
+    background: linear-gradient(90deg, #dc2626, #991b1b);
+    border: 1px solid rgba(255,0,0,.45);
     color: #fff;
     font-family: var(--nx-font-display);
     font-weight: 900;
