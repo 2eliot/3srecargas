@@ -37,10 +37,37 @@
     function pageDay() { return String(window.PAGE_DAY_VE || ''); }
     function storeHeaders() { return { 'X-Page-Day': pageDay() }; }
 
+    /* Un código de Binance a la vista bloquea cualquier recarga.
+
+       Ese código de 6 dígitos es el memo que el cliente escribe en la app
+       de Binance para que su pago se reconozca. Si la página se recarga
+       mientras él está pagando en la app, vuelve a una pantalla que puede
+       enseñarle otro código, y el pago que ya envió se queda sin orden a
+       la que atarse.
+
+       Se comprueba aquí, en el único punto por el que pasan todas las
+       recargas automáticas, y no en cada sitio que las dispara: eran tres
+       —cambio de día, versión nueva y `page_expired` al elegir paquete— y
+       la última no miraba absolutamente nada. */
+    function hayPagoBinanceEnCurso() {
+        var ids = ['nxBinanceCode', 'binanceCodeDisplay'];
+        for (var i = 0; i < ids.length; i++) {
+            var el = document.getElementById(ids[i]);
+            if (!el || el.hidden) continue;
+            if (!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)) continue;
+            if (/\d{6}/.test(el.textContent || '')) return true;
+        }
+        return false;
+    }
+
     /* Seguro anti-bucle: ninguna recarga automática se repite en menos de
        un minuto. Si algo falla, la página se queda quieta en vez de
        parpadear sin fin delante del cliente. */
     function safeAutoReload(reason) {
+        if (hayPagoBinanceEnCurso()) {
+            console.warn('Recarga automática omitida (pago Binance en curso):', reason);
+            return false;
+        }
         var key = 'nx:auto-reload';
         var last = 0;
         try { last = parseInt(sessionStorage.getItem(key) || '0', 10) || 0; } catch (_) {}

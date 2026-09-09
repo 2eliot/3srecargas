@@ -55,7 +55,20 @@ OPEN_STATUSES = ('open', 'waiting_client')
 
 # Caracteres de control y marcas de dirección: invisibles al leer, pero
 # sirven para falsear un nombre en la bandeja del admin.
-_INVISIBLE_CHARS = re.compile(r'[\x00-\x1f\x7f​-‏‪-‮⁦-⁩]')
+#
+# Hay dos variantes a propósito. La de una línea se lo lleva todo, salto
+# incluido, porque un nombre con saltos rompe la bandeja. La de varias
+# líneas respeta \n y \t: el rango \x00-\x1f los incluye, y usarla para el
+# cuerpo de los mensajes borraba los saltos que la gente escribía — todo
+# el texto llegaba pegado en un solo párrafo.
+_CONTROL_RANGE = '\x00-\x08\x0b\x0c\x0e-\x1f\x7f'
+_BIDI_MARKS = '​-‏‪-‮⁦-⁩'
+
+_INVISIBLE_CHARS = re.compile('[' + _CONTROL_RANGE + '\x09\x0a\x0d' + _BIDI_MARKS + ']')
+_INVISIBLE_CHARS_MULTILINE = re.compile('[' + _CONTROL_RANGE + _BIDI_MARKS + ']')
+
+# Más de dos saltos seguidos es alguien aporreando Enter, no un párrafo.
+_BLANK_LINE_RUN = re.compile(r'\n{3,}')
 _WHITESPACE_RUN = re.compile(r'\s+')
 
 
@@ -83,7 +96,9 @@ def clean_email(raw):
 
 
 def clean_name(raw):
-    name = _INVISIBLE_CHARS.sub('', str(raw or ''))
+    # Se sustituye por espacio, no por nada: quitando el salto a secas,
+    # un nombre con salto de linea quedaba pegado sin separacion.
+    name = _INVISIBLE_CHARS.sub(' ', str(raw or ''))
     name = _WHITESPACE_RUN.sub(' ', name).strip()
     if len(name) < MIN_NAME_LENGTH:
         raise SupportError('Escribe tu nombre para iniciar el chat.')
@@ -91,8 +106,9 @@ def clean_name(raw):
 
 
 def clean_body(raw, allow_empty=False):
-    body = _INVISIBLE_CHARS.sub('', str(raw or ''))
-    body = body.replace('\r\n', '\n').strip()
+    body = str(raw or '').replace('\r\n', '\n').replace('\r', '\n')
+    body = _INVISIBLE_CHARS_MULTILINE.sub('', body)
+    body = _BLANK_LINE_RUN.sub('\n\n', body).strip()
     if not body and not allow_empty:
         raise SupportError('Escribe un mensaje.')
     return body[:MAX_BODY_LENGTH]
@@ -413,8 +429,8 @@ def save_admin_note(chat, text, admin_id=None):
     qué falló de verdad. Las etiquetas clasifican; la nota cuenta la
     historia que ninguna etiqueta del catálogo cubre.
     """
-    text = _INVISIBLE_CHARS.sub('', str(text or ''))
-    text = text.replace('\r\n', '\n').strip()[:MAX_NOTE_LENGTH]
+    text = str(text or '').replace('\r\n', '\n').replace('\r', '\n')
+    text = _INVISIBLE_CHARS_MULTILINE.sub('', text).strip()[:MAX_NOTE_LENGTH]
 
     chat.admin_note = text or None
     chat.admin_note_at = datetime.utcnow() if text else None

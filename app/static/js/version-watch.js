@@ -48,13 +48,20 @@
     // sí o sí; lo único que se respeta es un pago que ya se está enviando.
     function recargaSegura(motivo) {
         if (typeof window.nxSafeAutoReload === 'function') return window.nxSafeAutoReload(motivo);
+        // Sin main.js no hay guardia central, así que se repite aquí lo
+        // único que no se puede saltar nunca.
+        if (hayCodigoBinanceALaVista()) return false;
         window.location.reload();
         return true;
     }
 
     function recargaDeDia() {
-        var etapa = document.getElementById('nxStage');
-        if (etapa && etapa.value === 'confirm') return false;
+        // Antes solo se frenaba en la etapa 'confirm'. Era poco: a
+        // medianoche hora de Venezuela esta recarga se llevaba por delante
+        // un pago de Binance en curso. Ahora respeta el mismo `estaOcupado`
+        // que el resto, y como se comprueba en cada sondeo, la recarga
+        // llega igual en cuanto el cliente termine.
+        if (estaOcupado()) return false;
         return recargaSegura('cambio de dia');
     }
 
@@ -122,10 +129,32 @@
         return false;
     }
 
+    /* Un código de Binance a la vista es intocable.
+
+       Ese código de 6 dígitos es el memo que el cliente escribe en la app
+       de Binance para que su pago se reconozca. Si la página se recarga
+       mientras él está en la app pagando, vuelve a una pantalla que puede
+       mostrarle otro código — y el pago que ya envió queda huérfano, sin
+       orden a la que atarse.
+
+       Se mira en las dos pantallas donde aparece: el checkout integrado
+       del index (#nxBinanceCode) y la página de checkout (#binanceCodeDisplay),
+       que además no tiene ni `nxStage` ni paquete marcado, o sea que sin
+       esto no la protegía nada. */
+    function hayCodigoBinanceALaVista() {
+        var ids = ['nxBinanceCode', 'binanceCodeDisplay'];
+        for (var i = 0; i < ids.length; i++) {
+            var el = document.getElementById(ids[i]);
+            if (esVisible(el) && /\d{6}/.test(el.textContent || '')) return true;
+        }
+        return false;
+    }
+
     function estaOcupado() {
         // Un checkout que ya pasó del primer paso jamás se recarga.
         var etapa = document.getElementById('nxStage');
         if (etapa && etapa.value && etapa.value !== 'init') return true;
+        if (hayCodigoBinanceALaVista()) return true;
         // Con un paquete elegido ya está mirando los datos de pago.
         if (document.querySelector('.package-item.selected')) return true;
         if (hayAlgoAbierto()) return true;
