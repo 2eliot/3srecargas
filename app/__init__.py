@@ -119,6 +119,8 @@ def create_app(config_class=Config):
     from .routes.redeem import redeem_bp
     from .routes.minis import minis_bp
     from .routes.revendedores_webhook import revendedores_webhook_bp
+    from .routes.support import support_bp
+    from .routes.admin_support import admin_support_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
@@ -129,6 +131,8 @@ def create_app(config_class=Config):
     app.register_blueprint(redeem_bp)
     app.register_blueprint(minis_bp, url_prefix='/minis')
     app.register_blueprint(revendedores_webhook_bp)
+    app.register_blueprint(support_bp)
+    app.register_blueprint(admin_support_bp)
 
     @app.template_filter('datetime_ve')
     def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):
@@ -219,6 +223,13 @@ def create_app(config_class=Config):
             'APP_TIMEZONE_OFFSET': VENEZUELA_TIMEZONE.utcoffset(None),
         }
 
+    @app.cli.command('purge-support-chats')
+    def purge_support_chats_command():
+        """Borra chats de soporte cerrados hace más de 90 días."""
+        from .utils.support import purge_old_chats
+        removed = purge_old_chats()
+        print(f'Chats de soporte purgados: {removed}')
+
     @app.cli.command('archive-rankings-month')
     def archive_rankings_month_command():
         archive_previous_month_rankings_if_needed()
@@ -247,6 +258,7 @@ def create_app(config_class=Config):
         _ensure_ranking_archive_columns()
         _ensure_revendedores_mapping_columns()
         _ensure_binance_columns()
+        _ensure_support_columns()
         _init_default_data(app)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -774,8 +786,80 @@ def _ensure_revendedores_mapping_columns():
         db.session.rollback()
 
 
+def _ensure_support_columns():
+    """Columnas del chat de soporte.
+
+    Las tablas nacen de `db.create_all()`, pero eso solo crea lo que no
+    existe: no toca una tabla ya creada a la que luego se le añade un
+    campo. Como el soporte va a seguir creciendo (vincular una orden,
+    bloquear a un insistente), la lista se mantiene aquí desde el primer
+    día y las altas futuras solo agregan una línea.
+    """
+    try:
+        chat_columns = [
+            'short_code VARCHAR(8)',
+            'order_id INTEGER',
+            'user_id INTEGER',
+            'context_order_number VARCHAR(20)',
+            'context_player_id VARCHAR(100)',
+            'context_email VARCHAR(255)',
+            'context_phone VARCHAR(50)',
+            'context_game VARCHAR(120)',
+            'context_package VARCHAR(160)',
+            'context_page VARCHAR(255)',
+            "status VARCHAR(20) DEFAULT 'open'",
+            'is_blocked BOOLEAN DEFAULT FALSE',
+            'unread_admin INTEGER DEFAULT 0',
+            'unread_client INTEGER DEFAULT 0',
+            'client_ip VARCHAR(45)',
+            'user_agent VARCHAR(255)',
+            'admin_note TEXT',
+            'admin_note_at TIMESTAMP',
+            'admin_note_admin_id INTEGER',
+            'last_message_at TIMESTAMP',
+            'closed_at TIMESTAMP',
+        ]
+        message_columns = [
+            'admin_id INTEGER',
+            'attachment VARCHAR(255)',
+            'read_at TIMESTAMP',
+        ]
+        tag_columns = [
+            "kind VARCHAR(10) DEFAULT 'error'",
+            "color VARCHAR(9) DEFAULT '#6c5ce7'",
+            'is_active BOOLEAN DEFAULT TRUE',
+            'sort_order INTEGER DEFAULT 0',
+        ]
+
+        if _ensure_postgres_columns('support_chats', chat_columns):
+            _ensure_postgres_columns('support_messages', message_columns)
+            _ensure_postgres_columns('support_tags', tag_columns)
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        for table, columns in (
+            ('support_chats', chat_columns),
+            ('support_messages', message_columns),
+            ('support_tags', tag_columns),
+        ):
+            rows = db.session.execute(text(f'PRAGMA table_info({table})')).fetchall()
+            if not rows:
+                continue
+            existing = {r[1] for r in rows}
+            for column_def in columns:
+                name = column_def.split()[0]
+                if name not in existing:
+                    db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN {column_def}'))
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _init_default_data(app):
-    from .models import AdminUser, Category, MiniRank, MiniViewTier
+    from .models import AdminUser, Category, MiniRank, MiniViewTier, SupportTag
     import os
 
     if AdminUser.query.count() == 0:
@@ -843,6 +927,41 @@ def _init_default_data(app):
                 MiniViewTier(min_views=100000, max_views=None, reward_amount=37, sort_order=4),
             ]:
                 db.session.add(tier)
+            db.session.flush()
+    except Exception:
+        db.session.rollback()
+
+    # Catálogo de etiquetas del soporte. Son dos preguntas distintas y por
+    # eso son dos tipos: 'user' responde quién es quien escribe (el chat
+    # solo pide el nombre, que no verifica nada) y 'error' responde qué le
+    # pasa. "Sin identificar" es la que se pone sola a todo chat que llega
+    # sin contexto: es la cola de trabajo del admin.
+    #
+    # Mismo blindaje que los bloques de arriba: con `gunicorn -w 3` los
+    # tres workers pueden ver la tabla vacía a la vez y el segundo choca
+    # contra el UNIQUE de support_tags.slug.
+    try:
+        if SupportTag.query.count() == 0:
+            default_tags = [
+                ('user', 'Sin identificar', 'sin-identificar', '#9aa0a6', 1),
+                ('user', 'Cliente frecuente', 'cliente-frecuente', '#00b894', 2),
+                ('user', 'Primera compra', 'primera-compra', '#0984e3', 3),
+                ('user', 'Revendedor', 'revendedor', '#6c5ce7', 4),
+                ('user', 'Mini influencer', 'mini-influencer', '#e84393', 5),
+                ('user', 'Reincidente', 'reincidente', '#d63031', 6),
+                ('error', 'Pago no verificado', 'pago-no-verificado', '#e17055', 1),
+                ('error', 'Recarga no llegó', 'recarga-no-llego', '#d63031', 2),
+                ('error', 'ID incorrecto', 'id-incorrecto', '#fdcb6e', 3),
+                ('error', 'Doble cobro', 'doble-cobro', '#c0392b', 4),
+                ('error', 'Tasa o precio', 'tasa-o-precio', '#0984e3', 5),
+                ('error', 'Código regalo', 'codigo-regalo', '#00b894', 6),
+                ('error', 'Otro', 'otro', '#636e72', 7),
+            ]
+            for kind, name, slug, color, sort_order in default_tags:
+                db.session.add(SupportTag(
+                    kind=kind, name=name, slug=slug,
+                    color=color, sort_order=sort_order,
+                ))
             db.session.flush()
     except Exception:
         db.session.rollback()

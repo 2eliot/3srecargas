@@ -1,0 +1,122 @@
+{% extends 'admin/base.html' %}
+{% block title %}Soporte{% endblock %}
+{% block page_title %}Chats de soporte{% endblock %}
+
+{% block extra_css %}
+<style>
+.sup-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px}
+.sup-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#cbd5e1;
+    font-size:.82rem;text-decoration:none;transition:.15s}
+.sup-chip:hover{border-color:rgba(255,255,255,.3);color:#fff}
+.sup-chip.active{background:rgba(99,102,241,.22);border-color:rgba(99,102,241,.6);color:#fff}
+.sup-chip .n{opacity:.7;font-variant-numeric:tabular-nums}
+.sup-search{display:flex;gap:8px;margin-left:auto}
+.sup-search input{min-width:220px}
+.sup-row{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;
+    padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.03);margin-bottom:10px;text-decoration:none;color:inherit;transition:.15s}
+.sup-row:hover{border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.07)}
+.sup-row.unread{border-left:3px solid #6366f1}
+.sup-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;font-size:1.05rem}
+.sup-name{font-weight:600;color:#f1f5f9}
+.sup-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;color:#94a3b8;margin-left:8px}
+.sup-preview{color:#94a3b8;font-size:.85rem;margin-top:3px;overflow:hidden;text-overflow:ellipsis;
+    display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
+.sup-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.sup-tag{font-size:.7rem;padding:2px 8px;border-radius:999px;color:#fff;white-space:nowrap}
+.sup-meta{text-align:right;font-size:.78rem;color:#94a3b8;white-space:nowrap}
+.sup-badge{display:inline-block;min-width:20px;padding:1px 7px;border-radius:999px;
+    background:#6366f1;color:#fff;font-size:.72rem;font-weight:700;text-align:center}
+.sup-empty{padding:48px 20px;text-align:center;color:#94a3b8}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sup-filters">
+    <a class="sup-chip {% if status == 'active' %}active{% endif %}"
+       href="{{ url_for('admin_support_bp.inbox', status='active') }}">
+        Activos <span class="n">{{ counts.active }}</span>
+    </a>
+    <a class="sup-chip {% if status == 'unread' %}active{% endif %}"
+       href="{{ url_for('admin_support_bp.inbox', status='unread') }}">
+        Sin responder <span class="n">{{ counts.unread }}</span>
+    </a>
+    <a class="sup-chip {% if status == 'closed' %}active{% endif %}"
+       href="{{ url_for('admin_support_bp.inbox', status='closed') }}">
+        Cerrados <span class="n">{{ counts.closed }}</span>
+    </a>
+    <a class="sup-chip {% if status == 'all' %}active{% endif %}"
+       href="{{ url_for('admin_support_bp.inbox', status='all') }}">Todos</a>
+
+    <a class="sup-chip" href="{{ url_for('admin_support_bp.tags') }}">🏷️ Etiquetas</a>
+
+    <form class="sup-search" method="GET" action="{{ url_for('admin_support_bp.inbox') }}">
+        <input type="hidden" name="status" value="{{ status }}">
+        <input type="text" name="q" value="{{ term }}" placeholder="Nombre, código, orden o correo">
+        <button type="submit" class="btn-secondary">Buscar</button>
+    </form>
+</div>
+
+{% if tags %}
+<div class="sup-filters" style="margin-top:-8px">
+    <span style="color:#64748b;font-size:.8rem">Filtrar por etiqueta:</span>
+    {% for tag in tags %}
+    <a class="sup-chip {% if tag_slug == tag.slug %}active{% endif %}"
+       href="{{ url_for('admin_support_bp.inbox', status=status, tag='' if tag_slug == tag.slug else tag.slug) }}">
+        <span style="width:8px;height:8px;border-radius:50%;background:{{ tag.color }}"></span>{{ tag.name }}
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if chats %}
+    {% for chat in chats %}
+    <a class="sup-row {% if chat.unread_admin %}unread{% endif %}"
+       href="{{ url_for('admin_support_bp.detail', chat_id=chat.id) }}">
+        <div class="sup-avatar">{{ chat.client_name[:1]|upper }}</div>
+        <div>
+            <div>
+                <span class="sup-name">{{ chat.client_name }}</span>
+                <span class="sup-code">{{ chat.display_code }}</span>
+                {% if chat.is_blocked %}<span class="sup-tag" style="background:#dc2626">Bloqueado</span>{% endif %}
+            </div>
+            <div class="sup-preview">
+                {% if chat.messages %}{{ chat.messages[-1].body or 'Imagen adjunta' }}{% else %}—{% endif %}
+            </div>
+            <div class="sup-tags">
+                {% for tag in chat.tags %}
+                <span class="sup-tag" style="background:{{ tag.color }}">{{ tag.name }}</span>
+                {% endfor %}
+                {% if chat.order %}
+                <span class="sup-tag" style="background:#334155">Orden {{ chat.order.order_number }}</span>
+                {% endif %}
+                {% if chat.admin_note %}
+                <span class="sup-tag" style="background:#475569" title="{{ chat.admin_note[:120] }}">📝 Con nota</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="sup-meta">
+            {% if chat.unread_admin %}<span class="sup-badge">{{ chat.unread_admin }}</span><br>{% endif %}
+            {{ chat.status_label }}<br>
+            {{ chat.last_message_at|datetime_ve if chat.last_message_at else '' }}
+        </div>
+    </a>
+    {% endfor %}
+
+    {% if pagination.pages > 1 %}
+    <div class="sup-filters" style="justify-content:center;margin-top:18px">
+        {% if pagination.has_prev %}
+        <a class="sup-chip" href="{{ url_for('admin_support_bp.inbox', status=status, tag=tag_slug, q=term, page=pagination.prev_num) }}">← Anterior</a>
+        {% endif %}
+        <span class="sup-chip">{{ pagination.page }} / {{ pagination.pages }}</span>
+        {% if pagination.has_next %}
+        <a class="sup-chip" href="{{ url_for('admin_support_bp.inbox', status=status, tag=tag_slug, q=term, page=pagination.next_num) }}">Siguiente →</a>
+        {% endif %}
+    </div>
+    {% endif %}
+{% else %}
+    <div class="admin-card"><div class="sup-empty">No hay chats que coincidan con este filtro.</div></div>
+{% endif %}
+{% endblock %}

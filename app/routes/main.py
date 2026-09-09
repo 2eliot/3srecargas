@@ -825,8 +825,20 @@ def push_subscribe_route():
         if order:
             order_id = order.id
 
+    # Token del chat de soporte, si el cliente tiene uno abierto: así el
+    # aviso de "te respondieron" llega también a quien escribió sin haber
+    # comprado nada, que no tiene ninguna orden a la que engancharse.
+    chat_id = None
+    support_token = (payload.get('support_token') or '').strip()
+    if support_token:
+        from ..utils.support import get_chat_by_token
+        chat = get_chat_by_token(support_token)
+        if chat:
+            chat_id = chat.id
+
     try:
-        push_subscribe(endpoint, keys.get('p256dh'), keys.get('auth'), order_id=order_id)
+        push_subscribe(endpoint, keys.get('p256dh'), keys.get('auth'),
+                       order_id=order_id, chat_id=chat_id)
     except ValueError as exc:
         return jsonify({'ok': False, 'message': str(exc)}), 400
 

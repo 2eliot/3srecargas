@@ -1,0 +1,84 @@
+{% extends 'admin/base.html' %}
+{% block title %}Etiquetas de soporte{% endblock %}
+{% block page_title %}Etiquetas de soporte{% endblock %}
+
+{% block extra_css %}
+<style>
+.tag-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+@media (max-width:900px){.tag-grid{grid-template-columns:1fr}}
+.tag-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+    background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);margin-bottom:8px}
+.tag-item form{display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap}
+.tag-item input[type=text]{flex:1;min-width:120px}
+.tag-item input[type=color]{width:38px;height:32px;padding:2px;border-radius:6px}
+.tag-dot{width:12px;height:12px;border-radius:50%;flex:none}
+.tag-off{opacity:.45}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-card" style="margin-bottom:18px">
+    <div class="card-header">
+        <h2>Nueva etiqueta</h2>
+        <p class="form-hint">
+            Las de <strong>usuario</strong> responden quién es quien escribe; las de <strong>error</strong>,
+            qué le pasa. Como el chat solo pide el nombre, estas etiquetas son la memoria del panel.
+        </p>
+    </div>
+    <form method="POST" action="{{ url_for('admin_support_bp.tag_create') }}" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+        <div class="form-group" style="flex:1;min-width:180px">
+            <label for="name">Nombre</label>
+            <input type="text" id="name" name="name" maxlength="60" required placeholder="Ej: Pago duplicado">
+        </div>
+        <div class="form-group">
+            <label for="kind">Tipo</label>
+            <select id="kind" name="kind">
+                <option value="error">Error</option>
+                <option value="user">Usuario</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="color">Color</label>
+            <input type="color" id="color" name="color" value="#6c5ce7">
+        </div>
+        <div class="form-group">
+            <button type="submit" class="btn-primary">Crear</button>
+        </div>
+    </form>
+</div>
+
+<div class="tag-grid">
+    {% for title, items in [('Usuario', user_tags), ('Error', error_tags)] %}
+    <div class="admin-card">
+        <div class="card-header"><h2>{{ title }}</h2></div>
+        {% for tag in items %}
+        <div class="tag-item {% if not tag.is_active %}tag-off{% endif %}">
+            <span class="tag-dot" style="background:{{ tag.color }}"></span>
+            <form method="POST" action="{{ url_for('admin_support_bp.tag_edit', tag_id=tag.id) }}">
+                <input type="text" name="name" value="{{ tag.name }}" maxlength="60">
+                <input type="color" name="color" value="{{ tag.color }}">
+                <label style="font-size:.78rem;color:#94a3b8;display:flex;align-items:center;gap:4px">
+                    <input type="checkbox" name="is_active" {% if tag.is_active %}checked{% endif %}> activa
+                </label>
+                <button type="submit" class="btn-secondary">Guardar</button>
+            </form>
+            {% if tag.slug != 'sin-identificar' %}
+            <form method="POST" action="{{ url_for('admin_support_bp.tag_delete', tag_id=tag.id) }}"
+                  onsubmit="return confirm('¿Borrar «{{ tag.name }}»? Se quitará de todos los chats que la tengan.')">
+                <button type="submit" class="btn-danger">✕</button>
+            </form>
+            {% else %}
+            <span class="form-hint" style="font-size:.7rem">del sistema</span>
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="form-hint">Sin etiquetas de este tipo.</p>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+
+<div style="margin-top:18px">
+    <a href="{{ url_for('admin_support_bp.inbox') }}" class="btn-secondary">← Volver a la bandeja</a>
+</div>
+{% endblock %}

@@ -3500,3 +3500,173 @@ body.drawer-open { overflow: hidden; }
 @media (max-width: 380px) {
     .mn-stat-row { grid-template-columns: 1fr; }
 }
+
+/* ─── Chat de soporte ─────────────────────────────────────────────────────
+   El modal tiene dos pasos: el formulario de una sola pregunta (el nombre)
+   y, una vez abierto, el hilo. Se reutilizan las variables del rediseño
+   neón para que no desentone con el resto de la tienda. */
+
+.support-error{
+  margin:10px 0 0;
+  font-size:.84rem;
+  color:#fca5a5;
+}
+
+.support-chat-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:0 0 10px;
+  margin-bottom:10px;
+  border-bottom:1px solid rgba(255,255,255,.1);
+  font-size:.78rem;
+  color:rgba(255,255,255,.55);
+}
+#supportChatCode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.05em}
+
+.support-chat-thread{
+  height:min(46vh,340px);
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:4px 2px;
+  scrollbar-width:thin;
+}
+
+.support-bubble{
+  max-width:82%;
+  padding:9px 13px;
+  border-radius:14px;
+  font-size:.88rem;
+  line-height:1.45;
+  word-break:break-word;
+  white-space:pre-wrap;
+}
+.support-bubble .support-bubble-time{
+  display:block;
+  font-size:.66rem;
+  opacity:.5;
+  margin-top:4px;
+}
+.support-bubble.client{
+  align-self:flex-end;
+  background:linear-gradient(135deg,var(--neon-primary,#7c3aed),var(--neon-secondary,#a855f7));
+  color:#fff;
+  border-bottom-right-radius:4px;
+}
+.support-bubble.admin{
+  align-self:flex-start;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.12);
+  color:#e9e9f0;
+  border-bottom-left-radius:4px;
+}
+.support-bubble.system{
+  align-self:center;
+  max-width:100%;
+  background:transparent;
+  color:rgba(255,255,255,.4);
+  font-size:.74rem;
+  font-style:italic;
+  text-align:center;
+  padding:2px 0;
+}
+
+.support-chat-reply{
+  display:flex;
+  gap:8px;
+  align-items:flex-end;
+  margin-top:12px;
+}
+.support-chat-reply textarea{
+  flex:1;
+  resize:none;
+  min-height:42px;
+  max-height:120px;
+  padding:11px 14px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.05);
+  color:#fff;
+  font:inherit;
+  font-size:.88rem;
+}
+.support-chat-reply textarea:focus{
+  outline:none;
+  border-color:var(--neon-primary,#7c3aed);
+}
+.support-chat-reply button{
+  flex:none;
+  width:42px;
+  height:42px;
+  border:none;
+  border-radius:12px;
+  cursor:pointer;
+  background:linear-gradient(135deg,var(--neon-primary,#7c3aed),var(--neon-secondary,#a855f7));
+  color:#fff;
+  font-size:1rem;
+  transition:transform .15s,filter .15s;
+}
+.support-chat-reply button:hover{filter:brightness(1.15)}
+.support-chat-reply button:active{transform:scale(.94)}
+.support-chat-reply button:disabled{opacity:.45;cursor:default}
+
+.support-chat-hint{
+  margin:10px 0 0;
+  font-size:.74rem;
+  color:rgba(255,255,255,.4);
+  text-align:center;
+}
+
+/* Lanzador del chat de soporte: se apila sobre el flotante de WhatsApp,
+   que sigue disponible para quien prefiera ese camino. */
+.nx-chat-float {
+    position: fixed;
+    bottom: 86px; right: 20px;
+    z-index: 900;
+    width: 56px; height: 56px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.4);
+    background: linear-gradient(135deg, var(--neon-primary, #7c3aed), var(--neon-secondary, #a855f7));
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 0 25px rgba(124, 58, 237, 0.65);
+    transition: transform .25s ease, filter .25s ease;
+}
+.nx-chat-float:hover { transform: scale(1.1); filter: brightness(1.1); }
+.nx-chat-float svg { width: 26px; height: 26px; }
+
+.nx-chat-float-dot {
+    position: absolute;
+    top: 4px; right: 4px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 2px solid #0b0b12;
+}
+
+@media (max-width: 480px) {
+    .nx-chat-float { bottom: 80px; right: 14px; width: 50px; height: 50px; }
+    .nx-chat-float svg { width: 23px; height: 23px; }
+}
+
+.support-attach-btn{
+  flex:none;
+  width:42px;
+  height:42px;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:12px;
+  background:rgba(255,255,255,.05);
+  color:rgba(255,255,255,.7);
+  font-size:1rem;
+  cursor:pointer;
+  transition:border-color .15s,color .15s;
+}
+.support-attach-btn:hover{border-color:var(--neon-primary,#7c3aed);color:#fff}
+.support-attach-btn:disabled{opacity:.45;cursor:default}

@@ -1,5 +1,6 @@
 from datetime import datetime
 import random
+import secrets
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -669,6 +670,10 @@ class PushSubscription(db.Model):
     p256dh_key = db.Column(db.String(255), nullable=False)
     auth_key = db.Column(db.String(255), nullable=False)
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True)
+    # Igual que `order_id` pero para el chat de soporte: permite avisar al
+    # cliente de que le respondieron aunque no tenga ninguna orden de por
+    # medio (quien escribe desde la portada no tiene pedido que seguir).
+    chat_id = db.Column(db.Integer, db.ForeignKey('support_chats.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_sent_at = db.Column(db.DateTime)
@@ -712,3 +717,182 @@ class GiftCode(db.Model):
     @property
     def is_redeemable(self):
         return bool(self.is_active and not self.is_used and not self.is_expired)
+
+
+# ─── Soporte (chat cliente ↔ admin) ──────────────────────────────────────────
+
+# Alfabeto sin caracteres que se confunden al dictarlos por voz o al leerlos
+# en una captura: sin O/0, sin I/1. El código corto de un chat se dicta por
+# WhatsApp más de una vez, así que vale la pena la precaución.
+_SUPPORT_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+
+def generate_support_token():
+    """Credencial del hilo para un invitado. Es lo único que prueba que
+    quien pide los mensajes es el mismo navegador que abrió el chat, así
+    que va con la entropía de un token de sesión, no de un identificador."""
+    return secrets.token_hex(16)
+
+
+def generate_support_short_code():
+    """Código visible del chat (`#A7F3`). No es secreto ni se usa para
+    autenticar: existe para que el cliente y el admin puedan referirse al
+    mismo hilo en voz alta, porque el nombre no distingue a tres 'José'."""
+    return ''.join(secrets.choice(_SUPPORT_CODE_ALPHABET) for _ in range(4))
+
+
+class SupportChat(db.Model):
+    """Conversación de soporte. Para abrirla el cliente solo escribe su
+    nombre: cualquier otro dato se captura solo desde la página (número de
+    orden si escribe desde el estado de su pedido, contacto recordado del
+    último checkout, paquete que estaba mirando). Lo que no se pueda
+    deducir lo resuelve el admin etiquetando y vinculando la orden a mano.
+    """
+    __tablename__ = 'support_chats'
+    id = db.Column(db.Integer, primary_key=True)
+    public_token = db.Column(db.String(64), unique=True, nullable=False, index=True,
+                             default=generate_support_token)
+    short_code = db.Column(db.String(8), index=True, default=generate_support_short_code)
+
+    client_name = db.Column(db.String(60), nullable=False)
+
+    # Vinculación con el resto del sistema. `order_id` puede llegar solo
+    # (contexto) o ponerlo el admin desde el buscador del hilo.
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+
+    # Contexto capturado sin preguntarle nada al cliente. Todo opcional:
+    # quien escribe desde la portada no aporta ninguno de estos.
+    context_order_number = db.Column(db.String(20))
+    context_player_id = db.Column(db.String(100))
+    context_email = db.Column(db.String(255))
+    context_phone = db.Column(db.String(50))
+    context_game = db.Column(db.String(120))
+    context_package = db.Column(db.String(160))
+    context_page = db.Column(db.String(255))
+
+    status = db.Column(db.String(20), default='open', index=True)
+    is_blocked = db.Column(db.Boolean, default=False)
+
+    unread_admin = db.Column(db.Integer, default=0)
+    unread_client = db.Column(db.Integer, default=0)
+
+    client_ip = db.Column(db.String(45))
+    user_agent = db.Column(db.String(255))
+
+    # Nota interna del admin: qué pasó realmente y cómo se resolvió. Vive
+    # aquí, en el chat, y NO como un mensaje del hilo a propósito: si fuera
+    # un SupportMessage bastaría un fallo en el filtro del serializador
+    # para que el cliente leyera lo que el admin anotó sobre él. Siendo un
+    # campo aparte, no existe ningún camino por el que pueda salir.
+    admin_note = db.Column(db.Text)
+    admin_note_at = db.Column(db.DateTime)
+    admin_note_admin_id = db.Column(db.Integer, db.ForeignKey('admin_users.id'), nullable=True)
+
+    last_message_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    closed_at = db.Column(db.DateTime)
+
+    order = db.relationship('Order')
+    user = db.relationship('User')
+    admin_note_author = db.relationship('AdminUser', foreign_keys=[admin_note_admin_id])
+    messages = db.relationship(
+        'SupportMessage', backref='chat',
+        cascade='all, delete-orphan',
+        order_by='SupportMessage.id',
+    )
+    tag_links = db.relationship(
+        'SupportChatTag', backref='chat',
+        cascade='all, delete-orphan',
+    )
+
+    STATUS_LABELS = {
+        'open': ('Abierto', 'status-pending'),
+        'waiting_client': ('Esperando cliente', 'status-approved'),
+        'closed': ('Cerrado', 'status-completed'),
+    }
+
+    @property
+    def status_label(self):
+        return self.STATUS_LABELS.get(self.status, (self.status, ''))[0]
+
+    @property
+    def status_class(self):
+        return self.STATUS_LABELS.get(self.status, (self.status, ''))[1]
+
+    @property
+    def display_code(self):
+        return f'#{self.short_code}' if self.short_code else f'#{self.id}'
+
+    @property
+    def is_identified(self):
+        """Un chat está identificado cuando se sabe a qué pedido o cuenta
+        pertenece — no basta con tener el nombre, que no verifica nada."""
+        return bool(self.order_id or self.user_id)
+
+    @property
+    def tags(self):
+        return [link.tag for link in self.tag_links if link.tag]
+
+    def tags_of_kind(self, kind):
+        return [tag for tag in self.tags if tag.kind == kind]
+
+
+class SupportMessage(db.Model):
+    """Un mensaje del hilo. `sender` distingue quién habla; 'system' son
+    las notas automáticas del propio sistema (chat abierto, orden
+    vinculada, chat cerrado), que se pintan distinto y no cuentan como
+    no leídos para nadie."""
+    __tablename__ = 'support_messages'
+    id = db.Column(db.Integer, primary_key=True)
+    chat_id = db.Column(db.Integer, db.ForeignKey('support_chats.id'), nullable=False, index=True)
+    sender = db.Column(db.String(10), nullable=False)  # 'client' | 'admin' | 'system'
+    admin_id = db.Column(db.Integer, db.ForeignKey('admin_users.id'), nullable=True)
+
+    body = db.Column(db.Text)
+    attachment = db.Column(db.String(255))
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    read_at = db.Column(db.DateTime)
+
+    admin = db.relationship('AdminUser')
+
+
+class SupportTag(db.Model):
+    """Etiqueta del catálogo. `kind` separa las dos preguntas que el admin
+    responde en cada chat: quién es esta persona ('user') y qué le pasa
+    ('error'). Se pintan en filas distintas del hilo por eso mismo."""
+    __tablename__ = 'support_tags'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(60), nullable=False)
+    slug = db.Column(db.String(60), unique=True, nullable=False, index=True)
+    kind = db.Column(db.String(10), nullable=False, default='error')  # 'user' | 'error'
+    color = db.Column(db.String(9), default='#6c5ce7')
+    is_active = db.Column(db.Boolean, default=True)
+    sort_order = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    KIND_LABELS = {
+        'user': 'Usuario',
+        'error': 'Error',
+    }
+
+    @property
+    def kind_label(self):
+        return self.KIND_LABELS.get(self.kind, self.kind)
+
+
+class SupportChatTag(db.Model):
+    """Etiqueta aplicada a un chat. El par (chat, etiqueta) es único para
+    que un doble clic en el admin no la pegue dos veces."""
+    __tablename__ = 'support_chat_tags'
+    __table_args__ = (
+        db.UniqueConstraint('chat_id', 'tag_id', name='uq_support_chat_tag'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    chat_id = db.Column(db.Integer, db.ForeignKey('support_chats.id'), nullable=False, index=True)
+    tag_id = db.Column(db.Integer, db.ForeignKey('support_tags.id'), nullable=False, index=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admin_users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    tag = db.relationship('SupportTag')

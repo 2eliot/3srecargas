@@ -92,7 +92,7 @@ def is_push_configured():
         return False
 
 
-def subscribe(endpoint, p256dh_key, auth_key, order_id=None):
+def subscribe(endpoint, p256dh_key, auth_key, order_id=None, chat_id=None):
     endpoint = str(endpoint or '').strip()
     p256dh_key = str(p256dh_key or '').strip()
     auth_key = str(auth_key or '').strip()
@@ -108,6 +108,8 @@ def subscribe(endpoint, p256dh_key, auth_key, order_id=None):
     record.auth_key = auth_key
     if order_id:
         record.order_id = int(order_id)
+    if chat_id:
+        record.chat_id = int(chat_id)
     db.session.commit()
     return record
 
@@ -209,5 +211,23 @@ def send_push_to_order_subscribers_async(app, order_id, title, body, url=None):
             order = Order.query.get(order_id)
             if order:
                 send_push_to_order_subscribers(order, title, body, url=url)
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
+def send_push_to_chat_subscribers(chat_id, title, body, url=None):
+    """Aviso al cliente de un chat de soporte. Va por `chat_id` y no por
+    `order_id` porque la mayoría de los chats no tienen orden: quien
+    escribe desde la portada no tiene ningún pedido al que atarse."""
+    if not chat_id:
+        return {'sent': 0, 'failed': 0}
+    subscriptions = PushSubscription.query.filter_by(chat_id=chat_id).all()
+    return send_push_to_subscriptions(subscriptions, title, body, url=url, tag=f'support-{chat_id}')
+
+
+def send_push_to_chat_subscribers_async(app, chat_id, title, body, url=None):
+    def _send():
+        with app.app_context():
+            send_push_to_chat_subscribers(chat_id, title, body, url=url)
 
     threading.Thread(target=_send, daemon=True).start()
