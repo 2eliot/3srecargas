@@ -798,6 +798,7 @@ def _ensure_support_columns():
     try:
         chat_columns = [
             'short_code VARCHAR(8)',
+            'client_email VARCHAR(255)',
             'order_id INTEGER',
             'user_id INTEGER',
             'context_order_number VARCHAR(20)',

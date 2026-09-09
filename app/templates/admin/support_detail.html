@@ -4,24 +4,85 @@
 
 {% block extra_css %}
 <style>
-.sup-wrap{display:grid;grid-template-columns:1fr 340px;gap:18px;align-items:start}
-@media (max-width:1100px){.sup-wrap{grid-template-columns:1fr}}
-.sup-thread{height:58vh;min-height:340px;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
-.sup-msg{max-width:78%;padding:10px 14px;border-radius:14px;font-size:.9rem;line-height:1.45;word-break:break-word}
-.sup-msg .t{display:block;font-size:.68rem;opacity:.55;margin-top:5px}
-.sup-msg.client{align-self:flex-start;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.09)}
-.sup-msg.admin{align-self:flex-end;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
-.sup-msg.system{align-self:center;background:transparent;color:#64748b;font-size:.76rem;font-style:italic;max-width:100%}
-.sup-msg img{max-width:100%;border-radius:10px;margin-top:8px;display:block}
-.sup-reply{display:flex;gap:10px;padding:14px 16px;border-top:1px solid rgba(255,255,255,.08)}
-.sup-reply textarea{flex:1;resize:vertical;min-height:44px;max-height:140px}
+/* Chat a pantalla completa con el reparto de WhatsApp Web: la conversación
+   manda y los datos del caso van en una columna al lado. Antes el hilo era
+   una caja de 58vh dentro de la página, o sea scroll dentro de otro scroll. */
+.sup-app{
+    display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:stretch;
+    height:calc(100vh - 190px);min-height:520px;
+}
+@media (max-width:1100px){.sup-app{grid-template-columns:1fr;height:auto}}
+
+.sup-chat{
+    display:flex;flex-direction:column;min-height:0;overflow:hidden;
+    border-radius:14px;border:1px solid rgba(255,255,255,.09);
+    background:rgba(255,255,255,.025);
+}
+@media (max-width:1100px){.sup-chat{height:68vh}}
+
+.sup-bar{
+    flex:none;display:flex;align-items:center;gap:10px;padding:11px 14px;
+    background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.08);
+}
+.sup-bar-avatar{
+    flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;
+}
+.sup-bar-who{flex:1;min-width:0;line-height:1.3}
+.sup-bar-who strong{display:block;color:#f1f5f9;font-size:.92rem}
+.sup-bar-who span{display:block;font-size:.74rem;color:#94a3b8;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sup-bar-tags{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:45%}
+
+.sup-thread{
+    flex:1;min-height:0;overflow-y:auto;padding:16px;
+    display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;
+}
+.sup-msg{
+    max-width:74%;padding:8px 12px 6px;border-radius:12px;font-size:.88rem;
+    line-height:1.45;word-break:break-word;white-space:pre-wrap;
+}
+.sup-msg.client{align-self:flex-start;background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:3px}
+.sup-msg.admin{align-self:flex-end;background:linear-gradient(135deg,#6366f1,#8b5cf6);
+    color:#fff;border-bottom-right-radius:3px}
+.sup-msg.system{align-self:center;max-width:92%;background:rgba(255,255,255,.03);
+    color:#64748b;font-size:.74rem;font-style:italic;text-align:center;
+    padding:5px 12px;border-radius:8px}
+.sup-t{display:block;text-align:right;font-size:.66rem;opacity:.55;margin-top:2px}
+
+/* Miniatura acotada: a tamaño real una captura de móvil llenaba el hilo y
+   empujaba la conversación fuera de vista. Se acota igual que el
+   comprobante en el detalle de una orden, y el original abre en pestaña. */
+.sup-media{display:block;width:100%;max-width:200px;max-height:200px;
+    object-fit:cover;border-radius:10px;margin-top:6px;background:rgba(0,0,0,.3)}
+video.sup-media{object-fit:contain;max-height:240px}
+.sup-media-link{display:inline-block;position:relative;text-decoration:none}
+.sup-media-open{position:absolute;right:6px;bottom:10px;padding:2px 7px;border-radius:6px;
+    background:rgba(0,0,0,.62);color:#fff;font-size:.62rem}
+.sup-media-link:hover .sup-media-open{background:rgba(0,0,0,.85)}
+
+.sup-composer{
+    flex:none;display:flex;align-items:flex-end;gap:8px;padding:10px 12px;
+    background:rgba(255,255,255,.04);border-top:1px solid rgba(255,255,255,.08);
+}
+.sup-composer textarea{flex:1;resize:none;min-height:42px;max-height:130px;
+    border-radius:20px;padding:11px 14px;font:inherit;font-size:.88rem}
+.sup-attach,.sup-send{flex:none;width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:1rem}
+.sup-attach{border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.06);color:#cbd5e1}
+.sup-send{border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
+.sup-attach:disabled,.sup-send:disabled{opacity:.45;cursor:default}
+.sup-upload-hint{flex:none;margin:0;padding:0 14px 8px;font-size:.72rem;color:#94a3b8}
+
+.sup-side{min-height:0;overflow-y:auto;scrollbar-width:thin;padding-right:2px}
 .sup-side .admin-card{margin-bottom:14px}
-.sup-side h3{font-size:.82rem;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin:0 0 10px}
+.sup-side h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin:0 0 10px}
 .sup-tagrow{display:flex;flex-wrap:wrap;gap:6px}
-.sup-tagbtn{cursor:pointer;font-size:.74rem;padding:4px 10px;border-radius:999px;border:1px solid transparent;
-    background:rgba(255,255,255,.06);color:#94a3b8;transition:.15s}
+.sup-tagbtn{cursor:pointer;font-size:.74rem;padding:4px 10px;border-radius:999px;
+    border:1px solid transparent;background:rgba(255,255,255,.06);color:#94a3b8;transition:.15s}
 .sup-tagbtn:hover{color:#fff}
 .sup-tagbtn.on{color:#fff;font-weight:600}
+.sup-tag{font-size:.68rem;padding:2px 8px;border-radius:999px;color:#fff;white-space:nowrap}
 .sup-kv{font-size:.82rem;color:#cbd5e1;line-height:1.7}
 .sup-kv b{color:#94a3b8;font-weight:500}
 .sup-order{display:block;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.04);
@@ -36,153 +97,180 @@
 {% endblock %}
 
 {% block content %}
-<div class="sup-wrap">
-    <div class="admin-card" style="padding:0;display:flex;flex-direction:column">
-        <div class="sup-thread" id="supThread">
-            {% for m in messages %}
-            <div class="sup-msg {{ m.sender }}" data-id="{{ m.id }}">
-                {% if m.body %}{{ m.body }}{% endif %}
-                {% if m.attachment %}
-                <a href="{{ url_for('static', filename='uploads/' ~ m.attachment) }}" target="_blank" rel="noopener">
-                    <img src="{{ url_for('static', filename='uploads/' ~ m.attachment) }}" alt="Adjunto del cliente">
-                </a>
-                {% endif %}
-                <span class="t">{{ m.created_at|datetime_ve('%d/%m %H:%M') }}</span>
-            </div>
-            {% endfor %}
-        </div>
+<div class="sup-app">
 
-        {% if chat.is_blocked %}
-        <div style="padding:16px;color:#fca5a5;font-size:.85rem">Chat bloqueado. Desbloquéalo para poder responder.</div>
+  <div class="sup-chat">
+    <div class="sup-bar">
+      <div class="sup-bar-avatar">{{ chat.client_name[:1]|upper }}</div>
+      <div class="sup-bar-who">
+        <strong>{{ chat.client_name }}</strong>
+        <span id="supBarStatus">{{ chat.status_label }}{% if chat.client_email %} · {{ chat.client_email }}{% endif %}</span>
+      </div>
+      <div class="sup-bar-tags">
+        {% for tag in chat.tags %}
+        <span class="sup-tag" style="background:{{ tag.color }}">{{ tag.name }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="sup-thread" id="supThread">
+      {% for m in messages %}
+      <div class="sup-msg {{ m.sender }}" data-id="{{ m.id }}">
+        {% if m.body %}{{ m.body }}{% endif %}
+        {% if m.attachment %}
+          {% if m.attachment.rsplit('.', 1)[-1]|lower in ['mp4','webm','mov','m4v'] %}
+          <video class="sup-media" controls preload="metadata"
+                 src="{{ url_for('static', filename='uploads/' ~ m.attachment) }}"></video>
+          {% else %}
+          <a class="sup-media-link" target="_blank" rel="noopener"
+             href="{{ url_for('static', filename='uploads/' ~ m.attachment) }}">
+            <img class="sup-media" loading="lazy" alt="Adjunto del chat"
+                 src="{{ url_for('static', filename='uploads/' ~ m.attachment) }}">
+            <span class="sup-media-open">Abrir ⤢</span>
+          </a>
+          {% endif %}
+        {% endif %}
+        {% if m.sender != 'system' %}<span class="sup-t">{{ m.created_at|datetime_ve('%d/%m %H:%M') }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if chat.is_blocked %}
+    <div style="padding:14px;color:#fca5a5;font-size:.85rem;text-align:center">
+      Chat bloqueado. Desbloquéalo para poder responder.
+    </div>
+    {% else %}
+    <form class="sup-composer" id="supReplyForm">
+      <input type="file" id="supFile" accept="image/*,video/*" hidden>
+      <button type="button" class="sup-attach" id="supAttach" aria-label="Adjuntar imagen o video">📎</button>
+      <textarea id="supReplyBody" rows="1" placeholder="Escribe tu respuesta…" maxlength="2000"></textarea>
+      <button type="submit" class="sup-send" aria-label="Enviar">➤</button>
+    </form>
+    <p class="sup-upload-hint" id="supUploadHint" hidden></p>
+    {% endif %}
+  </div>
+
+  <div class="sup-side">
+    <div class="admin-card">
+      <h3>Quién es</h3>
+      <div class="sup-kv">
+        <b>Nombre:</b> {{ chat.client_name }}<br>
+        <b>Código:</b> {{ chat.display_code }}<br>
+        {% if chat.client_email %}<b>Correo:</b> {{ chat.client_email }}<br>{% endif %}
+        <b>Estado:</b> {{ chat.status_label }}<br>
+        <b>Abierto:</b> {{ chat.created_at|datetime_ve }}
+      </div>
+
+      {% if chat.order %}
+      <div style="margin-top:12px">
+        <a class="sup-order" href="{{ url_for('admin_bp.order_detail', order_id=chat.order.id) }}">
+          <strong>Orden {{ chat.order.order_number }}</strong> — {{ chat.order.status_label }}<br>
+          {{ chat.order.game.name if chat.order.game }} · {{ chat.order.package.name if chat.order.package }}<br>
+          ID: {{ chat.order.player_id or '—' }}
+        </a>
+        <button type="button" class="btn-secondary" id="supUnlinkBtn">Desvincular</button>
+      </div>
+      {% else %}
+      <p class="form-hint" style="margin-top:10px">
+        Sin identificar. El cliente solo dio su nombre — busca su orden abajo.
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="admin-card">
+      <h3>Nota interna</h3>
+      <textarea id="supNote" rows="5" maxlength="4000"
+                placeholder="De qué orden era y qué falló de verdad. Solo lo ves tú.">{{ chat.admin_note or '' }}</textarea>
+      <div class="sup-note-foot">
+        <span id="supNoteMeta">
+          {% if chat.admin_note_at %}
+            Guardada el {{ chat.admin_note_at|datetime_ve }}{% if chat.admin_note_author %} por {{ chat.admin_note_author.username }}{% endif %}
+          {% endif %}
+        </span>
+        <button type="button" class="btn-secondary" id="supNoteSaveBtn">Guardar nota</button>
+      </div>
+      <p class="form-hint" style="font-size:.72rem;margin-top:6px">
+        El cliente nunca la ve: no viaja en ninguna respuesta del chat.
+      </p>
+    </div>
+
+    {% if chat.context_order_number or chat.context_player_id or chat.context_email or chat.context_phone or chat.context_game or chat.context_package %}
+    <div class="admin-card">
+      <h3>Contexto de la página</h3>
+      <div class="sup-kv">
+        {% if chat.context_order_number %}<b>Orden:</b> {{ chat.context_order_number }}<br>{% endif %}
+        {% if chat.context_player_id %}<b>ID de jugador:</b> {{ chat.context_player_id }}<br>{% endif %}
+        {% if chat.context_email %}<b>Correo:</b> {{ chat.context_email }}<br>{% endif %}
+        {% if chat.context_phone %}<b>Teléfono:</b> {{ chat.context_phone }}<br>{% endif %}
+        {% if chat.context_game %}<b>Juego:</b> {{ chat.context_game }}<br>{% endif %}
+        {% if chat.context_package %}<b>Paquete:</b> {{ chat.context_package }}<br>{% endif %}
+      </div>
+      <p class="form-hint" style="margin-top:8px;font-size:.72rem">
+        Lo aportó el navegador, no el cliente. Orienta, no prueba.
+      </p>
+    </div>
+    {% endif %}
+
+    <div class="admin-card">
+      <h3>Etiqueta de usuario</h3>
+      <div class="sup-tagrow">
+        {% for tag in user_tags %}
+        <button type="button" class="sup-tagbtn {% if tag.id in applied_tag_ids %}on{% endif %}"
+                data-tag-id="{{ tag.id }}" data-color="{{ tag.color }}"
+                style="{% if tag.id in applied_tag_ids %}background:{{ tag.color }}{% endif %}">{{ tag.name }}</button>
+        {% endfor %}
+      </div>
+
+      <h3 style="margin-top:16px">Etiqueta de error</h3>
+      <div class="sup-tagrow">
+        {% for tag in error_tags %}
+        <button type="button" class="sup-tagbtn {% if tag.id in applied_tag_ids %}on{% endif %}"
+                data-tag-id="{{ tag.id }}" data-color="{{ tag.color }}"
+                style="{% if tag.id in applied_tag_ids %}background:{{ tag.color }}{% endif %}">{{ tag.name }}</button>
+        {% endfor %}
+      </div>
+      <p class="form-hint" style="font-size:.72rem;margin-top:10px">
+        <a href="{{ url_for('admin_support_bp.tags') }}">Crear o editar etiquetas ›</a>
+      </p>
+    </div>
+
+    <div class="admin-card">
+      <h3>Buscar y vincular orden</h3>
+      <input type="text" id="supOrderSearch" placeholder="Orden, ID de jugador, correo…">
+      {% if suggested_orders %}
+      <p class="form-hint" style="margin-top:10px;font-size:.74rem">Sugerencias por el contexto:</p>
+      {% for o in suggested_orders %}
+      <button type="button" class="sup-order" data-order-id="{{ o.id }}" style="width:100%;text-align:left;cursor:pointer">
+        <strong>{{ o.order_number }}</strong> — {{ o.status_label }}<br>
+        {{ o.game.name if o.game }} · ID {{ o.player_id or '—' }}
+      </button>
+      {% endfor %}
+      {% endif %}
+      <div id="supOrderResults"></div>
+    </div>
+
+    <div class="admin-card">
+      <h3>Acciones</h3>
+      <div class="sup-actions">
+        {% if chat.status == 'closed' %}
+        <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
+          <input type="hidden" name="action" value="reabrir">
+          <button type="submit" class="btn-secondary">Reabrir</button>
+        </form>
         {% else %}
-        <form class="sup-reply" id="supReplyForm">
-            <textarea id="supReplyBody" placeholder="Escribe tu respuesta…" maxlength="2000"></textarea>
-            <button type="submit" class="btn-primary">Enviar</button>
+        <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
+          <input type="hidden" name="action" value="cerrar">
+          <button type="submit" class="btn-secondary">Cerrar chat</button>
         </form>
         {% endif %}
+        <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}"
+              onsubmit="return confirm('{% if chat.is_blocked %}¿Desbloquear este chat?{% else %}¿Bloquear? El cliente no podrá escribir más.{% endif %}')">
+          <input type="hidden" name="action" value="{% if chat.is_blocked %}desbloquear{% else %}bloquear{% endif %}">
+          <button type="submit" class="btn-danger">{% if chat.is_blocked %}Desbloquear{% else %}Bloquear{% endif %}</button>
+        </form>
+      </div>
     </div>
-
-    <div class="sup-side">
-        <div class="admin-card">
-            <h3>Quién es</h3>
-            <div class="sup-kv">
-                <b>Nombre:</b> {{ chat.client_name }}<br>
-                <b>Código:</b> {{ chat.display_code }}<br>
-                <b>Estado:</b> {{ chat.status_label }}<br>
-                <b>Abierto:</b> {{ chat.created_at|datetime_ve }}
-            </div>
-
-            {% if chat.order %}
-            <div style="margin-top:12px">
-                <a class="sup-order" href="{{ url_for('admin_bp.order_detail', order_id=chat.order.id) }}">
-                    <strong>Orden {{ chat.order.order_number }}</strong> — {{ chat.order.status_label }}<br>
-                    {{ chat.order.game.name if chat.order.game }} · {{ chat.order.package.name if chat.order.package }}<br>
-                    ID: {{ chat.order.player_id or '—' }}
-                </a>
-                <button type="button" class="btn-secondary" id="supUnlinkBtn">Desvincular</button>
-            </div>
-            {% else %}
-            <p class="form-hint" style="margin-top:10px">
-                Sin identificar. El cliente solo dio su nombre — busca su orden abajo para saber quién es.
-            </p>
-            {% endif %}
-        </div>
-
-        <div class="admin-card">
-            <h3>Nota interna</h3>
-            <textarea id="supNote" rows="5" maxlength="4000"
-                      placeholder="De qué orden era y qué falló de verdad. Solo lo ves tú.">{{ chat.admin_note or '' }}</textarea>
-            <div class="sup-note-foot">
-                <span id="supNoteMeta">
-                    {% if chat.admin_note_at %}
-                        Guardada el {{ chat.admin_note_at|datetime_ve }}{% if chat.admin_note_author %} por {{ chat.admin_note_author.username }}{% endif %}
-                    {% endif %}
-                </span>
-                <button type="button" class="btn-secondary" id="supNoteSaveBtn">Guardar nota</button>
-            </div>
-            <p class="form-hint" style="font-size:.72rem;margin-top:6px">
-                El cliente nunca la ve: no viaja en ninguna respuesta del chat.
-            </p>
-        </div>
-
-        {% if chat.context_order_number or chat.context_player_id or chat.context_email or chat.context_phone or chat.context_game or chat.context_package %}
-        <div class="admin-card">
-            <h3>Contexto de la página</h3>
-            <div class="sup-kv">
-                {% if chat.context_order_number %}<b>Orden:</b> {{ chat.context_order_number }}<br>{% endif %}
-                {% if chat.context_player_id %}<b>ID de jugador:</b> {{ chat.context_player_id }}<br>{% endif %}
-                {% if chat.context_email %}<b>Correo:</b> {{ chat.context_email }}<br>{% endif %}
-                {% if chat.context_phone %}<b>Teléfono:</b> {{ chat.context_phone }}<br>{% endif %}
-                {% if chat.context_game %}<b>Juego:</b> {{ chat.context_game }}<br>{% endif %}
-                {% if chat.context_package %}<b>Paquete:</b> {{ chat.context_package }}<br>{% endif %}
-            </div>
-            <p class="form-hint" style="margin-top:8px;font-size:.72rem">
-                Lo aportó el navegador, no el cliente. Sirve para orientarse, no como prueba.
-            </p>
-        </div>
-        {% endif %}
-
-        <div class="admin-card">
-            <h3>Etiqueta de usuario</h3>
-            <div class="sup-tagrow">
-                {% for tag in user_tags %}
-                <button type="button" class="sup-tagbtn {% if tag.id in applied_tag_ids %}on{% endif %}"
-                        data-tag-id="{{ tag.id }}" data-color="{{ tag.color }}"
-                        style="{% if tag.id in applied_tag_ids %}background:{{ tag.color }}{% endif %}">
-                    {{ tag.name }}
-                </button>
-                {% endfor %}
-            </div>
-
-            <h3 style="margin-top:16px">Etiqueta de error</h3>
-            <div class="sup-tagrow">
-                {% for tag in error_tags %}
-                <button type="button" class="sup-tagbtn {% if tag.id in applied_tag_ids %}on{% endif %}"
-                        data-tag-id="{{ tag.id }}" data-color="{{ tag.color }}"
-                        style="{% if tag.id in applied_tag_ids %}background:{{ tag.color }}{% endif %}">
-                    {{ tag.name }}
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-
-        <div class="admin-card">
-            <h3>Buscar y vincular orden</h3>
-            <input type="text" id="supOrderSearch" placeholder="Orden, ID de jugador, correo…">
-            {% if suggested_orders %}
-            <p class="form-hint" style="margin-top:10px;font-size:.74rem">Sugerencias por el contexto:</p>
-            {% for o in suggested_orders %}
-            <button type="button" class="sup-order" data-order-id="{{ o.id }}" style="width:100%;text-align:left;cursor:pointer">
-                <strong>{{ o.order_number }}</strong> — {{ o.status_label }}<br>
-                {{ o.game.name if o.game }} · ID {{ o.player_id or '—' }}
-            </button>
-            {% endfor %}
-            {% endif %}
-            <div id="supOrderResults"></div>
-        </div>
-
-        <div class="admin-card">
-            <h3>Acciones</h3>
-            <div class="sup-actions">
-                {% if chat.status == 'closed' %}
-                <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
-                    <input type="hidden" name="action" value="reabrir">
-                    <button type="submit" class="btn-secondary">Reabrir</button>
-                </form>
-                {% else %}
-                <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
-                    <input type="hidden" name="action" value="cerrar">
-                    <button type="submit" class="btn-secondary">Cerrar chat</button>
-                </form>
-                {% endif %}
-                <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}"
-                      onsubmit="return confirm('{% if chat.is_blocked %}¿Desbloquear este chat?{% else %}¿Bloquear? El cliente no podrá escribir más en este hilo.{% endif %}')">
-                    <input type="hidden" name="action" value="{% if chat.is_blocked %}desbloquear{% else %}bloquear{% endif %}">
-                    <button type="submit" class="btn-danger">{% if chat.is_blocked %}Desbloquear{% else %}Bloquear{% endif %}</button>
-                </form>
-            </div>
-        </div>
-    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -190,9 +278,10 @@
 <script>
 (function () {
     var CHAT_ID = {{ chat.id }};
+    var VIDEO_EXT = ['mp4', 'webm', 'mov', 'm4v'];
+
     var thread = document.getElementById('supThread');
     var lastId = 0;
-
     thread.querySelectorAll('.sup-msg').forEach(function (el) {
         lastId = Math.max(lastId, parseInt(el.dataset.id || '0', 10));
     });
@@ -207,57 +296,90 @@
     }
 
     // textContent y no innerHTML: el cuerpo lo escribe el cliente y llega
-    // por JSON sin pasar por el autoescape de Jinja.
+    // por JSON, sin pasar por el autoescape de Jinja.
     function render(m) {
         var el = document.createElement('div');
         el.className = 'sup-msg ' + m.sender;
         el.dataset.id = m.id;
         if (m.body) el.textContent = m.body;
+
         if (m.attachment) {
-            var link = document.createElement('a');
-            link.href = '/static/uploads/' + m.attachment;
-            link.target = '_blank';
-            link.rel = 'noopener';
-            var img = document.createElement('img');
-            img.src = link.href;
-            img.alt = 'Adjunto del cliente';
-            link.appendChild(img);
-            el.appendChild(link);
+            var url = '/static/uploads/' + m.attachment;
+            var ext = String(m.attachment).split('.').pop().toLowerCase();
+
+            if (m.is_video || VIDEO_EXT.indexOf(ext) >= 0) {
+                var video = document.createElement('video');
+                video.className = 'sup-media';
+                video.src = url;
+                video.controls = true;
+                video.preload = 'metadata';
+                el.appendChild(video);
+            } else {
+                var link = document.createElement('a');
+                link.className = 'sup-media-link';
+                link.href = url;
+                link.target = '_blank';
+                link.rel = 'noopener';
+
+                var img = document.createElement('img');
+                img.className = 'sup-media';
+                img.src = url;
+                img.alt = 'Adjunto del chat';
+                img.loading = 'lazy';
+                link.appendChild(img);
+
+                var hint = document.createElement('span');
+                hint.className = 'sup-media-open';
+                hint.textContent = 'Abrir ⤢';
+                link.appendChild(hint);
+
+                el.appendChild(link);
+            }
         }
-        var t = document.createElement('span');
-        t.className = 't';
-        t.textContent = timeLabel(m.created_at);
-        el.appendChild(t);
+
+        if (m.sender !== 'system') {
+            var t = document.createElement('span');
+            t.className = 'sup-t';
+            t.textContent = timeLabel(m.created_at);
+            el.appendChild(t);
+        }
+
         thread.appendChild(el);
         lastId = Math.max(lastId, m.id);
+        scrollDown();
     }
 
     function poll() {
-        fetch('/admin/soporte/' + CHAT_ID + '/hilo.json?after_id=' + lastId, { credentials: 'same-origin' })
+        fetch('/admin/soporte/' + CHAT_ID + '/hilo.json?after_id=' + lastId,
+              { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (!data || !data.ok || !data.messages.length) return;
-                data.messages.forEach(render);
-                scrollDown();
+                if (!data || !data.ok) return;
+                (data.messages || []).forEach(render);
             })
             .catch(function () {});
     }
 
-    // 4 s con la pestaña visible; en segundo plano no tiene sentido gastar
-    // peticiones: nadie está mirando la respuesta.
+    // 4 s con la pestaña a la vista; en segundo plano no se pregunta nada,
+    // que es donde se van las peticiones que nadie va a leer.
     setInterval(function () {
         if (document.visibilityState === 'visible') poll();
     }, 4000);
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') poll();
+    });
 
     var form = document.getElementById('supReplyForm');
+    var input = document.getElementById('supReplyBody');
+
     if (form) {
         form.addEventListener('submit', function (evt) {
             evt.preventDefault();
-            var input = document.getElementById('supReplyBody');
             var body = (input.value || '').trim();
             if (!body) return;
-
             input.value = '';
+            input.style.height = '';
+
             fetch('/admin/soporte/' + CHAT_ID + '/responder', {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -266,13 +388,82 @@
             })
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
-                    if (data && data.ok) { render(data.message); scrollDown(); }
+                    if (data && data.ok) render(data.message);
                     else { input.value = body; alert((data && data.error) || 'No se pudo enviar.'); }
                 })
                 .catch(function () { input.value = body; });
         });
     }
 
+    if (input) {
+        input.addEventListener('keydown', function (evt) {
+            if (evt.key === 'Enter' && !evt.shiftKey) {
+                evt.preventDefault();
+                form.requestSubmit();
+            }
+        });
+        input.addEventListener('input', function () {
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 130) + 'px';
+        });
+    }
+
+    // ── Enviar imagen o video ────────────────────────────────────────────
+    var attach = document.getElementById('supAttach');
+    var file = document.getElementById('supFile');
+    var hint = document.getElementById('supUploadHint');
+
+    function showHint(text) {
+        if (!hint) return;
+        hint.textContent = text || '';
+        hint.hidden = !text;
+    }
+
+    if (attach && file) {
+        attach.addEventListener('click', function () { file.click(); });
+
+        file.addEventListener('change', function () {
+            var f = file.files && file.files[0];
+            if (!f) return;
+
+            if (f.size > 15 * 1024 * 1024) {
+                alert('El archivo es muy pesado. Envía uno de menos de 15 MB.');
+                file.value = '';
+                return;
+            }
+
+            var payload = new FormData();
+            payload.append('file', f);
+            payload.append('body', input ? input.value : '');
+
+            attach.disabled = true;
+            showHint('Enviando ' + f.name + '…');
+
+            fetch('/admin/soporte/' + CHAT_ID + '/responder', {
+                method: 'POST', credentials: 'same-origin', body: payload
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    attach.disabled = false;
+                    file.value = '';
+                    showHint('');
+                    if (data && data.ok) {
+                        if (input) input.value = '';
+                        render(data.message);
+                    } else {
+                        alert((data && data.error) || 'No se pudo enviar el archivo.');
+                    }
+                })
+                .catch(function () {
+                    attach.disabled = false;
+                    file.value = '';
+                    showHint('');
+                    alert('No se pudo enviar el archivo.');
+                });
+        });
+    }
+
+    // ── Etiquetas ────────────────────────────────────────────────────────
     document.querySelectorAll('.sup-tagbtn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var on = btn.classList.contains('on');
@@ -292,26 +483,7 @@
         });
     });
 
-    function linkOrder(orderId) {
-        fetch('/admin/soporte/' + CHAT_ID + '/vincular', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ order_id: orderId })
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data && data.ok) location.reload();
-                else alert((data && data.error) || 'No se pudo vincular.');
-            })
-            .catch(function () {});
-    }
-
-    document.addEventListener('click', function (evt) {
-        var btn = evt.target.closest('[data-order-id]');
-        if (btn) linkOrder(btn.dataset.orderId);
-    });
-
+    // ── Nota interna ─────────────────────────────────────────────────────
     var noteBox = document.getElementById('supNote');
     var noteBtn = document.getElementById('supNoteSaveBtn');
     var noteMeta = document.getElementById('supNoteMeta');
@@ -319,7 +491,6 @@
         noteBtn.addEventListener('click', function () {
             noteBtn.disabled = true;
             noteBtn.textContent = 'Guardando…';
-
             fetch('/admin/soporte/' + CHAT_ID + '/nota', {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -343,8 +514,6 @@
                     alert('No se pudo guardar la nota.');
                 });
         });
-
-        // Ctrl+Enter guarda sin soltar el teclado.
         noteBox.addEventListener('keydown', function (evt) {
             if (evt.key === 'Enter' && (evt.ctrlKey || evt.metaKey)) {
                 evt.preventDefault();
@@ -352,6 +521,27 @@
             }
         });
     }
+
+    // ── Vincular orden ───────────────────────────────────────────────────
+    function linkOrder(orderId) {
+        fetch('/admin/soporte/' + CHAT_ID + '/vincular', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_id: orderId })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data && data.ok) location.reload();
+                else alert((data && data.error) || 'No se pudo vincular.');
+            })
+            .catch(function () {});
+    }
+
+    document.addEventListener('click', function (evt) {
+        var b = evt.target.closest('[data-order-id]');
+        if (b) linkOrder(b.dataset.orderId);
+    });
 
     var unlink = document.getElementById('supUnlinkBtn');
     if (unlink) {

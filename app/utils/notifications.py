@@ -202,7 +202,10 @@ def notify_support_admin_reply(chat, message):
         url='/',
     )
 
-    email = chat.context_email or (chat.order.email if chat.order else '')
+    # Prioridad al que escribio a proposito para que le avisen; el del
+    # contexto es un resto de un checkout anterior y puede estar viejo.
+    email = (chat.client_email or chat.context_email
+             or (chat.order.email if chat.order else ''))
     if not email:
         return
 

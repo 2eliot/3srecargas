@@ -38,6 +38,12 @@ logger = logging.getLogger(__name__)
 # Los contadores se calculan con consultas, no en memoria: con `gunicorn -w 3`
 # un contador de proceso deja pasar el triple de lo que dice permitir.
 
+# Formatos que se aceptan en el chat. Las imagenes reutilizan la lista de
+# la tienda; el video se suma aparte porque una recarga que no entro se
+# demuestra mucho mejor grabando la pantalla del juego que describiendola.
+EXTRA_VIDEO_EXTENSIONS = {'mp4', 'webm', 'mov', 'm4v'}
+MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
+
 MAX_NAME_LENGTH = 40
 MIN_NAME_LENGTH = 2
 MAX_BODY_LENGTH = 2000
@@ -63,6 +69,18 @@ class SupportError(Exception):
 
 
 # ─── Saneado de entrada ──────────────────────────────────────────────────────
+
+def clean_email(raw):
+    """Correo opcional. Si viene mal escrito se descarta en silencio en vez
+    de bloquear el chat: quien escribe a soporte tiene un problema ya, y
+    negarle la entrada por una arroba de mas seria el peor momento."""
+    value = _INVISIBLE_CHARS.sub('', str(raw or '')).strip().lower()
+    if not value or len(value) > 255:
+        return None
+    if '@' not in value or '.' not in value.rsplit('@', 1)[-1]:
+        return None
+    return value
+
 
 def clean_name(raw):
     name = _INVISIBLE_CHARS.sub('', str(raw or ''))
@@ -263,8 +281,9 @@ def _count_recent_chats_from_ip(client_ip):
             .count())
 
 
-def start_chat(name, context=None, client_ip=None, user_agent=None, user_id=None):
-    """Abre el chat. El nombre es lo único que se pide."""
+def start_chat(name, context=None, client_ip=None, user_agent=None, user_id=None,
+               email=None):
+    """Abre el chat. El nombre es lo único obligatorio."""
     name = clean_name(name)
 
     if _count_recent_chats_from_ip(client_ip) >= MAX_NEW_CHATS_PER_IP_PER_HOUR:
@@ -278,6 +297,7 @@ def start_chat(name, context=None, client_ip=None, user_agent=None, user_id=None
         client_ip=(client_ip or '')[:45] or None,
         user_agent=(user_agent or '')[:255] or None,
         user_id=user_id,
+        client_email=clean_email(email),
         status='open',
         last_message_at=datetime.utcnow(),
     )
@@ -292,14 +312,20 @@ def start_chat(name, context=None, client_ip=None, user_agent=None, user_id=None
     return chat
 
 
-def reopen_or_start(token, name, context=None, client_ip=None, user_agent=None, user_id=None):
+def reopen_or_start(token, name, context=None, client_ip=None, user_agent=None,
+                    user_id=None, email=None):
     """Un navegador tiene un solo chat vivo: si ya lo tiene, se reabre en
     vez de crear otro. Sin esto, cerrar y volver a abrir el modal llenaría
     la bandeja de hilos vacíos del mismo cliente."""
     chat = get_chat_by_token(token)
     if chat and not chat.is_blocked and chat.status in OPEN_STATUSES:
+        # Si antes no dejo correo y ahora si, se aprovecha.
+        nuevo = clean_email(email)
+        if nuevo and not chat.client_email:
+            chat.client_email = nuevo
+            db.session.commit()
         return chat, False
-    return start_chat(name, context, client_ip, user_agent, user_id), True
+    return start_chat(name, context, client_ip, user_agent, user_id, email), True
 
 
 def _messages_in_last_minute(chat):
@@ -397,6 +423,62 @@ def save_admin_note(chat, text, admin_id=None):
     return chat
 
 
+IDLE_CLOSE_SETTING_KEY = 'support_idle_close_minutes'
+DEFAULT_IDLE_CLOSE_MINUTES = 10
+
+
+def get_idle_close_minutes():
+    """Minutos de silencio del cliente antes de cerrar el chat.
+
+    Ajustable sin desplegar: en hora punta conviene cerrar antes para que
+    la bandeja no se llene de hilos que ya no contesta nadie, y de
+    madrugada conviene lo contrario. 0 desactiva el cierre automático.
+    """
+    from ..models import Setting
+    row = Setting.query.filter_by(key=IDLE_CLOSE_SETTING_KEY).first()
+    try:
+        value = int((row.value if row else '').strip())
+    except (AttributeError, TypeError, ValueError):
+        return DEFAULT_IDLE_CLOSE_MINUTES
+    return max(0, value)
+
+
+def close_idle_chats(minutes=None):
+    """Cierra los chats donde soporte ya respondió y el cliente se fue.
+
+    Solo toca los que están en 'waiting_client': ahí la pelota es del
+    cliente. Un chat en 'open' significa que quien no ha contestado eres
+    tú, y cerrarlo por "inactividad" seria taparse el propio retraso.
+
+    No es definitivo: si el cliente vuelve y escribe, `add_client_message`
+    reabre el hilo con todo su historial.
+    """
+    minutes = get_idle_close_minutes() if minutes is None else minutes
+    if not minutes:
+        return 0
+
+    cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+    stale = (SupportChat.query
+             .filter(SupportChat.status == 'waiting_client',
+                     SupportChat.last_message_at.isnot(None),
+                     SupportChat.last_message_at < cutoff)
+             .all())
+
+    for chat in stale:
+        chat.status = 'closed'
+        chat.closed_at = datetime.utcnow()
+        chat.unread_admin = 0
+        add_system_message(
+            chat,
+            f'Chat cerrado tras {minutes} minutos sin respuesta. '
+            'Escribe de nuevo cuando quieras y lo reabrimos.'
+        )
+
+    if stale:
+        db.session.commit()
+    return len(stale)
+
+
 def mark_read_by_admin(chat):
     if not chat.unread_admin:
         return
@@ -421,17 +503,23 @@ def pending_chats_count():
 
 # ─── Adjuntos ────────────────────────────────────────────────────────────────
 
+def is_video_attachment(path):
+    return str(path or '').rsplit('.', 1)[-1].lower() in EXTRA_VIDEO_EXTENSIONS
+
+
 def save_attachment(file):
-    """Misma validación y carpeta que los comprobantes del checkout, pero
-    en su propio subdirectorio para que una purga de soporte no roce jamás
-    una captura de pago."""
+    """Misma carpeta base que los comprobantes del checkout pero en su
+    propio subdirectorio, para que una purga de soporte no roce jamás una
+    captura de pago."""
     if not file or not file.filename:
         return None
 
-    allowed = current_app.config.get('ALLOWED_IMAGE_EXTENSIONS') or set()
+    allowed = set(current_app.config.get('ALLOWED_IMAGE_EXTENSIONS') or set())
+    allowed |= EXTRA_VIDEO_EXTENSIONS
+
     name = str(file.filename)
     if '.' not in name or name.rsplit('.', 1)[1].lower() not in allowed:
-        raise SupportError('Solo se aceptan imágenes.')
+        raise SupportError('Solo se aceptan imágenes o videos.')
 
     filename = f"{now_ve_naive().strftime('%Y%m%d%H%M%S%f')}_{secure_filename(name)}"
     folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'support')
@@ -448,6 +536,7 @@ def serialize_message(message):
         'sender': message.sender,
         'body': message.body or '',
         'attachment': message.attachment or '',
+        'is_video': is_video_attachment(message.attachment),
         'created_at': (message.created_at or datetime.utcnow()).isoformat() + 'Z',
     }
 

@@ -755,6 +755,9 @@ class SupportChat(db.Model):
     short_code = db.Column(db.String(8), index=True, default=generate_support_short_code)
 
     client_name = db.Column(db.String(60), nullable=False)
+    # Correo opcional. Sin el, un cliente que cierra la pestana no se entera
+    # de que le respondieron hasta que vuelve a entrar por su cuenta.
+    client_email = db.Column(db.String(255))
 
     # Vinculación con el resto del sistema. `order_id` puede llegar solo
     # (contexto) o ponerlo el admin desde el buscador del hilo.

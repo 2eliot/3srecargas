@@ -11,10 +11,10 @@ cliente que está esperando respuesta. Cuando la cookie no llega, el JS
 manda el token por cabecera `X-Support-Token`.
 """
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 from flask_login import current_user
 
-from ..models import SupportMessage
+from ..models import Order, SupportMessage
 from ..utils import support as support_service
 from ..utils.support import SupportError
 from ..utils.notifications import notify_support_chat_opened, notify_support_client_message
@@ -76,6 +76,58 @@ def _handle_support_error(error):
     return jsonify({'ok': False, 'error': error.message}), error.status
 
 
+@support_bp.route('/')
+def page():
+    """La pantalla del chat.
+
+    Es una pagina propia y no un modal porque el chat de una recarga
+    manual no es un aviso de paso: el cliente ya pago y se queda ahi
+    hasta que le resuelvan. Una pestana se puede dejar abierta en
+    segundo plano, compartir por su URL y recargar sin perder nada;
+    un modal se cierra sin querer con un toque fuera.
+    """
+    chat = support_service.get_chat_by_token(_request_token())
+
+    # `?orden=` llega desde el checkout de un pedido manual. Los datos se
+    # buscan aqui y no se aceptan del navegador: el mensaje que se le
+    # propone al cliente lo arma el servidor con la orden real.
+    order = None
+    order_number = (request.args.get('orden') or '').strip()
+    if order_number:
+        order = Order.query.filter_by(order_number=order_number).first()
+
+    suggested = ''
+    if order:
+        lines = [
+            'Hola, ya completé mi pedido manual y necesito finalizar la recarga.',
+            f'Número de pedido: #{order.order_number}',
+        ]
+        if order.game:
+            lines.append(f'Juego: {order.game.name}')
+        if order.package:
+            lines.append(f'Paquete adquirido: {order.package.name}')
+        if order.player_id and order.game:
+            lines.append(f'{order.game.player_id_label}: {order.player_id}')
+        if order.zone_id and order.game:
+            lines.append(f'{order.game.zone_id_label}: {order.zone_id}')
+        suggested = '\n'.join(lines)
+
+    # Un chat cerrado sigue siendo visible: el cliente lee lo que se le
+    # respondio y, si escribe otra vez, se reabre solo.
+    messages = _messages_payload(chat) if chat and not chat.is_blocked else []
+    if chat and not chat.is_blocked:
+        support_service.mark_read_by_client(chat)
+
+    return render_template(
+        'support_chat.html',
+        chat=chat if (chat and not chat.is_blocked) else None,
+        messages=messages,
+        order=order,
+        suggested_message=suggested,
+        idle_minutes=support_service.get_idle_close_minutes(),
+    )
+
+
 @support_bp.route('/iniciar', methods=['POST'])
 def start():
     data = request.get_json(silent=True) or {}
@@ -94,6 +146,7 @@ def start():
         client_ip=_client_ip(),
         user_agent=request.headers.get('User-Agent', ''),
         user_id=_current_user_id(),
+        email=data.get('email'),
     )
 
     first_message = support_service.clean_body(data.get('message'), allow_empty=True)
@@ -120,6 +173,7 @@ def thread():
     """Sondeo incremental. Con `after_id` la respuesta normal es una lista
     vacía de unos pocos bytes, que es lo que permite preguntar cada 5
     segundos sin que se note."""
+    support_service.close_idle_chats()
     chat = _load_chat_or_error()
 
     try:

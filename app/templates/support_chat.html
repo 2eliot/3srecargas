@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block title %}Soporte — 3S Recargas{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ static_v('css/support-chat.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="sc-wrap">
+  <div class="sc-window">
+
+    <header class="sc-head">
+      <a class="sc-back" href="{{ url_for('main_bp.index') }}" aria-label="Volver a la tienda">‹</a>
+      <div class="sc-avatar" aria-hidden="true">3S</div>
+      <div class="sc-who">
+        <strong>Soporte 3S Recargas</strong>
+        <span id="scPresence">{{ SUPPORT_SCHEDULE or 'Te respondemos lo antes posible' }}</span>
+      </div>
+      <span class="sc-code" id="scCode">{% if chat %}{{ chat.display_code }}{% endif %}</span>
+    </header>
+
+    {% if order %}
+    <a class="sc-order" href="{{ url_for('checkout_bp.order_status', order_number=order.order_number) }}">
+      <span class="sc-order-dot"></span>
+      <span>
+        <strong>Pedido #{{ order.order_number }}</strong> — {{ order.status_label }}<br>
+        {{ order.game.name if order.game }}{% if order.package %} · {{ order.package.name }}{% endif %}
+      </span>
+      <span class="sc-order-go">Ver estado ›</span>
+    </a>
+    {% endif %}
+
+    <!-- Paso 1: lo unico que se pide es el nombre. -->
+    <div class="sc-body" id="scStart" {% if chat %}hidden{% endif %}>
+      <div class="sc-intro">
+        <div class="sc-intro-icon">💬</div>
+        <h1>¿Cómo te llamas?</h1>
+        <p>Con tu nombre basta para empezar. Ya tenemos los datos de tu pedido.</p>
+      </div>
+      <form id="scStartForm" class="sc-start-form">
+        <input type="text" id="scName" placeholder="Tu nombre" maxlength="40"
+               autocomplete="given-name" required>
+        <input type="email" id="scEmail" maxlength="255" autocomplete="email"
+               placeholder="Tu correo (opcional)">
+        <p class="sc-field-hint">
+          Si lo dejas, te avisamos por correo cuando respondamos y no tendrás
+          que estar pendiente de esta pestaña.
+        </p>
+        <textarea id="scFirstMessage" rows="4" maxlength="2000"
+                  placeholder="¿En qué te ayudamos?">{{ suggested_message }}</textarea>
+        <!-- Campo trampa: oculto, una persona nunca lo rellena. -->
+        <input type="text" id="scWebsite" name="website" tabindex="-1" autocomplete="off"
+               aria-hidden="true" class="sc-trap">
+        <button type="submit" class="sc-start-btn">INICIAR CHAT</button>
+        <p class="sc-error" id="scError" hidden></p>
+      </form>
+    </div>
+
+    <!-- Paso 2: el hilo. -->
+    <div class="sc-body sc-thread-body" id="scChat" {% if not chat %}hidden{% endif %}>
+      <div class="sc-thread" id="scThread" aria-live="polite">
+        {% for m in messages %}
+        <div class="sc-msg {{ m.sender }}" data-id="{{ m.id }}">
+          {% if m.body %}<span class="sc-msg-body">{{ m.body }}</span>{% endif %}
+          {% if m.attachment %}
+          {% if m.is_video %}
+          <video class="sc-media" src="{{ url_for('static', filename='uploads/' ~ m.attachment) }}"
+                 controls preload="metadata"></video>
+          {% else %}
+          <a class="sc-media-link" target="_blank" rel="noopener"
+             href="{{ url_for('static', filename='uploads/' ~ m.attachment) }}">
+            <img class="sc-media" src="{{ url_for('static', filename='uploads/' ~ m.attachment) }}"
+                 alt="Imagen del chat" loading="lazy">
+            <span class="sc-media-open">Abrir ⤢</span>
+          </a>
+          {% endif %}
+          {% endif %}
+          {% if m.sender != 'system' %}<span class="sc-time">{{ m.created_at }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="sc-closed" id="scClosed" hidden>
+        Este chat se cerró por inactividad. Escribe abajo y lo reabrimos.
+      </div>
+
+      <form class="sc-composer" id="scComposer">
+        <input type="file" id="scFile" accept="image/*,video/*" hidden>
+        <button type="button" id="scAttach" class="sc-attach" aria-label="Adjuntar imagen">📎</button>
+        <textarea id="scInput" rows="1" maxlength="2000" placeholder="Escribe un mensaje"></textarea>
+        <button type="submit" class="sc-send" aria-label="Enviar">➤</button>
+      </form>
+    </div>
+
+  </div>
+
+  <p class="sc-foot">
+    {% if idle_minutes %}
+    El chat se cierra solo tras {{ idle_minutes }} minutos sin respuesta tuya, pero
+    puedes reabrirlo escribiendo de nuevo.
+    {% else %}
+    Puedes cerrar esta pestaña y volver: la conversación se guarda.
+    {% endif %}
+  </p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.SUPPORT_IDLE_MINUTES = {{ idle_minutes|tojson }};
+  window.SUPPORT_HAS_CHAT = {{ 'true' if chat else 'false' }};
+  window.SUPPORT_LAST_ID = {{ (messages|map(attribute='id')|max) if messages else 0 }};
+</script>
+<script src="{{ static_v('js/support-chat.js') }}"></script>
+{% endblock %}

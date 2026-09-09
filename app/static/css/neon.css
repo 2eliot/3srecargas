@@ -2877,7 +2877,11 @@ body.drawer-open { overflow: hidden; }
 }
 .nx-manual-wa h3 { font-size: 13px; font-weight: 900; color: #fff; text-transform: uppercase; letter-spacing: .03em; margin: 0; }
 .nx-manual-wa p { font-size: 11.5px; color: var(--nx-muted); margin: 0; font-family: var(--nx-font-sans); }
-.nx-manual-wa button {
+.nx-manual-wa button,
+.nx-manual-wa > a {
+    display: block;
+    text-align: center;
+    text-decoration: none;
     width: 100%;
     padding: 11px 0;
     border-radius: 12px;

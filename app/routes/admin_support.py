@@ -157,7 +157,13 @@ def thread_json(chat_id):
 @admin_support_bp.route('/pendientes.json')
 @login_required
 def pending_json():
-    """Badge del menú lateral."""
+    """Badge del menú lateral, y de paso el barrido de chats inactivos.
+
+    Aprovecha este sondeo en vez de un cron: si nadie está mirando el
+    panel tampoco urge cerrar hilos, y cuando abres la bandeja ya llega
+    barrida.
+    """
+    support_service.close_idle_chats()
     return jsonify({'ok': True, 'pending': support_service.pending_chats_count()})
 
 
@@ -319,7 +325,33 @@ def tags():
         'admin/support_tags.html',
         user_tags=SupportTag.query.filter_by(kind='user').order_by(SupportTag.sort_order).all(),
         error_tags=SupportTag.query.filter_by(kind='error').order_by(SupportTag.sort_order).all(),
+        idle_minutes=support_service.get_idle_close_minutes(),
     )
+
+
+@admin_support_bp.route('/etiquetas/inactividad', methods=['POST'])
+@login_required
+def set_idle_minutes():
+    from ..models import Setting
+
+    raw = (request.form.get('minutes') or '').strip()
+    try:
+        minutes = max(0, min(int(raw), 1440))
+    except (TypeError, ValueError):
+        flash('Pon un número de minutos.', 'danger')
+        return redirect(url_for('admin_support_bp.tags'))
+
+    row = Setting.query.filter_by(key=support_service.IDLE_CLOSE_SETTING_KEY).first()
+    if not row:
+        row = Setting(key=support_service.IDLE_CLOSE_SETTING_KEY,
+                      description='Minutos sin respuesta del cliente antes de cerrar su chat')
+        db.session.add(row)
+    row.value = str(minutes)
+    db.session.commit()
+
+    flash('Cierre automático desactivado.' if minutes == 0
+          else f'Los chats se cerrarán tras {minutes} minutos sin respuesta.', 'success')
+    return redirect(url_for('admin_support_bp.tags'))
 
 
 @admin_support_bp.route('/etiquetas/crear', methods=['POST'])

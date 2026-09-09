@@ -4,6 +4,9 @@
 
 {% block content %}
 <!-- Filters -->
+<p style="margin:0 0 10px;font-size:.76rem;color:#64748b;text-align:right">
+    <span id="ordersAutoRefresh">Se actualiza sola</span>
+</p>
 <div class="filters-bar">
     <div class="filter-tabs">
         <a href="{{ url_for('admin_bp.orders', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
@@ -649,6 +652,35 @@ function _kickAutoVerification(scopeEl) {
         }
         setTimeout(poll, 1000);
     });
+})();
+</script>
+<script>
+// Refresco automatico de la lista. Recarga entera y no parcial porque la
+// pagina se arma en Jinja con filtros, paginacion y contadores: replicar
+// todo eso en JSON seria mantener dos veces la misma vista.
+//
+// Se aborta si estas escribiendo, con un menu abierto o con la pagina
+// desplazada: recargar debajo de las manos es peor que la lista vieja.
+(function () {
+    var SEGUNDOS = 45;
+    var aviso = document.getElementById('ordersAutoRefresh');
+    function ocupado() {
+        var a = document.activeElement;
+        if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+        if (document.querySelector('.modal[style*="block"], dialog[open]')) return true;
+        return (window.scrollY || 0) > 240;
+    }
+    var restantes = SEGUNDOS;
+    setInterval(function () {
+        if (document.visibilityState !== 'visible' || ocupado()) {
+            restantes = SEGUNDOS;
+            if (aviso) aviso.textContent = 'Actualización en pausa';
+            return;
+        }
+        restantes -= 1;
+        if (aviso) aviso.textContent = 'Se actualiza en ' + restantes + ' s';
+        if (restantes <= 0) location.reload();
+    }, 1000);
 })();
 </script>
 {% endblock %}

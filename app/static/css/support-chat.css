@@ -1,0 +1,363 @@
+/* ── Pantalla de soporte ──────────────────────────────────────────────────
+   Chat a pagina completa, con el reparto que la gente ya tiene aprendido de
+   WhatsApp: cabecera fija con quien esta al otro lado, hilo que crece hacia
+   abajo, y la caja de escribir pegada al pie.
+
+   Se separa de neon.css porque solo la carga esta pagina: son ~250 lineas
+   que no tiene por que descargar quien solo entra a comprar. */
+
+.sc-wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 14px 12px 24px;
+}
+
+.sc-window {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 190px);
+    min-height: 460px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .1);
+    background: rgba(10, 10, 18, .82);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+}
+
+/* ── Cabecera ─────────────────────────────────────────────────────────── */
+
+.sc-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 14px;
+    background: rgba(255, 255, 255, .05);
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+
+.sc-back {
+    display: none;
+    font-size: 26px;
+    line-height: 1;
+    color: #fff;
+    text-decoration: none;
+    padding: 0 4px 3px 0;
+}
+
+.sc-avatar {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--nx-red, #FF0000);
+    color: #fff;
+    font-weight: 900;
+    font-size: 14px;
+    letter-spacing: .02em;
+}
+
+.sc-who { flex: 1; min-width: 0; line-height: 1.3; }
+.sc-who strong { display: block; font-size: 14px; color: #fff; }
+.sc-who span {
+    display: block;
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, .5);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sc-code {
+    flex: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: rgba(255, 255, 255, .35);
+}
+
+/* ── Tarjeta del pedido ───────────────────────────────────────────────── */
+
+.sc-order {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(255, 0, 0, .07);
+    border-bottom: 1px solid rgba(255, 0, 0, .18);
+    color: #e9e9f0;
+    text-decoration: none;
+    font-size: 12px;
+    line-height: 1.45;
+}
+.sc-order:hover { background: rgba(255, 0, 0, .12); }
+.sc-order strong { color: #fff; }
+.sc-order-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--nx-red, #FF0000);
+}
+.sc-order-go {
+    flex: none;
+    margin-left: auto;
+    font-size: 11px;
+    color: rgba(255, 255, 255, .55);
+    white-space: nowrap;
+}
+
+/* ── Cuerpo ───────────────────────────────────────────────────────────── */
+
+.sc-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.sc-intro { text-align: center; padding: 30px 22px 14px; }
+.sc-intro-icon { font-size: 38px; margin-bottom: 8px; }
+.sc-intro h1 {
+    margin: 0 0 6px;
+    font-size: 19px;
+    color: #fff;
+}
+.sc-intro p {
+    margin: 0;
+    font-size: 13px;
+    color: rgba(255, 255, 255, .55);
+    line-height: 1.5;
+}
+
+.sc-start-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 6px 22px 22px;
+}
+.sc-start-form input[type=text],
+.sc-start-form textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: rgba(255, 255, 255, .05);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    resize: vertical;
+}
+.sc-start-form input[type=text]:focus,
+.sc-start-form textarea:focus {
+    outline: none;
+    border-color: var(--nx-red, #FF0000);
+}
+.sc-start-form input[type=email] { font-size: 14px; }
+.sc-start-form textarea { min-height: 96px; line-height: 1.5; }
+
+.sc-field-hint {
+    margin: -4px 2px 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, .42);
+}
+
+.sc-trap { position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; }
+
+.sc-start-btn {
+    padding: 13px 0;
+    border: 1px solid rgba(255, 0, 0, .45);
+    border-radius: 12px;
+    background: linear-gradient(90deg, #dc2626, #991b1b);
+    color: #fff;
+    font-weight: 800;
+    letter-spacing: .04em;
+    font-size: 13px;
+    cursor: pointer;
+    transition: filter .15s;
+}
+.sc-start-btn:hover { filter: brightness(1.12); }
+.sc-start-btn:disabled { opacity: .5; cursor: default; }
+
+.sc-error { margin: 0; font-size: 13px; color: #fca5a5; text-align: center; }
+
+/* ── Hilo ─────────────────────────────────────────────────────────────── */
+
+.sc-thread {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scrollbar-width: thin;
+}
+
+.sc-msg {
+    max-width: 78%;
+    padding: 8px 12px 6px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.45;
+    word-break: break-word;
+    white-space: pre-wrap;
+    position: relative;
+}
+/* Miniatura, no la foto entera. Una captura de movil a tamano real
+   ocupaba toda la pantalla y empujaba la conversacion fuera de vista; se
+   acota igual que los comprobantes en el detalle de una orden, y el
+   original se abre en otra pestana. */
+.sc-media {
+    display: block;
+    width: 100%;
+    max-width: 200px;
+    max-height: 200px;
+    object-fit: cover;
+    border-radius: 10px;
+    margin-top: 6px;
+    background: rgba(0, 0, 0, .3);
+}
+video.sc-media { object-fit: contain; max-height: 240px; }
+
+.sc-media-link { display: inline-block; position: relative; text-decoration: none; }
+.sc-media-open {
+    position: absolute;
+    right: 6px;
+    bottom: 10px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, .62);
+    color: #fff;
+    font-size: 10px;
+    letter-spacing: .02em;
+}
+.sc-media-link:hover .sc-media-open { background: rgba(0, 0, 0, .85); }
+
+.sc-time {
+    display: block;
+    text-align: right;
+    font-size: 10.5px;
+    opacity: .55;
+    margin-top: 2px;
+}
+
+/* El cliente a la derecha, soporte a la izquierda: al reves se lee mal
+   porque todo el mundo trae de WhatsApp que lo propio va a la derecha. */
+.sc-msg.client {
+    align-self: flex-end;
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    color: #fff;
+    border-bottom-right-radius: 3px;
+}
+.sc-msg.admin {
+    align-self: flex-start;
+    background: rgba(255, 255, 255, .09);
+    border: 1px solid rgba(255, 255, 255, .1);
+    color: #e9e9f0;
+    border-bottom-left-radius: 3px;
+}
+.sc-msg.system {
+    align-self: center;
+    max-width: 92%;
+    background: rgba(255, 255, 255, .04);
+    color: rgba(255, 255, 255, .45);
+    font-size: 11.5px;
+    font-style: italic;
+    text-align: center;
+    padding: 5px 12px;
+    border-radius: 8px;
+}
+
+.sc-closed {
+    flex: none;
+    padding: 9px 14px;
+    background: rgba(255, 193, 7, .1);
+    border-top: 1px solid rgba(255, 193, 7, .28);
+    color: #fde68a;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* ── Caja de escribir ─────────────────────────────────────────────────── */
+
+.sc-composer {
+    flex: none;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, .04);
+    border-top: 1px solid rgba(255, 255, 255, .08);
+}
+
+.sc-composer textarea {
+    flex: 1;
+    min-height: 42px;
+    max-height: 130px;
+    resize: none;
+    padding: 11px 14px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, .13);
+    background: rgba(255, 255, 255, .06);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+}
+.sc-composer textarea:focus {
+    outline: none;
+    border-color: var(--nx-red, #FF0000);
+}
+
+.sc-attach,
+.sc-send {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    transition: filter .15s, transform .12s;
+}
+.sc-attach {
+    border: 1px solid rgba(255, 255, 255, .13);
+    background: rgba(255, 255, 255, .06);
+    color: rgba(255, 255, 255, .7);
+}
+.sc-attach:hover { color: #fff; }
+.sc-send {
+    border: none;
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    color: #fff;
+}
+.sc-send:hover { filter: brightness(1.15); }
+.sc-send:active { transform: scale(.93); }
+.sc-attach:disabled, .sc-send:disabled { opacity: .45; cursor: default; }
+
+.sc-foot {
+    margin: 12px 4px 0;
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, .38);
+    text-align: center;
+    line-height: 1.5;
+}
+
+/* ── Movil: la pestana ocupa toda la pantalla, como una app ───────────── */
+
+@media (max-width: 640px) {
+    .sc-wrap { padding: 0; max-width: none; }
+    .sc-window {
+        height: 100dvh;
+        min-height: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+    }
+    .sc-back { display: block; }
+    .sc-msg { max-width: 86%; }
+    .sc-foot { display: none; }
+}

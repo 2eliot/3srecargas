@@ -1031,18 +1031,11 @@
         {% if is_manual_order and order.status in ['pending', 'approved'] %}
         <div class="nx-manual-wa">
             <h3>Finaliza tu pedido manual con soporte</h3>
-            <p>Abre el chat y concretamos la recarga. Los datos de tu pedido ya van escritos.</p>
-            <button
-                type="button"
-                id="manualOrderSupportBtn"
-                data-message="Hola, ya completé mi pedido manual y necesito finalizar la recarga.
-Número de pedido: #{{ order.order_number }}
-Juego: {{ order.game.name }}
-Paquete adquirido: {{ order.package.name }}{% if order.player_id %}
-{{ order.game.player_id_label }}: {{ order.player_id }}{% endif %}{% if order.zone_id %}
-{{ order.game.zone_id_label }}: {{ order.zone_id }}{% endif %}">
+            <p>Te llevamos al chat con los datos de tu pedido ya escritos.</p>
+            <a id="manualOrderSupportBtn"
+               href="{{ url_for('support_bp.page', orden=order.order_number) }}">
                 CONTINUAR PEDIDO EN EL CHAT
-            </button>
+            </a>
         </div>
         {% endif %}
 
@@ -2159,46 +2152,26 @@ Paquete adquirido: {{ order.package.name }}{% if order.player_id %}
 </script>
 <script>
 (function () {
-    // El pedido manual ya no sale a WhatsApp: abre el chat de soporte de la
-    // propia web. Asi la conversacion queda en la bandeja del admin, con la
-    // orden vinculada sola (el contexto la toma de CURRENT_ORDER_NUMBER) en
-    // vez de perderse en un hilo de WhatsApp que nadie puede etiquetar.
+    // Una compra manual no esta terminada hasta hablar con soporte, asi que
+    // al llegar aqui se lleva al cliente al chat en vez de dejarle un boton
+    // que tiene que descubrir. La pagina del pedido queda a un toque desde
+    // la tarjeta que el chat muestra arriba.
     var btn = document.getElementById('manualOrderSupportBtn');
     if (!btn) return;
 
-    function abrirChat() {
-        if (typeof window.openSupportChat !== 'function') return false;
-        window.openSupportChat({ message: btn.getAttribute('data-message') || '' });
-        return true;
-    }
-
-    btn.addEventListener('click', function () {
-        if (!abrirChat()) {
-            // main.js no cargo. Antes que dejar al cliente sin salida, el
-            // boton flotante sigue ahi: se lo decimos en vez de no hacer nada.
-            alert('Abre el chat con el botón rojo de la esquina para finalizar tu pedido.');
-        }
-    });
-
-    // Al terminar la compra manual el chat se abre solo: el pedido no queda
-    // cerrado hasta hablar con soporte, y un boton que hay que descubrir
-    // deja a medias justo al cliente que ya pago.
-    //
     // Una sola vez por pedido y por navegador. Sin esta marca, cada vez que
     // el cliente recarga para ver si su orden avanzo —que en una orden
-    // pendiente es a menudo— le saltaria el modal encima.
+    // pendiente es a menudo— se lo llevaria del estado al chat otra vez, y
+    // no habria forma de quedarse mirando el pedido.
     var marca = 'store:support-auto-open:' + {{ order.order_number|tojson }};
-    var yaSeAbrio = false;
-    try { yaSeAbrio = localStorage.getItem(marca) === '1'; } catch (_) {}
+    var yaFue = false;
+    try { yaFue = localStorage.getItem(marca) === '1'; } catch (_) {}
+    if (yaFue) return;
 
-    if (!yaSeAbrio) {
-        // Un respiro para que la pagina termine de pintar: el modal
-        // apareciendo a mitad del render se siente como un fallo.
-        setTimeout(function () {
-            if (!abrirChat()) return;
-            try { localStorage.setItem(marca, '1'); } catch (_) {}
-        }, 1200);
-    }
+    setTimeout(function () {
+        try { localStorage.setItem(marca, '1'); } catch (_) {}
+        window.location.href = btn.getAttribute('href');
+    }, 1500);
 })();
 </script>
 {% if auto_verify_allowed %}

@@ -19,6 +19,28 @@
 {% block content %}
 <div class="admin-card" style="margin-bottom:18px">
     <div class="card-header">
+        <h2>Cierre por inactividad</h2>
+        <p class="form-hint">
+            Minutos que esperamos a que el cliente conteste después de tu respuesta
+            antes de cerrar su chat. Si vuelve y escribe, el hilo se reabre solo con
+            todo su historial. Pon <strong>0</strong> para no cerrar ninguno.
+        </p>
+    </div>
+    <form method="POST" action="{{ url_for('admin_support_bp.set_idle_minutes') }}"
+          style="display:flex;gap:10px;align-items:end">
+        <div class="form-group" style="max-width:160px">
+            <label for="minutes">Minutos</label>
+            <input type="number" id="minutes" name="minutes" min="0" max="1440"
+                   value="{{ idle_minutes }}">
+        </div>
+        <div class="form-group">
+            <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+    </form>
+</div>
+
+<div class="admin-card" style="margin-bottom:18px">
+    <div class="card-header">
         <h2>Nueva etiqueta</h2>
         <p class="form-hint">
             Las de <strong>usuario</strong> responden quién es quien escribe; las de <strong>error</strong>,
