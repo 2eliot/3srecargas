@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import requests
@@ -612,6 +612,23 @@ def verify_order_payment(order, force_reference=False):
                 amount_validation['response'] = full_data
                 return amount_validation
 
+            date_verdict = _check_payment_min_date(payment_data, is_new)
+            if date_verdict == 'old':
+                return {
+                    'ok': False,
+                    'verified': False,
+                    'message': 'Ese pago es anterior a la fecha mínima aceptada por la tienda.',
+                    'response': full_data,
+                }
+            if date_verdict == 'unknown':
+                # Sin fecha no se puede descartar que sea un pago viejo: queda para revisión manual.
+                return {
+                    'ok': True,
+                    'verified': False,
+                    'message': 'Pabilo no informó la fecha del pago; queda para revisión manual.',
+                    'response': full_data,
+                }
+
             if not verification_id:
                 verification_id = f"fallback:{payment_method.id}:{variant_ref or source}"
 
@@ -654,6 +671,51 @@ def verify_order_payment(order, force_reference=False):
         'verified': False,
         'message': 'No se pudo consultar una referencia bancaria válida para esta orden.',
     }
+
+
+def _parse_pabilo_date(value):
+    """Pabilo manda '0001-01-01T00:00:00Z' cuando no conoce una fecha."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    if parsed.year < 2000:
+        return None
+    return parsed
+
+
+def _check_payment_min_date(payment_data, is_new):
+    """Piso de fecha (PAYMENT_MIN_DATE, día de Venezuela) para los pagos de Pabilo.
+
+    La tienda reabrió con la base vacía y se perdió el registro de referencias ya usadas:
+    sin este piso un cliente podría reclamar otra vez un pago móvil viejo. Pabilo informa
+    `movement_date` (día del movimiento en el banco) y `created_at` (cuándo registró el pago).
+    Devuelve 'ok', 'old' o 'unknown'.
+    """
+    day = (current_app.config.get('PAYMENT_MIN_DATE') or '').strip()
+    if not day:
+        return 'ok'
+    try:
+        # Medianoche de Venezuela (UTC-4) del día configurado.
+        floor = datetime.fromisoformat(f'{day}T04:00:00+00:00')
+    except ValueError:
+        return 'ok'
+
+    movement = _parse_pabilo_date((payment_data or {}).get('movement_date'))
+    created = _parse_pabilo_date((payment_data or {}).get('created_at'))
+
+    if movement is not None and movement < floor:
+        return 'old'
+    # Ya estaba registrado en Pabilo antes del piso: lo cobró la tienda anterior.
+    if not is_new and created is not None and created < floor:
+        return 'old'
+    if movement is None and created is None:
+        return 'unknown'
+    return 'ok'
 
 
 def clear_pabilo_verification_state(order):

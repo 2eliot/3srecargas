@@ -56,6 +56,9 @@ class Config:
     # Permite acreditar un pago cuyo memo llegó vacío emparejando monto +
     # ventana de tiempo, siempre que no haya ambigüedad (ver binance_pay.py).
     BINANCE_MATCH_BY_AMOUNT = os.environ.get('BINANCE_MATCH_BY_AMOUNT', 'true').strip().lower() == 'true'
+    # Día (YYYY-MM-DD, Venezuela) desde el que se aceptan pagos verificados por Pabilo.
+    # Ver _check_payment_min_date en app/utils/payment_verification.py.
+    PAYMENT_MIN_DATE = os.environ.get('PAYMENT_MIN_DATE', '').strip()
     PABILO_BASE_URL = os.environ.get('PABILO_BASE_URL', 'https://api.pabilo.app')
     PABILO_TIMEOUT = int(os.environ.get('PABILO_TIMEOUT', 30))
     SCRAPE_ENABLED = os.environ.get('SCRAPE_ENABLED', 'true').strip().lower() == 'true'
