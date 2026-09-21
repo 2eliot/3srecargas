@@ -214,6 +214,13 @@ def redeem_code(gift, player_id, zone_id=None, nickname=''):
     game = package.game if package else None
     if not game:
         return False, 'El premio de ese código ya no está disponible.', None
+    # El premio es una recarga: exige el mismo ID verificado que el checkout.
+    from ..routes.verify import require_verified_player, VERIFIED_PLAYER_ERRORS
+    _ver_estado, _ver_nick = require_verified_player(game.id, player_id)
+    if _ver_estado in VERIFIED_PLAYER_ERRORS:
+        return False, VERIFIED_PLAYER_ERRORS[_ver_estado], None
+    if _ver_estado == 'ok':
+        nickname = _ver_nick
 
     reservado = claim_code(gift.id, player_id, zone_id=zone_id, nickname=nickname)
     if not reservado:

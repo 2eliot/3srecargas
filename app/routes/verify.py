@@ -151,6 +151,36 @@ def verifiable_game_ids():
     return ids
 
 
+def require_verified_player(game_id, player_id):
+    """Verificación obligatoria en el servidor antes de crear una recarga.
+
+    Devuelve (estado, nick). estado: "skip" (el juego no tiene verificador), "ok",
+    "not_found" (el ID no existe) o "error" (no se pudo consultar ahora). Usa el mismo
+    camino y caché que la pantalla: si el cliente ya vio su nombre, no se reconsulta.
+    """
+    try:
+        gid = int(game_id)
+    except (TypeError, ValueError):
+        return "skip", ""
+    if gid not in verifiable_game_ids():
+        return "skip", ""
+    payload, status = verify_player_nick(str(player_id or ""), str(gid), mode='auto')
+    if status == 200 and payload.get("ok"):
+        return "ok", payload.get("nick") or ""
+    if status in (400, 404):
+        return "not_found", ""
+    if status == 403:
+        # Verificación deshabilitada o sin verificador para este juego.
+        return "skip", ""
+    return "error", ""
+
+
+VERIFIED_PLAYER_ERRORS = {
+    "not_found": "No encontramos ese ID de jugador. Revísalo: solo se puede recargar a un ID verificado.",
+    "error": "No pudimos verificar tu ID en este momento. Intenta de nuevo en unos segundos.",
+}
+
+
 # ── Free Fire verification (same path as Inefable: /store/player/verify) ─────
 
 @verify_bp.route('/store/player/verify')

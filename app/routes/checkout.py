@@ -685,6 +685,14 @@ def checkout(package_id):
             elif not tarjetas_without_id:
                 if not player_id:
                     return _init_error(f'{game.player_id_label} es obligatorio.')
+                # Solo se recarga a IDs verificados en los juegos con verificador. El nick
+                # del formulario no cuenta como prueba: se confirma aquí, en el servidor.
+                from .verify import require_verified_player, VERIFIED_PLAYER_ERRORS
+                _ver_estado, _ver_nick = require_verified_player(game.id, player_id)
+                if _ver_estado in VERIFIED_PLAYER_ERRORS:
+                    return _init_error(VERIFIED_PLAYER_ERRORS[_ver_estado])
+                if _ver_estado == 'ok':
+                    player_nickname = _ver_nick
 
             checkout_data[pkg_key] = {
                 'player_id': player_id,
@@ -732,6 +740,15 @@ def checkout(package_id):
         if not payment_method:
             flash('Tu sesión expiró. Por favor repite el proceso desde la tienda.', 'danger')
             return redirect(url_for('main_bp.index'))
+        # Segunda barrera antes de crear la orden (usa la caché del paso 1, no reconsulta).
+        if not is_wallet and (data.get('player_id') or '').strip():
+            from .verify import require_verified_player, VERIFIED_PLAYER_ERRORS
+            _ver_estado, _ver_nick = require_verified_player(game.id, data.get('player_id'))
+            if _ver_estado in VERIFIED_PLAYER_ERRORS:
+                flash(VERIFIED_PLAYER_ERRORS[_ver_estado], 'danger')
+                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+            if _ver_estado == 'ok':
+                data['player_nickname'] = _ver_nick
 
         method_config = PaymentMethod.query.filter_by(code=payment_method.lower()).first()
         uses_payer_identity_verification = payment_method_uses_payer_identity_verification(method_config)
