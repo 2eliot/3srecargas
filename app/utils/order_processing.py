@@ -836,7 +836,13 @@ def _approve_order_locked(order, delivery_proof_path=None):
                 'category': 'danger',
             }
 
-    if package.is_automated:
+    # El bot canjea el PIN en la cuenta del jugador. Las tarjetas no tienen
+    # jugador (no se pide ID): su PIN se le entrega al cliente tal cual, aunque
+    # el paquete esté marcado como automatizado. Mandarlas al bot hacía que
+    # fallaran con "player_id must NOT have fewer than 1 characters".
+    redeem_via_bot = package.is_automated and category_slug != 'tarjetas'
+
+    if redeem_via_bot:
         vps_url = current_app.config.get('VPS_REDEEM_URL')
         vps_timeout = current_app.config.get('VPS_TIMEOUT', 120)
 
