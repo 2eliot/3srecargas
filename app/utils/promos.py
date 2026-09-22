@@ -8,10 +8,10 @@ misma verificación real que usa la tienda antes de aceptar un registro o
 una jugada — así no se le puede regalar un premio a un ID inventado.
 """
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
 from .order_units import extract_order_units
-from .timezone import now_ve, today_ve_str
+from .timezone import now_ve, today_ve_str, format_ve
 from ..models import (
     Game, Order, Package,
     PromoAccumulatedAward, PromoAccumulatedLevel, PromoAccumulatedOrderLog, PromoAccumulatedProgress,
@@ -309,13 +309,14 @@ def run_daily_raffle_draws():
     sorteo y todavía no tiene ganadores hoy. Pensado para llamarse desde el
     scheduler en segundo plano (igual que la recuperación de órdenes)."""
     configs = PromoRaffleConfig.query.filter_by(is_active=True).all()
-    current_hour = now_ve().hour
+    current_time = now_ve().time().replace(second=0, microsecond=0)
     day_key = today_ve_str()
 
     from .order_processing import deliver_prize_to_player
 
     for config in configs:
-        if current_hour < (config.draw_hour or 21):
+        draw_time = time(config.draw_hour or 21, config.draw_minute or 0)
+        if current_time < draw_time:
             continue
         already_drawn = PromoRaffleWinner.query.filter_by(game_id=config.game_id, day_key=day_key).first()
         if already_drawn:
@@ -381,11 +382,13 @@ def get_raffle_public_state(game_id, player_id):
 
     # Los últimos 3 días CON sorteo (no las últimas 30 filas, que con
     # winners_per_draw chico podían abarcar muchos más de 3 días, o con uno
-    # grande cortar un día a la mitad).
+    # grande cortar un día a la mitad). Incluye hoy si ya se corrió: al
+    # concluir, "Ganadores de hoy" se oculta y el historial es lo único que
+    # queda mostrando quién ganó, así que hoy tiene que entrar ahí también.
     recent_day_keys = [
         row[0] for row in
         db.session.query(PromoRaffleWinner.day_key)
-        .filter(PromoRaffleWinner.game_id == game_id, PromoRaffleWinner.day_key < day_key)
+        .filter(PromoRaffleWinner.game_id == game_id, PromoRaffleWinner.day_key <= day_key)
         .distinct()
         .order_by(PromoRaffleWinner.day_key.desc())
         .limit(3)
@@ -405,23 +408,28 @@ def get_raffle_public_state(game_id, player_id):
         })
 
     now = now_ve()
-    next_draw = now.replace(hour=config.draw_hour or 21, minute=0, second=0, microsecond=0)
+    next_draw = now.replace(hour=config.draw_hour or 21, minute=config.draw_minute or 0, second=0, microsecond=0)
     if drawn or now >= next_draw:
         next_draw = next_draw + timedelta(days=1)
 
     return {
         'enabled': True,
         'draw_hour': config.draw_hour,
+        'draw_minute': config.draw_minute or 0,
         'winners_per_draw': config.winners_per_draw,
         'reward_label': config.package.name if config.package else '',
         'total_entries': total_entries,
         'my_ticket': my_entry_today.ticket_number if my_entry_today else None,
+        'my_nick': my_entry_today.player_nick if my_entry_today else None,
+        'my_registered_at': format_ve(my_entry_today.created_at, '%d/%m/%Y %H:%M:%S') if my_entry_today else None,
         'drawn': drawn,
         'winners_today': [{'player_id': w.player_id, 'ticket_number': w.ticket_number} for w in winners],
         'history': [{'day_key': day, 'winners': items} for day, items in history_by_day.items()],
         'next_draw_at': next_draw.isoformat(),
         'registration_open_for': 'tomorrow' if drawn else 'today',
         'my_ticket_tomorrow': my_entry_tomorrow.ticket_number if my_entry_tomorrow else None,
+        'my_nick_tomorrow': my_entry_tomorrow.player_nick if my_entry_tomorrow else None,
+        'my_registered_at_tomorrow': format_ve(my_entry_tomorrow.created_at, '%d/%m/%Y %H:%M:%S') if my_entry_tomorrow else None,
         'total_entries_tomorrow': total_entries_tomorrow,
     }
 
@@ -466,7 +474,8 @@ def get_raffle_show_state(game_id, player_id):
         for w in winners
     ]
     now = now_ve()
-    base['is_draw_time'] = now.hour >= (base['draw_hour'] or 21)
+    draw_time = time(base['draw_hour'] or 21, base.get('draw_minute') or 0)
+    base['is_draw_time'] = now.time().replace(second=0, microsecond=0) >= draw_time
     return base
 
 

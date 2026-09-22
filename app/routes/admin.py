@@ -3759,6 +3759,7 @@ def promos_raffle_save():
 
     is_active = request.form.get('is_active') == 'on'
     draw_hour = request.form.get('draw_hour', type=int)
+    draw_minute = request.form.get('draw_minute', type=int)
     winners_per_draw = request.form.get('winners_per_draw', type=int)
     package_id = request.form.get('package_id', type=int)
     require_verification = request.form.get('require_verification') == 'on'
@@ -3771,6 +3772,7 @@ def promos_raffle_save():
 
     config.is_active = bool(is_active and package_id)
     config.draw_hour = draw_hour if draw_hour is not None and 0 <= draw_hour <= 23 else 21
+    config.draw_minute = draw_minute if draw_minute is not None and 0 <= draw_minute <= 59 else 0
     config.winners_per_draw = winners_per_draw if winners_per_draw and winners_per_draw > 0 else 5
     config.package_id = package_id
     config.require_verification = require_verification

@@ -165,6 +165,9 @@
                         <div id="assigned-player-info" class="text-slate-200 text-[10px] mt-0.5 font-medium truncate">
                             ID: --
                         </div>
+                        <div id="assigned-registered-at-info" class="text-slate-400 text-[10px] mt-0.5 font-medium" hidden>
+                            Registrado: --
+                        </div>
                     </div>
                     <p id="register-msg" class="text-[10px] text-red-400 font-semibold h-3 px-1"></p>
                 </div>
@@ -341,9 +344,11 @@
 
         function generarHistorial(history) {
             const historyList = document.getElementById('history-list');
+            const historySection = document.getElementById('history-section');
             if (!historyList) return;
             if (!history || !history.length) {
-                historyList.innerHTML = `<p class="text-slate-500 text-[11px] text-center py-2">Todavía no hay sorteos anteriores.</p>`;
+                historyList.innerHTML = '';
+                if (historySection) historySection.classList.add('hidden');
                 return;
             }
 
@@ -378,7 +383,14 @@
         }
 
         let rewardPerWinnerValue = 0;
+        let nextDrawIntervalId = null;
+        let autoReloadScheduled = false;
+        let sawRegistrationOpen = false;
 
+        // Al llegar la hora del sorteo la página se recarga sola: así no
+        // depende de que el polling de 20s alcance a reaccionar ni de JS
+        // cacheado en una pestaña que llevaba rato abierta — entra fresca
+        // y agarra el sorteo ya corriendo con quien esté registrado.
         function iniciarTemporizadorProximoSorteo(nextDrawAtIso) {
             const relojEl = document.getElementById('next-draw-countdown');
             if (!relojEl || !nextDrawAtIso) return;
@@ -386,14 +398,25 @@
 
             function actualizarReloj() {
                 const diferencia = target - Date.now();
-                if (diferencia <= 0) { relojEl.innerText = '00h 00m 00s'; return; }
+                if (diferencia <= 0) {
+                    relojEl.innerText = '00h 00m 00s';
+                    if (!autoReloadScheduled) {
+                        autoReloadScheduled = true;
+                        // Pequeño margen para que el servidor (que revisa
+                        // el sorteo cada ~20s en segundo plano) ya haya
+                        // alcanzado a correrlo y tenga ganadores listos.
+                        setTimeout(() => window.location.reload(), 4000);
+                    }
+                    return;
+                }
                 const horas = Math.floor(diferencia / (1000 * 60 * 60));
                 const minutos = Math.floor((diferencia % (1000 * 60 * 60)) / (1000 * 60));
                 const segundos = Math.floor((diferencia % (1000 * 60)) / 1000);
                 relojEl.innerText = `${String(horas).padStart(2, '0')}h ${String(minutos).padStart(2, '0')}m ${String(segundos).padStart(2, '0')}s`;
             }
+            if (nextDrawIntervalId) clearInterval(nextDrawIntervalId);
             actualizarReloj();
-            setInterval(actualizarReloj, 1000);
+            nextDrawIntervalId = setInterval(actualizarReloj, 1000);
         }
 
         // ── Animación del giro (idéntica a la original): recorre la lista real
@@ -594,6 +617,7 @@
                 document.getElementById('assigned-ticket-info').innerText = `Ticket #${data.ticket_number}`;
                 document.getElementById('assigned-player-info').innerText =
                     data.player_nick ? `${data.player_nick} • ID: ${idVal}` : `ID: ${idVal}`;
+                document.getElementById('assigned-registered-at-info').hidden = true;
                 if (typeof confetti === 'function') confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 }, colors: ['#ef4444', '#ffffff', '#dc2626'] });
                 idInput.value = "";
             })
@@ -624,13 +648,24 @@
             fetch(`/promos/api/sorteo/estado?game_id=${GAME_ID}&player_id=${encodeURIComponent(idVal)}`)
                 .then(r => r.json())
                 .then(data => {
-                    const ticket = data.registration_open_for === 'tomorrow' ? data.my_ticket_tomorrow : data.my_ticket;
+                    const isTomorrow = data.registration_open_for === 'tomorrow';
+                    const ticket = isTomorrow ? data.my_ticket_tomorrow : data.my_ticket;
+                    const nick = isTomorrow ? data.my_nick_tomorrow : data.my_nick;
+                    const registeredAt = isTomorrow ? data.my_registered_at_tomorrow : data.my_registered_at;
                     if (ticket) {
                         msg.innerText = "";
                         successTitle.innerHTML = "<span>🔍</span> ¡Ticket Encontrado!";
                         successCard.classList.remove('hidden');
                         document.getElementById('assigned-ticket-info').innerText = `Ticket #${ticket}`;
-                        document.getElementById('assigned-player-info').innerText = `ID: ${idVal}`;
+                        document.getElementById('assigned-player-info').innerText =
+                            nick ? `${nick} • ID: ${idVal}` : `ID: ${idVal}`;
+                        var registeredAtEl = document.getElementById('assigned-registered-at-info');
+                        if (registeredAt) {
+                            registeredAtEl.innerText = `Registrado: ${registeredAt}`;
+                            registeredAtEl.hidden = false;
+                        } else {
+                            registeredAtEl.hidden = true;
+                        }
                     } else {
                         msg.innerText = "❌ No hay ticket con este ID. ¡Regístrate gratis!";
                         successCard.classList.add('hidden');
@@ -642,11 +677,33 @@
                 });
         }
 
+        function formatDrawTime(data) {
+            return String(data.draw_hour).padStart(2, '0') + ':' + String(data.draw_minute || 0).padStart(2, '0');
+        }
+
         async function cargarEstado() {
             if (!GAME_ID) return;
             const res = await fetch(`/promos/api/sorteo/show?game_id=${GAME_ID}`);
             const data = await res.json();
             if (!data.ok || !data.enabled) return;
+
+            // El contador local (iniciarTemporizadorProximoSorteo) puede
+            // atrasarse o directamente no correr si la pestaña queda en
+            // segundo plano — los navegadores frenan los timers ahí. Por
+            // eso la recarga real se decide con el estado que manda el
+            // servidor en cada consulta (cada 20s), no con el reloj local:
+            // en cuanto se detecta que se pasó de "registro abierto" a
+            // "hora del sorteo" en esta misma pestaña, se fuerza la
+            // recarga — funciona igual para cualquier juego, no solo
+            // Free Fire.
+            const registrationWasOpen = sawRegistrationOpen;
+            if (!data.drawn && !data.is_draw_time) {
+                sawRegistrationOpen = true;
+            } else if (registrationWasOpen && !autoReloadScheduled) {
+                autoReloadScheduled = true;
+                setTimeout(() => window.location.reload(), 1500);
+                return;
+            }
 
             winnersTotal = data.winners_per_draw || 5;
             rewardLabel = data.reward_label || 'Premio';
@@ -656,7 +713,7 @@
 
             document.getElementById('page-title').innerText = `🎲 RULETA • ${winnersTotal * rewardPerWinnerValue} 💎`;
             document.getElementById('schedule-sub').innerHTML =
-                `<span>🕒</span> Todos los días a las <strong class="text-red-400">${String(data.draw_hour).padStart(2, '0')}:00 (Venezuela)</strong>`;
+                `<span>🕒</span> Todos los días a las <strong class="text-red-400">${formatDrawTime(data)} (Venezuela)</strong>`;
             document.getElementById('reward-label-badge').innerText = rewardLabel;
             document.getElementById('reward-per-winner').innerText = rewardLabel;
             document.getElementById('winners-total').innerText = winnersTotal;
@@ -687,8 +744,8 @@
                 // sorteo, cuando data.is_draw_time o data.drawn se activan).
                 document.getElementById('slot-section').classList.add('hidden');
                 document.getElementById('register-section').classList.remove('hidden');
-                document.getElementById('countdown-timer').innerText = `📡 Registro abierto — sorteo a las ${String(data.draw_hour).padStart(2, '0')}:00`;
-                drawStaticDisplay(`🎲 ¡SORTEO ${String(data.draw_hour).padStart(2, '0')}:00 (Venezuela)! 🎲`);
+                document.getElementById('countdown-timer').innerText = `📡 Registro abierto — sorteo a las ${formatDrawTime(data)}`;
+                drawStaticDisplay(`🎲 ¡SORTEO ${formatDrawTime(data)} (Venezuela)! 🎲`);
             }
         }
 

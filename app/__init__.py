@@ -287,6 +287,7 @@ def create_app(config_class=Config):
         _ensure_binance_columns()
         _ensure_support_columns()
         _ensure_promo_accumulated_columns()
+        _ensure_raffle_draw_minute_column()
         _init_default_data(app)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -933,6 +934,23 @@ def _ensure_promo_accumulated_columns():
             if 'sort_order' not in existing:
                 db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN sort_order INTEGER DEFAULT 100'))
                 db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_raffle_draw_minute_column():
+    """El sorteo diario arrancaba solo a hora en punto; se le agrega el
+    minuto para poder programarlo a una hora exacta."""
+    try:
+        if _ensure_postgres_columns('promo_raffle_configs', ['draw_minute INTEGER DEFAULT 0']):
+            return
+        if db.engine.dialect.name != 'sqlite':
+            return
+        rows = db.session.execute(text('PRAGMA table_info(promo_raffle_configs)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'draw_minute' not in existing:
+            db.session.execute(text('ALTER TABLE promo_raffle_configs ADD COLUMN draw_minute INTEGER DEFAULT 0'))
+            db.session.commit()
     except Exception:
         db.session.rollback()
 

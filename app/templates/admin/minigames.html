@@ -276,6 +276,10 @@
                 <input type="number" min="0" max="23" name="draw_hour" value="{{ raffle_config.draw_hour if raffle_config else 21 }}">
             </div>
             <div class="form-group">
+                <label>Minuto exacto (0-59)</label>
+                <input type="number" min="0" max="59" name="draw_minute" value="{{ raffle_config.draw_minute if raffle_config else 0 }}">
+            </div>
+            <div class="form-group">
                 <label>Ganadores por sorteo</label>
                 <input type="number" min="1" name="winners_per_draw" value="{{ raffle_config.winners_per_draw if raffle_config else 5 }}">
             </div>

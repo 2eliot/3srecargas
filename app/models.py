@@ -1072,6 +1072,7 @@ class PromoRaffleConfig(db.Model):
     game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, unique=True)
     is_active = db.Column(db.Boolean, default=False)
     draw_hour = db.Column(db.Integer, default=21)  # hora Venezuela, 0-23
+    draw_minute = db.Column(db.Integer, default=0, nullable=False)  # minuto, 0-59
     winners_per_draw = db.Column(db.Integer, default=5)
     package_id = db.Column(db.Integer, db.ForeignKey('packages.id'))
     require_verification = db.Column(db.Boolean, default=True)
