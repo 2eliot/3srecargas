@@ -34,12 +34,6 @@ def verify_player():
     if not game_id:
         return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
 
-    # DEMO TEMPORAL — sin tocar SCRAPE_ENABLED ni la config real del sitio
-    # (que también controla el checkout). Se quita apenas termine la prueba.
-    if not player_id or not player_id.isdigit():
-        return jsonify({'ok': False, 'error': 'ID inválido'}), 400
-    return jsonify({'ok': True, 'uid': player_id, 'nick': 'Jugador_Demo123', 'cached': False})
-
     payload, status = verify_player_nick(player_id, str(game_id), mode='auto')
     return jsonify(payload), status
 
@@ -135,9 +129,7 @@ def adivina_page():
 
     games = get_guess_enabled_games()
     game = _selected_game(games, request.args.get('game_id', type=int))
-    # DEMO TEMPORAL: fuerza el botón visible sin depender de la config real
-    # de verificación del sitio. Se quita apenas termine la prueba.
-    verifiable = bool(game)  # normalmente: game.id in verifiable_game_ids()
+    verifiable = bool(game) and game.id in verifiable_game_ids()
     return render_template('promos/adivina_numero.html', games=games, game=game, verifiable=verifiable)
 
 
