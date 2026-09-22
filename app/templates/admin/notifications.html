@@ -14,7 +14,7 @@
 </div>
 
 {% if not push_configured %}
-<div class="admin-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08);">
+<div class="admin-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08);padding:18px 20px;">
     <p class="form-hint" style="color:#fde68a;">Las llaves VAPID todavía no se generaron. Se crean solas la primera vez que un cliente visita la tienda con notificaciones soportadas; si nadie ha visitado el sitio con el navegador aún, vuelve a intentar en un momento.</p>
 </div>
 {% endif %}
@@ -24,7 +24,7 @@
         <h2>Enviar notificación a todos los suscritos</h2>
         <p class="form-hint">Se envía a todo el que haya activado notificaciones en la tienda (promos, sorteos, avisos generales).</p>
     </div>
-    <form method="POST">
+    <form method="POST" style="padding:0 20px 20px;">
         <div class="form-group">
             <label for="title">Título</label>
             <input type="text" id="title" name="title" maxlength="60" required placeholder="¡Descuento especial hoy!">

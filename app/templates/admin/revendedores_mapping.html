@@ -5,22 +5,55 @@
 {% block content %}
 <div style="max-width:900px;">
   <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center;">
-    <select id="rev-game-filter" class="form-control" style="max-width:250px; padding:8px 12px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0;">
-      <option value="">Todos los juegos</option>
-    </select>
     <button id="btn-rev-sync" class="btn btn-primary" style="padding:8px 18px; border-radius:8px; background:#6366f1; color:#fff; border:none; cursor:pointer; font-weight:500;">
       Sincronizar Catálogo
-    </button>
-    <button id="btn-rev-save" class="btn btn-success" style="padding:8px 18px; border-radius:8px; background:#22c55e; color:#fff; border:none; cursor:pointer; font-weight:500;">
-      Guardar Mapeo
     </button>
     <button id="btn-rev-refresh" style="padding:8px 18px; border-radius:8px; background:#334155; color:#e2e8f0; border:none; cursor:pointer; font-weight:500;">
       Refrescar
     </button>
   </div>
 
-  <div id="rev-map-list" style="display:flex; flex-direction:column; gap:12px;">
-    <p style="color:#94a3b8;">Cargando datos de mapeo...</p>
+  <!-- Paso 1: juego -->
+  <div style="margin-bottom:16px;">
+    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:6px;">1. Elige el juego</label>
+    <select id="rev-game-select" class="form-control" style="width:100%; max-width:400px; padding:10px 12px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0;">
+      <option value="">Selecciona un juego…</option>
+    </select>
+  </div>
+
+  <!-- Paso 2: paquete -->
+  <div id="rev-package-wrap" style="margin-bottom:20px; display:none;">
+    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:6px;">2. Elige el paquete</label>
+    <select id="rev-package-select" class="form-control" style="width:100%; max-width:400px; padding:10px 12px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0;">
+      <option value="">Selecciona un paquete…</option>
+    </select>
+  </div>
+
+  <!-- Paso 3: items del paquete elegido -->
+  <div id="rev-items-wrap" style="display:none; padding:16px; background:#1e293b; border-radius:10px; border:1px solid #334155;">
+    <div style="font-weight:600; color:#e2e8f0; margin-bottom:2px;" id="rev-items-title">—</div>
+    <div style="font-size:12px; color:#94a3b8; margin-bottom:14px;" id="rev-items-subtitle">—</div>
+
+    <div id="rev-items-header" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+      <span style="flex:1; min-width:160px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8;">Item</span>
+      <span style="flex:1; min-width:180px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8;">Paquete</span>
+      <span style="width:70px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8; text-align:center;">Cantidad</span>
+      <span style="width:34px;"></span>
+    </div>
+    <div id="rev-items-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+
+    <button id="btn-rev-add-item" type="button" style="margin-top:12px; padding:7px 14px; border-radius:8px; background:#334155; color:#e2e8f0; border:1px dashed #64748b; cursor:pointer; font-weight:600; font-size:13px;">
+      + Agregar item
+    </button>
+
+    <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd5e1; margin-top:18px;">
+      <input type="checkbox" id="rev-auto-chk">
+      Recarga automática secuencial
+    </label>
+
+    <button id="btn-rev-save" style="margin-top:16px; padding:9px 20px; border-radius:8px; background:#22c55e; color:#fff; border:none; cursor:pointer; font-weight:600;">
+      Guardar mapeo de este paquete
+    </button>
   </div>
 </div>
 
@@ -30,13 +63,22 @@
 {% block extra_js %}
 <script>
 (function() {
-  const gameFilter = document.getElementById('rev-game-filter');
-  const mapList = document.getElementById('rev-map-list');
+  const gameSelect = document.getElementById('rev-game-select');
+  const packageWrap = document.getElementById('rev-package-wrap');
+  const packageSelect = document.getElementById('rev-package-select');
+  const itemsWrap = document.getElementById('rev-items-wrap');
+  const itemsTitle = document.getElementById('rev-items-title');
+  const itemsSubtitle = document.getElementById('rev-items-subtitle');
+  const itemsList = document.getElementById('rev-items-list');
+  const btnAddItem = document.getElementById('btn-rev-add-item');
+  const autoChk = document.getElementById('rev-auto-chk');
   const btnSync = document.getElementById('btn-rev-sync');
   const btnSave = document.getElementById('btn-rev-save');
   const btnRefresh = document.getElementById('btn-rev-refresh');
 
-  let mappingData = null;
+  let mappingData = null;    // última respuesta de /mapping-data
+  let remoteGroups = {};     // { "Free Fire": [{catalog_id, remote_package_name, price}, ...] }
+  let catalogToGroup = {};   // catalog_id -> nombre del grupo, para preseleccionar al editar
 
   function toast(msg) {
     const d = document.createElement('div');
@@ -46,106 +88,127 @@
     setTimeout(() => d.remove(), 8000);
   }
 
-  async function fetchMappingData(gameId) {
-    const url = gameId ? `/admin/revendedores/mapping-data?game_id=${gameId}` : '/admin/revendedores/mapping-data';
-    const res = await fetch(url);
+  function mappingFor(pkgId) {
+    return (mappingData.mappings || []).find(m => String(m.store_package_id) === String(pkgId));
+  }
+
+  /* Trae TODO el catálogo (sin filtrar por juego): un paquete puede
+     armarse con items de otro juego si hace falta, así que no conviene
+     limitar las opciones de la fila al juego elegido en el paso 1. */
+  async function fetchMappingData() {
+    const res = await fetch('/admin/revendedores/mapping-data');
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Error cargando datos');
     mappingData = data;
-    renderGames(data.games);
-    renderMapping(data);
+    buildRemoteOptions(data.remote_catalog || []);
+    renderGames(data.games || []);
+  }
+
+  function buildRemoteOptions(remoteCatalog) {
+    remoteGroups = {};
+    catalogToGroup = {};
+    remoteCatalog.forEach(rc => {
+      const gName = (rc.remote_product_name || '').trim() || 'Otro';
+      if (!remoteGroups[gName]) remoteGroups[gName] = [];
+      remoteGroups[gName].push(rc);
+      catalogToGroup[rc.catalog_id] = gName;
+    });
   }
 
   function renderGames(games) {
-    const current = gameFilter.value;
-    gameFilter.innerHTML = '<option value="">Todos los juegos</option>';
-    (games || []).forEach(g => {
+    const current = gameSelect.value;
+    gameSelect.innerHTML = '<option value="">Selecciona un juego…</option>';
+    games.forEach(g => {
       const opt = document.createElement('option');
       opt.value = g.id;
       opt.textContent = g.name;
       if (String(g.id) === String(current)) opt.selected = true;
-      gameFilter.appendChild(opt);
+      gameSelect.appendChild(opt);
     });
   }
 
-  function renderMapping(data) {
-    const packages = data.store_packages || [];
-    const remoteCatalog = data.remote_catalog || [];
-    const mappings = data.mappings || [];
-    const mappingMap = {};
-    mappings.forEach(m => { mappingMap[m.store_package_id] = m; });
+  function renderPackages(gameId) {
+    packageSelect.innerHTML = '<option value="">Selecciona un paquete…</option>';
+    const packages = (mappingData.store_packages || []).filter(p => String(p.game_id) === String(gameId));
+    packages.forEach(p => {
+      const mapped = mappingFor(p.id);
+      const tag = mapped && mapped.items && mapped.items.length ? ' ✓ mapeado' : '';
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `${p.name} — ID ${p.id} · USD ${Number(p.price).toFixed(2)}${tag}`;
+      packageSelect.appendChild(opt);
+    });
+    packageWrap.style.display = packages.length ? '' : 'none';
+    itemsWrap.style.display = 'none';
+    packageSelect.value = '';
+  }
 
-    if (!packages.length) {
-      mapList.innerHTML = '<p style="color:#94a3b8;">No hay paquetes para este juego.</p>';
-      return;
+  /* Llena el segundo select (paquete) con las opciones del grupo elegido
+     en el primero (nombre del item / juego remoto). */
+  function fillPackageSelect(packageSel, groupName, selectedCatalogId) {
+    const opciones = remoteGroups[groupName] || [];
+    packageSel.innerHTML = '<option value="">Elige el paquete…</option>';
+    opciones.forEach(rc => {
+      const pkgName = (rc.remote_package_name || '').trim() || ('Paquete ' + rc.remote_package_id);
+      const priceTag = rc.price != null ? ` ($${Number(rc.price).toFixed(2)})` : '';
+      const opt = document.createElement('option');
+      opt.value = rc.catalog_id;
+      opt.textContent = `${pkgName}${priceTag}`;
+      packageSel.appendChild(opt);
+    });
+    packageSel.disabled = !opciones.length;
+    if (selectedCatalogId) packageSel.value = selectedCatalogId;
+  }
+
+  function addItemRow(catalogId, quantity) {
+    const row = document.createElement('div');
+    row.className = 'rev-item-row';
+    row.style.cssText = 'display:flex; gap:8px; align-items:center; flex-wrap:wrap;';
+    row.innerHTML = `
+      <select class="rev-item-name" style="flex:1; min-width:160px; padding:8px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;">
+        <option value="">Elige el item…</option>
+        ${Object.keys(remoteGroups).sort().map(g => `<option value="${g}">${g}</option>`).join('')}
+      </select>
+      <select class="rev-item-package" style="flex:1; min-width:180px; padding:8px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;" disabled>
+        <option value="">Elige el paquete…</option>
+      </select>
+      <input type="number" class="rev-item-qty" min="1" value="${quantity || 1}" title="Cantidad"
+             style="width:70px; padding:8px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px; text-align:center;">
+      <button type="button" class="rev-item-remove" title="Quitar item"
+              style="padding:7px 10px; border-radius:6px; border:1px solid #475569; background:#1e293b; color:#fca5a5; cursor:pointer; font-weight:700;">×</button>
+    `;
+    const nameSel = row.querySelector('.rev-item-name');
+    const packageSel = row.querySelector('.rev-item-package');
+
+    nameSel.addEventListener('change', () => fillPackageSelect(packageSel, nameSel.value, ''));
+    row.querySelector('.rev-item-remove').addEventListener('click', () => row.remove());
+
+    if (catalogId && catalogToGroup[catalogId]) {
+      const grupo = catalogToGroup[catalogId];
+      nameSel.value = grupo;
+      fillPackageSelect(packageSel, grupo, catalogId);
     }
 
-    let html = '';
-    packages.forEach(pkg => {
-      const mapping = mappingMap[pkg.id];
-      const mappedCatalogId = mapping ? mapping.catalog_id : null;
-      const mappedCatalogId2 = mapping ? mapping.catalog_id_2 : null;
-      const autoEnabled = mapping ? mapping.auto_enabled : false;
+    itemsList.appendChild(row);
+  }
 
-      // Build optgroup-based dropdown
-      const groups = {};
-      remoteCatalog.forEach(rc => {
-        const gName = (rc.remote_product_name || '').trim() || 'Otro';
-        if (!groups[gName]) groups[gName] = [];
-        groups[gName].push(rc);
-      });
-      let optionsHtml = '<option value="">Manual (sin mapeo)</option>';
-      Object.keys(groups).sort().forEach(gName => {
-        optionsHtml += `<optgroup label="${gName}">`;
-        groups[gName].forEach(rc => {
-          const selected = mappedCatalogId && parseInt(mappedCatalogId, 10) === parseInt(rc.catalog_id, 10) ? 'selected' : '';
-          const pkgName = (rc.remote_package_name || '').trim() || ('Paquete ' + rc.remote_package_id);
-          const priceTag = rc.price != null ? ` ($${Number(rc.price).toFixed(2)})` : '';
-          optionsHtml += `<option value="${rc.catalog_id}" ${selected}>${pkgName}${priceTag}</option>`;
-        });
-        optionsHtml += '</optgroup>';
-      });
+  function renderItemsEditor(pkgId) {
+    const pkg = (mappingData.store_packages || []).find(p => String(p.id) === String(pkgId));
+    if (!pkg) { itemsWrap.style.display = 'none'; return; }
 
-      let optionsHtml2 = '<option value="">Sin segundo item</option>';
-      Object.keys(groups).sort().forEach(gName => {
-        optionsHtml2 += `<optgroup label="${gName}">`;
-        groups[gName].forEach(rc => {
-          const selected = mappedCatalogId2 && parseInt(mappedCatalogId2, 10) === parseInt(rc.catalog_id, 10) ? 'selected' : '';
-          const pkgName = (rc.remote_package_name || '').trim() || ('Paquete ' + rc.remote_package_id);
-          const priceTag = rc.price != null ? ` ($${Number(rc.price).toFixed(2)})` : '';
-          optionsHtml2 += `<option value="${rc.catalog_id}" ${selected}>${pkgName}${priceTag}</option>`;
-        });
-        optionsHtml2 += '</optgroup>';
-      });
+    const mapping = mappingFor(pkgId);
+    itemsTitle.textContent = `${pkg.game_name} — ${pkg.name}`;
+    itemsSubtitle.textContent = `ID ${pkg.id} · USD ${Number(pkg.price).toFixed(2)}`;
+    autoChk.checked = !!(mapping && mapping.auto_enabled);
 
-      html += `
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:14px; background:#1e293b; border-radius:10px; border:1px solid #334155; align-items:center;">
-          <div>
-            <div style="font-weight:600; color:#e2e8f0;">${pkg.game_name} — ${pkg.name}</div>
-            <div style="font-size:12px; color:#94a3b8;">ID ${pkg.id} · USD ${Number(pkg.price).toFixed(2)}</div>
-          </div>
-          <div style="display:grid; gap:8px;">
-            <label style="display:grid; gap:6px; font-size:12px; color:#94a3b8;">
-              <span>Item remoto 1</span>
-              <select class="rev-catalog-select" data-pkg-id="${pkg.id}" style="padding:6px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;">
-                ${optionsHtml}
-              </select>
-            </label>
-            <label style="display:grid; gap:6px; font-size:12px; color:#94a3b8;">
-              <span>Item remoto 2</span>
-              <select class="rev-catalog-select-2" data-pkg-id="${pkg.id}" style="padding:6px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;">
-                ${optionsHtml2}
-              </select>
-            </label>
-            <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd5e1;">
-              <input type="checkbox" class="rev-auto-chk" data-pkg-id="${pkg.id}" ${autoEnabled ? 'checked' : ''}>
-              Recarga automática secuencial
-            </label>
-          </div>
-        </div>
-      `;
-    });
-    mapList.innerHTML = html;
+    itemsList.innerHTML = '';
+    const items = (mapping && mapping.items && mapping.items.length) ? mapping.items : [];
+    if (items.length) {
+      items.forEach(it => addItemRow(it.catalog_id, it.quantity));
+    } else {
+      addItemRow('', 1);
+    }
+    itemsWrap.style.display = '';
   }
 
   async function syncCatalog() {
@@ -155,37 +218,46 @@
     return data;
   }
 
-  async function saveMappings() {
-    const rows = mapList.querySelectorAll('.rev-catalog-select');
-    const entries = [];
-    rows.forEach(sel => {
-      const pkgId = parseInt(sel.getAttribute('data-pkg-id'), 10);
-      const sel2 = mapList.querySelector(`.rev-catalog-select-2[data-pkg-id="${pkgId}"]`);
-      const chk = mapList.querySelector(`.rev-auto-chk[data-pkg-id="${pkgId}"]`);
-      entries.push({
-        store_package_id: pkgId,
-        catalog_id: sel.value || '',
-        catalog_id_2: sel2 ? (sel2.value || '') : '',
-        auto_enabled: !!(chk && chk.checked),
-      });
+  async function savePackageMapping() {
+    const pkgId = parseInt(packageSelect.value, 10);
+    if (!pkgId) throw new Error('Elige un paquete primero.');
+
+    const items = [];
+    itemsList.querySelectorAll('.rev-item-row').forEach(row => {
+      const catalogId = row.querySelector('.rev-item-package').value;
+      const qty = parseInt(row.querySelector('.rev-item-qty').value, 10) || 1;
+      if (catalogId) items.push({ catalog_id: catalogId, quantity: qty });
     });
+
     const res = await fetch('/admin/revendedores/mappings/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entries }),
+      body: JSON.stringify({
+        entries: [{
+          store_package_id: pkgId,
+          items,
+          auto_enabled: !!autoChk.checked,
+        }],
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar');
     return data;
   }
 
-  // Events
-  gameFilter.addEventListener('change', () => {
-    fetchMappingData(gameFilter.value).catch(e => toast(e.message));
-  });
+  // Eventos
+  gameSelect.addEventListener('change', () => renderPackages(gameSelect.value));
+  packageSelect.addEventListener('change', () => renderItemsEditor(packageSelect.value));
+  btnAddItem.addEventListener('click', () => addItemRow('', 1));
 
   btnRefresh.addEventListener('click', () => {
-    fetchMappingData(gameFilter.value).catch(e => toast(e.message));
+    const g = gameSelect.value, p = packageSelect.value;
+    fetchMappingData()
+      .then(() => {
+        if (g) { gameSelect.value = g; renderPackages(g); }
+        if (p) { packageSelect.value = p; renderItemsEditor(p); }
+      })
+      .catch(e => toast(e.message));
   });
 
   btnSync.addEventListener('click', async () => {
@@ -194,7 +266,10 @@
       const data = await syncCatalog();
       const gamesInfo = data.games ? Object.entries(data.games).map(([g, c]) => `${g}: ${c}`).join('\n') : '';
       toast(`Sincronizado: ${data.created || 0} nuevos, ${data.updated || 0} actualizados, ${data.active_in_db || 0} activos en DB\n${gamesInfo}`);
-      await fetchMappingData(gameFilter.value);
+      const g = gameSelect.value, p = packageSelect.value;
+      await fetchMappingData();
+      if (g) { gameSelect.value = g; renderPackages(g); }
+      if (p) { packageSelect.value = p; renderItemsEditor(p); }
     } catch (e) {
       toast(e.message || 'Error al sincronizar');
     } finally {
@@ -205,9 +280,12 @@
   btnSave.addEventListener('click', async () => {
     try {
       btnSave.disabled = true;
-      await saveMappings();
+      await savePackageMapping();
       toast('Mapeo guardado');
-      await fetchMappingData(gameFilter.value);
+      const g = gameSelect.value, p = packageSelect.value;
+      await fetchMappingData();
+      gameSelect.value = g; renderPackages(g);
+      packageSelect.value = p; renderItemsEditor(p);
     } catch (e) {
       toast(e.message || 'Error al guardar');
     } finally {
@@ -216,7 +294,7 @@
   });
 
   // Init
-  fetchMappingData('').catch(e => toast(e.message));
+  fetchMappingData().catch(e => toast(e.message));
 })();
 </script>
 {% endblock %}

@@ -84,11 +84,29 @@
         </div>
         {% endif %}
 
+        <!-- Reglas del programa y grupo de WhatsApp -->
+        {% if mini_rules_text or mini_whatsapp_group_url %}
+        <div class="mn-section">
+            {% if mini_rules_text %}
+            <button type="button" class="rdm-btn red-glow-pill" id="mnRulesBtn" style="margin-bottom:10px;">
+                <span class="rdm-btn-label">Ver reglas del programa</span>
+            </button>
+            {% endif %}
+            {% if mini_whatsapp_group_url %}
+            <a href="{{ mini_whatsapp_group_url }}" target="_blank" rel="noopener"
+               class="rdm-btn red-glow-pill rdm-btn-link">Únete al grupo de WhatsApp de los minis</a>
+            <p class="rdm-sub" style="margin:8px 0 0; text-align:left; max-width:none;">
+                Ahí mandamos más instrucciones y formación para hacer tus videos.
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+
         <!-- Videos -->
         <div class="mn-section">
             <div class="mn-section-head">
                 <h3>Bono por video</h3>
-                <p>Sube el link de cada video donde menciones la tienda. Lo revisamos y, según su alcance, te acreditamos un bono.</p>
+                <p>Sube el link de cada video donde menciones la tienda. Debe tener 1000 vistas o más. Lo revisamos y, según su alcance, te acreditamos un bono.</p>
             </div>
 
             <label class="rdm-label" for="mnVideoUrl">Link del video</label>
@@ -153,7 +171,7 @@
             <label class="rdm-label" for="mnWithdrawMethod">Método de pago</label>
             <select id="mnWithdrawMethod" class="glass-input">
                 {% for method in payment_methods %}
-                <option value="{{ method.code }}">{{ method.name }}</option>
+                <option value="{{ method.name }}">{{ method.name }}</option>
                 {% endfor %}
             </select>
 
@@ -173,6 +191,9 @@
                     <div class="mn-list-main">
                         <strong>${{ '%.2f'|format(w.amount) }} · {{ w.method }}</strong>
                         <small>{{ w.created_at.strftime('%d/%m/%Y') if w.created_at else '' }}</small>
+                        {% if w.payment_proof %}
+                        <br><a href="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" target="_blank" rel="noopener" class="rdm-text-link" style="padding:0;">Ver comprobante</a>
+                        {% endif %}
                     </div>
                     <span class="status-{{ w.status }}" style="padding:3px 9px; border-radius:999px; font-size:10px; font-weight:800; text-transform:uppercase;">
                         {{ {'pending': 'Pendiente', 'approved': 'Aprobado', 'rejected': 'Rechazado'}[w.status] }}
@@ -191,12 +212,46 @@
             </form>
         </div>
     </section>
+
+    {% if mini_rules_text %}
+    <!-- Reglas del programa -->
+    <div class="rdm-modal" id="mnRulesModal" aria-hidden="true" hidden>
+        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="mnRulesTitle">
+            <div class="rdm-modal-head">
+                <h3 id="mnRulesTitle">Reglas del programa</h3>
+                <button type="button" class="rdm-modal-close" id="mnRulesCloseBtn" aria-label="Cerrar">✕</button>
+            </div>
+            <p class="rdm-sub" style="margin:0; text-align:left; max-width:none; white-space:pre-line;">{{ mini_rules_text }}</p>
+            {% if mini_rules_video_url %}
+            <a href="{{ mini_rules_video_url }}" target="_blank" rel="noopener" class="rdm-btn red-glow-pill" style="margin-top:14px;">Ver video de las reglas</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 (function () {
+    var rulesBtn = document.getElementById('mnRulesBtn');
+    var rulesModal = document.getElementById('mnRulesModal');
+    var rulesCloseBtn = document.getElementById('mnRulesCloseBtn');
+    if (rulesBtn && rulesModal) {
+        rulesBtn.addEventListener('click', function () {
+            rulesModal.hidden = false;
+            rulesModal.setAttribute('aria-hidden', 'false');
+        });
+        function closeRulesModal() {
+            rulesModal.hidden = true;
+            rulesModal.setAttribute('aria-hidden', 'true');
+        }
+        if (rulesCloseBtn) rulesCloseBtn.addEventListener('click', closeRulesModal);
+        rulesModal.addEventListener('click', function (evt) {
+            if (evt.target === rulesModal) closeRulesModal();
+        });
+    }
+
     function setFeedback(el, msg, kind) {
         if (!el) return;
         el.textContent = msg || '';

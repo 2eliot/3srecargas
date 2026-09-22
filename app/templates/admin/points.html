@@ -8,7 +8,7 @@
         <h2>Configuración general</h2>
         <p class="form-hint">Los puntos solo se ganan recargando por ID (nunca con códigos ni wallet) y solo sirven para canjearse por premios reales del mismo juego.</p>
     </div>
-    <form method="POST">
+    <form method="POST" style="padding:0 20px 20px;">
         <input type="hidden" name="form_action" value="settings">
         <div class="form-grid-2">
             <div class="form-group">
@@ -37,7 +37,7 @@
         <h2>Premios por juego</h2>
         <p class="form-hint">Solo los juegos con un premio asignado aquí aparecen en "Canjear puntos" de la tienda.</p>
     </div>
-    <form method="POST" class="form-grid-2" style="margin-bottom:18px;">
+    <form method="POST" class="form-grid-2" style="margin-bottom:18px;padding:0 20px;">
         <input type="hidden" name="form_action" value="add_mapping">
         <div class="form-group">
             <label>Juego</label>
@@ -93,6 +93,118 @@
                 </tr>
                 {% else %}
                 <tr><td colspan="4" class="empty-row">Todavía no hay premios de puntos configurados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <h2>Canje directo por paquetes</h2>
+        <p class="form-hint">Además de la ruleta, el cliente puede canjear sus puntos directo por uno de estos paquetes (sin azar). Puedes cargar varios por juego, cada uno con su propio costo. Un mismo (juego, ID) solo puede hacer un canje directo por día.</p>
+    </div>
+    <form method="POST" class="form-grid-2" style="margin-bottom:18px;padding:0 20px;">
+        <input type="hidden" name="form_action" value="add_redeem_option">
+        <div class="form-group">
+            <label>Juego</label>
+            <select name="redeem_game_id" id="redeemGameSelect">
+                <option value="">Selecciona un juego</option>
+                {% for g in all_games %}
+                <option value="{{ g.id }}">{{ g.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Paquete</label>
+            <select name="redeem_package_id" id="redeemPackageSelect">
+                <option value="">— Elige un juego primero —</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Costo en puntos</label>
+            <input type="number" name="redeem_points_cost" min="1" step="1" placeholder="Ej. 150">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+            <button type="submit" class="btn-primary">Agregar paquete de canje</button>
+        </div>
+    </form>
+
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Juego</th>
+                    <th>Paquete</th>
+                    <th>Costo (puntos)</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for option in redeem_options %}
+                <tr>
+                    <td>{{ option.game.name if option.game else '—' }}</td>
+                    <td>{{ option.package.name if option.package else '—' }}</td>
+                    <td><strong>{{ option.points_cost }}</strong></td>
+                    <td>
+                        <span class="badge {% if option.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                            {{ 'Activo' if option.is_active else 'Inactivo' }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="action-btns">
+                            <form method="POST" action="{{ url_for('admin_bp.points_redeem_option_toggle', option_id=option.id) }}" style="display:inline">
+                                <button class="btn-sm btn-outline" type="submit">{{ 'Desactivar' if option.is_active else 'Activar' }}</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin_bp.points_redeem_option_delete', option_id=option.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit" onclick="return confirm('¿Eliminar este paquete de canje directo?')">Eliminar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="empty-row">Todavía no hay paquetes de canje directo configurados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <h2>Canjes directos recientes</h2>
+        <p class="form-hint">Últimos 30 canjes por puntos (sin ruleta).</p>
+    </div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Juego</th>
+                    <th>ID</th>
+                    <th>Paquete</th>
+                    <th>Puntos</th>
+                    <th>Orden</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in recent_redeems %}
+                <tr>
+                    <td>{{ r.created_at|datetime_ve('%d/%m/%Y %H:%M') if r.created_at else '—' }}</td>
+                    <td>{{ r.game.name if r.game else '—' }}</td>
+                    <td><code class="ref-code">{{ r.player_id }}</code></td>
+                    <td>{{ r.package.name if r.package else '—' }}</td>
+                    <td>{{ r.points_spent }}</td>
+                    <td>
+                        {% if r.prize_order %}
+                        <a href="{{ url_for('admin_bp.order_detail', order_id=r.prize_order.id) }}">#{{ r.prize_order.order_number }}</a>
+                        <span class="badge {% if r.prize_order.status == 'completed' %}badge-active{% elif r.prize_order.status == 'rejected' %}badge-inactive{% else %}badge-warning{% endif %}">{{ r.prize_order.status_label }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="empty-row">Todavía no hay canjes directos.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -244,10 +356,11 @@
 {% block extra_js %}
 <script>
     var PACKAGES_BY_GAME = {{ packages_by_game_id | tojson }};
-    var gameSelect = document.getElementById('mappingGameSelect');
-    var pkgSelect = document.getElementById('mappingPackageSelect');
 
-    if (gameSelect && pkgSelect) {
+    function bindGamePackageSelect(gameSelectId, pkgSelectId) {
+        var gameSelect = document.getElementById(gameSelectId);
+        var pkgSelect = document.getElementById(pkgSelectId);
+        if (!gameSelect || !pkgSelect) return;
         gameSelect.addEventListener('change', function () {
             var packages = PACKAGES_BY_GAME[gameSelect.value] || [];
             pkgSelect.innerHTML = packages.length
@@ -261,5 +374,8 @@
             });
         });
     }
+
+    bindGamePackageSelect('mappingGameSelect', 'mappingPackageSelect');
+    bindGamePackageSelect('redeemGameSelect', 'redeemPackageSelect');
 </script>
 {% endblock %}

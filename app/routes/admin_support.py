@@ -14,7 +14,7 @@ from flask_login import current_user, login_required
 from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 
-from ..models import db, Order, SupportChat, SupportChatTag, SupportMessage, SupportTag
+from ..models import db, Order, SupportChat, SupportChatTag, SupportMessage, SupportQuickReply, SupportTag
 from ..utils import support as support_service
 from ..utils.support import SupportError
 from ..utils.notifications import notify_support_admin_reply
@@ -128,6 +128,8 @@ def detail(chat_id):
         error_tags=SupportTag.query.filter_by(kind='error', is_active=True)
                              .order_by(SupportTag.sort_order).all(),
         applied_tag_ids={t.id for t in chat.tags},
+        quick_replies=SupportQuickReply.query
+                             .order_by(SupportQuickReply.sort_order, SupportQuickReply.id).all(),
     )
 
 
@@ -415,6 +417,39 @@ def tag_delete(tag_id):
     db.session.commit()
     flash('Etiqueta borrada.', 'success')
     return redirect(url_for('admin_support_bp.tags'))
+
+
+# ─── Respuestas rápidas ──────────────────────────────────────────────────────
+
+@admin_support_bp.route('/respuestas-rapidas/crear', methods=['POST'])
+@login_required
+def quick_reply_create():
+    title = (request.form.get('title') or '').strip()
+    body = (request.form.get('body') or '').strip()
+    redirect_target = request.referrer or url_for('admin_support_bp.inbox')
+
+    if not title or not body:
+        flash('La respuesta rápida necesita un título y un texto.', 'danger')
+        return redirect(redirect_target)
+
+    last = SupportQuickReply.query.order_by(SupportQuickReply.sort_order.desc()).first()
+    db.session.add(SupportQuickReply(
+        title=title[:60], body=body[:2000],
+        sort_order=(last.sort_order or 0) + 1 if last else 1,
+    ))
+    db.session.commit()
+    flash('Respuesta rápida guardada.', 'success')
+    return redirect(redirect_target)
+
+
+@admin_support_bp.route('/respuestas-rapidas/<int:reply_id>/borrar', methods=['POST'])
+@login_required
+def quick_reply_delete(reply_id):
+    reply = SupportQuickReply.query.get_or_404(reply_id)
+    db.session.delete(reply)
+    db.session.commit()
+    flash('Respuesta rápida eliminada.', 'success')
+    return redirect(request.referrer or url_for('admin_support_bp.inbox'))
 
 
 @admin_support_bp.app_context_processor

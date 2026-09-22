@@ -4,7 +4,7 @@
 
 {% block content %}
 <!-- Paso 1: juego o servicio -->
-<div class="admin-card" style="margin-bottom:16px">
+<div class="admin-card" style="margin-bottom:16px;padding:18px 20px;">
     <h3 style="margin-bottom:12px">1 · Elige el juego o servicio</h3>
     <div class="pkg-selector-grid">
         {% for entry in pin_games %}
@@ -29,7 +29,7 @@
         <h3>2 · Paquetes de {{ selected_game.game.name }}</h3>
         <a href="{{ url_for('admin_bp.pins') }}" class="btn-sm btn-outline">← Cambiar de juego</a>
     </div>
-    <div class="pkg-selector-grid">
+    <div class="pkg-selector-grid" style="padding:0 20px 20px;">
         {% for pkg in selected_game.packages %}
         <a href="{{ url_for('admin_bp.pins', package_id=pkg.id) }}"
            class="pkg-selector-card {% if selected_package and selected_package.id == pkg.id %}active{% endif %}">
@@ -52,7 +52,7 @@
             {{ selected_package.pin_count }} disponibles
         </span>
     </div>
-    <form method="POST" action="{{ url_for('admin_bp.pins_upload', package_id=selected_package.id) }}">
+    <form method="POST" action="{{ url_for('admin_bp.pins_upload', package_id=selected_package.id) }}" style="padding:0 20px 20px;">
         <div class="form-group">
             <label>PINs / Códigos (uno por línea)</label>
             <textarea name="pins_text" rows="8"

@@ -81,15 +81,47 @@
             <button type="button" class="site-drawer-close" id="siteDrawerClose" aria-label="Cerrar menú">✕</button>
         </div>
         <nav class="site-drawer-nav">
-            <a href="{{ url_for('main_bp.index') }}" class="drawer-item">
-                <span class="drawer-item-icon drawer-icon-home">
+
+            <a href="{{ url_for('support_bp.page') }}" class="drawer-item">
+                <span class="drawer-item-icon drawer-icon-support">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 10.5 12 3l9 7.5"/><path d="M5 10v10h14V10"/>
+                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
                     </svg>
                 </span>
                 <span class="drawer-item-text">
-                    <strong>Inicio</strong>
-                    <small>Volver a la tienda</small>
+                    <strong>Soporte</strong>
+                    <small>Habla con nosotros por chat</small>
+                </span>
+            </a>
+
+            {% if HAS_ACTIVE_RANKING %}
+            <button type="button" class="drawer-item" id="openRankingModalBtn">
+                <span class="drawer-item-icon drawer-icon-ranking">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M8 21h8"/>
+                        <path d="M12 17v4"/>
+                        <path d="M7 4h10v4a5 5 0 0 1-10 0z"/>
+                        <path d="M5 6H3a2 2 0 0 0 0 4h2"/>
+                        <path d="M19 6h2a2 2 0 0 1 0 4h-2"/>
+                    </svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Ranking</strong>
+                    <small>Los que más recargan del mes</small>
+                </span>
+            </button>
+            {% endif %}
+
+            <a href="{{ url_for('promos_bp.recarga_acumulada_page') }}" class="drawer-item">
+                <span class="drawer-item-icon drawer-icon-points">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <path d="M7 16v-4"/><path d="M12 16V8"/><path d="M17 16v-2"/>
+                    </svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Recarga Acumulada</strong>
+                    <small>Llena la barra y gana diamantes</small>
                 </span>
             </a>
 
@@ -121,23 +153,50 @@
                 </span>
             </button>
 
-            {% if HAS_ACTIVE_RANKING %}
-            <button type="button" class="drawer-item" id="openRankingModalBtn">
+            <button type="button" class="drawer-item drawer-item-toggle" id="freeDiamondsToggle" aria-expanded="false" aria-controls="freeDiamondsSubmenu">
                 <span class="drawer-item-icon drawer-icon-ranking">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M8 21h8"/>
-                        <path d="M12 17v4"/>
-                        <path d="M7 4h10v4a5 5 0 0 1-10 0z"/>
-                        <path d="M5 6H3a2 2 0 0 0 0 4h2"/>
-                        <path d="M19 6h2a2 2 0 0 1 0 4h-2"/>
+                        <path d="M6 3h12l4 6-10 12L2 9Z"/><path d="M11 3 8 9l4 12 4-12-3-6"/><path d="M2 9h20"/>
                     </svg>
                 </span>
                 <span class="drawer-item-text">
-                    <strong>Ranking</strong>
-                    <small>Los que más recargan del mes</small>
+                    <strong>Dinámicas Gratis</strong>
+                    <small>Sorteo diario y adivina el número</small>
                 </span>
+                <svg class="drawer-item-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
             </button>
-            {% endif %}
+            <div class="drawer-submenu" id="freeDiamondsSubmenu" hidden>
+                <a href="{{ url_for('promos_bp.sorteo_page') }}" class="drawer-item drawer-subitem">
+                    <span class="drawer-item-icon drawer-icon-ranking">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="3"/>
+                            <circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+                            <circle cx="16" cy="8" r="1.2" fill="currentColor" stroke="none"/>
+                            <circle cx="8" cy="16" r="1.2" fill="currentColor" stroke="none"/>
+                            <circle cx="16" cy="16" r="1.2" fill="currentColor" stroke="none"/>
+                            <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>
+                        </svg>
+                    </span>
+                    <span class="drawer-item-text">
+                        <strong>Sorteo Diario</strong>
+                        <small>Regístrate y gana con tu ticket</small>
+                    </span>
+                </a>
+
+                <a href="{{ url_for('promos_bp.adivina_page') }}" class="drawer-item drawer-subitem">
+                    <span class="drawer-item-icon drawer-icon-mini">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>
+                        </svg>
+                    </span>
+                    <span class="drawer-item-text">
+                        <strong>Adivina el Número</strong>
+                        <small>Acierta el número y gana</small>
+                    </span>
+                </a>
+            </div>
 
             <div class="drawer-sep"></div>
 
@@ -251,6 +310,40 @@
         <button type="button" class="points-primary-btn" id="pointsLookupBtn">CONSULTAR SALDO</button>
       </div>
 
+      <!-- Elegir entre girar la ruleta o canjear directo por un paquete.
+           Solo se muestra cuando el juego tiene ambas opciones; si solo
+           tiene una, se salta directo a ese paso. -->
+      <div id="pointsChoiceStep" style="display:none">
+        <div class="points-balance-card">
+          <div>
+            <span class="points-balance-label" id="pointsChoiceGameLabel">—</span>
+            <span class="points-balance-id" id="pointsChoiceIdLabel">—</span>
+          </div>
+          <div class="points-balance-amount">
+            <strong id="pointsChoiceBalanceValue">0</strong>
+            <span>puntos</span>
+          </div>
+        </div>
+        <p class="points-modal-hint">¿Cómo quieres canjear tus puntos?</p>
+        <div class="points-choice-options">
+          <button type="button" class="points-choice-option" id="pointsGoSpinBtn">
+            <span class="points-choice-icon">🎰</span>
+            <span class="points-choice-text">
+              <strong>Girar la ruleta</strong>
+              <small>Prueba suerte por el premio del juego</small>
+            </span>
+          </button>
+          <button type="button" class="points-choice-option" id="pointsGoRedeemBtn">
+            <span class="points-choice-icon">💎</span>
+            <span class="points-choice-text">
+              <strong>Canjear por paquete</strong>
+              <small>Elige directo qué recibir, sin azar</small>
+            </span>
+          </button>
+        </div>
+        <button type="button" class="points-secondary-btn" id="pointsChoiceChangeIdBtn">Cambiar ID</button>
+      </div>
+
       <div id="pointsSpinStep" style="display:none">
         <div class="points-balance-card">
           <div>
@@ -277,6 +370,33 @@
             <button type="button" class="points-primary-btn" id="pointsSpinBtn">GIRAR</button>
         </div>
         <p class="points-status-msg" id="pointsStatusMsg">Pulsa <b>GIRAR</b> para abrir tu caja.</p>
+      </div>
+
+      <!-- Canje directo: se elige un paquete de la lista y se canjea sin
+           ruleta de por medio. Un (juego, ID) solo puede hacer un canje
+           directo por día — el backend es quien hace valer ese límite. -->
+      <div id="pointsRedeemStep" style="display:none">
+        <div class="points-balance-card">
+          <div>
+            <span class="points-balance-label" id="pointsRedeemGameLabel">—</span>
+            <span class="points-balance-id" id="pointsRedeemIdLabel">—</span>
+          </div>
+          <div class="points-balance-amount">
+            <strong id="pointsRedeemBalanceValue">0</strong>
+            <span>puntos</span>
+          </div>
+        </div>
+        <p class="points-modal-hint">Elige el paquete que quieres recibir. Solo puedes hacer un canje directo por día.</p>
+
+        <div class="points-redeem-list" id="pointsRedeemList"></div>
+
+        <p class="points-modal-error" id="pointsRedeemError" style="display:none"></p>
+        <p class="points-modal-result" id="pointsRedeemResult" style="display:none"></p>
+
+        <div class="points-modal-actions">
+            <button type="button" class="points-secondary-btn" id="pointsRedeemBackBtn">Volver</button>
+            <button type="button" class="points-primary-btn" id="pointsRedeemBtn" disabled>CANJEAR</button>
+        </div>
       </div>
     </div>
   </div>
@@ -307,6 +427,12 @@
                     </svg>
                     RIF: J506526018
                 </div>
+                <a href="{{ url_for('support_bp.page') }}" class="footer-rif footer-support-btn" style="margin-top:10px;text-decoration:none;cursor:pointer;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                    </svg>
+                    Soporte
+                </a>
             </div>
 
             <!-- Col 2: Comunidad -->
@@ -362,18 +488,6 @@
         </div>
     </footer>
 
-    <div class="push-prompt-banner" id="pushPromptBanner" style="display:none">
-        <div class="push-prompt-icon">🔔</div>
-        <div class="push-prompt-copy">
-            <strong>¿Quieres recibir alertas?</strong>
-            <span>Te avisamos cuando tu recarga esté lista o cuando haya promociones y descuentos.</span>
-        </div>
-        <div class="push-prompt-actions">
-            <button type="button" class="push-prompt-accept" id="pushPromptAcceptBtn">Activar</button>
-            <button type="button" class="push-prompt-dismiss" id="pushPromptDismissBtn" aria-label="Cerrar">✕</button>
-        </div>
-    </div>
-
     <!-- Unico acceso flotante al soporte. Lleva a /soporte, que es una
          pantalla propia y no un modal: el chat de una recarga manual no es
          un aviso de paso, el cliente ya pago y se queda ahi hasta que le
@@ -384,8 +498,54 @@
              stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
         </svg>
+        <span>Soporte</span>
         <span class="nx-chat-float-dot" id="supportFloatDot" hidden></span>
     </a>
+    {% endif %}
+
+    {% if SITE_TUTORIAL_VIDEO_FILE %}
+    <button type="button" id="openTutorialVideoBtn" class="nx-tutorial-float" aria-label="Ver tutorial">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="6 3 20 12 6 21 6 3"/>
+        </svg>
+        <span>Tutorial</span>
+    </button>
+
+    <div class="nx-tutorial-modal" id="tutorialVideoModal" hidden>
+        <div class="nx-tutorial-modal-backdrop" id="tutorialVideoBackdrop"></div>
+        <div class="nx-tutorial-modal-card">
+            <div class="nx-tutorial-modal-head">
+                <strong>{{ SITE_TUTORIAL_VIDEO_TITLE }}</strong>
+                <button type="button" id="closeTutorialVideoBtn" aria-label="Cerrar">✕</button>
+            </div>
+            <video id="tutorialVideoPlayer" controls playsinline
+                   src="{{ url_for('static', filename='uploads/' + SITE_TUTORIAL_VIDEO_FILE) }}"></video>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        var openBtn = document.getElementById('openTutorialVideoBtn');
+        var closeBtn = document.getElementById('closeTutorialVideoBtn');
+        var backdrop = document.getElementById('tutorialVideoBackdrop');
+        var modal = document.getElementById('tutorialVideoModal');
+        var player = document.getElementById('tutorialVideoPlayer');
+        if (!openBtn || !modal) return;
+
+        function open() { modal.hidden = false; }
+        function close() {
+            modal.hidden = true;
+            if (player) { player.pause(); }
+        }
+        openBtn.addEventListener('click', open);
+        if (closeBtn) closeBtn.addEventListener('click', close);
+        if (backdrop) backdrop.addEventListener('click', close);
+        document.addEventListener('keydown', function (evt) {
+            if (evt.key === 'Escape' && !modal.hidden) close();
+        });
+    })();
+    </script>
     {% endif %}
 
     {% block extra_js %}{% endblock %}
@@ -443,10 +603,24 @@
         overlay.addEventListener('click', closeDrawer);
         if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
 
+        // El botón "Diamantes Gratis" solo abre/cierra su submenú, no
+        // navega ni cierra el panel entero.
+        var freeDiamondsToggle = document.getElementById('freeDiamondsToggle');
+        var freeDiamondsSubmenu = document.getElementById('freeDiamondsSubmenu');
+        if (freeDiamondsToggle && freeDiamondsSubmenu) {
+            freeDiamondsToggle.addEventListener('click', function () {
+                var expanded = freeDiamondsToggle.getAttribute('aria-expanded') === 'true';
+                freeDiamondsToggle.setAttribute('aria-expanded', String(!expanded));
+                freeDiamondsSubmenu.hidden = expanded;
+            });
+        }
+
         // Elegir una opción cierra el panel. Los botones de puntos y ranking
         // abren su modal desde main.js, así que el panel tiene que quitarse
-        // de en medio o quedaría encima.
+        // de en medio o quedaría encima. El toggle de "Diamantes Gratis" es
+        // la excepción: ese no navega, solo despliega su submenú.
         drawer.addEventListener('click', function (evt) {
+            if (evt.target.closest('#freeDiamondsToggle')) return;
             if (evt.target.closest('.drawer-item')) closeDrawer();
         });
 

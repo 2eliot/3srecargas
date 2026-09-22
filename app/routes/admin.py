@@ -18,8 +18,12 @@ from ..models import (
     db, AdminUser, Game, Package, Category, Order,
     Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting, Discount,
     OrderMiniGameOpportunity, PlayerPoints, PointsPrizeMapping, PointsSpinLog,
-    RevendedoresCatalogItem, RevendedoresItemMapping, GiftCode,
-    AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier,
+    PointsRedeemOption, PointsRedeemLog,
+    RevendedoresCatalogItem, RevendedoresItemMapping, RevendedoresMappingItem, GiftCode,
+    AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod,
+    PromoAccumulatedAward, PromoAccumulatedLevel,
+    PromoRaffleConfig, PromoRaffleWinner,
+    PromoGuessConfig, PromoGuessRound, PromoGuessWinner,
 )
 from ..utils.availability import format_hour, get_manual_schedule
 from ..utils.gift_codes import create_batch as create_gift_batch, format_code as format_gift_code
@@ -31,7 +35,7 @@ from ..utils.mini_influencers import (
     review_mini_video,
     suggested_reward_for_views,
 )
-from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive
+from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive, today_ve_str
 from ..utils.minigames import (
     get_minigame_slot_defs,
     get_minigame_slots_config,
@@ -371,6 +375,29 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('admin_bp.login'))
+
+
+@admin_bp.route('/maintenance/toggle', methods=['POST'])
+@login_required
+def maintenance_toggle():
+    """Prende/apaga la pantalla de mantenimiento para toda la tienda. El
+    panel admin sigue funcionando siempre (ver _check_maintenance_mode en
+    app/__init__.py), así que apagarlo de nuevo no depende de esto."""
+    setting = Setting.query.filter_by(key='maintenance_mode').first()
+    currently_on = bool(setting and setting.value == 'true')
+    new_value = 'false' if currently_on else 'true'
+
+    if not setting:
+        setting = Setting(key='maintenance_mode', value=new_value, description='Pantalla de mantenimiento para toda la tienda.')
+        db.session.add(setting)
+    else:
+        setting.value = new_value
+    db.session.commit()
+
+    flash('Modo mantenimiento desactivado. La tienda ya es visible.' if currently_on
+          else 'Modo mantenimiento activado. Los visitantes ven la pantalla de mantenimiento; el panel admin sigue funcionando normal.',
+          'success')
+    return redirect(request.referrer or url_for('admin_bp.dashboard'))
 
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -845,6 +872,7 @@ def _apply_order_filters(
     date_to='',
     package_id=None,
     service_id=None,
+    game_id=None,
 ):
     status_filter = (status_filter or '').strip()
     search_query = (search_query or '').strip()
@@ -860,6 +888,11 @@ def _apply_order_filters(
         service_id = int(service_id) if service_id not in (None, '') else None
     except (TypeError, ValueError):
         service_id = None
+
+    try:
+        game_id = int(game_id) if game_id not in (None, '') else None
+    except (TypeError, ValueError):
+        game_id = None
 
     # "Por entregar" no es un estado guardado sino una vista: órdenes cuyo
     # pago ya se verificó solo (Binance/Pabilo) pero cuyo producto se recarga
@@ -908,6 +941,9 @@ def _apply_order_filters(
     if service_id:
         query = query.join(Order.game).filter(Game.category_id == service_id)
 
+    if game_id:
+        query = query.filter(Order.game_id == game_id)
+
     return query
 
 @admin_bp.route('/orders')
@@ -923,6 +959,7 @@ def orders():
     date_to = (request.args.get('date_to') or '').strip()
     package_id = request.args.get('package_id', type=int)
     service_id = request.args.get('service_id', type=int)
+    game_id = request.args.get('game_id', type=int)
     query = Order.query.order_by(Order.created_at.desc())
     query = _apply_order_filters(
         query,
@@ -932,6 +969,7 @@ def orders():
         date_to=date_to,
         package_id=package_id,
         service_id=service_id,
+        game_id=game_id,
     )
     page_size = 50
     total_orders = query.count()
@@ -952,6 +990,7 @@ def orders():
     end_order_index = min(page * page_size, total_orders) if total_orders else 0
 
     services = Category.query.order_by(Category.name.asc()).all()
+    games = Game.query.order_by(Game.name.asc()).all()
     packages = (
         Package.query
         .join(Game)
@@ -967,6 +1006,8 @@ def orders():
         date_to=date_to,
         package_id=package_id,
         service_id=service_id,
+        game_id=game_id,
+        games=games,
         current_page=page,
         page_size=page_size,
         total_orders=total_orders,
@@ -989,6 +1030,7 @@ def orders_latest():
     date_to = (request.args.get('date_to') or '').strip()
     package_id = request.args.get('package_id', type=int)
     service_id = request.args.get('service_id', type=int)
+    game_id = request.args.get('game_id', type=int)
     since_id_raw = (request.args.get('since_id') or '').strip()
     try:
         since_id = int(since_id_raw) if since_id_raw else 0
@@ -1004,6 +1046,7 @@ def orders_latest():
         date_to=date_to,
         package_id=package_id,
         service_id=service_id,
+        game_id=game_id,
     )
     if since_id:
         query = query.filter(Order.id > since_id)
@@ -1065,13 +1108,20 @@ def orders_refresh():
 @admin_bp.route('/orders/<int:order_id>')
 @login_required
 def order_detail(order_id):
+    from .verify import verifiable_game_ids
+
     order = Order.query.get_or_404(order_id)
     payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
+    same_game_packages = Package.query.filter_by(
+        game_id=order.game_id, is_active=True
+    ).order_by(Package.sort_order.asc(), Package.id.asc()).all()
     return render_template(
         'admin/order_detail.html',
         order=order,
         payment_method_config=payment_method_config,
         can_send_delivery_proof=order_supports_delivery_proof(order),
+        same_game_packages=same_game_packages,
+        can_verify_player=order.game_id in verifiable_game_ids(),
     )
 
 
@@ -1144,6 +1194,86 @@ def order_update_player_id(order_id):
             getattr(order, 'id', None),
         )
         flash('Ocurrió un error al actualizar el ID del jugador.', 'danger')
+        return redirect(redirect_target)
+
+
+@admin_bp.route('/orders/<int:order_id>/verify-player', methods=['POST'])
+@login_required
+def order_verify_player_id(order_id):
+    """Consulta el nombre real detrás del ID de la orden antes de aprobarla,
+    por el mismo camino que usa la tienda (mismo endpoint que gift_code_verify_id)."""
+    from .verify import verify_player_nick
+
+    order = Order.query.get_or_404(order_id)
+    player_id = (order.player_id or '').strip()
+    if not player_id:
+        return jsonify({'ok': False, 'error': 'Esta orden no tiene un ID de jugador.'}), 400
+
+    payload, status = verify_player_nick(player_id, str(order.game_id))
+    nick = (payload.get('nick') or '').strip()[:120] if payload.get('ok') else ''
+    if nick and nick != (order.player_nickname or ''):
+        order.player_nickname = nick
+        db.session.commit()
+    return jsonify(payload), status
+
+
+@admin_bp.route('/orders/<int:order_id>/package', methods=['POST'])
+@login_required
+def order_update_package(order_id):
+    """Corrige el paquete de una orden pendiente (p.ej. el cliente pidió 341
+    diamantes pero quería 110). Solo se permite cambiar a otro paquete del
+    MISMO juego, y el monto de la orden se ajusta al precio del paquete
+    nuevo para que la verificación de pago siga comparando contra el monto
+    correcto."""
+    order = Order.query.get_or_404(order_id)
+    redirect_target = url_for('admin_bp.order_detail', order_id=order.id)
+
+    if order.status != 'pending':
+        flash('Solo puedes cambiar el paquete en órdenes pendientes.', 'warning')
+        return redirect(redirect_target)
+
+    try:
+        new_package_id = int(request.form.get('package_id', 0))
+    except (TypeError, ValueError):
+        new_package_id = 0
+
+    if not new_package_id:
+        flash('Elige un paquete válido.', 'danger')
+        return redirect(redirect_target)
+
+    new_package = Package.query.get(new_package_id)
+    if not new_package or new_package.game_id != order.game_id:
+        flash('Ese paquete no pertenece al mismo juego de la orden.', 'danger')
+        return redirect(redirect_target)
+
+    if new_package.id == order.package_id:
+        flash('El paquete no cambió.', 'info')
+        return redirect(redirect_target)
+
+    try:
+        old_package_name = order.package.name if order.package else '?'
+        old_amount = order.amount
+        order.package_id = new_package.id
+        order.amount = new_package.price
+        order.updated_at = datetime.utcnow()
+
+        note = (
+            f'[Admin] Paquete corregido de "{old_package_name}" (${old_amount}) '
+            f'a "{new_package.name}" (${new_package.price}).'
+        )
+        existing_notes = order.notes or ''
+        order.notes = (existing_notes + '\n' + note).strip()
+
+        db.session.commit()
+        flash(f'Paquete actualizado a "{new_package.name}".', 'success')
+        return redirect(redirect_target)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            'Error al actualizar el paquete de la orden %s',
+            getattr(order, 'id', None),
+        )
+        flash('Ocurrió un error al actualizar el paquete.', 'danger')
         return redirect(redirect_target)
 
 
@@ -1802,6 +1932,14 @@ def affiliate_edit(aff_id):
     aff.is_active = bool(request.form.get('is_active'))
     db.session.commit()
     flash('Afiliado actualizado.', 'success')
+
+    # Este formulario también lo usa /admin/minis (editar % de un mini): sin
+    # esto, volvería siempre a /admin/affiliates en vez de a la pestaña de
+    # la que vino. Solo se acepta un destino interno de admin, nunca uno
+    # que venga tal cual del navegador.
+    redirect_to = (request.form.get('redirect_to') or '').strip()
+    if redirect_to.startswith('/admin/'):
+        return redirect(redirect_to)
     return redirect(url_for('admin_bp.affiliates'))
 
 
@@ -1872,9 +2010,20 @@ def minis():
     rank_progress_by_id = {a.id: get_rank_progress(a) for a in approved_minis}
     ranks = MiniRank.query.order_by(MiniRank.sort_order.asc(), MiniRank.uses_required.asc()).all()
     view_tiers = MiniViewTier.query.order_by(MiniViewTier.sort_order.asc(), MiniViewTier.min_views.asc()).all()
+    mini_payout_methods = MiniPayoutMethod.query.order_by(MiniPayoutMethod.sort_order.asc(), MiniPayoutMethod.name.asc()).all()
+
+    program_settings = {
+        s.key: s.value for s in Setting.query.filter(
+            Setting.key.in_(['mini_rules_text', 'mini_rules_video_url', 'mini_whatsapp_group_url'])
+        ).all()
+    }
 
     return render_template(
         'admin/minis.html',
+        mini_rules_text=program_settings.get('mini_rules_text', ''),
+        mini_rules_video_url=program_settings.get('mini_rules_video_url', ''),
+        mini_whatsapp_group_url=program_settings.get('mini_whatsapp_group_url', ''),
+        mini_payout_methods=mini_payout_methods,
         section=section,
         pending_applications=pending_applications,
         reviewed_applications=reviewed_applications,
@@ -1910,6 +2059,71 @@ def mini_set_password(aff_id):
 
 
 # ─── Config: tramos de vistas y rangos ────────────────────────────────────────
+
+@admin_bp.route('/minis/program-config', methods=['POST'])
+@login_required
+def mini_program_config_save():
+    """Reglas del programa (texto + video opcional) y link del grupo de
+    WhatsApp que ve el mini en su panel, en 'Ver reglas del programa' y
+    'Únete al grupo de WhatsApp de los minis'."""
+    updates = {
+        'mini_rules_text': (request.form.get('mini_rules_text', '') or '').strip(),
+        'mini_rules_video_url': (request.form.get('mini_rules_video_url', '') or '').strip(),
+        'mini_whatsapp_group_url': (request.form.get('mini_whatsapp_group_url', '') or '').strip(),
+    }
+    for key, value in updates.items():
+        setting = Setting.query.filter_by(key=key).first()
+        if not setting:
+            setting = Setting(key=key, value=value, description='Configuración del programa de minis.')
+            db.session.add(setting)
+        else:
+            setting.value = value
+    db.session.commit()
+    flash('Configuración del programa actualizada.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/payout-methods/add', methods=['POST'])
+@login_required
+def mini_payout_method_add():
+    name = (request.form.get('name') or '').strip()[:100]
+    if not name:
+        flash('El método necesita un nombre.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+    if MiniPayoutMethod.query.filter(db.func.lower(MiniPayoutMethod.name) == name.lower()).first():
+        flash('Ya existe un método de pago con ese nombre.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    try:
+        sort_order = int(request.form.get('sort_order') or 100)
+    except ValueError:
+        sort_order = 100
+
+    db.session.add(MiniPayoutMethod(name=name, is_active=True, sort_order=sort_order))
+    db.session.commit()
+    flash('Método de pago agregado.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/payout-methods/<int:method_id>/toggle', methods=['POST'])
+@login_required
+def mini_payout_method_toggle(method_id):
+    method = MiniPayoutMethod.query.get_or_404(method_id)
+    method.is_active = not method.is_active
+    db.session.commit()
+    flash('Método de pago actualizado.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/payout-methods/<int:method_id>/delete', methods=['POST'])
+@login_required
+def mini_payout_method_delete(method_id):
+    method = MiniPayoutMethod.query.get_or_404(method_id)
+    db.session.delete(method)
+    db.session.commit()
+    flash('Método de pago eliminado.', 'warning')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
 
 @admin_bp.route('/minis/tiers/add', methods=['POST'])
 @login_required
@@ -2176,7 +2390,18 @@ def mini_rank_award(aff_id):
 @login_required
 def mini_withdrawal_approve(w_id):
     withdrawal = AffiliateWithdrawal.query.get_or_404(w_id)
-    ok, error = approve_mini_withdrawal(withdrawal)
+
+    proof_path = None
+    proof_file = request.files.get('payment_proof')
+    if proof_file and proof_file.filename:
+        if not allowed_file(proof_file.filename):
+            flash('El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.', 'danger')
+            return redirect(url_for('admin_bp.minis', section='retiros'))
+        proof_path = save_image(proof_file, 'withdrawal_proofs')
+
+    ok, error = approve_mini_withdrawal(withdrawal, proof_path=proof_path)
+    if not ok and proof_path:
+        delete_uploaded_file(proof_path)
     flash(error if not ok else 'Retiro aprobado.', 'danger' if not ok else 'success')
     return redirect(url_for('admin_bp.minis', section='retiros'))
 
@@ -2203,6 +2428,17 @@ def _inject_minis_pending_state():
         }
     except Exception:
         return {'minis_pending_count': 0}
+
+
+@admin_bp.app_context_processor
+def _inject_maintenance_state():
+    """Para que el botón de mantenimiento del sidebar sepa si ya está
+    prendido y se pinte distinto (y diga "Desactivar")."""
+    try:
+        setting = Setting.query.filter_by(key='maintenance_mode').first()
+        return {'maintenance_mode_on': bool(setting and setting.value == 'true')}
+    except Exception:
+        return {'maintenance_mode_on': False}
 
 
 @admin_bp.route('/discount-codes/add', methods=['POST'])
@@ -2559,6 +2795,10 @@ def settings():
     checkout_payment_video_cta_value = checkout_payment_video_cta_setting.value if checkout_payment_video_cta_setting else ''
     checkout_payment_video_file_setting = Setting.query.filter_by(key='checkout_payment_video_file').first()
     checkout_payment_video_file_value = checkout_payment_video_file_setting.value if checkout_payment_video_file_setting else ''
+    site_tutorial_video_file_setting = Setting.query.filter_by(key='site_tutorial_video_file').first()
+    site_tutorial_video_file_value = site_tutorial_video_file_setting.value if site_tutorial_video_file_setting else ''
+    site_tutorial_video_title_setting = Setting.query.filter_by(key='site_tutorial_video_title').first()
+    site_tutorial_video_title_value = site_tutorial_video_title_setting.value if site_tutorial_video_title_setting else ''
 
     social_keys = {
         'social_facebook': 'URL de Facebook',
@@ -2683,6 +2923,9 @@ def settings():
         checkout_payment_video_cta = (request.form.get('checkout_payment_video_cta', '') or '').strip()
         remove_checkout_payment_video_file = request.form.get('remove_checkout_payment_video_file')
         checkout_payment_video_file = request.files.get('checkout_payment_video_file')
+        site_tutorial_video_title = (request.form.get('site_tutorial_video_title', '') or '').strip()
+        remove_site_tutorial_video_file = request.form.get('remove_site_tutorial_video_file')
+        site_tutorial_video_file = request.files.get('site_tutorial_video_file')
         social_payload = {k: (request.form.get(k, '') or '').strip() for k in social_keys}
         email_payload = {k: (request.form.get(k, '') or '').strip() for k in email_keys}
         payment_verify_payload = {
@@ -2881,6 +3124,38 @@ def settings():
             else:
                 current_setting.value = val
 
+        if remove_site_tutorial_video_file and site_tutorial_video_file_setting:
+            if site_tutorial_video_file_setting.value:
+                delete_uploaded_file(site_tutorial_video_file_setting.value)
+            site_tutorial_video_file_setting.value = ''
+
+        if site_tutorial_video_file and site_tutorial_video_file.filename:
+            saved_site_tutorial_video = save_video(site_tutorial_video_file, 'tutorial')
+            if not saved_site_tutorial_video:
+                flash('El video debe estar en formato mp4, webm, mov o m4v.', 'danger')
+                return redirect(url_for('admin_bp.settings'))
+            if site_tutorial_video_file_setting and site_tutorial_video_file_setting.value:
+                delete_uploaded_file(site_tutorial_video_file_setting.value)
+            if not site_tutorial_video_file_setting:
+                site_tutorial_video_file_setting = Setting(
+                    key='site_tutorial_video_file',
+                    value=saved_site_tutorial_video,
+                    description='Video del botón flotante "Tutorial", visible en todas las páginas.',
+                )
+                db.session.add(site_tutorial_video_file_setting)
+            else:
+                site_tutorial_video_file_setting.value = saved_site_tutorial_video
+
+        site_tutorial_video_title_row = Setting.query.filter_by(key='site_tutorial_video_title').first()
+        if not site_tutorial_video_title_row:
+            site_tutorial_video_title_row = Setting(
+                key='site_tutorial_video_title', value=site_tutorial_video_title,
+                description='Título de la ventana del video tutorial flotante.',
+            )
+            db.session.add(site_tutorial_video_title_row)
+        else:
+            site_tutorial_video_title_row.value = site_tutorial_video_title
+
         for key, desc in social_keys.items():
             val = social_payload.get(key, '')
             current_setting = Setting.query.filter_by(key=key).first()
@@ -3015,6 +3290,8 @@ def settings():
         checkout_payment_video_message=checkout_payment_video_message_value,
         checkout_payment_video_cta=checkout_payment_video_cta_value,
         checkout_payment_video_file=checkout_payment_video_file_value,
+        site_tutorial_video_file=site_tutorial_video_file_value,
+        site_tutorial_video_title=site_tutorial_video_title_value,
         ranking_settings=ranking_settings,
         ranking_games=ranking_games,
         ranking_prize_settings=ranking_prize_settings,
@@ -3097,6 +3374,88 @@ def minigames():
         .all()
     )
 
+    # ─ Promociones (Recarga Acumulada / Sorteo Diario / Adivina el Número) ─
+    # Viven en esta misma página: son minijuegos igual que la ruleta/
+    # tragaperras de arriba, solo que configurados por juego en vez de por
+    # slot fijo.
+    promos_context = {}
+    if all_games:
+        promos_game_id = request.args.get('game_id', type=int) or all_games[0].id
+        promos_selected_game = Game.query.get(promos_game_id) or all_games[0]
+
+        promos_game_packages = (
+            Package.query.filter_by(game_id=promos_selected_game.id, is_active=True)
+            .order_by(Package.sort_order.asc(), Package.name.asc())
+            .all()
+        )
+
+        promos_levels = {
+            lvl.level_number: lvl
+            for lvl in PromoAccumulatedLevel.query.filter_by(game_id=promos_selected_game.id).all()
+        }
+        promos_raffle_config = PromoRaffleConfig.query.filter_by(game_id=promos_selected_game.id).first()
+        promos_guess_config = PromoGuessConfig.query.filter_by(game_id=promos_selected_game.id).first()
+
+        promos_recent_awards = (
+            PromoAccumulatedAward.query
+            .filter_by(game_id=promos_selected_game.id)
+            .order_by(PromoAccumulatedAward.created_at.desc())
+            .limit(15).all()
+        )
+        promos_recent_raffle_winners = (
+            PromoRaffleWinner.query
+            .filter_by(game_id=promos_selected_game.id)
+            .order_by(PromoRaffleWinner.created_at.desc())
+            .limit(15).all()
+        )
+        promos_recent_guess_winners = (
+            PromoGuessWinner.query
+            .filter_by(game_id=promos_selected_game.id)
+            .order_by(PromoGuessWinner.created_at.desc())
+            .limit(15).all()
+        )
+
+        promos_today_key = today_ve_str()
+        promos_guess_round_today = PromoGuessRound.query.filter_by(
+            game_id=promos_selected_game.id, day_key=promos_today_key,
+        ).first()
+        promos_guess_winners_today = (
+            PromoGuessWinner.query
+            .filter_by(game_id=promos_selected_game.id, day_key=promos_today_key)
+            .order_by(PromoGuessWinner.slot_index.asc())
+            .all()
+        )
+        promos_guess_today_slots = []
+        if promos_guess_config:
+            won_by_slot = {w.slot_index: w for w in promos_guess_winners_today}
+            for slot in range(1, (promos_guess_config.winners_per_day or 3) + 1):
+                winner = won_by_slot.get(slot)
+                if winner:
+                    promos_guess_today_slots.append({
+                        'slot': slot, 'status': 'won',
+                        'number': winner.guessed_number, 'player_id': winner.player_id,
+                    })
+                elif slot == len(promos_guess_winners_today) + 1 and promos_guess_round_today:
+                    promos_guess_today_slots.append({
+                        'slot': slot, 'status': 'current',
+                        'number': promos_guess_round_today.secret_number, 'player_id': None,
+                    })
+                else:
+                    promos_guess_today_slots.append({'slot': slot, 'status': 'pending', 'number': None, 'player_id': None})
+
+        promos_context = dict(
+            selected_game=promos_selected_game,
+            game_packages=promos_game_packages,
+            levels=promos_levels,
+            raffle_config=promos_raffle_config,
+            guess_config=promos_guess_config,
+            recent_awards=promos_recent_awards,
+            recent_raffle_winners=promos_recent_raffle_winners,
+            recent_guess_winners=promos_recent_guess_winners,
+            guess_today_slots=promos_guess_today_slots,
+            today_key=promos_today_key,
+        )
+
     return render_template(
         'admin/minigames.html',
         slot_defs=slot_defs,
@@ -3107,6 +3466,7 @@ def minigames():
         counter_cards=counter_cards,
         winners=winners,
         minigame_dev_mode=is_minigame_dev_mode(),
+        **promos_context,
     )
 
 
@@ -3146,6 +3506,29 @@ def points():
             db.session.commit()
             return redirect(url_for('admin_bp.points'))
 
+        if form_action == 'add_redeem_option':
+            game_id = (request.form.get('redeem_game_id', '') or '').strip()
+            package_id = (request.form.get('redeem_package_id', '') or '').strip()
+            points_cost_raw = (request.form.get('redeem_points_cost', '') or '').strip()
+            if not game_id or not package_id:
+                flash('Elige un juego y un paquete para el canje directo.', 'danger')
+                return redirect(url_for('admin_bp.points'))
+            try:
+                points_cost = int(float(points_cost_raw))
+            except (TypeError, ValueError):
+                points_cost = 0
+            if points_cost <= 0:
+                flash('El costo en puntos debe ser mayor a 0.', 'danger')
+                return redirect(url_for('admin_bp.points'))
+
+            db.session.add(PointsRedeemOption(
+                game_id=int(game_id), package_id=int(package_id),
+                points_cost=points_cost, is_active=True,
+            ))
+            db.session.commit()
+            flash('Paquete de canje directo agregado.', 'success')
+            return redirect(url_for('admin_bp.points'))
+
         # form_action == 'settings' (por defecto)
         per_dollar_raw = (request.form.get('points_per_dollar', '') or '').strip()
         spin_cost_raw = (request.form.get('points_spin_cost', '') or '').strip()
@@ -3173,6 +3556,21 @@ def points():
         db.session.commit()
         flash('Configuración de puntos actualizada.', 'success')
         return redirect(url_for('admin_bp.points'))
+
+    redeem_options = (
+        PointsRedeemOption.query
+        .options(joinedload(PointsRedeemOption.game), joinedload(PointsRedeemOption.package))
+        .join(Game, Game.id == PointsRedeemOption.game_id)
+        .order_by(Game.name.asc(), PointsRedeemOption.points_cost.asc())
+        .all()
+    )
+    recent_redeems = (
+        PointsRedeemLog.query
+        .options(joinedload(PointsRedeemLog.game), joinedload(PointsRedeemLog.package), joinedload(PointsRedeemLog.prize_order))
+        .order_by(PointsRedeemLog.created_at.desc())
+        .limit(30)
+        .all()
+    )
 
     mappings = (
         PointsPrizeMapping.query
@@ -3241,6 +3639,8 @@ def points():
         all_games=all_games,
         packages_by_game_id=packages_by_game_id,
         mappings=mappings,
+        redeem_options=redeem_options,
+        recent_redeems=recent_redeems,
         recent_spins=recent_spins,
         spins_page=spins_page,
         spins_total=spins_total,
@@ -3279,6 +3679,130 @@ def points_mapping_delete(mapping_id):
     db.session.commit()
     flash('Premio de puntos eliminado. Ese juego dejará de aparecer en "Canjear puntos".', 'warning')
     return redirect(url_for('admin_bp.points'))
+
+
+@admin_bp.route('/points/redeem-options/<int:option_id>/toggle', methods=['POST'])
+@login_required
+def points_redeem_option_toggle(option_id):
+    option = PointsRedeemOption.query.get_or_404(option_id)
+    option.is_active = not option.is_active
+    db.session.commit()
+    flash('Paquete de canje directo actualizado.', 'success')
+    return redirect(url_for('admin_bp.points'))
+
+
+@admin_bp.route('/points/redeem-options/<int:option_id>/delete', methods=['POST'])
+@login_required
+def points_redeem_option_delete(option_id):
+    option = PointsRedeemOption.query.get_or_404(option_id)
+    db.session.delete(option)
+    db.session.commit()
+    flash('Paquete de canje directo eliminado.', 'warning')
+    return redirect(url_for('admin_bp.points'))
+
+
+# ─── Promociones: Recarga Acumulada / Sorteo Diario / Adivina el Número ──────
+# Viven dentro de la página de Mini Juegos (/admin/minigames); esta ruta
+# vieja solo redirige ahí por si quedó algún enlace guardado.
+
+@admin_bp.route('/promos', methods=['GET'])
+@login_required
+def promos():
+    return redirect(url_for('admin_bp.minigames', game_id=request.args.get('game_id', type=int)))
+
+
+@admin_bp.route('/promos/accumulated', methods=['POST'])
+@login_required
+def promos_accumulated_save():
+    game_id = request.form.get('game_id', type=int)
+    game = Game.query.get_or_404(game_id)
+
+    new_levels = []
+    for number in (1, 2, 3):
+        name = (request.form.get(f'level_{number}_name', '') or '').strip()
+        threshold_raw = (request.form.get(f'level_{number}_threshold', '') or '').strip()
+        package_id = request.form.get(f'level_{number}_package_id', type=int)
+        if not name or not threshold_raw or not package_id:
+            continue
+        try:
+            threshold = int(float(threshold_raw))
+        except ValueError:
+            continue
+        if threshold <= 0:
+            continue
+        new_levels.append((number, name, threshold, package_id))
+
+    PromoAccumulatedLevel.query.filter_by(game_id=game.id).delete()
+    for number, name, threshold, package_id in new_levels:
+        db.session.add(PromoAccumulatedLevel(
+            game_id=game.id, level_number=number, level_name=name,
+            threshold_amount=threshold, package_id=package_id,
+        ))
+    db.session.commit()
+
+    if new_levels:
+        flash(f'Recarga Acumulada actualizada para {game.name} ({len(new_levels)} nivel(es)).', 'success')
+    else:
+        flash(f'Recarga Acumulada desactivada para {game.name} (sin niveles completos).', 'warning')
+    return redirect(url_for('admin_bp.minigames', game_id=game.id))
+
+
+@admin_bp.route('/promos/raffle', methods=['POST'])
+@login_required
+def promos_raffle_save():
+    game_id = request.form.get('game_id', type=int)
+    game = Game.query.get_or_404(game_id)
+
+    is_active = request.form.get('is_active') == 'on'
+    draw_hour = request.form.get('draw_hour', type=int)
+    winners_per_draw = request.form.get('winners_per_draw', type=int)
+    package_id = request.form.get('package_id', type=int)
+    require_verification = request.form.get('require_verification') == 'on'
+
+    config = PromoRaffleConfig.query.filter_by(game_id=game.id).first()
+    if not config:
+        config = PromoRaffleConfig(game_id=game.id)
+        db.session.add(config)
+
+    config.is_active = bool(is_active and package_id)
+    config.draw_hour = draw_hour if draw_hour is not None and 0 <= draw_hour <= 23 else 21
+    config.winners_per_draw = winners_per_draw if winners_per_draw and winners_per_draw > 0 else 5
+    config.package_id = package_id
+    config.require_verification = require_verification
+    db.session.commit()
+
+    flash(f'Sorteo Diario {"activado" if config.is_active else "guardado (inactivo)"} para {game.name}.', 'success')
+    return redirect(url_for('admin_bp.minigames', game_id=game.id))
+
+
+@admin_bp.route('/promos/guess', methods=['POST'])
+@login_required
+def promos_guess_save():
+    game_id = request.form.get('game_id', type=int)
+    game = Game.query.get_or_404(game_id)
+
+    is_active = request.form.get('is_active') == 'on'
+    number_max = request.form.get('number_max', type=int)
+    max_attempts = request.form.get('max_attempts', type=int)
+    winners_per_day = request.form.get('winners_per_day', type=int)
+    package_id = request.form.get('package_id', type=int)
+    require_verification = request.form.get('require_verification') == 'on'
+
+    config = PromoGuessConfig.query.filter_by(game_id=game.id).first()
+    if not config:
+        config = PromoGuessConfig(game_id=game.id)
+        db.session.add(config)
+
+    config.is_active = bool(is_active and package_id)
+    config.number_max = number_max if number_max and number_max > 1 else 50
+    config.max_attempts = max_attempts if max_attempts and max_attempts > 0 else 2
+    config.winners_per_day = winners_per_day if winners_per_day and winners_per_day > 0 else 3
+    config.package_id = package_id
+    config.require_verification = require_verification
+    db.session.commit()
+
+    flash(f'Adivina el Número {"activado" if config.is_active else "guardado (inactivo)"} para {game.name}.', 'success')
+    return redirect(url_for('admin_bp.minigames', game_id=game.id))
 
 
 # ─── Notificaciones push ──────────────────────────────────────────────────────
@@ -3494,9 +4018,22 @@ def revendedores_mapping_data():
         'mappings': [
             {
                 'store_package_id': m.store_package_id,
-                'catalog_id': m.catalog_item_id,
-                'catalog_id_2': m.catalog_item_id_2,
                 'auto_enabled': m.auto_enabled,
+                # Mapeos guardados con el editor nuevo traen su lista de items
+                # (con cantidad) ya armada. Los que quedaron del formato viejo
+                # (2 casillas fijas, sin fila en revendedores_mapping_items)
+                # se arman al vuelo desde catalog_item_id/catalog_item_id_2
+                # para que se sigan viendo y editando sin perder nada.
+                'items': (
+                    [
+                        {'catalog_id': it.catalog_item_id, 'quantity': it.quantity or 1}
+                        for it in m.items
+                    ] if m.items else [
+                        {'catalog_id': cid, 'quantity': 1}
+                        for cid in (m.catalog_item_id, m.catalog_item_id_2)
+                        if cid
+                    ]
+                ),
             }
             for m in mappings
         ],
@@ -3514,42 +4051,62 @@ def revendedores_mappings_bulk():
     try:
         for entry in entries:
             store_pkg_id = int(entry.get('store_package_id', 0))
-            catalog_id_str = str(entry.get('catalog_id', '')).strip()
-            catalog_id_2_str = str(entry.get('catalog_id_2', '')).strip()
             auto_enabled = bool(entry.get('auto_enabled'))
+
+            # Formato nuevo: lista de items con cantidad. Si no viene (algún
+            # caller viejo), se arma desde las 2 casillas fijas de antes.
+            raw_items = entry.get('items')
+            if raw_items is None:
+                raw_items = [
+                    {'catalog_id': entry.get('catalog_id'), 'quantity': 1},
+                    {'catalog_id': entry.get('catalog_id_2'), 'quantity': 1},
+                ]
+
+            items = []
+            for it in raw_items:
+                cid_str = str((it or {}).get('catalog_id') or '').strip()
+                if not cid_str:
+                    continue
+                qty = max(1, int((it or {}).get('quantity') or 1))
+                items.append((int(cid_str), qty))
 
             if not store_pkg_id:
                 continue
 
             existing = RevendedoresItemMapping.query.filter_by(store_package_id=store_pkg_id).first()
 
-            if not catalog_id_str and not catalog_id_2_str:
+            if not items:
                 if existing:
                     db.session.delete(existing)
                     removed += 1
                 continue
 
-            catalog_id = int(catalog_id_str) if catalog_id_str else None
-            catalog_id_2 = int(catalog_id_2_str) if catalog_id_2_str else None
-
-            if not catalog_id and catalog_id_2:
-                catalog_id = catalog_id_2
-                catalog_id_2 = None
+            # catalog_item_id/catalog_item_id_2 se mantienen como espejo del
+            # primer y segundo item para no romper mapeos leídos por código
+            # viejo; la lista completa (con cantidad) vive en mapping.items.
+            catalog_id = items[0][0]
+            catalog_id_2 = items[1][0] if len(items) > 1 else None
 
             if existing:
-                existing.catalog_item_id = catalog_id
-                existing.catalog_item_id_2 = catalog_id_2
-                existing.auto_enabled = auto_enabled
-                existing.active = True
+                mapping = existing
+                mapping.catalog_item_id = catalog_id
+                mapping.catalog_item_id_2 = catalog_id_2
+                mapping.auto_enabled = auto_enabled
+                mapping.active = True
             else:
-                new_map = RevendedoresItemMapping(
+                mapping = RevendedoresItemMapping(
                     store_package_id=store_pkg_id,
                     catalog_item_id=catalog_id,
                     catalog_item_id_2=catalog_id_2,
                     active=True,
                     auto_enabled=auto_enabled,
                 )
-                db.session.add(new_map)
+                db.session.add(mapping)
+
+            mapping.items = [
+                RevendedoresMappingItem(catalog_item_id=cid, quantity=qty, sort_order=idx)
+                for idx, (cid, qty) in enumerate(items)
+            ]
             saved += 1
 
         db.session.commit()

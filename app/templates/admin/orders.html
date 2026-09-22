@@ -9,20 +9,20 @@
 </p>
 <div class="filters-bar">
     <div class="filter-tabs">
-        <a href="{{ url_for('admin_bp.orders', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
+        <a href="{{ url_for('admin_bp.orders', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab {% if not status_filter %}active{% endif %}">Todas</a>
-        <a href="{{ url_for('admin_bp.orders', status='pending', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
+        <a href="{{ url_for('admin_bp.orders', status='pending', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab {% if status_filter == 'pending' %}active{% endif %}">Pendientes</a>
-        <a href="{{ url_for('admin_bp.orders', status='to_deliver', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
+        <a href="{{ url_for('admin_bp.orders', status='to_deliver', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab filter-tab-deliver {% if status_filter == 'to_deliver' %}active{% endif %}">
             Por entregar
             {% if to_deliver_count %}<span class="filter-tab-count">{{ to_deliver_count }}</span>{% endif %}
         </a>
-        <a href="{{ url_for('admin_bp.orders', status='approved', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
+        <a href="{{ url_for('admin_bp.orders', status='approved', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab {% if status_filter == 'approved' %}active{% endif %}">Aprobadas</a>
-        <a href="{{ url_for('admin_bp.orders', status='completed', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
+        <a href="{{ url_for('admin_bp.orders', status='completed', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab {% if status_filter == 'completed' %}active{% endif %}">Completadas</a>
-        <a href="{{ url_for('admin_bp.orders', status='rejected', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}"
+        <a href="{{ url_for('admin_bp.orders', status='rejected', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab {% if status_filter == 'rejected' %}active{% endif %}">Rechazadas</a>
     </div>
     <form method="GET" action="{{ url_for('admin_bp.orders') }}" class="orders-search-form">
@@ -60,18 +60,27 @@
                 </select>
             </div>
             <div class="orders-filter-field">
+                <label for="ordersGameFilter">Juego</label>
+                <select id="ordersGameFilter" name="game_id">
+                    <option value="">Todos los juegos</option>
+                    {% for game in games %}
+                    <option value="{{ game.id }}" {% if game_id == game.id %}selected{% endif %}>{{ game.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="orders-filter-field">
                 <label for="ordersPackageFilter">Paquete</label>
                 <select id="ordersPackageFilter" name="package_id">
                     <option value="">Todos los paquetes</option>
                     {% for package in packages %}
-                    <option value="{{ package.id }}" {% if package_id == package.id %}selected{% endif %}>{{ package.game.name }} - {{ package.name }}</option>
+                    <option value="{{ package.id }}" data-game-id="{{ package.game_id }}" {% if package_id == package.id %}selected{% endif %}>{{ package.game.name }} - {{ package.name }}</option>
                     {% endfor %}
                 </select>
             </div>
         </div>
         <div class="orders-search-input-wrap">
             <button type="submit" class="btn-primary orders-search-submit">Aplicar filtros</button>
-            {% if search_query or date_from or date_to or package_id or service_id %}
+            {% if search_query or date_from or date_to or package_id or service_id or game_id %}
             <a href="{{ url_for('admin_bp.orders', status=status_filter or None) }}" class="btn-secondary orders-search-clear">Limpiar</a>
             {% endif %}
         </div>
@@ -110,7 +119,7 @@
                     <th>Acciones</th>
                 </tr>
             </thead>
-            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}" data-date-from="{{ date_from or '' }}" data-date-to="{{ date_to or '' }}" data-package-id="{{ package_id or '' }}" data-service-id="{{ service_id or '' }}" data-current-page="{{ current_page }}" data-page-size="{{ page_size }}">
+            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}" data-date-from="{{ date_from or '' }}" data-date-to="{{ date_to or '' }}" data-package-id="{{ package_id or '' }}" data-service-id="{{ service_id or '' }}" data-game-id="{{ game_id or '' }}" data-current-page="{{ current_page }}" data-page-size="{{ page_size }}">
                 {% for order in orders %}
                 <tr data-order-id="{{ order.id }}">
                     <td data-label="#Orden">
@@ -161,13 +170,14 @@
                              data-order-id="{{ order.id }}"
                              data-auto-resp="{{ order.automation_response|default('',true)|e }}">
                             <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline" title="Gestionar">Gestionar</a>
-                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap" class="approve-form" enctype="multipart/form-data">
+                            <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" class="approve-form" enctype="multipart/form-data">
                                 {% if can_send_delivery_proof %}
-                                <input type="file" name="delivery_proof" accept="image/*" title="Adjuntar comprobante para el correo" style="max-width:180px;font-size:11px">
+                                <label class="file-attach-btn" for="proof-{{ order.id }}" title="Adjuntar comprobante para el correo (opcional)">📎</label>
+                                <input type="file" name="delivery_proof" id="proof-{{ order.id }}" accept="image/*" class="file-attach-input">
                                 {% endif %}
-                                <button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>
+                                <button class="btn-sm btn-success btn-icon-only approve-btn" type="submit" title="Aprobar">✓</button>
                             </form>
-                            <button type="button" class="btn-sm btn-danger reject-order-btn" data-order-id="{{ order.id }}" title="Rechazar">✗</button>
+                            <button type="button" class="btn-sm btn-danger btn-icon-only reject-order-btn" data-order-id="{{ order.id }}" title="Rechazar">✕</button>
                         </div>
                         {% elif order.status == 'completed' and order.pin_delivered %}
                         <div class="action-btns">
@@ -180,7 +190,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="10" class="empty-row">{% if search_query or date_from or date_to or package_id or service_id %}No hay órdenes que coincidan con los filtros aplicados.{% else %}No hay órdenes.{% endif %}</td></tr>
+                <tr><td colspan="10" class="empty-row">{% if search_query or date_from or date_to or package_id or service_id or game_id %}No hay órdenes que coincidan con los filtros aplicados.{% else %}No hay órdenes.{% endif %}</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -189,10 +199,10 @@
     {% if total_pages > 1 %}
     <div class="orders-pagination">
         <a class="orders-pagination-link {% if current_page == 1 %}is-disabled{% endif %}"
-           href="{% if current_page > 1 %}{{ url_for('admin_bp.orders', page=current_page - 1, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}{% else %}#{% endif %}">Anterior</a>
+           href="{% if current_page > 1 %}{{ url_for('admin_bp.orders', page=current_page - 1, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}{% else %}#{% endif %}">Anterior</a>
 
         {% if page_numbers[0] > 1 %}
-        <a class="orders-pagination-link" href="{{ url_for('admin_bp.orders', page=1, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}">1</a>
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.orders', page=1, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}">1</a>
         {% if page_numbers[0] > 2 %}
         <span class="orders-pagination-ellipsis">...</span>
         {% endif %}
@@ -200,18 +210,18 @@
 
         {% for page_number in page_numbers %}
         <a class="orders-pagination-link {% if page_number == current_page %}is-active{% endif %}"
-           href="{{ url_for('admin_bp.orders', page=page_number, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}">{{ page_number }}</a>
+           href="{{ url_for('admin_bp.orders', page=page_number, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}">{{ page_number }}</a>
         {% endfor %}
 
         {% if page_numbers[-1] < total_pages %}
         {% if page_numbers[-1] < total_pages - 1 %}
         <span class="orders-pagination-ellipsis">...</span>
         {% endif %}
-        <a class="orders-pagination-link" href="{{ url_for('admin_bp.orders', page=total_pages, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}">{{ total_pages }}</a>
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.orders', page=total_pages, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}">{{ total_pages }}</a>
         {% endif %}
 
         <a class="orders-pagination-link {% if current_page == total_pages %}is-disabled{% endif %}"
-           href="{% if current_page < total_pages %}{{ url_for('admin_bp.orders', page=current_page + 1, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None) }}{% else %}#{% endif %}">Siguiente</a>
+           href="{% if current_page < total_pages %}{{ url_for('admin_bp.orders', page=current_page + 1, status=status_filter or None, q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}{% else %}#{% endif %}">Siguiente</a>
     </div>
     {% endif %}
 </div>
@@ -267,6 +277,31 @@
 
 {% block extra_js %}
 <script>
+// Filtro Juego → Paquete: elegir un juego oculta del desplegable de
+// Paquete los que no son de ese juego. Si el paquete que ya estaba
+// elegido no es de ese juego, se vuelve a "Todos los paquetes".
+(function () {
+    var gameSelect = document.getElementById('ordersGameFilter');
+    var packageSelect = document.getElementById('ordersPackageFilter');
+    if (!gameSelect || !packageSelect) return;
+
+    function applyGameFilter() {
+        var gid = gameSelect.value;
+        var options = packageSelect.querySelectorAll('option[data-game-id]');
+        options.forEach(function (opt) {
+            opt.hidden = !!gid && opt.getAttribute('data-game-id') !== gid;
+        });
+        var selected = packageSelect.options[packageSelect.selectedIndex];
+        if (selected && selected.hidden) packageSelect.value = '';
+    }
+
+    gameSelect.addEventListener('change', applyGameFilter);
+    applyGameFilter();
+})();
+
+// Nota: el listener que marca en verde el botón del clip cuando se elige
+// un archivo ahora vive en base.html (aplica a todo el panel, no solo aquí).
+
 function openRejectModal(orderId) {
     document.getElementById('rejectForm').action = '/admin/orders/' + orderId + '/reject';
     document.getElementById('rejectModal').style.display = 'flex';
@@ -353,11 +388,11 @@ function _renderOrderRow(o) {
     if (o.status === 'pending') {
         actions = '<div class="action-btns" id="actions-' + o.id + '" data-order-id="' + o.id + '" data-auto-resp="' + _escapeHtml(o.automation_response || '') + '">' +
             '<a href="/admin/orders/' + o.id + '" class="btn-sm btn-outline" title="Gestionar">Gestionar</a>' +
-            '<form method="POST" action="/admin/orders/' + o.id + '/approve" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap" class="approve-form" enctype="multipart/form-data">' +
-                (o.can_send_delivery_proof ? '<input type="file" name="delivery_proof" accept="image/*" title="Adjuntar comprobante para el correo" style="max-width:180px;font-size:11px">' : '') +
-                '<button class="btn-sm btn-success approve-btn" type="submit" title="Aprobar">✓ Aprobar</button>' +
+            '<form method="POST" action="/admin/orders/' + o.id + '/approve" class="approve-form" enctype="multipart/form-data">' +
+                (o.can_send_delivery_proof ? '<label class="file-attach-btn" for="proof-' + o.id + '" title="Adjuntar comprobante para el correo (opcional)">📎</label><input type="file" name="delivery_proof" id="proof-' + o.id + '" accept="image/*" class="file-attach-input">' : '') +
+                '<button class="btn-sm btn-success btn-icon-only approve-btn" type="submit" title="Aprobar">✓</button>' +
             '</form>' +
-            '<button type="button" class="btn-sm btn-danger reject-order-btn" data-order-id="' + o.id + '" title="Rechazar">✗</button>' +
+            '<button type="button" class="btn-sm btn-danger btn-icon-only reject-order-btn" data-order-id="' + o.id + '" title="Rechazar">✕</button>' +
         '</div>';
     } else if (o.status === 'completed' && o.pin_delivered) {
         actions = '<div class="action-btns">' +
@@ -448,7 +483,7 @@ function _kickAutoVerification(scopeEl) {
                             btn.onclick = function(e) { e.preventDefault(); attempts = 0; btn.disabled = true; btn.textContent = 'Verificando...'; btn.style.opacity = '0.6'; poll(); };
                         }
                     } else if (data.can_approve) {
-                        if (btn) { btn.disabled = false; btn.textContent = '✓ Aprobar'; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
+                        if (btn) { btn.disabled = false; btn.textContent = '✓'; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
                         var msg = data.message || 'Recarga no se completó. Puedes reintentar.';
                         var tip = document.createElement('div');
                         tip.style.cssText = 'font-size:11px;color:#f59e0b;margin-top:4px;';
@@ -461,7 +496,7 @@ function _kickAutoVerification(scopeEl) {
                 })
                 .catch(function() {
                     if (attempts < maxAttempts) setTimeout(poll, 5000);
-                    else if (btn) { btn.textContent = '✓ Aprobar'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
+                    else if (btn) { btn.textContent = '✓'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
                 });
         }
         setTimeout(poll, 1000);
@@ -482,6 +517,7 @@ function _kickAutoVerification(scopeEl) {
     var dateTo = tbody.getAttribute('data-date-to') || '';
     var packageId = tbody.getAttribute('data-package-id') || '';
     var serviceId = tbody.getAttribute('data-service-id') || '';
+    var gameId = tbody.getAttribute('data-game-id') || '';
 
     function getMaxId() {
         var max = 0;
@@ -545,6 +581,7 @@ function _kickAutoVerification(scopeEl) {
         if (dateTo) url += '&date_to=' + encodeURIComponent(dateTo);
         if (packageId) url += '&package_id=' + encodeURIComponent(packageId);
         if (serviceId) url += '&service_id=' + encodeURIComponent(serviceId);
+        if (gameId) url += '&game_id=' + encodeURIComponent(gameId);
         fetch(url)
             .then(function(r) { return r.json(); })
             .then(function(data) {
@@ -634,7 +671,7 @@ function _kickAutoVerification(scopeEl) {
                             btn.onclick = function(e) { e.preventDefault(); attempts = 0; btn.disabled = true; btn.textContent = 'Verificando...'; btn.style.opacity = '0.6'; poll(); };
                         }
                     } else if (data.can_approve) {
-                        if (btn) { btn.disabled = false; btn.textContent = '✓ Aprobar'; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
+                        if (btn) { btn.disabled = false; btn.textContent = '✓'; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
                         var msg = data.message || 'Recarga no se completó. Puedes reintentar.';
                         var tip = document.createElement('div');
                         tip.style.cssText = 'font-size:11px;color:#f59e0b;margin-top:4px;';
@@ -647,7 +684,7 @@ function _kickAutoVerification(scopeEl) {
                 })
                 .catch(function() {
                     if (attempts < maxAttempts) setTimeout(poll, 5000);
-                    else if (btn) { btn.textContent = '✓ Aprobar'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
+                    else if (btn) { btn.textContent = '✓'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
                 });
         }
         setTimeout(poll, 1000);

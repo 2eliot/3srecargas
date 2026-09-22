@@ -216,12 +216,15 @@ def review_mini_video(video, action, reward_amount=None, note=''):
 
 # ─── Retiros ─────────────────────────────────────────────────────────────────
 
-def approve_withdrawal(withdrawal):
+def approve_withdrawal(withdrawal, proof_path=None):
     """Aprueba un retiro y debita el balance del afiliado. Lock por
     afiliado + revalidación de saldo dentro del lock: dos aprobaciones casi
     simultáneas (doble clic, dos pestañas admin) no pueden dejar el balance
     negativo — la segunda ve el balance ya descontado y falla en vez de
-    debitar de más."""
+    debitar de más.
+
+    `proof_path` es la captura de pago (opcional) que el admin adjunta al
+    aprobar, para que el mini la vea en su propio panel."""
     lock_key = f'mini_withdrawal:{withdrawal.affiliate_id}'
     holder = uuid4().hex
     if not acquire_lock(lock_key, WITHDRAWAL_APPROVE_LOCK_TTL_SECONDS, holder):
@@ -240,6 +243,8 @@ def approve_withdrawal(withdrawal):
         affiliate.balance = float(affiliate.balance or 0) - float(withdrawal.amount)
         withdrawal.status = 'approved'
         withdrawal.reviewed_at = datetime.utcnow()
+        if proof_path:
+            withdrawal.payment_proof = proof_path
         db.session.commit()
         return True, None
     finally:

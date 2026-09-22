@@ -121,6 +121,7 @@ def create_app(config_class=Config):
     from .routes.revendedores_webhook import revendedores_webhook_bp
     from .routes.support import support_bp
     from .routes.admin_support import admin_support_bp
+    from .routes.promos import promos_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
@@ -133,6 +134,7 @@ def create_app(config_class=Config):
     app.register_blueprint(revendedores_webhook_bp)
     app.register_blueprint(support_bp)
     app.register_blueprint(admin_support_bp)
+    app.register_blueprint(promos_bp)
 
     @app.template_filter('datetime_ve')
     def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):
@@ -158,6 +160,25 @@ def create_app(config_class=Config):
     app.add_template_global(site_version, 'app_version')
     app.add_template_global(today_ve_str, 'page_day_ve')
     register_catalog_version_hook()
+
+    # Prefijos que siguen andando aunque la tienda esté en mantenimiento: el
+    # panel admin (para poder apagarlo de nuevo y seguir trabajando), los
+    # estáticos (los necesita hasta la propia página de mantenimiento) y el
+    # webhook de Revendedores (una recarga en curso no debería romperse
+    # solo porque alguien está editando la tienda al mismo tiempo).
+    MAINTENANCE_ALLOWED_PREFIXES = ('/admin', '/static/', '/api/revendedores/webhook', '/favicon.ico')
+
+    @app.before_request
+    def _check_maintenance_mode():
+        from flask import render_template, request
+
+        if request.path.startswith(MAINTENANCE_ALLOWED_PREFIXES):
+            return None
+
+        setting = Setting.query.filter_by(key='maintenance_mode').first()
+        if setting and setting.value == 'true':
+            return render_template('maintenance.html'), 503
+        return None
 
     @app.after_request
     def _no_cachear_html(response):
@@ -189,6 +210,7 @@ def create_app(config_class=Config):
         ]
         wanted_keys = (
             ['site_logo', 'site_background_image', 'support_email', 'support_whatsapp', 'support_schedule', 'support_location']
+            + ['site_tutorial_video_file', 'site_tutorial_video_title']
             + social_keys
             + ranking_keys
         )
@@ -204,6 +226,8 @@ def create_app(config_class=Config):
         support_whatsapp_url = values.get('support_whatsapp') or 'https://wa.me/19543789224'
         support_schedule = values.get('support_schedule') or 'Lunes a Domingo 10:00 AM a 8:00 PM'
         support_location = values.get('support_location') or 'Puerto Ordaz, Bolívar, Venezuela'
+        site_tutorial_video_file = values.get('site_tutorial_video_file') or None
+        site_tutorial_video_title = values.get('site_tutorial_video_title') or 'Tutorial'
         ranking_settings = {key: values.get(key) or '' for key in ranking_keys}
 
         has_active_ranking = has_visible_public_rankings()
@@ -216,6 +240,8 @@ def create_app(config_class=Config):
             'SUPPORT_WHATSAPP_URL': support_whatsapp_url,
             'SUPPORT_SCHEDULE': support_schedule,
             'SUPPORT_LOCATION': support_location,
+            'SITE_TUTORIAL_VIDEO_FILE': site_tutorial_video_file,
+            'SITE_TUTORIAL_VIDEO_TITLE': site_tutorial_video_title,
             'RANKING_SETTINGS': ranking_settings,
             'HAS_ACTIVE_RANKING': has_active_ranking,
             'APP_TIMEZONE': 'GMT-4',
@@ -251,6 +277,7 @@ def create_app(config_class=Config):
         _ensure_points_columns()
         _ensure_affiliate_columns()
         _ensure_mini_influencer_columns()
+        _ensure_mini_withdrawal_columns()
         _ensure_one_per_player_columns()
         _ensure_payment_verification_columns()
         _ensure_ai_reference_columns()
@@ -590,6 +617,26 @@ def _ensure_mini_influencer_columns():
         if 'ranks_paid' not in existing:
             db.session.execute(text('ALTER TABLE affiliates ADD COLUMN ranks_paid TEXT'))
         db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_mini_withdrawal_columns():
+    """Comprobante que el admin sube al aprobar un retiro de mini, para que
+    el mini lo vea en su propio panel sin tener que preguntar."""
+    try:
+        if _ensure_postgres_columns('affiliate_withdrawals', [
+            'payment_proof VARCHAR(255)',
+        ]):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+        rows = db.session.execute(text('PRAGMA table_info(affiliate_withdrawals)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'payment_proof' not in existing:
+            db.session.execute(text('ALTER TABLE affiliate_withdrawals ADD COLUMN payment_proof VARCHAR(255)'))
+            db.session.commit()
     except Exception:
         db.session.rollback()
 

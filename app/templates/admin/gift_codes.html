@@ -32,7 +32,7 @@
     <div class="card-header">
         <h3>Generar códigos</h3>
     </div>
-    <form method="POST" action="{{ url_for('admin_bp.gift_codes_generate') }}">
+    <form method="POST" action="{{ url_for('admin_bp.gift_codes_generate') }}" style="padding:0 20px 20px;">
         <div class="form-grid-2">
             <div class="form-group">
                 <label for="gc_game">Juego o servicio</label>
@@ -131,7 +131,7 @@
     </div>
 
     <div class="table-wrap">
-        <table>
+        <table class="admin-table">
             <thead>
                 <tr>
                     <th>Código</th>

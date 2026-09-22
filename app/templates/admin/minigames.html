@@ -2,9 +2,21 @@
 {% block title %}Mini Juegos{% endblock %}
 {% block page_title %}Mini Juegos{% endblock %}
 
+{% block extra_css %}
+<style>
+/* Estas tarjetas .admin-card usan .card-header (ya viene con su propio
+   relleno) seguido de contenido crudo (formularios, hints, sub-tarjetas
+   por juego) — sin esto, ese contenido quedaba pegado a los bordes. */
+.mg-config-form { padding: 0 20px 20px; }
+.mg-slot-grid { padding: 0 20px 20px; }
+.mg-promo-body { padding: 0 20px 20px; }
+.mg-guess-slots-hint { padding: 0 20px; margin-top: 8px; }
+</style>
+{% endblock %}
+
 {% block content %}
 {% if minigame_dev_mode %}
-<div class="admin-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08);">
+<div class="admin-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08);padding:18px 20px;">
     <h2 style="margin-bottom:8px;">Modo desarrollo activo</h2>
     <p class="form-hint" style="color:#fde68a;">En este entorno cada giro se fuerza como ganador para poder revisar el flujo completo (incluida la entrega automática) sin esperar los giros configurados.</p>
 </div>
@@ -38,7 +50,7 @@
             cierta cantidad de giros. En la ruleta aparecerán más opciones de relleno, pero nunca se otorgan.
         </p>
     </div>
-    <form method="POST">
+    <form method="POST" class="mg-config-form">
         <div class="form-grid-2" style="margin-bottom:16px;">
             <div class="form-group">
                 <label for="minigame_win_every_n_spins">Cada cuántos giros se gana el premio</label>
@@ -56,7 +68,7 @@
                     {{ 'Activo' if slot.enabled else 'Sin configurar' }}
                 </span>
             </div>
-            <div class="form-grid-2">
+            <div class="form-grid-2 mg-slot-grid">
                 <div class="form-group">
                     <label for="minigame_slot_{{ slot.slot_key }}_game_id">Juego de la tienda</label>
                     <select id="minigame_slot_{{ slot.slot_key }}_game_id" name="minigame_slot_{{ slot.slot_key }}_game_id"
@@ -131,6 +143,289 @@
         </table>
     </div>
 </div>
+
+<h2 style="margin:28px 0 14px;">Promociones (Recarga Acumulada / Sorteo Diario / Adivina el Número)</h2>
+
+{% if not all_games %}
+<div class="admin-card" style="padding:20px;">
+    <p class="form-hint">No hay juegos activos todavía.</p>
+</div>
+{% else %}
+
+<div class="admin-card" style="margin-bottom:20px;padding:20px;">
+    <form method="GET" class="form-grid-2">
+        <div class="form-group">
+            <label for="game_id">Juego a configurar</label>
+            <select id="game_id" name="game_id" onchange="this.form.submit()">
+                {% for g in all_games %}
+                <option value="{{ g.id }}" {{ 'selected' if selected_game and selected_game.id == g.id }}>{{ g.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+    {% if not game_packages %}
+    <p class="form-hint" style="color:#f59e0b;">Este juego no tiene paquetes activos — agrega al menos uno para poder elegir premio.</p>
+    {% endif %}
+</div>
+
+<!-- Recarga Acumulada -->
+<div class="admin-card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <h2>Recarga Acumulada — {{ selected_game.name }}</h2>
+        <span class="badge {% if levels %}badge-active{% else %}badge-inactive{% endif %}">
+            {{ 'Activa' if levels else 'Sin configurar' }}
+        </span>
+    </div>
+    <div class="mg-promo-body">
+    <p class="form-hint">
+        Barra por niveles: suma los diamantes/oro que el ID recarga durante el mes (hora Venezuela) — el mismo
+        número que trae el nombre del paquete (ej. "550 Diamantes" → 550), igual que el Ranking — y entrega el
+        premio del nivel en automático al llegar a la cantidad. Al completar un nivel pasa al siguiente; el
+        excedente se acredita ya al nivel nuevo. Se reinicia sola cada 1° de mes. Deja los 3 niveles completos
+        para activarla, o vacíos para desactivarla.
+    </p>
+    <form method="POST" action="{{ url_for('admin_bp.promos_accumulated_save') }}">
+        <input type="hidden" name="game_id" value="{{ selected_game.id }}">
+        {% for number in (1, 2, 3) %}
+        {% set lvl = levels.get(number) %}
+        <div class="form-grid-2" style="margin-bottom:10px;align-items:end;">
+            <div class="form-group">
+                <label>Nivel {{ number }} — nombre</label>
+                <input type="text" name="level_{{ number }}_name" maxlength="60"
+                       placeholder="{{ ['Bronce', 'Plata', 'Oro'][number - 1] }}"
+                       value="{{ lvl.level_name if lvl else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Diamantes/unidades necesarias</label>
+                <input type="number" step="1" min="1" name="level_{{ number }}_threshold"
+                       value="{{ lvl.threshold_amount|int if lvl else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Paquete que entrega como premio</label>
+                <select name="level_{{ number }}_package_id">
+                    <option value="">— Sin asignar —</option>
+                    {% for pkg in game_packages %}
+                    <option value="{{ pkg.id }}" {{ 'selected' if lvl and lvl.package_id == pkg.id }}>{{ pkg.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% endfor %}
+        <div class="form-group">
+            <button type="submit" class="btn-primary">Guardar niveles</button>
+        </div>
+    </form>
+    </div>
+
+    {% if recent_awards %}
+    <div class="table-wrap" style="margin-top:14px;">
+        <table class="admin-table">
+            <thead><tr><th>Fecha</th><th>ID</th><th>Nivel</th><th>Mes</th><th>Orden del premio</th></tr></thead>
+            <tbody>
+                {% for a in recent_awards %}
+                <tr>
+                    <td>{{ a.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ a.player_id }}</td>
+                    <td>{{ a.level_name }}</td>
+                    <td>{{ a.month_key }}</td>
+                    <td>{% if a.prize_order %}<a href="{{ url_for('admin_bp.order_detail', order_id=a.prize_order.id) }}">#{{ a.prize_order.order_number }}</a>{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Sorteo Diario -->
+<div class="admin-card" style="margin-bottom:20px;">
+    <div class="card-header">
+        <h2>Sorteo Diario — {{ selected_game.name }}</h2>
+        <span class="badge {% if raffle_config and raffle_config.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+            {{ 'Activo' if raffle_config and raffle_config.is_active else 'Inactivo' }}
+        </span>
+    </div>
+    <div class="mg-promo-body">
+    <p class="form-hint">
+        Los clientes registran su ID una vez al día (se verifica contra el sistema real de este juego, si lo tiene
+        configurado) y reciben un ticket. A la hora del sorteo se eligen ganadores al azar entre todos los
+        registrados de ese día y se les entrega el premio en automático.
+    </p>
+    <form method="POST" action="{{ url_for('admin_bp.promos_raffle_save') }}">
+        <input type="hidden" name="game_id" value="{{ selected_game.id }}">
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label class="check-label" style="margin-top:30px;">
+                    <input type="checkbox" name="is_active" value="on" {{ 'checked' if raffle_config and raffle_config.is_active }}>
+                    Activar sorteo para este juego
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="check-label" style="margin-top:30px;">
+                    <input type="checkbox" name="require_verification" value="on" {{ 'checked' if not raffle_config or raffle_config.require_verification }}>
+                    Exigir verificación de ID para registrarse
+                </label>
+            </div>
+            <div class="form-group">
+                <label>Hora del sorteo (Venezuela, 0-23)</label>
+                <input type="number" min="0" max="23" name="draw_hour" value="{{ raffle_config.draw_hour if raffle_config else 21 }}">
+            </div>
+            <div class="form-group">
+                <label>Ganadores por sorteo</label>
+                <input type="number" min="1" name="winners_per_draw" value="{{ raffle_config.winners_per_draw if raffle_config else 5 }}">
+            </div>
+            <div class="form-group">
+                <label>Paquete premio</label>
+                <select name="package_id">
+                    <option value="">— Sin asignar —</option>
+                    {% for pkg in game_packages %}
+                    <option value="{{ pkg.id }}" {{ 'selected' if raffle_config and raffle_config.package_id == pkg.id }}>{{ pkg.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <button type="submit" class="btn-primary">Guardar sorteo</button>
+        </div>
+    </form>
+    </div>
+
+    {% if recent_raffle_winners %}
+    <div class="table-wrap" style="margin-top:14px;">
+        <table class="admin-table">
+            <thead><tr><th>Fecha</th><th>Día del sorteo</th><th>ID</th><th>Ticket</th><th>Orden del premio</th></tr></thead>
+            <tbody>
+                {% for w in recent_raffle_winners %}
+                <tr>
+                    <td>{{ w.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ w.day_key }}</td>
+                    <td>{{ w.player_id }}</td>
+                    <td>#{{ w.ticket_number }}</td>
+                    <td>{% if w.prize_order %}<a href="{{ url_for('admin_bp.order_detail', order_id=w.prize_order.id) }}">#{{ w.prize_order.order_number }}</a>{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Adivina el Número -->
+<div class="admin-card">
+    <div class="card-header">
+        <h2>Adivina el Número — {{ selected_game.name }}</h2>
+        <span class="badge {% if guess_config and guess_config.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+            {{ 'Activo' if guess_config and guess_config.is_active else 'Inactivo' }}
+        </span>
+    </div>
+    <div class="mg-promo-body">
+    <p class="form-hint">
+        El cliente adivina un número secreto (con verificación de ID real, si el juego la tiene configurada) con un
+        número limitado de intentos. Al acertar gana el premio en automático, sale un número secreto nuevo para el
+        siguiente cupo y el juego se cierra solo al completar los cupos del día. Reinicia solo cada medianoche (Venezuela).
+    </p>
+
+    {% if guess_config and guess_config.is_active %}
+    <div class="admin-card" style="margin-bottom:14px;background:rgba(59,130,246,.06);border-color:rgba(59,130,246,.3);">
+        <div class="card-header">
+            <h3>Números de hoy ({{ today_key }})</h3>
+        </div>
+        <div class="table-wrap">
+            <table class="admin-table">
+                <thead><tr><th>Cupo</th><th>Número</th><th>Estado</th><th>Ganador</th></tr></thead>
+                <tbody>
+                    {% for slot in guess_today_slots %}
+                    <tr>
+                        <td>#{{ slot.slot }}</td>
+                        <td style="font-weight:700;">
+                            {% if slot.status == 'pending' %}—{% else %}{{ slot.number }}{% endif %}
+                        </td>
+                        <td>
+                            {% if slot.status == 'won' %}
+                            <span class="badge badge-active">Ganado</span>
+                            {% elif slot.status == 'current' %}
+                            <span class="badge badge-warning">Número vigente ahora mismo</span>
+                            {% else %}
+                            <span class="badge badge-inactive">Pendiente</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ slot.player_id or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="form-hint mg-guess-slots-hint">
+            El número "vigente ahora mismo" es el que gana si alguien acierta en este momento — cambia solo cuando se gana ese cupo.
+        </p>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('admin_bp.promos_guess_save') }}">
+        <input type="hidden" name="game_id" value="{{ selected_game.id }}">
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label class="check-label" style="margin-top:30px;">
+                    <input type="checkbox" name="is_active" value="on" {{ 'checked' if guess_config and guess_config.is_active }}>
+                    Activar para este juego
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="check-label" style="margin-top:30px;">
+                    <input type="checkbox" name="require_verification" value="on" {{ 'checked' if not guess_config or guess_config.require_verification }}>
+                    Exigir verificación de ID para jugar
+                </label>
+            </div>
+            <div class="form-group">
+                <label>Rango máximo (1 al N)</label>
+                <input type="number" min="2" name="number_max" value="{{ guess_config.number_max if guess_config else 50 }}">
+            </div>
+            <div class="form-group">
+                <label>Intentos por ID al día</label>
+                <input type="number" min="1" name="max_attempts" value="{{ guess_config.max_attempts if guess_config else 2 }}">
+            </div>
+            <div class="form-group">
+                <label>Ganadores por día</label>
+                <input type="number" min="1" name="winners_per_day" value="{{ guess_config.winners_per_day if guess_config else 3 }}">
+            </div>
+            <div class="form-group">
+                <label>Paquete premio</label>
+                <select name="package_id">
+                    <option value="">— Sin asignar —</option>
+                    {% for pkg in game_packages %}
+                    <option value="{{ pkg.id }}" {{ 'selected' if guess_config and guess_config.package_id == pkg.id }}>{{ pkg.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <button type="submit" class="btn-primary">Guardar juego</button>
+        </div>
+    </form>
+    </div>
+
+    {% if recent_guess_winners %}
+    <div class="table-wrap" style="margin-top:14px;">
+        <table class="admin-table">
+            <thead><tr><th>Fecha</th><th>Día</th><th>ID</th><th>Cupo</th><th>Número</th><th>Orden del premio</th></tr></thead>
+            <tbody>
+                {% for w in recent_guess_winners %}
+                <tr>
+                    <td>{{ w.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ w.day_key }}</td>
+                    <td>{{ w.player_id }}</td>
+                    <td>#{{ w.slot_index }}</td>
+                    <td>{{ w.guessed_number }}</td>
+                    <td>{% if w.prize_order %}<a href="{{ url_for('admin_bp.order_detail', order_id=w.prize_order.id) }}">#{{ w.prize_order.order_number }}</a>{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}

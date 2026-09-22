@@ -389,10 +389,13 @@ class AffiliateWithdrawal(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     affiliate_id = db.Column(db.Integer, db.ForeignKey('affiliates.id'), nullable=False)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
-    method = db.Column(db.String(50))  # PaymentMethod.code de un método activo
+    method = db.Column(db.String(50))  # MiniPayoutMethod.name de un método activo
     payout_details = db.Column(db.Text)  # datos de cobro en texto libre (cuenta/cédula/teléfono)
     status = db.Column(db.String(20), default='pending')  # pending | approved | rejected
     rejection_reason = db.Column(db.Text)
+    # Captura que sube el admin al aprobar, para que el mini vea con qué se
+    # le pagó sin tener que preguntar por soporte (ruta relativa a uploads/).
+    payment_proof = db.Column(db.String(255))
     reviewed_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     affiliate = db.relationship('Affiliate', backref='withdrawals')
@@ -420,6 +423,19 @@ class MiniRank(db.Model):
     uses_required = db.Column(db.Integer, nullable=False)
     bonus_amount = db.Column(db.Numeric(10, 2), nullable=False)
     sort_order = db.Column(db.Integer, default=100)
+
+
+class MiniPayoutMethod(db.Model):
+    """Método de pago para retirar el balance de un mini (comisiones y
+    bonos). Va aparte de PaymentMethod (con el que el CLIENTE paga a la
+    tienda) porque son cosas distintas: acá es la tienda pagándole al
+    mini, así que el admin arma su propia lista desde /admin/minis."""
+    __tablename__ = 'mini_payout_methods'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    sort_order = db.Column(db.Integer, default=100)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class PaymentMethod(db.Model):
@@ -572,10 +588,34 @@ class RevendedoresItemMapping(db.Model):
     catalog_item = db.relationship('RevendedoresCatalogItem', foreign_keys=[catalog_item_id])
     catalog_item_2 = db.relationship('RevendedoresCatalogItem', foreign_keys=[catalog_item_id_2])
     package = db.relationship('Package')
+    items = db.relationship(
+        'RevendedoresMappingItem',
+        order_by='RevendedoresMappingItem.sort_order',
+        cascade='all, delete-orphan',
+    )
 
     __table_args__ = (
         db.UniqueConstraint('store_package_id', name='uq_rev_mapping_package'),
     )
+
+
+class RevendedoresMappingItem(db.Model):
+    """Un item remoto dentro de un mapeo, con cuántas veces se repite.
+
+    Reemplaza al límite fijo de 2 items (catalog_item_id/catalog_item_id_2
+    de RevendedoresItemMapping, que se mantienen solo como espejo del
+    primer y segundo item para no romper mapeos viejos que no se hayan
+    vuelto a guardar desde el nuevo editor). La recarga secuencial recorre
+    estos items en orden y repite cada uno `quantity` veces.
+    """
+    __tablename__ = 'revendedores_mapping_items'
+    id = db.Column(db.Integer, primary_key=True)
+    mapping_id = db.Column(db.Integer, db.ForeignKey('revendedores_item_mappings.id'), nullable=False)
+    catalog_item_id = db.Column(db.Integer, db.ForeignKey('revendedores_catalog.id'), nullable=False)
+    quantity = db.Column(db.Integer, default=1)
+    sort_order = db.Column(db.Integer, default=0)
+
+    catalog_item = db.relationship('RevendedoresCatalogItem')
 
 
 class AdminUser(db.Model, UserMixin):
@@ -656,6 +696,49 @@ class PointsSpinLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     game = db.relationship('Game')
+    prize_order = db.relationship('Order')
+
+
+class PointsRedeemOption(db.Model):
+    """Paquete canjeable DIRECTO por puntos (sin pasar por la ruleta).
+
+    A diferencia de PointsPrizeMapping (el premio único de la ruleta, un
+    solo paquete por juego), acá puede haber varias opciones por juego,
+    cada una con su propio costo en puntos — la lista de precios que arma
+    el admin (ej. 110💎 por 150 pts, 341💎 por 420 pts...)."""
+    __tablename__ = 'points_redeem_options'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    points_cost = db.Column(db.Integer, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    sort_order = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    package = db.relationship('Package')
+
+
+class PointsRedeemLog(db.Model):
+    """Historial de canjes directos (puntos -> paquete). Además de servir
+    para auditoría en el admin, es lo que hace valer el límite de 1 canje
+    por día por (juego, ID de jugador): se consulta el canje más reciente
+    de ese par antes de dejar canjear de nuevo.
+
+    Guarda package_id/points_spent propios (no solo el option_id) para que
+    el historial no se rompa si el admin edita o borra la opción después."""
+    __tablename__ = 'points_redeem_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False)
+    player_id = db.Column(db.String(100), nullable=False, index=True)
+    option_id = db.Column(db.Integer, db.ForeignKey('points_redeem_options.id'), nullable=True)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    points_spent = db.Column(db.Integer, default=0)
+    prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    package = db.relationship('Package')
     prize_order = db.relationship('Order')
 
 
@@ -899,3 +982,196 @@ class SupportChatTag(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     tag = db.relationship('SupportTag')
+
+
+class SupportQuickReply(db.Model):
+    """Respuesta prearmada que el admin puede insertar en el chat con un
+    clic, para las preguntas que se repiten (horario, cómo pagar, etc.).
+    `title` es solo el nombre del botón; `body` es el texto que se manda."""
+    __tablename__ = 'support_quick_replies'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(60), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    sort_order = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# ─── Promociones: Recarga Acumulada / Sorteo Diario / Adivina el Número ──────
+
+class PromoAccumulatedLevel(db.Model):
+    """Niveles de la barra de Recarga Acumulada, por juego. El admin define
+    hasta 3 niveles con el monto acumulado (en $, sumando lo pagado en el
+    mes calendario) que hace falta para ganar el premio de ese nivel."""
+    __tablename__ = 'promo_accumulated_levels'
+    __table_args__ = (
+        db.UniqueConstraint('game_id', 'level_number', name='uq_promo_acc_level'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    level_number = db.Column(db.Integer, nullable=False)
+    level_name = db.Column(db.String(60), nullable=False)
+    threshold_amount = db.Column(db.Numeric(10, 2), nullable=False)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    package = db.relationship('Package')
+
+
+class PromoAccumulatedProgress(db.Model):
+    """Progreso de un ID de jugador en la barra de Recarga Acumulada de un
+    juego durante un mes calendario (hora Venezuela). `current_level_number`
+    apunta al nivel que está llenando; si supera el último nivel definido,
+    ya completó todos los premios de ese mes."""
+    __tablename__ = 'promo_accumulated_progress'
+    __table_args__ = (
+        db.UniqueConstraint('game_id', 'player_id', 'month_key', name='uq_promo_acc_progress'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    player_id = db.Column(db.String(100), nullable=False, index=True)
+    month_key = db.Column(db.String(7), nullable=False)  # 'AAAA-MM' hora Venezuela
+    current_level_number = db.Column(db.Integer, default=1)
+    accumulated_amount = db.Column(db.Numeric(10, 2), default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PromoAccumulatedAward(db.Model):
+    """Historial de premios entregados por completar un nivel de la barra."""
+    __tablename__ = 'promo_accumulated_awards'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    player_id = db.Column(db.String(100), nullable=False, index=True)
+    month_key = db.Column(db.String(7), nullable=False)
+    level_number = db.Column(db.Integer, nullable=False)
+    level_name = db.Column(db.String(60))
+    prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    prize_order = db.relationship('Order')
+
+
+class PromoAccumulatedOrderLog(db.Model):
+    """Marca qué órdenes ya sumaron a la barra de Recarga Acumulada, para no
+    contarlas dos veces si el flujo de aprobación se re-ejecuta."""
+    __tablename__ = 'promo_accumulated_order_log'
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class PromoRaffleConfig(db.Model):
+    """Configuración del Sorteo Diario por juego."""
+    __tablename__ = 'promo_raffle_configs'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, unique=True)
+    is_active = db.Column(db.Boolean, default=False)
+    draw_hour = db.Column(db.Integer, default=21)  # hora Venezuela, 0-23
+    winners_per_draw = db.Column(db.Integer, default=5)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'))
+    require_verification = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    package = db.relationship('Package')
+
+
+class PromoRaffleEntry(db.Model):
+    """Un registro (ticket) de un ID en el sorteo de un día concreto."""
+    __tablename__ = 'promo_raffle_entries'
+    __table_args__ = (
+        db.UniqueConstraint('game_id', 'player_id', 'day_key', name='uq_promo_raffle_entry'),
+        db.UniqueConstraint('game_id', 'day_key', 'ticket_number', name='uq_promo_raffle_ticket'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    player_id = db.Column(db.String(100), nullable=False, index=True)
+    player_nick = db.Column(db.String(150))
+    day_key = db.Column(db.String(10), nullable=False, index=True)  # 'AAAA-MM-DD' hora Venezuela
+    ticket_number = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class PromoRaffleWinner(db.Model):
+    """Ganador de un sorteo diario ya realizado."""
+    __tablename__ = 'promo_raffle_winners'
+    __table_args__ = (
+        db.UniqueConstraint('game_id', 'day_key', 'player_id', name='uq_promo_raffle_winner'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    day_key = db.Column(db.String(10), nullable=False, index=True)
+    player_id = db.Column(db.String(100), nullable=False)
+    player_nick = db.Column(db.String(150))
+    ticket_number = db.Column(db.Integer)
+    prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    prize_order = db.relationship('Order')
+
+
+class PromoGuessConfig(db.Model):
+    """Configuración del juego Adivina el Número por juego."""
+    __tablename__ = 'promo_guess_configs'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, unique=True)
+    is_active = db.Column(db.Boolean, default=False)
+    number_max = db.Column(db.Integer, default=50)
+    max_attempts = db.Column(db.Integer, default=2)
+    winners_per_day = db.Column(db.Integer, default=3)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'))
+    require_verification = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    package = db.relationship('Package')
+
+
+class PromoGuessRound(db.Model):
+    """Estado del día para un juego: número secreto vigente y cuántos
+    ganadores lleva. Se crea solo cuando alguien juega ese día."""
+    __tablename__ = 'promo_guess_rounds'
+    __table_args__ = (
+        db.UniqueConstraint('game_id', 'day_key', name='uq_promo_guess_round'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    day_key = db.Column(db.String(10), nullable=False)
+    secret_number = db.Column(db.Integer, nullable=False)
+    winners_count = db.Column(db.Integer, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PromoGuessAttempt(db.Model):
+    """Intentos usados por un ID en el día. `attempts_used` sube en cada
+    intento (acierte o no) hasta el máximo configurado."""
+    __tablename__ = 'promo_guess_attempts'
+    __table_args__ = (
+        db.UniqueConstraint('game_id', 'day_key', 'player_id', name='uq_promo_guess_attempt'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    day_key = db.Column(db.String(10), nullable=False)
+    player_id = db.Column(db.String(100), nullable=False)
+    attempts_used = db.Column(db.Integer, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PromoGuessWinner(db.Model):
+    """Ganador de un cupo del día en Adivina el Número."""
+    __tablename__ = 'promo_guess_winners'
+    __table_args__ = (
+        db.UniqueConstraint('game_id', 'day_key', 'player_id', name='uq_promo_guess_winner'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    day_key = db.Column(db.String(10), nullable=False, index=True)
+    player_id = db.Column(db.String(100), nullable=False)
+    slot_index = db.Column(db.Integer, nullable=False)
+    guessed_number = db.Column(db.Integer)
+    prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    prize_order = db.relationship('Order')

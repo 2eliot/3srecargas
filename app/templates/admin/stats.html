@@ -9,6 +9,7 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     align-items: end;
+    padding: 0 20px 20px;
 }
 
 .stats-field {
@@ -86,7 +87,13 @@
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
+    padding: 0 20px 20px;
 }
+
+/* Los admin-card de esta página no siempre pasan por .card-header (que ya
+   trae su propio relleno) — sin esto, el título y el contenido que sigue
+   quedaban pegados al borde de la tarjeta. */
+.stats-section-head { padding: 20px 20px 0; }
 
 .stats-day-card {
     display: block;
@@ -243,6 +250,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+    padding: 0 20px 20px;
 }
 
 .coupon-badge {
@@ -500,8 +508,13 @@
         </div>
     </div>
 
+    <div class="form-group" style="margin:0 0 14px;padding:0 20px;">
+        <input type="text" id="dailyOrdersSearchInput" class="glass-input" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);width:100%;max-width:420px;"
+               placeholder="Buscar por # orden, ID o correo, cupón, juego o paquete...">
+    </div>
+
     <div class="table-wrap">
-        <table class="stats-table">
+        <table class="stats-table" id="dailyOrdersTable">
             <thead>
                 <tr>
                     <th># Orden</th>
@@ -517,7 +530,7 @@
             <tbody>
                 {% if daily_orders %}
                     {% for item in daily_orders %}
-                    <tr>
+                    <tr data-order-search="{{ (item.order_number ~ ' ' ~ item.game_name ~ ' ' ~ item.package_name ~ ' ' ~ item.coupon_label ~ ' ' ~ item.customer_label)|lower }}">
                         <td data-label="# Orden"><span class="order-number-chip">#{{ item.order_number }}</span></td>
                         <td data-label="Servicio / Paquete">
                             <div class="stats-game">{{ item.game_name }}</div>
@@ -536,8 +549,38 @@
                     <td colspan="8" class="empty-state-admin">No hay órdenes registradas para ese día y filtro.</td>
                 </tr>
                 {% endif %}
+                <tr id="dailyOrdersSearchEmptyRow" hidden>
+                    <td colspan="8" class="empty-state-admin">Ninguna orden coincide con esa búsqueda.</td>
+                </tr>
             </tbody>
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var searchInput = document.getElementById('dailyOrdersSearchInput');
+    var table = document.getElementById('dailyOrdersTable');
+    if (!searchInput || !table) return;
+
+    var emptyRow = document.getElementById('dailyOrdersSearchEmptyRow');
+    var rows = Array.prototype.filter.call(
+        table.querySelectorAll('tbody tr'),
+        function (row) { return row.hasAttribute('data-order-search'); }
+    );
+
+    searchInput.addEventListener('input', function () {
+        var term = searchInput.value.trim().toLowerCase();
+        var visibles = 0;
+        rows.forEach(function (row) {
+            var coincide = !term || row.getAttribute('data-order-search').indexOf(term) !== -1;
+            row.hidden = !coincide;
+            if (coincide) visibles++;
+        });
+        if (emptyRow) emptyRow.hidden = !(term && visibles === 0);
+    });
+})();
+</script>
 {% endblock %}

@@ -21,7 +21,11 @@ from ..utils.minigames import (
     play_order_minigame,
     select_order_minigame,
 )
-from ..utils.points import award_points_for_order, get_player_points_balance, get_points_enabled_games, get_points_spin_cost, spend_points_and_spin
+from ..utils.points import (
+    award_points_for_order, get_player_points_balance,
+    get_points_enabled_games, get_points_redeem_enabled_games, get_points_redeem_options,
+    get_points_spin_cost, redeem_points_for_package, spend_points_and_spin,
+)
 from ..utils.payment_verification import (
     find_reference_conflict,
     is_auto_verify_enabled,
@@ -1406,6 +1410,54 @@ def points_spin():
     except Exception as exc:
         db.session.rollback()
         return jsonify({'ok': False, 'message': f'No se pudo procesar el giro: {exc}'}), 500
+
+    return jsonify({'ok': True, 'result': result})
+
+
+@checkout_bp.route('/api/points/redeem-games')
+def points_redeem_games():
+    return jsonify({'ok': True, 'games': get_points_redeem_enabled_games()})
+
+
+@checkout_bp.route('/api/points/redeem-options')
+def points_redeem_options():
+    try:
+        game_id = int(request.args.get('game_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Elige un juego válido.'}), 400
+
+    options = get_points_redeem_options(game_id)
+    return jsonify({
+        'ok': True,
+        'options': [
+            {'option_id': o.id, 'package_name': o.package.name, 'points_cost': o.points_cost}
+            for o in options
+        ],
+    })
+
+
+@checkout_bp.route('/api/points/redeem', methods=['POST'])
+def points_redeem():
+    payload = request.get_json(silent=True) or {}
+    try:
+        game_id = int(payload.get('game_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Elige un juego válido.'}), 400
+
+    player_id = str(payload.get('player_id') or '').strip()
+    try:
+        option_id = int(payload.get('option_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Elige qué paquete quieres canjear.'}), 400
+
+    try:
+        result = redeem_points_for_package(game_id, player_id, option_id)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': str(exc)}), 400
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': f'No se pudo procesar el canje: {exc}'}), 500
 
     return jsonify({'ok': True, 'result': result})
 

@@ -127,6 +127,7 @@
 
     var validated = null;   // datos del código validado en el paso 1
     var busy = false;
+    var codeYaCanjeado = false;   // el último intento chocó con un código ya usado
 
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -139,6 +140,35 @@
         el.textContent = msg || '';
         el.classList.remove('is-error', 'is-success');
         if (msg && kind) el.classList.add(kind);
+    }
+
+    /* Código ya canjeado: primera línea en rojo, el resto (nombre, ID,
+       fecha, hora) en blanco opaco, cada dato en su propia línea. */
+    function setUsedFeedback(el, usado) {
+        if (!el) return;
+        el.textContent = '';
+        el.classList.remove('is-error', 'is-success');
+        el.classList.add('is-error');
+
+        codeYaCanjeado = true;
+
+        var linea = document.createElement('span');
+        linea.className = 'rdm-used-line';
+        linea.textContent = 'Ese código ya fue canjeado por:';
+        el.appendChild(linea);
+
+        var detalles = [];
+        if (usado.nickname) detalles.push(usado.nickname);
+        if (usado.player_id) detalles.push('ID: ' + usado.player_id);
+        if (usado.fecha) detalles.push('Fecha: ' + usado.fecha);
+        if (usado.hora) detalles.push('Hora: ' + usado.hora);
+
+        detalles.forEach(function (texto) {
+            var span = document.createElement('span');
+            span.className = 'rdm-used-detail';
+            span.textContent = texto;
+            el.appendChild(span);
+        });
     }
 
     function setBusy(btn, on, labelBusy) {
@@ -164,7 +194,11 @@
             return r.json().catch(function () {
                 throw new Error('No se pudo contactar al servidor.');
             }).then(function (data) {
-                if (!r.ok || !data.ok) throw new Error(data.message || 'Algo salió mal.');
+                if (!r.ok || !data.ok) {
+                    var err = new Error(data.message || 'Algo salió mal.');
+                    err.data = data;
+                    throw err;
+                }
                 return data;
             });
         });
@@ -176,6 +210,7 @@
         var bloques = limpio.match(/.{1,4}/g);
         codeInput.value = bloques ? bloques.join('-') : '';
         setFeedback(codeFeedback, '');
+        codeYaCanjeado = false;
     });
 
     codeInput.addEventListener('keydown', function (evt) {
@@ -184,6 +219,17 @@
 
     function validarCodigo() {
         if (busy) return;
+
+        /* El aviso anterior decía "código ya canjeado": el botón no debe
+           reintentar el mismo código, sino dejar el campo listo para otro. */
+        if (codeYaCanjeado) {
+            codeYaCanjeado = false;
+            codeInput.value = '';
+            setFeedback(codeFeedback, '');
+            codeInput.focus();
+            return;
+        }
+
         var code = codeInput.value.trim();
         if (!code) {
             setFeedback(codeFeedback, 'Escribe tu código.', 'is-error');
@@ -217,7 +263,12 @@
                 playerInput.focus();
             })
             .catch(function (err) {
-                setFeedback(codeFeedback, err.message, 'is-error');
+                var usado = err.data && err.data.already_used;
+                if (usado) {
+                    setUsedFeedback(codeFeedback, usado);
+                } else {
+                    setFeedback(codeFeedback, err.message, 'is-error');
+                }
             })
             .finally(function () { setBusy(checkBtn, false); });
     }

@@ -2,8 +2,19 @@
 {% block title %}Configuración{% endblock %}
 {% block page_title %}Configuración General{% endblock %}
 
+{% block extra_css %}
+<style>
+/* Los títulos de sección en blanco se confundían con las etiquetas de los
+   campos (también en blanco y negrita) — el morado los separa de un
+   vistazo, igual que el acento que ya usa el resto del panel. */
+.settings-card h2, .settings-card h3 {
+    color: var(--accent);
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="admin-card">
+<div class="admin-card settings-card" style="padding:26px 28px;">
     <h2 style="margin-bottom:16px;">Tasa y Preferencias</h2>
     <form method="POST" action="{{ url_for('admin_bp.settings') }}" enctype="multipart/form-data">
         <div class="form-grid-2">
@@ -85,8 +96,8 @@
                 <p class="form-hint">Al hacer clic en el banner, el cliente será llevado a este link. Déjalo vacío si no quieres que sea clicable.</p>
             </div>
         </div>
-        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
-        <h3 style="margin-bottom:16px;">Verificación Automática de Pagos</h3>
+        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
+        <h3 style="margin-bottom:20px;">Verificación Automática de Pagos</h3>
         <div class="form-grid-2">
             <div class="form-group">
                 <label class="check-label" style="margin-top:30px;">
@@ -109,8 +120,8 @@
             </div>
         </div>
 
-        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
-        <h3 style="margin-bottom:16px;">Binance Pay Automático</h3>
+        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
+        <h3 style="margin-bottom:20px;">Binance Pay Automático</h3>
         <div class="form-grid-2">
             <div class="form-group">
                 <label class="check-label" style="margin-top:30px;">
@@ -135,8 +146,8 @@
             </div>
         </div>
 
-        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
-        <h3 style="margin-bottom:16px;">Horario de las recargas manuales</h3>
+        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
+        <h3 style="margin-bottom:20px;">Horario de las recargas manuales</h3>
         <div class="form-grid-2">
             <div class="form-group">
                 <label for="manual_open_hour">Abren a las (hora Venezuela)</label>
@@ -168,8 +179,8 @@
             </div>
         </div>
 
-        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
-        <h3 style="margin-bottom:16px;">Popup "Únete a nuestra comunidad"</h3>
+        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
+        <h3 style="margin-bottom:20px;">Popup "Únete a nuestra comunidad"</h3>
         <div class="form-grid-2">
             <div class="form-group">
                 <label class="check-label" style="margin-top:30px;">
@@ -196,8 +207,8 @@
             </div>
         </div>
 
-        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
-        <h3 style="margin-bottom:16px;">Video Tutorial por Método de Pago</h3>
+        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
+        <h3 style="margin-bottom:20px;">Video Tutorial por Método de Pago</h3>
         <div class="form-grid-2">
             <div class="form-group">
                 <label for="checkout_payment_video_method">Método de pago</label>
@@ -241,8 +252,38 @@
             </div>
         </div>
 
-        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
-        <h3 style="margin-bottom:16px;">Redes Sociales (Footer)</h3>
+        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
+        <h3 style="margin-bottom:20px;">Video Tutorial Flotante</h3>
+        <p class="form-hint" style="margin-bottom:14px;">
+            Sube un video y aparecerá un botón "Tutorial" arriba de la burbuja de soporte, en todas las páginas.
+            Al tocarlo, el cliente lo ve en una ventana emergente. Si no subes ningún video, el botón no aparece.
+        </p>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="site_tutorial_video_file">Video tutorial</label>
+                <input type="file" id="site_tutorial_video_file" name="site_tutorial_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
+                <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
+                {% if site_tutorial_video_file %}
+                <div class="logo-preview">
+                    <video controls preload="metadata" style="width:100%;max-width:280px;border-radius:12px;display:block;">
+                        <source src="{{ url_for('static', filename='uploads/' + site_tutorial_video_file) }}">
+                    </video>
+                    <label class="remove-logo">
+                        <input type="checkbox" name="remove_site_tutorial_video_file" value="1">
+                        Quitar video tutorial
+                    </label>
+                </div>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="site_tutorial_video_title">Título de la ventana</label>
+                <input type="text" id="site_tutorial_video_title" name="site_tutorial_video_title"
+                       value="{{ site_tutorial_video_title }}" placeholder="Ej: Cómo recargar en 3S Recargas">
+            </div>
+        </div>
+
+        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
+        <h3 style="margin-bottom:20px;">Redes Sociales (Footer)</h3>
         <div class="form-grid-2">
             <div class="form-group">
                 <label for="social_facebook">Facebook URL</label>
@@ -269,8 +310,8 @@
             </div>
         </div>
 
-        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
-        <h3 style="margin-bottom:16px;">Notificaciones por Correo</h3>
+        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
+        <h3 style="margin-bottom:20px;">Notificaciones por Correo</h3>
         <div class="form-grid-2">
             <div class="form-group">
                 <label for="email_brand_name">Nombre de marca (correos)</label>
@@ -321,8 +362,8 @@
             </div>
         </div>
 
-        <hr style="margin:24px 0; border-color: rgba(255,255,255,.06);">
-        <h3 style="margin-bottom:16px;">Rankings Mensuales</h3>
+        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
+        <h3 style="margin-bottom:20px;">Rankings Mensuales</h3>
         <div class="form-grid-2">
             <div class="form-group">
                 <label class="check-label" style="margin-top:30px;">
@@ -453,7 +494,7 @@
 </div>
 
 <!-- Verificación de ID por Scraping -->
-<div class="admin-card" style="margin-top:24px;">
+<div class="admin-card settings-card" style="margin-top:24px; padding:26px 28px;">
     <h2 style="margin-bottom:16px;">Verificación de ID (Scraping)</h2>
     <p class="form-hint" style="margin-bottom:16px;">
         Configura qué juegos activan la verificación automática de ID del jugador antes de comprar.

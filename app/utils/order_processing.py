@@ -71,11 +71,19 @@ def get_order_auto_mappings(order_obj):
             return []
 
         items = []
-        for attr_name in ('catalog_item', 'catalog_item_2'):
-            item = getattr(mapping, attr_name, None)
-            if not item:
-                continue
-            items.append(item)
+        rows = sorted(mapping.items, key=lambda row: row.sort_order or 0) if mapping.items else []
+        if rows:
+            for row in rows:
+                if not row.catalog_item:
+                    continue
+                items.extend([row.catalog_item] * max(1, int(row.quantity or 1)))
+        else:
+            # Mapeo viejo, guardado antes del editor con cantidades: solo
+            # tiene las 2 casillas fijas, sin filas en mapping.items.
+            for attr_name in ('catalog_item', 'catalog_item_2'):
+                item = getattr(mapping, attr_name, None)
+                if item:
+                    items.append(item)
 
         return items
     except Exception:

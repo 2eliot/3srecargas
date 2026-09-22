@@ -97,6 +97,9 @@ def page():
         order = Order.query.filter_by(order_number=order_number).first()
 
     suggested = ''
+    auto_start = False
+    auto_start_email = ''
+    auto_send = False
     if order:
         lines = [
             'Hola, ya completé mi pedido manual y necesito finalizar la recarga.',
@@ -111,6 +114,26 @@ def page():
         if order.zone_id and order.game:
             lines.append(f'{order.game.zone_id_label}: {order.zone_id}')
         suggested = '\n'.join(lines)
+    elif (request.args.get('motivo') or '').strip() == 'clave_mini':
+        # Igual filosofía que `?orden=`: el texto lo arma el servidor, el
+        # navegador solo manda el correo que el mini ya había escrito en el
+        # formulario de login.
+        correo_mini = (request.args.get('correo') or '').strip()
+        lines = ['Soy mini, este es mi correo:']
+        if correo_mini:
+            lines.append(correo_mini)
+        lines.append('Olvidé mi contraseña.')
+        suggested = '\n'.join(lines)
+        # El botón "Olvidé mi contraseña" ya pidió el correo antes de
+        # llegar aquí, así que el chat se manda solo, sin que el mini tenga
+        # que volver a escribir nada. Si el navegador no tiene chat todavía
+        # se abre uno nuevo; si ya tenía uno (un chat es por navegador, no
+        # por motivo), el mensaje se agrega ahí en vez de perderse.
+        if not chat:
+            auto_start = True
+            auto_start_email = correo_mini
+        elif not chat.is_blocked:
+            auto_send = True
 
     # Un chat cerrado sigue siendo visible: el cliente lee lo que se le
     # respondio y, si escribe otra vez, se reabre solo.
@@ -124,6 +147,9 @@ def page():
         messages=messages,
         order=order,
         suggested_message=suggested,
+        auto_start=auto_start,
+        auto_start_email=auto_start_email,
+        auto_send=auto_send,
         idle_minutes=support_service.get_idle_close_minutes(),
     )
 

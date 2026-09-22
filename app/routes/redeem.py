@@ -8,6 +8,7 @@ una compra normal.
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..models import Game, Setting
+from ..utils.timezone import format_ve
 from ..utils.gift_codes import (
     clear_attempts,
     describe_code_problem,
@@ -106,7 +107,24 @@ def validate():
     problema = describe_code_problem(gift)
     if problema:
         register_failed_attempt(ip)
-        return jsonify({'ok': False, 'message': problema}), 404
+        payload = {'ok': False, 'message': problema}
+        if gift and gift.is_used and gift.used_at:
+            fecha = format_ve(gift.used_at, '%d/%m/%Y')
+            hora = format_ve(gift.used_at, '%H:%M:%S')
+            payload['message'] = (
+                f'Ese código ya fue canjeado por:\n'
+                f'{gift.used_nickname or "—"}\n'
+                f'ID: {gift.used_player_id}\n'
+                f'Fecha: {fecha}\n'
+                f'Hora: {hora}'
+            )
+            payload['already_used'] = {
+                'nickname': gift.used_nickname or '',
+                'player_id': gift.used_player_id or '',
+                'fecha': fecha,
+                'hora': hora,
+            }
+        return jsonify(payload), 404
 
     package = gift.package
     game = package.game if package else None

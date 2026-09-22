@@ -24,7 +24,7 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+body { font-family: 'Poppins', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
@@ -201,6 +201,37 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 .nav-item.active { background: rgba(139,92,246,.15); color: var(--accent); }
 .nav-item svg { flex-shrink: 0; }
 .nav-logout:hover { color: var(--danger); background: rgba(239,68,68,.1); }
+
+/* Botón de mantenimiento del sidebar: en rojo fijo (no solo al hover)
+   cuando está prendido, para que sea imposible no notar que la tienda
+   está caída para los visitantes mientras se navega el panel. */
+.nav-maintenance-btn.is-on {
+    color: var(--danger);
+    background: rgba(239,68,68,.12);
+}
+.nav-maintenance-btn.is-on:hover { background: rgba(239,68,68,.2); }
+.nav-maintenance-btn.is-on .nav-badge-count { background: var(--danger); color: #fff; }
+
+/* Grupo colapsable del sidebar (p.ej. "Dinámicas"): el botón se ve igual
+   que un nav-item normal, y abajo se despliega la lista de sub-secciones. */
+.nav-group-toggle { width: 100%; background: none; border: none; cursor: pointer; font: inherit; }
+.nav-group-arrow { margin-left: auto; flex-shrink: 0; transition: transform var(--transition); }
+.nav-group.open > .nav-group-toggle .nav-group-arrow { transform: rotate(90deg); }
+.nav-group.open > .nav-group-toggle { color: var(--text-primary); }
+.nav-submenu {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--transition);
+}
+.nav-submenu-inner {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.nav-group.open .nav-submenu { grid-template-rows: 1fr; }
+.nav-subitem { padding-left: 30px; font-size: 12.5px; }
+html.sidebar-collapsed .nav-subitem { padding-left: 12px; }
 
 .sidebar-footer {
     padding: 10px;
@@ -634,8 +665,8 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 .empty-row { text-align: center; padding: 32px !important; color: var(--text-muted); }
 .no-action { color: var(--text-muted); }
 
-.order-num { font-family: monospace; font-weight: 700; color: var(--accent); font-size: 13px; }
-.ref-code  { background: rgba(255,255,255,.05); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+.order-num { font-family: monospace; font-weight: 700; color: var(--accent); font-size: 13px; white-space: nowrap; }
+.ref-code  { background: rgba(255,255,255,.05); padding: 2px 6px; border-radius: 4px; font-size: 12px; white-space: nowrap; }
 .aff-badge {
     display: inline-block;
     background: rgba(139,92,246,.15);
@@ -644,6 +675,7 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
     font-weight: 700;
     padding: 2px 7px;
     border-radius: 8px;
+    white-space: nowrap;
 }
 .pin-code-cell { font-size: 12px; }
 
@@ -818,7 +850,7 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 }
 
 /* Status badges (same as main.css) */
-.status-badge  { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.status-badge  { display: inline-block; padding: 4px 11px; border-radius: 12px; font-size: 11.5px; font-weight: 600; white-space: nowrap; letter-spacing: .2px; }
 .status-pending   { background: rgba(245,158,11,.15); color: var(--warning); }
 .status-approved  { background: rgba(34,197,94,.15);  color: var(--success); }
 .status-completed { background: rgba(139,92,246,.15); color: #a78bfa; }
@@ -827,12 +859,54 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 .status-paid-pending {
     background: rgba(56,189,248,.15);
     color: #38bdf8;
-    margin-left: 6px;
-    font-size: 11px;
+    margin: 4px 0 0 6px;
+    font-size: 10.5px;
 }
 
 /* Action buttons */
 .action-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.approve-form { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* Adjuntar comprobante: antes era el input de archivo nativo entero (el
+   botón blanco del navegador, con "No file chosen" cortándose feo en la
+   columna angosta). Ahora es un input real pero visualmente oculto —
+   mismo name="delivery_proof", mismo comportamiento — disparado por un
+   <label for="..."> que se ve como un botón más de la fila. El navegador
+   abre el selector de archivos con el label solo, sin JS. */
+.file-attach-input {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+.file-attach-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+.file-attach-btn:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.2); color: var(--text-primary); }
+/* Versión un poco más grande para usarse junto a botones de texto normales
+   (p.ej. la tarjeta "Acciones" del detalle de orden), donde 30px se veía
+   chico al lado de "✓ Aprobar Orden". En la tabla de Órdenes se deja el
+   tamaño chico de siempre porque ahí el espacio es más justo. */
+.file-attach-btn.file-attach-btn-lg { width: 38px; height: 38px; font-size: 16px; border-radius: 8px; }
+/* Se marca en verde apenas se elige un archivo (ver el listener chiquito
+   en orders.html) — así se sabe que sí quedó adjunto sin mostrar el
+   nombre del archivo, que no entraba bien en la columna. */
+.file-attach-btn.has-file { border-color: var(--success); color: var(--success); background: rgba(34,197,94,.12); }
 .btn-sm {
     padding: 5px 10px;
     border-radius: 6px;
@@ -846,6 +920,7 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
     align-items: center;
     justify-content: center;
 }
+.btn-icon-only { width: 30px; height: 30px; padding: 0; font-size: 15px; flex-shrink: 0; }
 .btn-outline  { background: transparent; border-color: var(--border); color: var(--text-muted); }
 .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
 .btn-success  { background: rgba(34,197,94,.15); border-color: var(--success); color: var(--success); }
@@ -871,7 +946,7 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 }
 .orders-filter-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(170px, 1fr));
+    grid-template-columns: repeat(5, minmax(150px, 1fr));
     gap: 10px;
     width: 100%;
     align-items: end;
@@ -987,6 +1062,15 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
     justify-content: center;
 }
 .btn-danger-solid:hover { filter: brightness(1.1); }
+/* .btn-primary/.btn-secondary/.btn-danger-solid se declaran después de
+   .btn-sm en este archivo, así que sin este empate por especificidad
+   compuesta su padding/font-size más grande siempre ganaba y "btn-sm"
+   quedaba sin efecto al combinarlos (p.ej. "btn-sm btn-secondary"). */
+.btn-primary.btn-sm, .btn-secondary.btn-sm, .btn-danger-solid.btn-sm {
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: 6px;
+}
 
 /* ── Modal ──────────────────────────────────────────────── */
 .modal-overlay {
@@ -1023,6 +1107,48 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 .modal-header button { background: none; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; }
 .modal-header button:hover { color: var(--text-primary); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+/* ── Modal: modo mantenimiento ──────────────────────────── */
+.maint-status {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13.5px;
+    font-weight: 600;
+}
+.maint-status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.maint-status.is-off { background: rgba(34,197,94,.1); color: var(--success); }
+.maint-status.is-off .maint-status-dot { background: var(--success); box-shadow: 0 0 8px var(--success); }
+.maint-status.is-on { background: rgba(239,68,68,.12); color: var(--danger); }
+.maint-status.is-on .maint-status-dot { background: var(--danger); box-shadow: 0 0 8px var(--danger); animation: maint-pulse 1.6s ease-in-out infinite; }
+@keyframes maint-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+
+.maint-modal-body form { display: flex; align-items: center; gap: 12px; }
+.maint-toggle-switch {
+    position: relative;
+    width: 50px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    transition: background var(--transition), border-color var(--transition);
+}
+.maint-toggle-switch.is-on { background: var(--danger); border-color: var(--danger); }
+.maint-toggle-knob {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform var(--transition);
+}
+.maint-toggle-switch.is-on .maint-toggle-knob { transform: translateX(22px); }
+.maint-toggle-label { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
 
 /* ── Forms inside modals ────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
@@ -1458,6 +1584,7 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
     max-width: 460px;
     margin: 40px auto;
     text-align: center;
+    padding: 28px 26px;
 }
 .pins-unlock-icon { font-size: 40px; line-height: 1; margin-bottom: 12px; }
 .pins-unlock-card h3 { margin-bottom: 8px; }
@@ -1512,8 +1639,8 @@ html.sidebar-collapsed .sidebar-collapse-toggle svg { transform: rotate(180deg);
 }
 .gift-nick {
     font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted);
+    font-weight: 700;
+    color: #fff;
 }
 .gift-nick.is-ok { color: #4ade80; }
 .gift-nick.is-error { color: #fca5a5; font-weight: 500; }

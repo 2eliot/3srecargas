@@ -8,13 +8,21 @@ juego), se entrega el premio real configurado — reusando el mismo mecanismo
 de entrega automática que el resto de la tienda.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from ..models import Game, MiniGameCounter, Package, PlayerPoints, PointsPrizeMapping, PointsSpinLog, Setting, db
+from ..models import (
+    Game, MiniGameCounter, Package, PlayerPoints, PointsPrizeMapping,
+    PointsRedeemLog, PointsRedeemOption, PointsSpinLog, Setting, db,
+)
 
 DEFAULT_POINTS_PER_DOLLAR = 10
 DEFAULT_POINTS_SPIN_COST = 5
 DEFAULT_POINTS_WIN_INTERVAL = 20
+
+# Cuánto hay que esperar entre dos canjes directos del mismo (juego, ID).
+# Es un enfriamiento de 24h desde el último canje, no "medianoche a
+# medianoche": así no importa la hora del día en la que canjeó la primera vez.
+POINTS_REDEEM_COOLDOWN_HOURS = 24
 
 
 def _get_setting_value(key):
@@ -108,11 +116,19 @@ def order_qualifies_for_points(order):
 
 def award_points_for_order(order):
     """Acredita los puntos de esta orden al saldo (juego, player_id). Es
-    idempotente: si ya se acreditaron para esta orden, no hace nada."""
+    idempotente: si ya se acreditaron para esta orden, no hace nada.
+
+    De paso alimenta la barra de Recarga Acumulada con el mismo monto: es
+    exactamente el mismo criterio de "esto sí es una recarga por ID" que
+    necesita esa promo, así que se resuelve aquí en vez de duplicar la
+    llamada en cada uno de los puntos del código que aprueban una orden."""
     if not order or bool(order.points_awarded):
         return None
     if not order_qualifies_for_points(order):
         return None
+
+    from .promos import award_accumulated_recharge_for_order
+    award_accumulated_recharge_for_order(order)
 
     points = calculate_points_for_purchase(order.amount, order.package)
     order.points_awarded = True
@@ -223,4 +239,109 @@ def spend_points_and_spin(game_id, player_id):
         'prize_label': mapping.package.name,
         'points_spent': cost,
         'points_balance': record.points_balance,
+    }
+
+
+# ─── Canje directo por paquete (sin ruleta) ─────────────────────────────────
+
+def get_points_redeem_options(game_id):
+    """Opciones activas de canje directo para un juego, más baratas primero."""
+    options = (
+        PointsRedeemOption.query
+        .filter_by(game_id=int(game_id), is_active=True)
+        .join(Package, Package.id == PointsRedeemOption.package_id)
+        .filter(Package.is_active.is_(True))
+        .order_by(PointsRedeemOption.sort_order.asc(), PointsRedeemOption.points_cost.asc())
+        .all()
+    )
+    return [o for o in options if o.package]
+
+
+def get_points_redeem_enabled_games():
+    """Juegos que tienen al menos una opción de canje directo activa."""
+    options = (
+        PointsRedeemOption.query
+        .filter_by(is_active=True)
+        .join(Game, Game.id == PointsRedeemOption.game_id)
+        .filter(Game.is_active.is_(True))
+        .all()
+    )
+    games = {}
+    for opt in options:
+        if not opt.game or not opt.package or not opt.package.is_active:
+            continue
+        games[opt.game.id] = opt.game.name
+    return [{'game_id': gid, 'game_name': name} for gid, name in games.items()]
+
+
+def get_last_points_redeem(game_id, player_id):
+    return (
+        PointsRedeemLog.query
+        .filter_by(game_id=int(game_id), player_id=str(player_id or '').strip())
+        .order_by(PointsRedeemLog.created_at.desc())
+        .first()
+    )
+
+
+def redeem_points_for_package(game_id, player_id, option_id):
+    """Gasta los puntos de un canje directo y entrega el paquete. Lanza
+    ValueError con un mensaje listo para mostrar si algo no procede
+    (paquete inválido, sin puntos suficientes, o límite diario)."""
+    game_id = int(game_id)
+    player_id = str(player_id or '').strip()
+    if not player_id:
+        raise ValueError('Ingresa el ID del juego para poder canjear.')
+
+    option = PointsRedeemOption.query.filter_by(id=option_id, game_id=game_id, is_active=True).first()
+    if not option or not option.package or not option.package.is_active:
+        raise ValueError('Ese paquete ya no está disponible para canjear.')
+
+    last = get_last_points_redeem(game_id, player_id)
+    if last and last.created_at:
+        proxima = last.created_at + timedelta(hours=POINTS_REDEEM_COOLDOWN_HOURS)
+        if datetime.utcnow() < proxima:
+            from .timezone import format_ve
+            raise ValueError(
+                f'Ya canjeaste un paquete hoy. Puedes volver a canjear a partir de las '
+                f'{format_ve(proxima)}.'
+            )
+
+    record = PlayerPoints.query.filter_by(game_id=game_id, player_id=player_id).first()
+    balance = int(record.points_balance) if record else 0
+    if balance < option.points_cost:
+        raise ValueError(
+            f'No tienes suficientes puntos. Este premio cuesta {option.points_cost} '
+            f'puntos y tienes {balance}.'
+        )
+
+    record.points_balance = balance - option.points_cost
+    record.updated_at = datetime.utcnow()
+
+    from .order_processing import deliver_prize_to_player
+
+    game = Game.query.get(game_id)
+    prize_order, approval = deliver_prize_to_player(
+        game, option.package, player_id,
+        note=f'Premio canjeado con puntos ({option.points_cost} pts, canje directo).',
+        reference_prefix='CANJE',
+    )
+
+    log = PointsRedeemLog(
+        game_id=game_id,
+        player_id=player_id,
+        option_id=option.id,
+        package_id=option.package_id,
+        points_spent=option.points_cost,
+        prize_order_id=prize_order.id if prize_order else None,
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    delivered = bool(prize_order and approval and approval.get('ok'))
+    return {
+        'package_name': option.package.name,
+        'points_spent': option.points_cost,
+        'points_balance': record.points_balance,
+        'delivered': delivered,
+        'order_number': prize_order.order_number if prize_order else '',
     }

@@ -15,7 +15,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy.exc import IntegrityError
 
-from ..models import Affiliate, AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier, PaymentMethod, db
+from ..models import Affiliate, AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod, Setting, db
 from ..utils.mini_influencers import (
     clear_attempts,
     count_qualifying_uses,
@@ -195,8 +195,14 @@ def panel():
         if affiliate.status == 'approved' else []
     )
     view_tiers = MiniViewTier.query.order_by(MiniViewTier.sort_order.asc(), MiniViewTier.min_views.asc()).all()
-    payment_methods = PaymentMethod.query.filter_by(is_active=True).order_by(PaymentMethod.sort_order.asc()).all()
+    payment_methods = MiniPayoutMethod.query.filter_by(is_active=True).order_by(MiniPayoutMethod.sort_order.asc(), MiniPayoutMethod.name.asc()).all()
     has_pending_withdrawal = any(w.status == 'pending' for w in withdrawals)
+
+    program_settings = {
+        s.key: s.value for s in Setting.query.filter(
+            Setting.key.in_(['mini_rules_text', 'mini_rules_video_url', 'mini_whatsapp_group_url'])
+        ).all()
+    }
 
     return render_template(
         'minis/panel.html',
@@ -207,6 +213,9 @@ def panel():
         view_tiers=view_tiers,
         payment_methods=payment_methods,
         has_pending_withdrawal=has_pending_withdrawal,
+        mini_rules_text=program_settings.get('mini_rules_text', ''),
+        mini_rules_video_url=program_settings.get('mini_rules_video_url', ''),
+        mini_whatsapp_group_url=program_settings.get('mini_whatsapp_group_url', ''),
     )
 
 
@@ -329,7 +338,7 @@ def mini_withdraw():
         return jsonify({'ok': False, 'message': 'El monto a retirar debe ser mayor a 0.'}), 400
     if amount > float(affiliate.balance or 0):
         return jsonify({'ok': False, 'message': 'No tienes saldo suficiente para ese monto.'}), 400
-    if not PaymentMethod.query.filter_by(code=method, is_active=True).first():
+    if not MiniPayoutMethod.query.filter_by(name=method, is_active=True).first():
         return jsonify({'ok': False, 'message': 'Selecciona un método de pago válido.'}), 400
     if not payout_details:
         return jsonify({'ok': False, 'message': 'Escribe los datos donde quieres recibir el pago.'}), 400

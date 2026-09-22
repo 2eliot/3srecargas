@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>En mantenimiento — 3S Recargas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --nx-red: #FF0000; --nx-red-dark: #c80000; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #050505;
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            padding: 24px;
+            text-align: center;
+        }
+        .card {
+            max-width: 440px;
+            padding: 40px 28px;
+            border-radius: 20px;
+            background: linear-gradient(180deg, #14070a 0%, #0a0508 100%);
+            border: 1px solid rgba(255, 0, 0, .3);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+        }
+        .icon {
+            width: 64px; height: 64px;
+            margin: 0 auto 18px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(255, 0, 0, .15);
+            border: 1px solid rgba(255, 0, 0, .4);
+            font-size: 28px;
+        }
+        h1 {
+            font-weight: 900;
+            font-size: 22px;
+            margin: 0 0 10px;
+        }
+        p {
+            font-size: 14px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, .65);
+            margin: 0;
+        }
+        .brand {
+            margin-top: 26px;
+            font-weight: 800;
+            font-size: 13px;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, .35);
+        }
+        .brand span { color: var(--nx-red); }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">🛠️</div>
+        <h1>Estamos mejorando la tienda</h1>
+        <p>Volvemos en unos minutos. Gracias por tu paciencia — ya casi terminamos.</p>
+        <div class="brand">3S<span>Recargas</span></div>
+    </div>
+</body>
+</html>

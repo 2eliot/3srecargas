@@ -18,6 +18,7 @@ from ..utils.availability import (
     package_is_out_of_stock,
 )
 from ..utils.points import package_points_preview
+from ..utils.order_units import extract_order_units
 from ..utils.timezone import now_ve, ve_day_start_utc_naive, today_ve_str
 from ..utils.catalog_version import site_version
 from ..utils.push_notifications import get_vapid_public_key, subscribe as push_subscribe, unsubscribe as push_unsubscribe
@@ -124,19 +125,7 @@ def _mask_nickname(nickname):
     return visible + '***'
 
 
-def _extract_order_units(order):
-    package_name = (order.package.name if order.package else '') or ''
-    package_desc = (order.package.description if order.package else '') or ''
-    search_text = f'{package_name} {package_desc}'
-    matches = re.findall(r'\d[\d.,]*', search_text)
-    if matches:
-        digits = re.sub(r'\D', '', matches[0])
-        if digits:
-            return int(digits)
-    try:
-        return int(float(order.amount or 0))
-    except (TypeError, ValueError):
-        return 0
+_extract_order_units = extract_order_units
 
 
 def _get_ranking_entries(game_id, target_date=None):

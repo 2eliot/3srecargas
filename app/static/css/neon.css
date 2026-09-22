@@ -380,6 +380,7 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 .drawer-icon-mini { background: rgba(168,85,247,.2); color: #c084fc; }
 .drawer-icon-user,
 .drawer-icon-login { background: rgba(255,0,0,.2); color: var(--nx-red); }
+.drawer-icon-support { background: rgba(255,0,0,.2); color: var(--nx-red); }
 
 .drawer-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .drawer-item-text strong {
@@ -393,6 +394,29 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     color: rgba(255,255,255,.45);
     line-height: 1.35;
 }
+
+.drawer-item-chevron {
+    flex: 0 0 auto;
+    margin-left: auto;
+    color: rgba(255,255,255,.4);
+    transition: transform .2s ease;
+}
+.drawer-item-toggle[aria-expanded="true"] .drawer-item-chevron { transform: rotate(90deg); color: #fff; }
+.drawer-item-toggle[aria-expanded="true"] { border-color: rgba(255,0,0,.5); background: rgba(255,0,0,.07); }
+
+.drawer-submenu {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    padding-left: 18px;
+    margin-top: -2px;
+    border-left: 1px dashed rgba(255,255,255,.12);
+}
+.drawer-submenu:not([hidden]) { display: flex; }
+.drawer-subitem { padding: 9px 12px; background: rgba(255,255,255,.015); }
+.drawer-subitem .drawer-item-icon { width: 28px; height: 28px; }
+.drawer-subitem .drawer-item-icon svg { width: 14px; height: 14px; }
+.drawer-subitem .drawer-item-text strong { font-size: 12px; }
 
 .drawer-sep {
     height: 1px;
@@ -507,6 +531,16 @@ body.drawer-open { overflow: hidden; }
     box-shadow: 0 4px 14px rgba(0,0,0,.4);
 }
 .footer-rif svg { width: 13px; height: 13px; color: #94a3b8; }
+
+.footer-support-btn {
+    background: linear-gradient(135deg, var(--nx-red), #b91c1c) !important;
+    border: 1px solid rgba(255,80,80,.7) !important;
+    color: #fff !important;
+    animation: nx-pulse-glow 2.5s infinite ease-in-out;
+    transition: transform .15s ease, filter .15s ease;
+}
+.footer-support-btn svg { color: #fff !important; }
+.footer-support-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
 
 .footer-heading {
     color: var(--nx-red) !important;
@@ -1981,6 +2015,48 @@ body.drawer-open { overflow: hidden; }
 }
 .points-balance-amount span { font-size: 10.5px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .08em; }
 
+/* Paso de elección: ruleta vs canje directo por paquete. */
+.points-choice-options { display: flex; flex-direction: column; gap: 12px; margin: 0 24px 18px; }
+.points-choice-option {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    border-radius: 16px;
+    background: #0a0a0a;
+    border: 1px solid rgba(255, 0, 0, .3);
+    color: #fff;
+    text-align: left;
+    cursor: pointer;
+    transition: all .2s ease;
+}
+.points-choice-option:hover { background: #151515; border-color: rgba(255, 0, 0, .6); }
+.points-choice-icon { font-size: 26px; line-height: 1; flex-shrink: 0; }
+.points-choice-text { display: flex; flex-direction: column; gap: 2px; }
+.points-choice-text strong { font-family: var(--nx-font-display); font-size: 14px; font-weight: 800; }
+.points-choice-text small { font-size: 11.5px; color: var(--nx-muted); }
+
+/* Lista de paquetes canjeables directo, tipo tarjetas seleccionables. */
+.points-redeem-list { display: flex; flex-direction: column; gap: 10px; margin: 0 24px 14px; max-height: 260px; overflow-y: auto; }
+.points-redeem-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 13px 14px;
+    border-radius: 14px;
+    background: #0a0a0a;
+    border: 1px solid rgba(255, 0, 0, .25);
+    color: #fff;
+    cursor: pointer;
+    transition: all .2s ease;
+}
+.points-redeem-option:hover { background: #151515; }
+.points-redeem-option.is-selected { border-color: #ff0000; background: rgba(255, 0, 0, .12); box-shadow: 0 0 18px rgba(255, 0, 0, .3); }
+.points-redeem-option-name { font-size: 13.5px; font-weight: 700; }
+.points-redeem-option-cost { font-size: 12px; font-weight: 800; color: #ff8080; white-space: nowrap; }
+.points-redeem-option.is-disabled { opacity: .45; cursor: not-allowed; }
+
 /* Tira horizontal tipo apertura de caja (CS2). El item que cae bajo el
    laser central es el resultado real; el resto es solo relleno visual. */
 .points-strip-viewport {
@@ -3113,14 +3189,23 @@ body.drawer-open { overflow: hidden; }
 .rdm-link-btn:hover { color: #fff; }
 
 .rdm-feedback {
-    font-size: 11.5px;
+    font-size: 14.5px;
     font-weight: 700;
     margin: 0;
     min-height: 15px;
     line-height: 1.4;
+    white-space: pre-line;
 }
 .rdm-feedback.is-error { color: #fb7185; }
 .rdm-feedback.is-success { color: #34d399; }
+
+.rdm-used-line { display: block; color: #fb7185; }
+.rdm-used-detail {
+    display: block;
+    color: rgba(255, 255, 255, .78);
+    font-weight: 600;
+    margin-top: 2px;
+}
 
 /* Premio confirmado, arriba del paso del ID. */
 .rdm-prize {
@@ -3613,26 +3698,30 @@ body.drawer-open { overflow: hidden; }
     position: fixed;
     bottom: 20px; right: 20px;
     z-index: 900;
-    width: 56px; height: 56px;
-    padding: 0;
-    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 999px;
     border: 1px solid rgba(255,255,255,0.4);
     background: var(--nx-red);
     color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    text-decoration: none;
+    font-family: var(--nx-font-display);
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: .02em;
     cursor: pointer;
     box-shadow: 0 0 25px rgba(255,0,0,0.8);
     transition: transform .25s ease, filter .25s ease;
     animation: nx-pulse-glow 2.5s infinite ease-in-out;
 }
-.nx-chat-float:hover { transform: scale(1.1); filter: brightness(1.1); }
-.nx-chat-float svg { width: 26px; height: 26px; }
+.nx-chat-float:hover { transform: scale(1.05); filter: brightness(1.1); }
+.nx-chat-float svg { width: 15px; height: 15px; flex: none; }
 
 .nx-chat-float-dot {
     position: absolute;
-    top: 4px; right: 4px;
+    top: -4px; right: -4px;
     width: 12px; height: 12px;
     border-radius: 50%;
     background: #22c55e;
@@ -3641,8 +3730,91 @@ body.drawer-open { overflow: hidden; }
 }
 
 @media (max-width: 480px) {
-    .nx-chat-float { bottom: 16px; right: 14px; width: 50px; height: 50px; }
-    .nx-chat-float svg { width: 23px; height: 23px; }
+    .nx-chat-float { bottom: 16px; right: 14px; padding: 8px 13px; font-size: 11px; }
+    .nx-chat-float svg { width: 14px; height: 14px; }
+}
+
+/* Botón "Tutorial": flota justo arriba de la burbuja de soporte. */
+.nx-tutorial-float {
+    position: fixed;
+    bottom: 68px; right: 20px;
+    z-index: 900;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.4);
+    background: var(--nx-red);
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: .02em;
+    cursor: pointer;
+    box-shadow: 0 0 18px rgba(255,0,0,.55);
+    transition: transform .2s ease, filter .2s ease;
+}
+.nx-tutorial-float:hover { transform: scale(1.05); filter: brightness(1.1); }
+.nx-tutorial-float svg { width: 15px; height: 15px; flex: none; }
+
+@media (max-width: 480px) {
+    .nx-tutorial-float { bottom: 58px; right: 14px; padding: 8px 13px; font-size: 11px; }
+}
+
+.nx-tutorial-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.nx-tutorial-modal:not([hidden]) { display: flex; }
+.nx-tutorial-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,.82);
+    backdrop-filter: blur(3px);
+}
+.nx-tutorial-modal-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 420px;
+    background: #0b0b12;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.6);
+    overflow: hidden;
+}
+.nx-tutorial-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-size: 13px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.nx-tutorial-modal-head button {
+    background: rgba(255,255,255,.08);
+    border: none;
+    color: #fff;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+}
+.nx-tutorial-modal-head button:hover { background: rgba(255,0,0,.3); }
+.nx-tutorial-modal-card video {
+    display: block;
+    width: 100%;
+    max-height: 70vh;
+    background: #000;
 }
 
 .support-attach-btn{

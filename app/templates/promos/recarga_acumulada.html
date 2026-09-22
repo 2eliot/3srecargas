@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recarga Acumulada - 3S Recargas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<style>
+    body { font-family: 'Outfit', sans-serif; background-color: #000000; color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+    .custom-glow { box-shadow: 0 0 25px rgba(220, 38, 38, 0.25); }
+    @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 12px rgba(220, 38, 38, 0.4); } 50% { box-shadow: 0 0 25px rgba(220, 38, 38, 0.7); } }
+    .glow-effect { animation: pulse-glow 2s infinite; }
+    [hidden] { display: none !important; }
+</style>
+</head>
+<body class="min-h-screen flex flex-col p-3 sm:p-5 relative bg-black selection:bg-red-600 selection:text-white">
+
+<div class="w-full max-w-md mx-auto">
+    <a href="{{ url_for('main_bp.index') }}" class="inline-flex items-center gap-1.5 bg-black border border-red-500/40 hover:border-red-500 hover:bg-red-600/10 text-slate-300 hover:text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-sm transition w-fit active:scale-95">
+        <span>←</span> Volver a la tienda
+    </a>
+</div>
+
+<header class="w-full max-w-md mx-auto flex flex-col items-center text-center my-2">
+    <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] sm:text-xs font-extrabold px-4 py-1 rounded-full uppercase tracking-widest mb-2 shadow-lg shadow-red-600/30 animate-pulse border border-red-400/30">
+        <span>⚡</span> 3S RECARGAS • Recompensas <span>🔥</span>
+    </div>
+    <h1 class="text-xl sm:text-2xl font-extrabold tracking-wider text-white">💎 PREMIO SEGURO</h1>
+    <p class="text-slate-400 text-xs mt-1 px-2">Llena tu barra con recargas del mes y reclama premios exclusivos.</p>
+</header>
+
+<main class="w-full max-w-md mx-auto flex flex-col items-center gap-4 mt-4">
+
+    {% if not games %}
+    <div class="w-full bg-[#000000] border-2 border-red-500/50 p-6 rounded-2xl text-center text-slate-300 text-sm">
+        Esta promoción no está activa en este momento. Vuelve pronto.
+    </div>
+    {% else %}
+
+    {% if games|length > 1 %}
+    <select id="gameSelect" class="w-full bg-black border border-red-500/40 rounded-xl px-3 py-2.5 text-xs text-white">
+        {% for g in games %}
+        <option value="{{ g.id }}" {{ 'selected' if game and game.id == g.id }}>{{ g.name }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+
+    <div id="idFormBox" class="w-full bg-[#000000] border border-red-500/40 p-4 rounded-xl shadow-inner flex flex-col gap-2.5">
+        <span class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Tu ID de {{ game.name if game else 'juego' }}</span>
+        <div class="flex gap-2">
+            <input type="text" inputmode="numeric" id="playerIdInput" placeholder="Tu ID (ej: 123456789)..."
+                   class="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono">
+            <button id="checkBtn" class="bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold text-xs px-4 rounded-xl">Ver progreso</button>
+        </div>
+        <p id="formMsg" class="text-[11px] text-red-400 font-semibold min-h-[14px]"></p>
+    </div>
+
+    <div id="playerCard" class="w-full bg-[#000000] border border-red-500/40 p-4 rounded-xl shadow-inner flex items-center justify-between" hidden>
+        <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-500 text-base">🎮</div>
+            <div class="text-left">
+                <div id="playerCardName" class="text-white font-bold text-xs">Jugador</div>
+                <div id="playerCardId" class="text-slate-400 text-[10px] font-mono">ID: --</div>
+            </div>
+        </div>
+        <button id="changeIdBtn" class="text-[10px] text-slate-400 hover:text-white font-semibold underline">Cambiar ID</button>
+    </div>
+
+    <div id="progressCard" class="w-full bg-[#000000] border-2 border-red-500/50 p-4 sm:p-6 rounded-2xl shadow-xl flex flex-col gap-3 custom-glow relative overflow-hidden" hidden>
+        <div class="absolute -right-10 -top-10 w-36 h-36 bg-red-600/10 rounded-full blur-2xl pointer-events-none"></div>
+
+        <div class="flex justify-between items-center text-xs sm:text-sm font-bold">
+            <span id="levelTitleDisplay" class="text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <i class="fa-solid fa-shield-halved text-red-500"></i> <span id="levelTitleText">Nivel</span>
+            </span>
+            <span id="progressPercentage" class="text-red-500 font-black text-base sm:text-lg">0%</span>
+        </div>
+
+        <div class="w-full h-4 sm:h-5 bg-black rounded-full overflow-hidden p-0.5 border border-red-500/30 shadow-inner relative">
+            <div id="progressBarFill" class="h-full bg-gradient-to-r from-red-600 to-rose-600 rounded-full transition-all duration-500 ease-out w-0 shadow-lg shadow-red-600/50"></div>
+        </div>
+    </div>
+
+    <div id="levelsMatrix" class="w-full grid grid-cols-1 gap-2.5"></div>
+
+    <div id="completedBanner" class="w-full bg-black border-2 border-amber-500/60 p-4 rounded-xl text-center" hidden>
+        <div class="text-amber-400 font-black text-sm">🏆 ¡Completaste todos los niveles de este mes!</div>
+        <p class="text-slate-400 text-[11px] mt-1">La barra se reinicia el 1° de cada mes.</p>
+    </div>
+
+    {% endif %}
+</main>
+
+<footer class="text-[10px] sm:text-xs text-slate-500 text-center mt-auto pt-6 flex items-center justify-center gap-1 py-2">
+    <span>🛡</span> 3SRecargas • Recarga Acumulada &copy; 2026
+</footer>
+
+<script>
+const GAME_ID = {{ (game.id if game else 'null') }};
+
+function switchGame(id) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('game_id', id);
+    window.location.href = url.toString();
+}
+const gameSelect = document.getElementById('gameSelect');
+if (gameSelect) gameSelect.addEventListener('change', () => switchGame(gameSelect.value));
+
+const LEVEL_ICONS = ['fa-shield-halved', 'fa-shield', 'fa-shield-dog'];
+
+function renderLevelsMatrix(levels, currentLevelNumber, completedAll, awardedLevelNumbers) {
+    const box = document.getElementById('levelsMatrix');
+    box.innerHTML = '';
+    levels.forEach((lvl, idx) => {
+        const isCurrent = !completedAll && lvl.level_number === currentLevelNumber;
+        const isDone = completedAll || lvl.level_number < currentLevelNumber || awardedLevelNumbers.includes(lvl.level_number);
+        const card = document.createElement('div');
+        card.className = 'bg-[#000000] border p-3.5 rounded-xl shadow-lg transition-all flex items-center justify-between ' +
+            (isCurrent ? 'border-2 border-red-500/60' : isDone ? 'border-zinc-900 opacity-40' : 'border-zinc-900');
+        card.innerHTML = `
+            <span class="font-bold text-xs ${isDone ? 'text-slate-300' : 'text-red-400'} flex items-center gap-2">
+                <i class="fa-solid ${isDone ? 'fa-circle-check' : 'fa-award'}"></i> Nivel ${lvl.level_number}: ${lvl.level_name}
+            </span>
+            <span class="text-xs font-black text-amber-400">Premio: ${lvl.reward_label || '—'}</span>`;
+        box.appendChild(card);
+    });
+}
+
+async function loadProgress(playerId) {
+    const msg = document.getElementById('formMsg');
+    msg.textContent = '';
+    if (!playerId || playerId.length < 4) {
+        msg.textContent = 'Ingresa un ID válido.';
+        return;
+    }
+    try {
+        const res = await fetch(`/promos/api/recarga-acumulada/estado?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
+        const data = await res.json();
+        if (!data.ok || !data.enabled) {
+            msg.textContent = data.error || 'Esta promoción no está activa para este juego.';
+            document.getElementById('progressCard').hidden = true;
+            document.getElementById('levelsMatrix').innerHTML = '';
+            return;
+        }
+        document.getElementById('progressCard').hidden = false;
+        const percentage = data.percentage || 0;
+        document.getElementById('progressPercentage').textContent = percentage + '%';
+        document.getElementById('progressBarFill').style.width = percentage + '%';
+
+        document.getElementById('idFormBox').hidden = true;
+        document.getElementById('playerCard').hidden = false;
+        document.getElementById('playerCardName').textContent = data.player_nick || 'Jugador';
+        document.getElementById('playerCardId').textContent = `ID: ${playerId}`;
+
+        const levels = data.levels || [];
+        const completedAll = data.completed_all;
+        const currentLevel = levels.find(l => l.level_number === data.current_level_number);
+        document.getElementById('levelTitleText').textContent = completedAll
+            ? 'Todos los niveles completados'
+            : (currentLevel ? ('Nivel ' + currentLevel.level_name) : 'Nivel');
+
+        document.getElementById('completedBanner').hidden = !completedAll;
+
+        const awardedLevelNumbers = (data.awards_this_month || []).map(a => a.level_number);
+        renderLevelsMatrix(levels, data.current_level_number, completedAll, awardedLevelNumbers);
+    } catch (e) {
+        msg.textContent = 'No se pudo cargar tu progreso, intenta de nuevo.';
+    }
+}
+
+document.getElementById('checkBtn').addEventListener('click', () => {
+    loadProgress(document.getElementById('playerIdInput').value.trim());
+});
+document.getElementById('playerIdInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loadProgress(e.target.value.trim());
+});
+document.getElementById('changeIdBtn').addEventListener('click', () => {
+    document.getElementById('playerCard').hidden = true;
+    document.getElementById('idFormBox').hidden = false;
+    document.getElementById('playerIdInput').value = '';
+    document.getElementById('playerIdInput').focus();
+});
+</script>
+</body>
+</html>

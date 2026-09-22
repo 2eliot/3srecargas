@@ -32,7 +32,44 @@
 .sup-bar-who strong{display:block;color:#f1f5f9;font-size:.92rem}
 .sup-bar-who span{display:block;font-size:.74rem;color:#94a3b8;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sup-bar-tags{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;max-width:45%}
+.sup-bar-tags{position:relative;flex:none;max-width:45%}
+.sup-tag-picker-btn{
+    display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;
+    max-width:100%;padding:5px 8px;border-radius:9px;border:1px solid transparent;
+    background:none;cursor:pointer;
+}
+.sup-tag-picker-btn:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04)}
+.sup-tag-picker-btn svg{flex:none;color:#94a3b8}
+.sup-tag-empty{background:rgba(255,255,255,.08)!important;color:#94a3b8}
+.sup-tag-panel{
+    position:absolute;top:calc(100% + 6px);right:0;z-index:20;width:260px;
+    background:#0f172a;border:1px solid rgba(255,255,255,.12);border-radius:12px;
+    padding:14px;box-shadow:0 12px 30px rgba(0,0,0,.45);
+}
+.sup-tag-panel h4{margin:0 0 8px;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8}
+.sup-tag-panel-section+.sup-tag-panel-section{margin-top:14px}
+.sup-tag-panel-link{display:block;margin-top:12px;font-size:.72rem;color:#94a3b8;text-align:right}
+.sup-tag-panel-link:hover{color:#c7d2fe}
+
+.sup-bar-actions{position:relative;flex:none;margin-left:6px}
+.sup-bar-actions-btn{
+    display:flex;align-items:center;justify-content:center;width:34px;height:34px;
+    border-radius:9px;border:1px solid transparent;background:none;color:#94a3b8;cursor:pointer;
+}
+.sup-bar-actions-btn:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e2e8f0}
+.sup-actions-panel{
+    position:absolute;top:calc(100% + 6px);right:0;z-index:20;min-width:170px;
+    background:#0f172a;border:1px solid rgba(255,255,255,.12);border-radius:12px;
+    padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.45);
+    display:flex;flex-direction:column;gap:8px;
+}
+/* El `display:flex` de arriba le gana al `display:none` que el navegador
+   le pone a [hidden] por defecto (una regla de author siempre gana a la
+   del user-agent, sin importar la especificidad) — sin esto, el atributo
+   `hidden` dejaba de ocultar el panel y quedaba pegado en pantalla. */
+.sup-actions-panel[hidden]{display:none}
+.sup-actions-panel form{display:block}
+.sup-actions-panel button{width:100%}
 
 .sup-thread{
     flex:1;min-height:0;overflow-y:auto;padding:16px;
@@ -78,7 +115,7 @@ video.sup-media{object-fit:contain;max-height:240px}
 .sup-upload-hint{flex:none;margin:0;padding:0 14px 8px;font-size:.72rem;color:#94a3b8}
 
 .sup-side{min-height:0;overflow-y:auto;scrollbar-width:thin;padding-right:2px}
-.sup-side .admin-card{margin-bottom:14px}
+.sup-side .admin-card{margin-bottom:14px;padding:16px}
 .sup-side h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin:0 0 10px}
 .sup-tagrow{display:flex;flex-wrap:wrap;gap:6px}
 .sup-tagbtn{cursor:pointer;font-size:.74rem;padding:4px 10px;border-radius:999px;
@@ -93,9 +130,23 @@ video.sup-media{object-fit:contain;max-height:240px}
 .sup-order:hover{border-color:rgba(99,102,241,.5)}
 .sup-actions{display:flex;flex-wrap:wrap;gap:8px}
 #supOrderResults{margin-top:8px;max-height:230px;overflow-y:auto}
-#supNote{width:100%;resize:vertical;min-height:96px;font:inherit;font-size:.84rem;line-height:1.5}
+#supNote{width:100%;resize:vertical;min-height:56px;font:inherit;font-size:.8rem;line-height:1.4}
 .sup-note-foot{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-top:8px}
 #supNoteMeta{font-size:.72rem;color:#64748b;flex:1}
+
+.sup-qr-list{display:flex;flex-direction:column;gap:6px}
+.sup-qr-item{display:flex;align-items:stretch;gap:6px}
+.sup-qr-insert{
+    flex:1;text-align:left;cursor:pointer;font-size:.8rem;padding:7px 11px;border-radius:9px;
+    border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#e2e8f0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:.15s;
+}
+.sup-qr-insert:hover{border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.1)}
+.sup-qr-del{
+    flex:none;width:30px;border-radius:9px;cursor:pointer;font-size:.78rem;
+    border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#94a3b8;
+}
+.sup-qr-del:hover{color:#fca5a5;border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.1)}
 </style>
 {% endblock %}
 
@@ -110,9 +161,58 @@ video.sup-media{object-fit:contain;max-height:240px}
         <span id="supBarStatus">{{ chat.status_label }}{% if chat.client_email %} · {{ chat.client_email }}{% endif %}</span>
       </div>
       <div class="sup-bar-tags">
-        {% for tag in chat.tags %}
-        <span class="sup-tag" style="background:{{ tag.color }}">{{ tag.name }}</span>
-        {% endfor %}
+        <button type="button" class="sup-tag-picker-btn" id="supTagPickerBtn">
+          <span id="supTagPickerSummary">
+            {% for tag in chat.tags %}<span class="sup-tag" style="background:{{ tag.color }}">{{ tag.name }}</span>{% else %}<span class="sup-tag sup-tag-empty">Sin etiqueta</span>{% endfor %}
+          </span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="sup-tag-panel" id="supTagPanel" hidden>
+          <div class="sup-tag-panel-section">
+            <h4>Etiqueta de usuario</h4>
+            <div class="sup-tagrow">
+              {% for tag in user_tags %}
+              <button type="button" class="sup-tagbtn {% if tag.id in applied_tag_ids %}on{% endif %}"
+                      data-tag-id="{{ tag.id }}" data-color="{{ tag.color }}" data-name="{{ tag.name }}"
+                      style="{% if tag.id in applied_tag_ids %}background:{{ tag.color }}{% endif %}">{{ tag.name }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="sup-tag-panel-section">
+            <h4>Etiqueta de error</h4>
+            <div class="sup-tagrow">
+              {% for tag in error_tags %}
+              <button type="button" class="sup-tagbtn {% if tag.id in applied_tag_ids %}on{% endif %}"
+                      data-tag-id="{{ tag.id }}" data-color="{{ tag.color }}" data-name="{{ tag.name }}"
+                      style="{% if tag.id in applied_tag_ids %}background:{{ tag.color }}{% endif %}">{{ tag.name }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <a href="{{ url_for('admin_support_bp.tags') }}" class="sup-tag-panel-link">Crear o editar etiquetas ›</a>
+        </div>
+      </div>
+      <div class="sup-bar-actions">
+        <button type="button" class="sup-bar-actions-btn" id="supActionsBtn" aria-label="Acciones del chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+        </button>
+        <div class="sup-actions-panel" id="supActionsPanel" hidden>
+          {% if chat.status == 'closed' %}
+          <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
+            <input type="hidden" name="action" value="reabrir">
+            <button type="submit" class="btn-secondary">Reabrir</button>
+          </form>
+          {% else %}
+          <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
+            <input type="hidden" name="action" value="cerrar">
+            <button type="submit" class="btn-secondary">Cerrar chat</button>
+          </form>
+          {% endif %}
+          <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}"
+                onsubmit="return confirm('{% if chat.is_blocked %}¿Desbloquear este chat?{% else %}¿Bloquear? El cliente no podrá escribir más.{% endif %}')">
+            <input type="hidden" name="action" value="{% if chat.is_blocked %}desbloquear{% else %}bloquear{% endif %}">
+            <button type="submit" class="btn-danger">{% if chat.is_blocked %}Desbloquear{% else %}Bloquear{% endif %}</button>
+          </form>
+        </div>
       </div>
     </div>
 
@@ -181,8 +281,36 @@ video.sup-media{object-fit:contain;max-height:240px}
     </div>
 
     <div class="admin-card">
+      <h3>Respuestas rápidas</h3>
+      <div class="sup-qr-list" id="supQuickReplies">
+        {% for qr in quick_replies %}
+        <div class="sup-qr-item">
+          <button type="button" class="sup-qr-insert" data-body="{{ qr.body }}" title="{{ qr.body }}">{{ qr.title }}</button>
+          <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_delete', reply_id=qr.id) }}" style="display:inline">
+            <button type="submit" class="sup-qr-del" title="Borrar" onclick="return confirm('¿Borrar esta respuesta rápida?')">✕</button>
+          </form>
+        </div>
+        {% else %}
+        <p class="form-hint" style="margin:0;">Todavía no hay respuestas guardadas.</p>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn-secondary" id="supQrAddToggle" style="margin-top:10px;">+ Nueva respuesta rápida</button>
+      <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_create') }}" id="supQrAddForm" style="display:none; margin-top:10px;">
+        <div class="form-group">
+          <label>Título del botón</label>
+          <input type="text" name="title" maxlength="60" placeholder="Ej. Horario" required>
+        </div>
+        <div class="form-group">
+          <label>Texto a enviar</label>
+          <textarea name="body" rows="3" maxlength="2000" placeholder="Ej. Atendemos de 10am a 8pm todos los días." required></textarea>
+        </div>
+        <button type="submit" class="btn-primary">Guardar</button>
+      </form>
+    </div>
+
+    <div class="admin-card">
       <h3>Nota interna</h3>
-      <textarea id="supNote" rows="5" maxlength="4000"
+      <textarea id="supNote" rows="2" maxlength="4000"
                 placeholder="De qué orden era y qué falló de verdad. Solo lo ves tú.">{{ chat.admin_note or '' }}</textarea>
       <div class="sup-note-foot">
         <span id="supNoteMeta">
@@ -190,7 +318,7 @@ video.sup-media{object-fit:contain;max-height:240px}
             Guardada el {{ chat.admin_note_at|datetime_ve }}{% if chat.admin_note_author %} por {{ chat.admin_note_author.username }}{% endif %}
           {% endif %}
         </span>
-        <button type="button" class="btn-secondary" id="supNoteSaveBtn">Guardar nota</button>
+        <button type="button" class="btn-sm btn-secondary" id="supNoteSaveBtn">Guardar nota</button>
       </div>
       <p class="form-hint" style="font-size:.72rem;margin-top:6px">
         El cliente nunca la ve: no viaja en ninguna respuesta del chat.
@@ -215,29 +343,6 @@ video.sup-media{object-fit:contain;max-height:240px}
     {% endif %}
 
     <div class="admin-card">
-      <h3>Etiqueta de usuario</h3>
-      <div class="sup-tagrow">
-        {% for tag in user_tags %}
-        <button type="button" class="sup-tagbtn {% if tag.id in applied_tag_ids %}on{% endif %}"
-                data-tag-id="{{ tag.id }}" data-color="{{ tag.color }}"
-                style="{% if tag.id in applied_tag_ids %}background:{{ tag.color }}{% endif %}">{{ tag.name }}</button>
-        {% endfor %}
-      </div>
-
-      <h3 style="margin-top:16px">Etiqueta de error</h3>
-      <div class="sup-tagrow">
-        {% for tag in error_tags %}
-        <button type="button" class="sup-tagbtn {% if tag.id in applied_tag_ids %}on{% endif %}"
-                data-tag-id="{{ tag.id }}" data-color="{{ tag.color }}"
-                style="{% if tag.id in applied_tag_ids %}background:{{ tag.color }}{% endif %}">{{ tag.name }}</button>
-        {% endfor %}
-      </div>
-      <p class="form-hint" style="font-size:.72rem;margin-top:10px">
-        <a href="{{ url_for('admin_support_bp.tags') }}">Crear o editar etiquetas ›</a>
-      </p>
-    </div>
-
-    <div class="admin-card">
       <h3>Buscar y vincular orden</h3>
       <input type="text" id="supOrderSearch" placeholder="Orden, ID de jugador, correo…">
       {% if suggested_orders %}
@@ -252,27 +357,6 @@ video.sup-media{object-fit:contain;max-height:240px}
       <div id="supOrderResults"></div>
     </div>
 
-    <div class="admin-card">
-      <h3>Acciones</h3>
-      <div class="sup-actions">
-        {% if chat.status == 'closed' %}
-        <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
-          <input type="hidden" name="action" value="reabrir">
-          <button type="submit" class="btn-secondary">Reabrir</button>
-        </form>
-        {% else %}
-        <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
-          <input type="hidden" name="action" value="cerrar">
-          <button type="submit" class="btn-secondary">Cerrar chat</button>
-        </form>
-        {% endif %}
-        <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}"
-              onsubmit="return confirm('{% if chat.is_blocked %}¿Desbloquear este chat?{% else %}¿Bloquear? El cliente no podrá escribir más.{% endif %}')">
-          <input type="hidden" name="action" value="{% if chat.is_blocked %}desbloquear{% else %}bloquear{% endif %}">
-          <button type="submit" class="btn-danger">{% if chat.is_blocked %}Desbloquear{% else %}Bloquear{% endif %}</button>
-        </form>
-      </div>
-    </div>
   </div>
 </div>
 {% endblock %}
@@ -429,51 +513,144 @@ video.sup-media{object-fit:contain;max-height:240px}
         hint.hidden = !text;
     }
 
+    // La usan tanto el clip (elegir archivo) como pegar una captura desde
+    // el portapapeles: mismo comprobante de pago, dos formas de traerlo.
+    function uploadAttachment(f) {
+        if (!f) return;
+
+        if (f.size > 15 * 1024 * 1024) {
+            alert('El archivo es muy pesado. Envía uno de menos de 15 MB.');
+            return;
+        }
+
+        // Una imagen pegada del portapapeles a veces llega sin nombre: el
+        // servidor decide si la acepta por la extensión del archivo, así
+        // que sin esto la rechazaría aunque sea una imagen válida.
+        var fallbackName = 'pasted-image.png';
+        if (!f.name && f.type && f.type.indexOf('image/') === 0) {
+            fallbackName = 'pasted-image.' + (f.type.split('/')[1] || 'png');
+        }
+
+        var payload = new FormData();
+        payload.append('file', f, f.name || fallbackName);
+        payload.append('body', input ? input.value : '');
+
+        if (attach) attach.disabled = true;
+        showHint('Enviando ' + (f.name || 'imagen pegada') + '…');
+
+        fetch('/admin/soporte/' + CHAT_ID + '/responder', {
+            method: 'POST', credentials: 'same-origin', body: payload
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (attach) attach.disabled = false;
+                if (file) file.value = '';
+                showHint('');
+                if (data && data.ok) {
+                    if (input) input.value = '';
+                    render(data.message);
+                } else {
+                    alert((data && data.error) || 'No se pudo enviar el archivo.');
+                }
+            })
+            .catch(function () {
+                if (attach) attach.disabled = false;
+                if (file) file.value = '';
+                showHint('');
+                alert('No se pudo enviar el archivo.');
+            });
+    }
+
     if (attach && file) {
         attach.addEventListener('click', function () { file.click(); });
-
         file.addEventListener('change', function () {
-            var f = file.files && file.files[0];
-            if (!f) return;
-
-            if (f.size > 15 * 1024 * 1024) {
-                alert('El archivo es muy pesado. Envía uno de menos de 15 MB.');
-                file.value = '';
-                return;
-            }
-
-            var payload = new FormData();
-            payload.append('file', f);
-            payload.append('body', input ? input.value : '');
-
-            attach.disabled = true;
-            showHint('Enviando ' + f.name + '…');
-
-            fetch('/admin/soporte/' + CHAT_ID + '/responder', {
-                method: 'POST', credentials: 'same-origin', body: payload
-            })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    attach.disabled = false;
-                    file.value = '';
-                    showHint('');
-                    if (data && data.ok) {
-                        if (input) input.value = '';
-                        render(data.message);
-                    } else {
-                        alert((data && data.error) || 'No se pudo enviar el archivo.');
-                    }
-                })
-                .catch(function () {
-                    attach.disabled = false;
-                    file.value = '';
-                    showHint('');
-                    alert('No se pudo enviar el archivo.');
-                });
+            uploadAttachment(file.files && file.files[0]);
         });
     }
 
-    // ── Etiquetas ────────────────────────────────────────────────────────
+    // Pegar una imagen copiada (captura de pago, etc.) directo en el
+    // cuadro de texto la manda igual que si se hubiera elegido con el
+    // clip, sin tener que guardarla primero y buscarla en una carpeta.
+    if (input) {
+        input.addEventListener('paste', function (evt) {
+            var items = (evt.clipboardData && evt.clipboardData.items) || [];
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file' && items[i].type.indexOf('image/') === 0) {
+                    var img = items[i].getAsFile();
+                    if (img) {
+                        evt.preventDefault();
+                        uploadAttachment(img);
+                    }
+                    return;
+                }
+            }
+        });
+    }
+
+    // ── Respuestas rápidas ───────────────────────────────────────────────
+    document.querySelectorAll('.sup-qr-insert').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!input) return;
+            input.value = btn.dataset.body || '';
+            input.dispatchEvent(new Event('input'));
+            input.focus();
+        });
+    });
+
+    var qrToggle = document.getElementById('supQrAddToggle');
+    var qrForm = document.getElementById('supQrAddForm');
+    if (qrToggle && qrForm) {
+        qrToggle.addEventListener('click', function () {
+            qrForm.style.display = qrForm.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+
+    // ── Etiquetas: picker desplegable en la barra superior ─────────────────
+    var tagPickerBtn = document.getElementById('supTagPickerBtn');
+    var tagPanel = document.getElementById('supTagPanel');
+    var tagSummary = document.getElementById('supTagPickerSummary');
+
+    if (tagPickerBtn && tagPanel) {
+        tagPickerBtn.addEventListener('click', function (evt) {
+            evt.stopPropagation();
+            tagPanel.hidden = !tagPanel.hidden;
+        });
+        tagPanel.addEventListener('click', function (evt) { evt.stopPropagation(); });
+        document.addEventListener('click', function () { tagPanel.hidden = true; });
+    }
+
+    // ── Acciones del chat: menú desplegable en la barra superior ──────────
+    var actionsBtn = document.getElementById('supActionsBtn');
+    var actionsPanel = document.getElementById('supActionsPanel');
+    if (actionsBtn && actionsPanel) {
+        actionsBtn.addEventListener('click', function (evt) {
+            evt.stopPropagation();
+            actionsPanel.hidden = !actionsPanel.hidden;
+        });
+        actionsPanel.addEventListener('click', function (evt) { evt.stopPropagation(); });
+        document.addEventListener('click', function () { actionsPanel.hidden = true; });
+    }
+
+    // El resumen de la barra se arma con las etiquetas que quedaron "on"
+    // después de cada clic, sin necesidad de recargar la página.
+    function refreshTagSummary() {
+        if (!tagSummary) return;
+        var activos = Array.prototype.filter.call(
+            document.querySelectorAll('.sup-tagbtn.on'),
+            function (b) { return b; }
+        );
+        if (!activos.length) {
+            tagSummary.innerHTML = '<span class="sup-tag sup-tag-empty">Sin etiqueta</span>';
+            return;
+        }
+        tagSummary.innerHTML = activos.map(function (b) {
+            var name = (b.dataset.name || b.textContent || '').replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+            return '<span class="sup-tag" style="background:' + b.dataset.color + '">' + name + '</span>';
+        }).join('');
+    }
+
     document.querySelectorAll('.sup-tagbtn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var on = btn.classList.contains('on');
@@ -488,6 +665,7 @@ video.sup-media{object-fit:contain;max-height:240px}
                     if (!data || !data.ok) return;
                     btn.classList.toggle('on', data.applied);
                     btn.style.background = data.applied ? btn.dataset.color : '';
+                    refreshTagSummary();
                 })
                 .catch(function () {});
         });

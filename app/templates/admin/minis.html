@@ -125,18 +125,24 @@
 {% if section == 'aprobados' %}
 <div class="admin-card">
     <div class="card-header"><h3>Minis aprobados</h3></div>
+    <div class="form-group" style="margin:0 0 14px;padding:0 20px;">
+        <input type="text" id="miniSearchInput" class="glass-input" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);width:100%;max-width:360px;"
+               placeholder="Buscar por correo, nombre, código o teléfono...">
+    </div>
     <div class="table-wrap">
-        <table class="admin-table">
+        <table class="admin-table" id="miniApprovedTable">
             <thead>
-                <tr><th>Canal</th><th>Teléfono</th><th>Código</th><th>Balance</th><th>Total ganado</th><th>Rango</th><th>Acciones</th></tr>
+                <tr><th>Canal</th><th>Teléfono</th><th>Código</th><th>Comisión</th><th>Descuento cliente</th><th>Balance</th><th>Total ganado</th><th>Rango</th><th>Acciones</th></tr>
             </thead>
             <tbody>
                 {% for aff in approved_minis %}
                 {% set progress = rank_progress_by_id.get(aff.id) %}
-                <tr>
+                <tr data-mini-search="{{ (aff.name ~ ' ' ~ (aff.email or '') ~ ' ' ~ aff.code ~ ' ' ~ (aff.whatsapp_phone or ''))|lower }}">
                     <td><strong>{{ aff.name }}</strong><br><small>{{ aff.email or '' }}</small></td>
                     <td>{{ aff.whatsapp_phone or '—' }}</td>
                     <td><code class="ref-code">{{ aff.code }}</code></td>
+                    <td>{{ aff.commission_rate }}%</td>
+                    <td>{{ aff.client_discount_rate or 0 }}%</td>
                     <td class="{{ 'text-success' if aff.balance > 0 }}">${{ '%.2f'|format(aff.balance or 0) }}</td>
                     <td>${{ '%.2f'|format(aff.total_earned or 0) }}</td>
                     <td>
@@ -154,6 +160,8 @@
                             <span class="badge badge-inactive">Al día</span>
                             {% endif %}
                             <button class="btn-sm btn-outline"
+                                    onclick="openMiniCommissionModal({{ aff.id }}, '{{ aff.name }}', {{ aff.commission_rate }}, {{ aff.client_discount_rate or 0 }}, {{ aff.is_active | lower }}, {{ aff.one_per_player | lower }})">Editar %</button>
+                            <button class="btn-sm btn-outline"
                                     onclick="openPasswordModal({{ aff.id }}, '{{ aff.name }}')">Cambiar clave</button>
                             <form method="POST" action="{{ url_for('admin_bp.mini_delete', aff_id=aff.id) }}" style="display:inline">
                                 <button class="btn-sm btn-danger" type="submit"
@@ -163,8 +171,9 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="7" class="empty-row">Todavía no hay minis aprobados.</td></tr>
+                <tr><td colspan="9" class="empty-row">Todavía no hay minis aprobados.</td></tr>
                 {% endfor %}
+                <tr id="miniSearchEmptyRow" class="empty-row" hidden><td colspan="9" class="empty-row">Ningún mini coincide con esa búsqueda.</td></tr>
             </tbody>
         </table>
     </div>
@@ -182,6 +191,32 @@
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('passwordMiniModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: editar comisión -->
+<div class="modal-overlay" id="miniCommissionModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3 id="miniCommissionTitle">Editar comisión</h3><button onclick="closeModal('miniCommissionModal')">✕</button></div>
+        <form method="POST" id="miniCommissionForm">
+            <input type="hidden" name="redirect_to" value="{{ url_for('admin_bp.minis', section='aprobados') }}">
+            <input type="checkbox" name="is_active" id="miniCommissionActive" style="display:none">
+            <input type="checkbox" name="one_per_player" id="miniCommissionOnePerPlayer" style="display:none">
+            <div class="form-group">
+                <label>Comisión del mini (%)</label>
+                <input type="number" name="commission_rate" id="miniCommissionRate" step="0.5" min="0" max="100" required>
+                <p class="form-hint">Porcentaje que gana por cada venta hecha con su código. Súbelo si se lo ganó — queda aplicado desde la próxima venta.</p>
+            </div>
+            <div class="form-group">
+                <label>Descuento para el cliente (%)</label>
+                <input type="number" name="client_discount_rate" id="miniCommissionClientDiscount" step="0.5" min="0" max="100" required>
+                <p class="form-hint">Porcentaje que se descuenta a quien compre usando su código.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('miniCommissionModal')" class="btn-secondary">Cancelar</button>
                 <button type="submit" class="btn-primary">Guardar</button>
             </div>
         </form>
@@ -209,6 +244,80 @@
 {% endif %}
 
 {% if section == 'config' %}
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Reglas del programa y grupo de WhatsApp</h3>
+    </div>
+    <p class="form-hint" style="padding:0 20px;">Lo que el mini ve en su panel al tocar "Ver reglas del programa" y "Únete al grupo de WhatsApp de los minis". Si dejas el link de WhatsApp vacío, ese botón no se muestra.</p>
+    <form method="POST" action="{{ url_for('admin_bp.mini_program_config_save') }}" style="padding:0 20px 20px;">
+        <div class="form-group">
+            <label>Reglas del programa</label>
+            <textarea name="mini_rules_text" rows="8" placeholder="Ej. 1. Los videos deben mencionar el código...&#10;2. No se permite contenido...">{{ mini_rules_text }}</textarea>
+        </div>
+        <div class="form-group">
+            <label>Video de las reglas (opcional)</label>
+            <input type="url" name="mini_rules_video_url" value="{{ mini_rules_video_url }}" placeholder="https://www.youtube.com/watch?v=...">
+        </div>
+        <div class="form-group">
+            <label>Link del grupo de WhatsApp de los minis</label>
+            <input type="url" name="mini_whatsapp_group_url" value="{{ mini_whatsapp_group_url }}" placeholder="https://chat.whatsapp.com/...">
+        </div>
+        <div class="form-group">
+            <button type="submit" class="btn-primary">Guardar</button>
+        </div>
+    </form>
+</div>
+
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Métodos de pago para retiros de minis</h3>
+    </div>
+    <p class="form-hint" style="padding:0 20px;">Son propios del programa de minis, separados de los métodos de pago de la tienda — es la tienda pagándole al mini, no al revés.</p>
+    <form method="POST" action="{{ url_for('admin_bp.mini_payout_method_add') }}" class="form-grid-2" style="padding:0 20px 18px;">
+        <div class="form-group">
+            <label>Nombre</label>
+            <input type="text" name="name" maxlength="100" placeholder="Ej. Binance Pay" required>
+        </div>
+        <div class="form-group">
+            <label>Orden</label>
+            <input type="number" name="sort_order" value="100" step="1">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+            <button type="submit" class="btn-primary">Agregar método</button>
+        </div>
+    </form>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Nombre</th><th>Orden</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for m in mini_payout_methods %}
+                <tr>
+                    <td>{{ m.name }}</td>
+                    <td>{{ m.sort_order }}</td>
+                    <td>
+                        <span class="badge {% if m.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                            {{ 'Activo' if m.is_active else 'Inactivo' }}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="action-btns">
+                            <form method="POST" action="{{ url_for('admin_bp.mini_payout_method_toggle', method_id=m.id) }}" style="display:inline">
+                                <button class="btn-sm btn-outline" type="submit">{{ 'Desactivar' if m.is_active else 'Activar' }}</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin_bp.mini_payout_method_delete', method_id=m.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit" onclick="return confirm('¿Eliminar este método de pago?')">Eliminar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="empty-row">No hay métodos de pago para minis configurados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
 <div class="admin-card">
     <div class="card-header">
         <h3>Tramos de vistas → recompensa</h3>
@@ -431,9 +540,8 @@
                     <td>{{ w.created_at.strftime('%d/%m/%Y') if w.created_at else '' }}</td>
                     <td>
                         <div class="action-btns">
-                            <form method="POST" action="{{ url_for('admin_bp.mini_withdrawal_approve', w_id=w.id) }}" style="display:inline">
-                                <button class="btn-sm btn-success" type="submit" onclick="return confirm('¿Aprobar este retiro?')">Aprobar</button>
-                            </form>
+                            <button class="btn-sm btn-success" type="button"
+                                    onclick="openWithdrawalApproveModal({{ w.id }}, '{{ w.affiliate.name if w.affiliate else '' }}', {{ '%.2f'|format(w.amount) }})">Aprobar</button>
                             <button class="btn-sm btn-danger" onclick="openWithdrawalRejectModal({{ w.id }})">Rechazar</button>
                         </div>
                     </td>
@@ -450,19 +558,42 @@
     <div class="card-header"><h3>Historial</h3></div>
     <div class="table-wrap">
         <table class="admin-table">
-            <thead><tr><th>Mini</th><th>Monto</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Mini</th><th>Monto</th><th>Estado</th><th>Comprobante</th></tr></thead>
             <tbody>
                 {% for w in reviewed_withdrawals %}
                 <tr>
                     <td>{{ w.affiliate.name if w.affiliate else '—' }}</td>
                     <td>${{ '%.2f'|format(w.amount) }}</td>
                     <td><span class="badge {% if w.status == 'approved' %}badge-active{% else %}badge-danger{% endif %}">{{ 'Aprobado' if w.status == 'approved' else 'Rechazado' }}</span></td>
+                    <td>
+                        {% if w.payment_proof %}
+                        <a href="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" target="_blank" rel="noopener">Ver comprobante</a>
+                        {% else %}—{% endif %}
+                    </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="3" class="empty-row">Sin historial todavía.</td></tr>
+                <tr><td colspan="4" class="empty-row">Sin historial todavía.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+</div>
+
+<!-- Modal: aprobar retiro -->
+<div class="modal-overlay" id="withdrawalApproveModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3 id="withdrawalApproveTitle">Aprobar retiro</h3><button onclick="closeModal('withdrawalApproveModal')">✕</button></div>
+        <form method="POST" id="withdrawalApproveForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label>Comprobante de pago (opcional)</label>
+                <input type="file" name="payment_proof" accept="image/*">
+                <p class="form-hint">El mini lo va a ver en su panel, en el historial de retiros.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('withdrawalApproveModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Aprobar retiro</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -519,6 +650,13 @@ function openVideoModal(id, action, suggestedAmount) {
     openModal('videoMiniModal');
 }
 
+function openWithdrawalApproveModal(id, name, amount) {
+    document.getElementById('withdrawalApproveForm').action = '/admin/minis/retiros/' + id + '/approve';
+    document.getElementById('withdrawalApproveForm').reset();
+    document.getElementById('withdrawalApproveTitle').textContent = 'Aprobar retiro de ' + name + ' ($' + amount + ')';
+    openModal('withdrawalApproveModal');
+}
+
 function openWithdrawalRejectModal(id) {
     document.getElementById('withdrawalRejectForm').action = '/admin/minis/retiros/' + id + '/reject';
     openModal('withdrawalRejectModal');
@@ -530,6 +668,43 @@ function openPasswordModal(id, name) {
     document.getElementById('passwordMiniForm').reset();
     openModal('passwordMiniModal');
 }
+
+function openMiniCommissionModal(id, name, commissionRate, clientDiscountRate, isActive, onePerPlayer) {
+    document.getElementById('miniCommissionForm').action = '/admin/affiliates/' + id + '/edit';
+    document.getElementById('miniCommissionTitle').textContent = 'Editar comisión — ' + name;
+    document.getElementById('miniCommissionRate').value = commissionRate;
+    document.getElementById('miniCommissionClientDiscount').value = clientDiscountRate;
+    // is_active y one_per_player no se muestran acá (esto es solo para
+    // tocar el % de comisión), pero hay que mandarlos igual con su valor
+    // actual: si el checkbox no viaja en el POST, affiliate_edit lo toma
+    // como false y desactivaría al mini sin querer.
+    document.getElementById('miniCommissionActive').checked = !!isActive;
+    document.getElementById('miniCommissionOnePerPlayer').checked = !!onePerPlayer;
+    openModal('miniCommissionModal');
+}
+
+(function () {
+    var searchInput = document.getElementById('miniSearchInput');
+    var table = document.getElementById('miniApprovedTable');
+    if (!searchInput || !table) return;
+
+    var emptyRow = document.getElementById('miniSearchEmptyRow');
+    var rows = Array.prototype.filter.call(
+        table.querySelectorAll('tbody tr'),
+        function (row) { return row.hasAttribute('data-mini-search'); }
+    );
+
+    searchInput.addEventListener('input', function () {
+        var term = searchInput.value.trim().toLowerCase();
+        var visibles = 0;
+        rows.forEach(function (row) {
+            var coincide = !term || row.getAttribute('data-mini-search').indexOf(term) !== -1;
+            row.hidden = !coincide;
+            if (coincide) visibles++;
+        });
+        if (emptyRow) emptyRow.hidden = !(term && visibles === 0);
+    });
+})();
 
 function openTierAddModal() {
     document.getElementById('tierMiniForm').action = '/admin/minis/tiers/add';

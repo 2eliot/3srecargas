@@ -75,6 +75,7 @@ def _loop(app):
                 if acquire_lock(_LEADER_LOCK_KEY, _LEADER_LOCK_TTL_SECONDS, holder):
                     try:
                         _run_tick(app)
+                        _run_promos_tick()
                     finally:
                         release_lock(_LEADER_LOCK_KEY, holder)
             except Exception as exc:
@@ -152,3 +153,21 @@ def _run_tick(app):
                 db.session.rollback()
             except Exception:
                 pass
+
+
+def _run_promos_tick():
+    """Corre el sorteo diario de cada juego que ya llegó a su hora de
+    sorteo. Aparte del tick normal de órdenes porque no depende de que
+    haya órdenes pendientes: puede no correr nunca si nadie más dispara
+    esta revisión."""
+    from .promos import run_daily_raffle_draws
+    from ..models import db
+
+    try:
+        run_daily_raffle_draws()
+    except Exception as exc:
+        print(f'[OrderScheduler] Error en sorteo diario: {exc}')
+        try:
+            db.session.rollback()
+        except Exception:
+            pass

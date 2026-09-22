@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sorteo Diario • 3SRecargas Automático</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #000000;
+            color: #f8fafc;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .custom-glow {
+            box-shadow: 0 0 20px rgba(220, 38, 38, 0.2);
+        }
+        /* Mobile app container frame restriction */
+        .mobile-shell {
+            width: 100%;
+            max-width: 440px;
+            margin: 0 auto;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background-color: #000000;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+            position: relative;
+        }
+        button, input, select {
+            touch-action: manipulation;
+        }
+    </style>
+</head>
+<body class="bg-black text-slate-100 flex justify-center">
+
+    <div class="mobile-shell p-4">
+
+        <a href="{{ url_for('main_bp.index') }}" class="inline-flex items-center gap-1.5 bg-black border border-red-500/40 hover:border-red-500 hover:bg-red-600/10 text-slate-300 hover:text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-sm transition mt-1 mb-2 w-fit active:scale-95">
+            <span>←</span> Volver a la tienda
+        </a>
+
+        <header class="w-full flex flex-col items-center text-center pt-2 pb-3">
+            <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] font-extrabold px-3.5 py-1 rounded-full uppercase tracking-wider mb-2 shadow-lg shadow-red-600/30 animate-pulse border border-red-400/30">
+                <span>⚡</span> 3S RECARGAS • Sorteo Automático <span>🔥</span>
+            </div>
+            <h1 id="page-title" class="text-2xl font-extrabold tracking-wider text-white bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-300">
+                🎲 RULETA • ... 💎
+            </h1>
+            <p id="schedule-sub" class="text-slate-400 text-[11px] mt-1 flex items-center justify-center gap-1">
+                <span>🕒</span> Todos los días a las <strong class="text-red-400">09:00 PM (Venezuela)</strong>
+            </p>
+        </header>
+
+        {% if games and games|length > 1 %}
+        <select id="gameSelect" class="w-full bg-black border border-red-500/40 rounded-xl px-3 py-2.5 text-xs text-white mb-3">
+            {% for g in games %}
+            <option value="{{ g.id }}" {{ 'selected' if game and game.id == g.id }}>{{ g.name }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+
+        <main class="w-full flex flex-col items-center gap-4 my-auto">
+
+            {% if not games %}
+            <div class="w-full bg-[#050505] border border-red-500/30 p-6 rounded-2xl text-center text-slate-300 text-sm">
+                El sorteo no está activo en este momento. Vuelve pronto.
+            </div>
+            {% else %}
+
+            <div id="live-panel" class="w-full bg-[#050505] border border-red-500/30 p-3.5 rounded-2xl shadow-xl flex flex-col justify-between items-center gap-2.5 relative overflow-hidden">
+                <div class="absolute -right-8 -bottom-8 w-24 h-24 bg-red-600/10 rounded-full blur-xl pointer-events-none"></div>
+                <div class="flex items-center gap-2.5 z-10 text-center flex-row w-full justify-between">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-9 h-9 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-500 text-lg font-bold shadow-inner animate-pulse flex-shrink-0">
+                            🔴
+                        </div>
+                        <div class="text-left">
+                            <h3 class="text-[10px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                                <span>📡</span> Estado en Vivo
+                            </h3>
+                            <div id="countdown-timer" class="text-xs font-black text-red-500 tracking-wider mt-0.5">
+                                Cargando...
+                            </div>
+                        </div>
+                    </div>
+                    <div id="auto-status" class="z-10 text-[9px] bg-black border border-red-500/40 text-red-400 px-2.5 py-1 rounded-lg font-bold uppercase tracking-wider shadow-sm">
+                        Activo
+                    </div>
+                </div>
+            </div>
+
+            <div id="slot-section" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl flex flex-col items-center gap-3 custom-glow">
+                <div class="relative w-full bg-gradient-to-b from-[#000000] to-[#030303] border-2 border-red-600/50 rounded-xl shadow-2xl overflow-hidden flex flex-col items-center p-2">
+                    <div class="absolute top-2 left-2.5 flex items-center gap-1 text-[10px] text-red-400/90 font-bold tracking-wider uppercase truncate max-w-[65%]">
+                        <span>🎰</span> <span id="timer-display" class="truncate">Iniciando giro...</span>
+                    </div>
+                    <div class="absolute top-2 right-2.5 text-[10px] text-amber-400 font-bold tracking-widest flex items-center gap-1">
+                        <span>💎</span> <span id="reward-label-badge">--</span>
+                    </div>
+                    <!-- Canvas adaptable optimizado mobile -->
+                    <canvas id="slotCanvas" width="360" height="140" class="w-full h-[140px] rounded-lg mt-5 bg-black object-contain"></canvas>
+                </div>
+                <button id="spin-btn" disabled class="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-extrabold text-xs py-3 rounded-xl shadow-lg shadow-red-600/30 opacity-70 cursor-not-allowed uppercase tracking-wider border border-red-500/40 flex items-center justify-center gap-1.5">
+                    <span>🔄</span> Sorteo Automático en Progreso...
+                </button>
+            </div>
+
+            <div id="register-section" class="w-full bg-[#050505] border-2 border-red-500/50 p-4 rounded-2xl shadow-xl hidden flex flex-col gap-3.5 text-center relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-red-600/5 via-transparent to-red-600/5 pointer-events-none"></div>
+
+                <div class="bg-black border border-red-500/40 rounded-xl p-3 shadow-inner flex flex-col items-center">
+                    <div class="inline-flex p-1.5 rounded-lg bg-red-600/20 text-red-500 text-lg mb-1 border border-red-500/30">
+                        🏆
+                    </div>
+                    <h3 id="concluded-date-title" class="text-xs font-extrabold text-white tracking-wider uppercase">
+                        Sorteo Concluido • --/--/----
+                    </h3>
+                    <p class="text-slate-400 text-[10px] mt-0.5">Cupo completado con éxito.</p>
+                </div>
+
+                <div class="bg-black border border-red-500/40 rounded-xl p-3 shadow-inner flex flex-col items-center">
+                    <span class="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-0.5 flex items-center gap-1">
+                        <span>⏳</span> Próximo Sorteo en Vivo
+                    </span>
+                    <div id="next-draw-countdown" class="text-xl font-black text-red-500 tracking-wider">
+                        00h 00m 00s
+                    </div>
+                </div>
+
+                <div class="bg-black border border-red-500/40 rounded-xl p-3.5 shadow-inner flex flex-col items-center gap-2.5">
+                    <div class="inline-flex p-1.5 rounded-lg bg-red-600/20 text-red-500 text-base border border-red-500/30">
+                        🎟️
+                    </div>
+                    <h4 class="text-xs font-extrabold text-white px-1">Ticket Gratis para el Siguiente Sorteo</h4>
+                    <p class="text-slate-300 text-[10px] max-w-xs leading-relaxed px-1">
+                        Ingresa tu ID de juego. El sistema te asignará un ticket único <strong class="text-red-400">para el siguiente sorteo</strong>.
+                    </p>
+
+                    <div id="register-form-container" class="w-full flex flex-col gap-2 mt-0.5">
+                        <div class="relative w-full">
+                            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-xs">🎮</span>
+                            <input type="tel" inputmode="numeric" id="user-id-input" placeholder="Tu ID (ej: 12345678)..." class="w-full bg-[#000000] border border-zinc-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 w-full">
+                            <button onclick="registrarNuevoJugador()" class="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold px-3 py-2.5 rounded-xl transition shadow-md text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 border border-red-400/40 active:scale-95">
+                                <span>✨</span> Registrarme
+                            </button>
+                            <button onclick="consultarTicketPorId()" class="w-full bg-zinc-900 hover:bg-zinc-800 text-slate-200 hover:text-white font-extrabold px-3 py-2.5 rounded-xl transition shadow-md text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 border border-zinc-700/60 active:scale-95">
+                                <span>🔍</span> Consultar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="registered-success-card" class="hidden w-full bg-zinc-950 border border-emerald-500/50 rounded-xl p-3 text-center shadow-lg mt-1">
+                        <div id="success-card-title" class="text-emerald-400 font-black text-[10px] uppercase tracking-wider mb-0.5 flex items-center justify-center gap-1">
+                            <span>🎉</span> ¡Registro Exitoso!
+                        </div>
+                        <div id="assigned-ticket-info" class="text-amber-400 font-black text-xs tracking-wide mt-0.5">
+                            Ticket #--
+                        </div>
+                        <div id="assigned-player-info" class="text-slate-200 text-[10px] mt-0.5 font-medium truncate">
+                            ID: --
+                        </div>
+                    </div>
+                    <p id="register-msg" class="text-[10px] text-red-400 font-semibold h-3 px-1"></p>
+                </div>
+            </div>
+
+            <div id="today-winners-container" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl">
+                <div class="flex justify-between items-center mb-3 border-b border-zinc-900 pb-2">
+                    <div>
+                        <h2 class="text-xs font-extrabold text-white flex items-center gap-1.5">
+                            <span>🏆</span> Ganadores (<span id="winners-count" class="text-red-500 font-black">0</span>/<span id="winners-total">--</span>)
+                        </h2>
+                        <p id="current-date-label" class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                            <span>📅</span> --/--/----
+                        </p>
+                    </div>
+                    <span class="text-[9px] bg-red-600/20 border border-red-500/30 text-red-400 px-2 py-1 rounded-full font-bold flex items-center gap-1">
+                        <span>💎</span> <span id="reward-per-winner">--</span> c/u
+                    </span>
+                </div>
+                <div id="winners-grid" class="grid grid-cols-1 gap-2">
+                    <!-- Se generan dinámicamente -->
+                </div>
+            </div>
+
+            <div id="history-section" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl hidden">
+                <div class="flex items-center justify-between mb-3 border-b border-zinc-900 pb-2">
+                    <h2 class="text-xs font-extrabold text-white flex items-center gap-1.5">
+                        <span>📜</span> Historial Anterior
+                    </h2>
+                    <span class="text-[9px] text-slate-500 font-semibold uppercase">Últimos días</span>
+                </div>
+                <div id="history-list" class="space-y-2.5">
+                    <!-- Historial estructurado -->
+                </div>
+            </div>
+
+            {% endif %}
+
+        </main>
+
+        <div id="countdown-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+            <div class="bg-gradient-to-b from-[#080808] to-[#000000] border-2 border-red-500/60 p-5 rounded-2xl shadow-2xl w-full max-w-xs text-center relative overflow-hidden custom-glow">
+                <div class="absolute -top-10 -right-10 w-24 h-24 bg-red-600/20 rounded-full blur-xl pointer-events-none"></div>
+                <div class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-red-600/20 text-red-500 text-lg mb-2 border border-red-500/40 shadow-inner animate-bounce">
+                    🎉
+                </div>
+                <h3 class="text-base font-black text-white tracking-wider mb-1">¡GANADOR ACREDITADO!</h3>
+
+                <div id="modal-winner-info" class="bg-[#000000] border border-red-500/40 rounded-xl p-3 my-2 shadow-inner">
+                    <span id="modal-winner-title" class="text-[10px] text-red-400 font-extrabold uppercase tracking-wider block mb-1">👑 GANADOR #1</span>
+                    <div id="modal-winner-ticket" class="text-xs font-black text-amber-400 tracking-wide truncate">Ticket #--</div>
+                    <div id="modal-winner-id" class="text-[10px] font-mono text-slate-200 mt-0.5 truncate">ID: --------</div>
+                </div>
+
+                <div class="inline-flex flex-col items-center justify-center bg-[#000000] border border-red-500/40 rounded-xl px-4 py-3 shadow-inner mb-1 w-full">
+                    <span id="modal-countdown-label" class="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-0.5">Siguiente Giro En</span>
+                    <div id="modal-countdown-number" class="text-2xl font-black text-red-500 tracking-widest animate-pulse">
+                        15s
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-[10px] text-slate-500 text-center py-2 mt-2 flex items-center justify-center gap-1">
+            <span>🛡️</span> 3SRecargas • Mobile Experience
+        </footer>
+
+    </div>
+
+    <script>
+        const GAME_ID = {{ (game.id if game else 'null') }};
+
+        let participants = [];   // gente real registrada hoy: {ticket, id, name}
+        let winners = [];        // ganadores YA decididos por el servidor que ya se revelaron en pantalla
+        let serverWinners = [];  // los ganadores reales completos, en el orden en que se revelan
+        let winnersTotal = 5;
+        let rewardLabel = '';
+        let isSpinning = false;
+        let registeredIdsSet = new Set();
+        let pollTimer = null;
+
+        function switchGame(id) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('game_id', id);
+            window.location.href = url.toString();
+        }
+        const gameSelectEl = document.getElementById('gameSelect');
+        if (gameSelectEl) gameSelectEl.addEventListener('change', () => switchGame(gameSelectEl.value));
+
+        const canvas = document.getElementById('slotCanvas');
+        const ctx = canvas ? canvas.getContext('2d') : null;
+
+        function configurarCanvasHD() {
+            if (!canvas) return;
+            const dpr = window.devicePixelRatio || 1;
+            const displayWidth = canvas.clientWidth || 340;
+            const displayHeight = 140;
+
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+
+            ctx.scale(dpr, dpr);
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+        }
+
+        window.addEventListener('resize', configurarCanvasHD);
+        configurarCanvasHD();
+
+        function obtenerFechaActual() {
+            const options = { timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'long' };
+            return new Intl.DateTimeFormat('es-VE', options).format(new Date());
+        }
+
+        const fechaHoyStr = obtenerFechaActual();
+        const currentDateLabelEl = document.getElementById('current-date-label');
+        if (currentDateLabelEl) currentDateLabelEl.innerHTML = `<span>📅</span> ${fechaHoyStr}`;
+        const concludedTitleEl = document.getElementById('concluded-date-title');
+        if (concludedTitleEl) concludedTitleEl.innerText = `Sorteo Concluido • ${fechaHoyStr}`;
+
+        function seenKey(dayKey, ticketsSignature) {
+            return `sorteo_seen_${GAME_ID}_${dayKey}_${ticketsSignature}`;
+        }
+
+        function drawStaticDisplay(text) {
+            if (!ctx) return;
+            const width = canvas.width / (window.devicePixelRatio || 1);
+            const height = canvas.height / (window.devicePixelRatio || 1);
+
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 13px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, width / 2, height / 2);
+        }
+
+        function lanzarConfetiGanador() {
+            if (typeof confetti === 'function') {
+                confetti({
+                    particleCount: 90,
+                    spread: 70,
+                    origin: { y: 0.6 },
+                    colors: ['#ef4444', '#ffffff', '#dc2626', '#f8fafc', '#b91c1c']
+                });
+            }
+        }
+
+        function actualizarListaGanadores() {
+            document.getElementById('winners-count').innerText = winners.length;
+            document.getElementById('winners-total').innerText = winnersTotal;
+            const grid = document.getElementById('winners-grid');
+            let html = '';
+
+            for (let i = 0; i < winnersTotal; i++) {
+                if (winners[i]) {
+                    html += `<div class="bg-[#000000] border border-red-500/40 rounded-xl p-2.5 text-center flex items-center justify-between shadow animate-pulse">
+                                <span class="text-[9px] text-red-400 font-extrabold uppercase">👑 #${i+1}</span>
+                                <span class="text-xs font-black text-amber-400">Ticket #${winners[i].ticket}</span>
+                                <span class="text-[11px] font-bold text-white truncate max-w-[90px]">${winners[i].name}</span>
+                                <span class="text-[9px] font-mono text-slate-300">ID: ${winners[i].id}</span>
+                           </div>`;
+                } else {
+                    html += `<div class="bg-[#000000] border border-zinc-900 rounded-xl p-2 text-center text-slate-500 text-xs flex items-center justify-between">
+                                <span class="text-[9px] text-slate-500 uppercase font-bold">⏳ Ganador #${i+1}</span>
+                                <span class="text-[10px] text-slate-400 font-semibold">Pendiente...</span>
+                           </div>`;
+                }
+            }
+            grid.innerHTML = html;
+        }
+
+        function generarHistorial(history) {
+            const historyList = document.getElementById('history-list');
+            if (!historyList) return;
+            if (!history || !history.length) {
+                historyList.innerHTML = `<p class="text-slate-500 text-[11px] text-center py-2">Todavía no hay sorteos anteriores.</p>`;
+                return;
+            }
+
+            let html = '';
+            history.forEach(dia => {
+                let badgesHtml = '<div class="grid grid-cols-1 gap-1.5 mt-2">';
+                dia.winners.forEach((w, index) => {
+                    badgesHtml += `
+                        <div class="bg-black border border-red-500/30 p-2 rounded-lg text-center flex items-center justify-between shadow">
+                            <span class="text-[9px] text-red-400 font-extrabold uppercase">👑 #${index + 1}</span>
+                            <span class="text-[11px] font-black text-amber-400">Ticket #${w.ticket_number}</span>
+                            <span class="text-[10px] font-bold text-white truncate max-w-[90px]">${w.name || 'Jugador'}</span>
+                            <span class="text-[9px] font-mono text-slate-400">ID: ${w.player_id}</span>
+                        </div>
+                    `;
+                });
+                badgesHtml += '</div>';
+
+                html += `
+                    <div class="bg-black border border-zinc-900 p-2.5 rounded-xl shadow">
+                        <div class="flex items-center justify-between border-b border-zinc-900 pb-1.5">
+                            <div class="flex items-center gap-1.5 text-white font-bold text-[11px] truncate">
+                                <span>🏆</span> <span class="truncate">${dia.day_key}</span>
+                            </div>
+                            <span class="text-[9px] bg-red-600/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-bold">${dia.winners.length * rewardPerWinnerValue} 💎</span>
+                        </div>
+                        ${badgesHtml}
+                    </div>
+                `;
+            });
+            historyList.innerHTML = html;
+        }
+
+        let rewardPerWinnerValue = 0;
+
+        function iniciarTemporizadorProximoSorteo(nextDrawAtIso) {
+            const relojEl = document.getElementById('next-draw-countdown');
+            if (!relojEl || !nextDrawAtIso) return;
+            const target = new Date(nextDrawAtIso).getTime();
+
+            function actualizarReloj() {
+                const diferencia = target - Date.now();
+                if (diferencia <= 0) { relojEl.innerText = '00h 00m 00s'; return; }
+                const horas = Math.floor(diferencia / (1000 * 60 * 60));
+                const minutos = Math.floor((diferencia % (1000 * 60 * 60)) / (1000 * 60));
+                const segundos = Math.floor((diferencia % (1000 * 60)) / 1000);
+                relojEl.innerText = `${String(horas).padStart(2, '0')}h ${String(minutos).padStart(2, '0')}m ${String(segundos).padStart(2, '0')}s`;
+            }
+            actualizarReloj();
+            setInterval(actualizarReloj, 1000);
+        }
+
+        // ── Animación del giro (idéntica a la original): recorre la lista real
+        // de participantes de hoy en el canvas y aterriza, cada 12s, sobre el
+        // ganador que YA decidió el servidor — el navegador nunca elige premios
+        // reales por su cuenta, solo dramatiza un resultado ya sellado.
+        function iniciarSorteo() {
+            if (isSpinning || winners.length >= serverWinners.length || participants.length === 0) return;
+
+            isSpinning = true;
+            let startTime = null;
+            const duration = 12000;
+
+            const timerDisplay = document.getElementById('timer-display');
+            let timeLeft = 12;
+            const countdownInterval = setInterval(() => {
+                timeLeft--;
+                if (timeLeft >= 0) {
+                    timerDisplay.innerText = `Sorteando... Restan ${timeLeft}s`;
+                }
+            }, 1000);
+
+            const finalWinner = serverWinners[winners.length];
+            let virtualIndex = Math.floor(Math.random() * participants.length);
+
+            function animate(timestamp) {
+                if (!startTime) startTime = timestamp;
+                const elapsed = timestamp - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                const width = canvas.width / (window.devicePixelRatio || 1);
+                const height = canvas.height / (window.devicePixelRatio || 1);
+
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0, 0, width, height);
+
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                if (progress >= 1) {
+                    clearInterval(countdownInterval);
+                    winners.push(finalWinner);
+                    const ganadorIndex = winners.length;
+                    actualizarListaGanadores();
+                    lanzarConfetiGanador();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '800 15px Outfit, sans-serif';
+                    ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+                    ctx.shadowBlur = 12;
+                    ctx.fillText(`👑 ¡Ganador #${ganadorIndex}! Ticket #${finalWinner.ticket}`, width / 2, 38);
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '700 12px Outfit, sans-serif';
+                    ctx.fillText(`${finalWinner.name} • ID: ${finalWinner.id}`, width / 2, 70);
+
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.font = '700 11px Outfit, sans-serif';
+                    ctx.fillText(`(${rewardLabel} Acreditado)`, width / 2, 102);
+                    ctx.shadowBlur = 0;
+
+                    isSpinning = false;
+
+                    const modal = document.getElementById('countdown-modal');
+                    const modalCountdown = document.getElementById('modal-countdown-number');
+                    const modalCountdownLabel = document.getElementById('modal-countdown-label');
+                    document.getElementById('modal-winner-title').innerText = `👑 GANADOR #${ganadorIndex} • ${rewardLabel}`;
+                    document.getElementById('modal-winner-ticket').innerText = `Ticket #${finalWinner.ticket} - ${finalWinner.name}`;
+                    document.getElementById('modal-winner-id').innerText = `ID: ${finalWinner.id}`;
+                    modal.classList.remove('hidden');
+
+                    let delayLeft = 12;
+                    if (winners.length >= serverWinners.length) {
+                        modalCountdownLabel.innerText = "Sorteo Finalizado En";
+                    } else {
+                        modalCountdownLabel.innerText = "Siguiente Giro En";
+                    }
+                    modalCountdown.innerText = `${delayLeft}s`;
+
+                    const delayInterval = setInterval(() => {
+                        delayLeft--;
+                        if (delayLeft > 0) {
+                            modalCountdown.innerText = `${delayLeft}s`;
+                        } else {
+                            clearInterval(delayInterval);
+                            modal.classList.add('hidden');
+                            if (winners.length < serverWinners.length) {
+                                if (!isSpinning) {
+                                    iniciarSorteo();
+                                }
+                            } else {
+                                timerDisplay.innerText = `🏆 ¡SORTEO FINALIZADO! 🏆`;
+                                document.getElementById('live-panel').classList.add('hidden');
+                                document.getElementById('slot-section').classList.add('hidden');
+                                document.getElementById('today-winners-container').classList.add('hidden');
+                                document.getElementById('history-section').classList.remove('hidden');
+                                document.getElementById('register-section').classList.remove('hidden');
+                                markDrawAsSeen();
+                            }
+                        }
+                    }, 1000);
+
+                    return;
+                }
+
+                let speedFactor = 45;
+                virtualIndex += speedFactor * 0.25;
+                const currentIndex = Math.floor(virtualIndex) % participants.length;
+                const itemPrev = participants[(currentIndex - 1 + participants.length) % participants.length];
+                const itemCurr = participants[currentIndex % participants.length];
+                const itemNext = participants[(currentIndex + 1) % participants.length];
+
+                if (itemPrev && itemCurr && itemNext) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.font = '10px Outfit, sans-serif';
+                    ctx.fillText(`Ticket #${itemPrev.ticket} • ${itemPrev.name}`, width / 2, 28);
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '800 14px Outfit, sans-serif';
+                    ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+                    ctx.shadowBlur = 12;
+                    ctx.fillText(`Ticket #${itemCurr.ticket} • ${itemCurr.name} (ID: ${itemCurr.id})`, width / 2, 70);
+                    ctx.shadowBlur = 0;
+
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.font = '10px Outfit, sans-serif';
+                    ctx.fillText(`Ticket #${itemNext.ticket} • ${itemNext.name}`, width / 2, 112);
+                }
+
+                requestAnimationFrame(animate);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function currentSignature() {
+            return serverWinners.map(w => w.ticket).join(',');
+        }
+
+        function markDrawAsSeen() {
+            try { localStorage.setItem(seenKey(fechaHoyStr, currentSignature()), '1'); } catch (e) {}
+        }
+
+        function alreadySeenToday() {
+            try { return !!localStorage.getItem(seenKey(fechaHoyStr, currentSignature())); } catch (e) { return false; }
+        }
+
+        function showConcludedState() {
+            document.getElementById('live-panel').classList.add('hidden');
+            document.getElementById('slot-section').classList.add('hidden');
+            document.getElementById('today-winners-container').classList.add('hidden');
+            document.getElementById('history-section').classList.remove('hidden');
+            document.getElementById('register-section').classList.remove('hidden');
+            winners = serverWinners.slice();
+            actualizarListaGanadores();
+        }
+
+        function registrarNuevoJugador() {
+            const idInput = document.getElementById('user-id-input');
+            const msg = document.getElementById('register-msg');
+            const successCard = document.getElementById('registered-success-card');
+            const successTitle = document.getElementById('success-card-title');
+
+            const idVal = idInput.value.trim();
+
+            if (idVal.length < 4) {
+                msg.innerText = "⚠️ Ingresa un ID válido.";
+                successCard.classList.add('hidden');
+                return;
+            }
+
+            fetch('/promos/api/sorteo/registrar', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ game_id: GAME_ID, player_id: idVal }),
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.ok) {
+                    msg.innerText = "❌ " + (data.error || 'No se pudo registrar.');
+                    successCard.classList.add('hidden');
+                    return;
+                }
+                registeredIdsSet.add(idVal);
+                msg.innerText = "";
+                successTitle.innerHTML = "<span>🎉</span> ¡Registro Exitoso!";
+                successCard.classList.remove('hidden');
+                document.getElementById('assigned-ticket-info').innerText = `Ticket #${data.ticket_number}`;
+                document.getElementById('assigned-player-info').innerText = `ID: ${idVal}`;
+                if (typeof confetti === 'function') confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 }, colors: ['#ef4444', '#ffffff', '#dc2626'] });
+                idInput.value = "";
+            })
+            .catch(() => {
+                msg.innerText = "❌ Error de conexión, intenta de nuevo.";
+                successCard.classList.add('hidden');
+            });
+        }
+
+        function consultarTicketPorId() {
+            const idInput = document.getElementById('user-id-input');
+            const msg = document.getElementById('register-msg');
+            const successCard = document.getElementById('registered-success-card');
+            const successTitle = document.getElementById('success-card-title');
+
+            const idVal = idInput.value.trim();
+
+            if (idVal.length < 4) {
+                msg.innerText = "⚠️ Ingresa tu ID para buscar.";
+                successCard.classList.add('hidden');
+                return;
+            }
+
+            fetch(`/promos/api/sorteo/estado?game_id=${GAME_ID}&player_id=${encodeURIComponent(idVal)}`)
+                .then(r => r.json())
+                .then(data => {
+                    const ticket = data.registration_open_for === 'tomorrow' ? data.my_ticket_tomorrow : data.my_ticket;
+                    if (ticket) {
+                        msg.innerText = "";
+                        successTitle.innerHTML = "<span>🔍</span> ¡Ticket Encontrado!";
+                        successCard.classList.remove('hidden');
+                        document.getElementById('assigned-ticket-info').innerText = `Ticket #${ticket}`;
+                        document.getElementById('assigned-player-info').innerText = `ID: ${idVal}`;
+                    } else {
+                        msg.innerText = "❌ No hay ticket con este ID. ¡Regístrate gratis!";
+                        successCard.classList.add('hidden');
+                    }
+                })
+                .catch(() => {
+                    msg.innerText = "❌ Error de conexión, intenta de nuevo.";
+                    successCard.classList.add('hidden');
+                });
+        }
+
+        async function cargarEstado() {
+            if (!GAME_ID) return;
+            const res = await fetch(`/promos/api/sorteo/show?game_id=${GAME_ID}`);
+            const data = await res.json();
+            if (!data.ok || !data.enabled) return;
+
+            winnersTotal = data.winners_per_draw || 5;
+            rewardLabel = data.reward_label || 'Premio';
+            rewardPerWinnerValue = parseInt(rewardLabel) || 0;
+            participants = data.participants || [];
+            serverWinners = data.winners_show || [];
+
+            document.getElementById('page-title').innerText = `🎲 RULETA • ${winnersTotal * rewardPerWinnerValue} 💎`;
+            document.getElementById('schedule-sub').innerHTML =
+                `<span>🕒</span> Todos los días a las <strong class="text-red-400">${String(data.draw_hour).padStart(2, '0')}:00 (Venezuela)</strong>`;
+            document.getElementById('reward-label-badge').innerText = rewardLabel;
+            document.getElementById('reward-per-winner').innerText = rewardLabel;
+            document.getElementById('winners-total').innerText = winnersTotal;
+            iniciarTemporizadorProximoSorteo(data.next_draw_at);
+            generarHistorial(data.history);
+
+            if (data.drawn) {
+                if (alreadySeenToday()) {
+                    showConcludedState();
+                } else if (!isSpinning && winners.length === 0) {
+                    document.getElementById('countdown-timer').innerText = '✨ ¡EN PROGRESO! ✨';
+                    setTimeout(() => iniciarSorteo(), 1200);
+                }
+            } else if (data.is_draw_time) {
+                document.getElementById('countdown-timer').innerText = '✨ ¡EN PROGRESO! ✨';
+                drawStaticDisplay(participants.length ? '🎲 ¡SORTEO EN VIVO! 🎲' : 'Esperando participantes...');
+            } else {
+                document.getElementById('countdown-timer').innerText = `📡 Registro abierto — sorteo a las ${String(data.draw_hour).padStart(2, '0')}:00`;
+                drawStaticDisplay(`🎲 ¡SORTEO ${String(data.draw_hour).padStart(2, '0')}:00 (Venezuela)! 🎲`);
+            }
+        }
+
+        configurarCanvasHD();
+        cargarEstado();
+        pollTimer = setInterval(cargarEstado, 20000);
+    </script>
+</body>
+</html>

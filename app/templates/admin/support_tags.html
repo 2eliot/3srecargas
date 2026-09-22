@@ -13,6 +13,7 @@
 .tag-item input[type=color]{width:38px;height:32px;padding:2px;border-radius:6px}
 .tag-dot{width:12px;height:12px;border-radius:50%;flex:none}
 .tag-off{opacity:.45}
+.tag-list-body{padding:14px 18px 6px}
 </style>
 {% endblock %}
 
@@ -27,7 +28,7 @@
         </p>
     </div>
     <form method="POST" action="{{ url_for('admin_support_bp.set_idle_minutes') }}"
-          style="display:flex;gap:10px;align-items:end">
+          style="display:flex;gap:10px;align-items:end;padding:0 20px 20px;">
         <div class="form-group" style="max-width:160px">
             <label for="minutes">Minutos</label>
             <input type="number" id="minutes" name="minutes" min="0" max="1440"
@@ -47,7 +48,7 @@
             qué le pasa. Como el chat solo pide el nombre, estas etiquetas son la memoria del panel.
         </p>
     </div>
-    <form method="POST" action="{{ url_for('admin_support_bp.tag_create') }}" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+    <form method="POST" action="{{ url_for('admin_support_bp.tag_create') }}" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;padding:0 20px 20px;">
         <div class="form-group" style="flex:1;min-width:180px">
             <label for="name">Nombre</label>
             <input type="text" id="name" name="name" maxlength="60" required placeholder="Ej: Pago duplicado">
@@ -73,6 +74,7 @@
     {% for title, items in [('Usuario', user_tags), ('Error', error_tags)] %}
     <div class="admin-card">
         <div class="card-header"><h2>{{ title }}</h2></div>
+        <div class="tag-list-body">
         {% for tag in items %}
         <div class="tag-item {% if not tag.is_active %}tag-off{% endif %}">
             <span class="tag-dot" style="background:{{ tag.color }}"></span>
@@ -96,6 +98,7 @@
         {% else %}
         <p class="form-hint">Sin etiquetas de este tipo.</p>
         {% endfor %}
+        </div>
     </div>
     {% endfor %}
 </div>

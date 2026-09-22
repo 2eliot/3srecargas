@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Adivina el Número • 3SRecargas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
+body { font-family: 'Outfit', sans-serif; background-color: #000000; color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+.custom-glow { box-shadow: 0 0 20px rgba(220, 38, 38, 0.2); }
+.mobile-shell { width: 100%; max-width: 440px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; background-color: #000000; position: relative; }
+button, input, select { touch-action: manipulation; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body class="bg-black text-slate-100 flex justify-center">
+<div class="mobile-shell p-4">
+    <a href="{{ url_for('main_bp.index') }}" class="inline-flex items-center gap-1.5 bg-black border border-red-500/40 hover:border-red-500 hover:bg-red-600/10 text-slate-300 hover:text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-sm transition mt-1 mb-2 w-fit active:scale-95">
+        <span>←</span> Volver a la tienda
+    </a>
+
+    <header class="w-full flex flex-col items-center text-center pt-2 pb-3">
+        <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] font-extrabold px-3.5 py-1 rounded-full uppercase tracking-wider mb-2 shadow-lg shadow-red-600/30 animate-pulse border border-red-400/30">
+            <span>⚡</span> 3S RECARGAS • Juego Gratis <span>🔥</span>
+        </div>
+        <h1 class="text-2xl font-extrabold tracking-wider text-white">🎯 ADIVINA EL NÚMERO</h1>
+        <p id="scheduleLabel" class="text-slate-400 text-[11px] mt-1"></p>
+    </header>
+
+    <main class="w-full flex flex-col items-center gap-4 my-auto">
+        {% if not games %}
+        <div class="w-full bg-[#050505] border border-red-500/30 p-6 rounded-2xl text-center text-slate-300 text-sm">
+            Este juego no está activo en este momento. Vuelve pronto.
+        </div>
+        {% else %}
+
+        {% if games|length > 1 %}
+        <select id="gameSelect" class="w-full bg-black border border-red-500/40 rounded-xl px-3 py-2.5 text-xs text-white">
+            {% for g in games %}
+            <option value="{{ g.id }}" {{ 'selected' if game and game.id == g.id }}>{{ g.name }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+
+        <div id="live-panel" class="w-full bg-[#050505] border border-red-500/30 p-3.5 rounded-2xl shadow-xl flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-500 text-lg font-bold shadow-inner animate-pulse">🔴</div>
+                <div class="text-left">
+                    <h3 class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estado del evento</h3>
+                    <div id="statusLine" class="text-xs font-black text-red-500 tracking-wider mt-0.5">Cargando...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="game-section" class="w-full bg-[#050505] border border-zinc-900 p-4 rounded-2xl shadow-xl flex flex-col items-center gap-3.5 custom-glow">
+            <div class="mt-1 mb-1 text-center">
+                <span class="text-[10px] uppercase tracking-widest text-slate-400 font-bold block mb-1">Oportunidades restantes</span>
+                <div id="chancesDisplay" class="text-xl font-black text-red-500 tracking-wider">⚡ -- de -- intentos</div>
+            </div>
+            <p id="rangeText" class="text-slate-300 text-[11px] max-w-xs leading-relaxed text-center"></p>
+            <div class="w-full flex flex-col gap-2.5">
+                <input type="tel" inputmode="numeric" id="playerIdInput" placeholder="Tu ID de Juego..."
+                       class="w-full bg-[#000000] border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
+                <input type="tel" inputmode="numeric" id="guessInput" placeholder="Tu número..."
+                       class="w-full bg-[#000000] border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
+                <button id="guessBtn" class="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-extrabold text-xs py-3 rounded-xl shadow-lg shadow-red-600/30 uppercase tracking-wider">🚀 Adivinar Número</button>
+            </div>
+            <p id="feedbackMsg" class="text-[11px] font-bold mt-1 min-h-[16px]"></p>
+        </div>
+
+        <div id="winnersContainer" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl">
+            <h2 class="text-xs font-extrabold text-white flex items-center gap-1.5 mb-2">🏆 Ganadores de hoy</h2>
+            <div id="winnersBox" class="flex flex-col gap-1.5"></div>
+        </div>
+
+        <div id="historyContainer" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl" hidden>
+            <h2 class="text-xs font-extrabold text-white flex items-center gap-1.5 mb-2">📜 Historial</h2>
+            <div id="historyList" class="space-y-2.5"></div>
+        </div>
+
+        {% endif %}
+    </main>
+
+    <div id="winModal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4" hidden>
+        <div class="bg-gradient-to-b from-[#080808] to-[#000000] border-2 border-red-500/60 p-5 rounded-2xl shadow-2xl w-full max-w-xs text-center custom-glow">
+            <div class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-red-600/20 text-red-500 text-lg mb-2 border border-red-500/40 animate-bounce">🎉</div>
+            <h3 class="text-base font-black text-white tracking-wider mb-1">¡NÚMERO CORRECTO!</h3>
+            <div class="bg-[#000000] border border-red-500/40 rounded-xl p-3 my-2 shadow-inner">
+                <span id="modalRewardLabel" class="text-[10px] text-red-400 font-extrabold uppercase tracking-wider block mb-1">👑 ¡GANASTE!</span>
+                <div id="modalSlot" class="text-xs font-black text-amber-400 tracking-wide"></div>
+            </div>
+            <p class="text-[10px] text-slate-300 mb-3">Tu premio se está entregando en automático a tu ID.</p>
+            <button id="closeModalBtn" class="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold text-xs py-2.5 rounded-xl uppercase tracking-wider">¡Entendido! 🚀</button>
+        </div>
+    </div>
+
+    <footer class="text-[10px] text-slate-500 text-center py-2 mt-2 flex items-center justify-center gap-1">
+        <span>🛡</span> 3SRecargas • Adivina el Número
+    </footer>
+</div>
+
+<script>
+const GAME_ID = {{ (game.id if game else 'null') }};
+
+function switchGame(id) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('game_id', id);
+    window.location.href = url.toString();
+}
+const gameSelect = document.getElementById('gameSelect');
+if (gameSelect) gameSelect.addEventListener('change', () => switchGame(gameSelect.value));
+
+function renderWinners(winners) {
+    const box = document.getElementById('winnersBox');
+    if (!winners || !winners.length) {
+        box.innerHTML = `<div class="bg-[#000000] border border-zinc-900 rounded-xl p-2 text-center text-slate-400 text-xs">Esperando ganador...</div>`;
+        return;
+    }
+    box.innerHTML = winners.map((w, i) => `
+        <div class="bg-black border border-amber-500/40 rounded-xl p-2.5 text-center text-slate-400 text-xs flex items-center justify-between shadow-inner">
+            <span class="text-[9px] text-amber-400 font-extrabold uppercase">👑 Cupo #${i + 1}</span>
+            <span class="text-[11px] font-black text-amber-300">ID: ${w.player_id}</span>
+            <span class="text-[10px] font-bold text-white">#${w.guessed_number}</span>
+        </div>`).join('');
+}
+
+function renderHistory(history) {
+    const container = document.getElementById('historyContainer');
+    const list = document.getElementById('historyList');
+    if (!history || !history.length) { container.hidden = true; return; }
+    container.hidden = false;
+    list.innerHTML = history.map(day => `
+        <div class="bg-black border border-zinc-900 p-2.5 rounded-xl shadow">
+            <div class="text-white font-bold text-[11px] mb-1.5">📅 ${day.day_key}</div>
+            <div class="grid grid-cols-1 gap-1.5">
+                ${day.winners.map((w, i) => `
+                    <div class="bg-[#080808] border border-zinc-800/80 rounded-lg p-2 flex items-center justify-between text-[10px]">
+                        <span class="text-amber-400 font-extrabold">👑 #${i + 1}</span>
+                        <span class="font-mono text-slate-300">ID: ${w.player_id}</span>
+                        <span class="text-slate-400">#${w.guessed_number}</span>
+                    </div>`).join('')}
+            </div>
+        </div>`).join('');
+}
+
+async function refreshState(playerId) {
+    if (!GAME_ID) return null;
+    const res = await fetch(`/promos/api/adivina/estado?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId || '')}`);
+    const data = await res.json();
+    if (!data.ok || !data.enabled) return null;
+
+    document.getElementById('scheduleLabel').textContent = `Se reinicia todos los días a las 00:00 (Venezuela)`;
+    document.getElementById('rangeText').innerHTML =
+        `Adivina el número secreto entre <strong class="text-white">1 y ${data.number_max}</strong>. Hay <strong class="text-amber-400">${data.winners_per_day} premios</strong> diarios de <strong class="text-amber-400">${data.reward_label}</strong>.`;
+    document.getElementById('chancesDisplay').textContent = `⚡ ${data.attempts_remaining} de ${data.max_attempts} Intentos`;
+
+    const guessBtn = document.getElementById('guessBtn');
+    if (data.closed_for_today) {
+        document.getElementById('statusLine').textContent = '🏆 Cupos de hoy completados';
+        guessBtn.disabled = true;
+        guessBtn.classList.add('opacity-50');
+    } else if (data.already_won) {
+        document.getElementById('statusLine').textContent = '✅ Ya ganaste un cupo hoy';
+        guessBtn.disabled = true;
+        guessBtn.classList.add('opacity-50');
+    } else {
+        document.getElementById('statusLine').textContent = '✨ ¡Ronda abierta!';
+        guessBtn.disabled = false;
+        guessBtn.classList.remove('opacity-50');
+    }
+
+    renderWinners(data.winners_today);
+    renderHistory(data.history);
+    return data;
+}
+
+document.getElementById('guessBtn').addEventListener('click', async () => {
+    const playerId = document.getElementById('playerIdInput').value.trim();
+    const guess = document.getElementById('guessInput').value.trim();
+    const feedback = document.getElementById('feedbackMsg');
+    feedback.textContent = '';
+
+    try {
+        const res = await fetch('/promos/api/adivina/intentar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ game_id: GAME_ID, player_id: playerId, guess: guess }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            feedback.className = 'text-[11px] font-bold mt-1 min-h-[16px] text-red-400';
+            feedback.textContent = data.error || 'No se pudo procesar tu intento.';
+            return;
+        }
+        if (data.won) {
+            document.getElementById('modalSlot').textContent = `Cupo #${data.slot_index} • Premio: ${data.reward_label}`;
+            document.getElementById('winModal').hidden = false;
+            if (typeof confetti === 'function') confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 }, colors: ['#ef4444', '#ffffff', '#fbbf24'] });
+        } else {
+            feedback.className = 'text-[11px] font-bold mt-1 min-h-[16px] text-amber-400';
+            if (data.hint) {
+                feedback.textContent = `Pista: el número secreto es ${data.hint === 'mayor' ? 'MAYOR' : 'MENOR'}. Te quedan ${data.attempts_remaining} intento(s).`;
+            } else {
+                feedback.textContent = 'Agotaste tus intentos de hoy para este ID.';
+            }
+        }
+        document.getElementById('guessInput').value = '';
+        refreshState(playerId);
+    } catch (e) {
+        feedback.textContent = 'Error de conexión, intenta de nuevo.';
+    }
+});
+
+document.getElementById('closeModalBtn').addEventListener('click', () => {
+    document.getElementById('winModal').hidden = true;
+});
+
+refreshState('');
+</script>
+</body>
+</html>

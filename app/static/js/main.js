@@ -653,7 +653,13 @@
     }
 
     /* ── Canjear Puntos ───────────────────────────────────── */
-    var pointsState = { gameId: null, playerId: '', spinCost: 5, spinning: false, gamesLoaded: false };
+    // gameCaps: { [gameId]: { name, prizeLabel, hasSpin, hasRedeem } } — un
+    // juego puede tener ruleta, canje directo, o ambos; el paso de elección
+    // (o el salto directo a uno solo) depende de esto.
+    var pointsState = {
+        gameId: null, playerId: '', spinCost: 5, spinning: false, gamesLoaded: false,
+        gameCaps: {}, lastBalanceData: null, selectedRedeemOptionId: null, redeemBusy: false
+    };
 
     function pointsEl(id) { return document.getElementById(id); }
 
@@ -661,34 +667,60 @@
         if (pointsState.gamesLoaded) return;
         var select = pointsEl('pointsGameSelect');
         if (!select) return;
-        fetch('/api/points/games')
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                pointsState.gamesLoaded = true;
-                var games = (data && data.games) || [];
-                pointsState.spinCost = (data && data.spin_cost) || 5;
-                if (!games.length) {
-                    select.innerHTML = '<option value="">Todavía no hay premios de puntos disponibles</option>';
-                    return;
-                }
-                select.innerHTML = '<option value="">Selecciona un juego</option>' + games.map(function (g) {
-                    return '<option value="' + g.game_id + '" data-prize="' + escHtml(g.prize_label) + '">' + escHtml(g.game_name) + '</option>';
-                }).join('');
-            })
-            .catch(function () {
-                select.innerHTML = '<option value="">Error al cargar juegos</option>';
+
+        Promise.all([
+            fetch('/api/points/games').then(function (r) { return r.json(); }).catch(function () { return null; }),
+            fetch('/api/points/redeem-games').then(function (r) { return r.json(); }).catch(function () { return null; })
+        ]).then(function (results) {
+            pointsState.gamesLoaded = true;
+            var spinData = results[0];
+            var redeemData = results[1];
+            pointsState.spinCost = (spinData && spinData.spin_cost) || 5;
+
+            var caps = {};
+            ((spinData && spinData.games) || []).forEach(function (g) {
+                caps[g.game_id] = caps[g.game_id] || { name: g.game_name };
+                caps[g.game_id].hasSpin = true;
+                caps[g.game_id].prizeLabel = g.prize_label;
             });
+            ((redeemData && redeemData.games) || []).forEach(function (g) {
+                caps[g.game_id] = caps[g.game_id] || { name: g.game_name };
+                caps[g.game_id].hasRedeem = true;
+            });
+            pointsState.gameCaps = caps;
+
+            var gameIds = Object.keys(caps);
+            if (!gameIds.length) {
+                select.innerHTML = '<option value="">Todavía no hay premios de puntos disponibles</option>';
+                return;
+            }
+            select.innerHTML = '<option value="">Selecciona un juego</option>' + gameIds.map(function (id) {
+                var g = caps[id];
+                return '<option value="' + id + '" data-prize="' + escHtml(g.prizeLabel || '') + '">' + escHtml(g.name) + '</option>';
+            }).join('');
+        });
+    }
+
+    function hidePointsSteps() {
+        ['pointsChoiceStep', 'pointsSpinStep', 'pointsRedeemStep'].forEach(function (id) {
+            var el = pointsEl(id);
+            if (el) el.style.display = 'none';
+        });
     }
 
     function resetPointsModal() {
         var lookupStep = pointsEl('pointsLookupStep');
-        var spinStep = pointsEl('pointsSpinStep');
         if (lookupStep) lookupStep.style.display = 'block';
-        if (spinStep) spinStep.style.display = 'none';
+        hidePointsSteps();
         var err = pointsEl('pointsLookupError');
         if (err) { err.style.display = 'none'; err.textContent = ''; }
         var result = pointsEl('pointsSpinResult');
         if (result) { result.style.display = 'none'; result.textContent = ''; }
+        var redeemErr = pointsEl('pointsRedeemError');
+        if (redeemErr) { redeemErr.style.display = 'none'; redeemErr.textContent = ''; }
+        var redeemResult = pointsEl('pointsRedeemResult');
+        if (redeemResult) { redeemResult.style.display = 'none'; redeemResult.textContent = ''; }
+        pointsState.selectedRedeemOptionId = null;
     }
 
     function openPointsModal() {
@@ -790,8 +822,10 @@
     }
 
     /* Modal del resultado: al ganar el regalo se abre por pasos (tiembla,
-       revienta, aparece el premio); al perder se queda la equis quieta. */
-    function showPointsResultModal(won, rewardLabel, gameName) {
+       revienta, aparece el premio); al perder se queda la equis quieta.
+       `directRedeem` es para el canje directo (sin ruleta): no hay chance
+       de perder, así que el texto habla de "canjeaste" en vez de "ganaste". */
+    function showPointsResultModal(won, rewardLabel, gameName, directRedeem) {
         var previo = document.getElementById('pointsResultModal');
         if (previo) previo.remove();
 
@@ -806,11 +840,11 @@
                     '<div class="points-gift-emoji" id="pointsGiftEmoji">' + (won ? '🎁' : '❌') + '</div>' +
                 '</div>' +
                 '<h3 class="points-result-title" id="pointsResultTitle">' +
-                    (won ? '¡Abriendo Regalo!' : '¡Fallaste!') +
+                    (won ? (directRedeem ? '¡Procesando canje!' : '¡Abriendo Regalo!') : '¡Fallaste!') +
                 '</h3>' +
                 '<p class="points-result-text" id="pointsResultDesc">' +
                     (won
-                        ? 'Descubriendo tu premio exclusivo...'
+                        ? (directRedeem ? 'Preparando tu paquete...' : 'Descubriendo tu premio exclusivo...')
                         : 'No has obtenido recompensa en esta caja.') +
                 '</p>' +
                 '<button type="button" class="points-result-close">CONTINUAR</button>' +
@@ -844,22 +878,18 @@
         timers.push(window.setTimeout(function () {
             emoji.textContent = '🎁💎';
             emoji.className = 'points-gift-emoji';
-            titulo.textContent = '¡Ganaste ' + premio + '!';
+            titulo.textContent = directRedeem ? ('¡Canjeaste ' + premio + '!') : ('¡Ganaste ' + premio + '!');
             desc.textContent = '¡Felicidades! Se procesará al mismo ID'
                 + (gameName ? ' de ' + gameName : '') + '.';
         }, 1600));
     }
 
-    function showPointsBalance(data) {
-        pointsState.gameId = data.game_id;
-        pointsState.playerId = data.player_id;
-        pointsState.spinCost = data.spin_cost;
-
+    function enterPointsSpinStep(data) {
         var select = pointsEl('pointsGameSelect');
         var selectedOption = select ? select.options[select.selectedIndex] : null;
         var prizeLabel = (selectedOption && selectedOption.getAttribute('data-prize')) || 'Premio';
 
-        pointsEl('pointsLookupStep').style.display = 'none';
+        hidePointsSteps();
         pointsEl('pointsSpinStep').style.display = 'block';
         pointsEl('pointsSpinGameLabel').textContent = data.game_name;
         pointsEl('pointsSpinIdLabel').textContent = 'ID: ' + data.player_id;
@@ -876,6 +906,92 @@
         }
 
         buildPointsStrip();
+    }
+
+    /* Pinta la lista de paquetes canjeables directo. Los que cuestan más de
+       lo que el cliente tiene quedan visibles pero deshabilitados, así ve
+       la lista completa de premios aunque no le alcance todavía. */
+    function renderPointsRedeemOptions(options, balance) {
+        var list = pointsEl('pointsRedeemList');
+        var btn = pointsEl('pointsRedeemBtn');
+        if (!list) return;
+        pointsState.selectedRedeemOptionId = null;
+        if (btn) btn.disabled = true;
+
+        if (!options.length) {
+            list.innerHTML = '<p class="points-modal-hint" style="padding:0;margin:0;">Todavía no hay paquetes de canje directo para este juego.</p>';
+            return;
+        }
+
+        list.innerHTML = options.map(function (opt) {
+            var disabled = opt.points_cost > balance;
+            return '<div class="points-redeem-option' + (disabled ? ' is-disabled' : '') + '" data-option-id="' + opt.option_id + '">' +
+                '<span class="points-redeem-option-name">' + escHtml(opt.package_name) + '</span>' +
+                '<span class="points-redeem-option-cost">' + opt.points_cost + ' pts</span>' +
+            '</div>';
+        }).join('');
+
+        Array.prototype.forEach.call(list.querySelectorAll('.points-redeem-option'), function (row) {
+            row.addEventListener('click', function () {
+                if (row.classList.contains('is-disabled')) return;
+                Array.prototype.forEach.call(list.querySelectorAll('.points-redeem-option'), function (r) {
+                    r.classList.remove('is-selected');
+                });
+                row.classList.add('is-selected');
+                pointsState.selectedRedeemOptionId = row.getAttribute('data-option-id');
+                if (btn) btn.disabled = false;
+            });
+        });
+    }
+
+    function enterPointsRedeemStep(data) {
+        hidePointsSteps();
+        pointsEl('pointsRedeemStep').style.display = 'block';
+        pointsEl('pointsRedeemGameLabel').textContent = data.game_name;
+        pointsEl('pointsRedeemIdLabel').textContent = 'ID: ' + data.player_id;
+        pointsEl('pointsRedeemBalanceValue').textContent = data.balance;
+        var errEl = pointsEl('pointsRedeemError');
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+        var resultEl = pointsEl('pointsRedeemResult');
+        if (resultEl) { resultEl.style.display = 'none'; resultEl.textContent = ''; }
+
+        var list = pointsEl('pointsRedeemList');
+        if (list) list.innerHTML = '<p class="points-modal-hint" style="padding:0;margin:0;">Cargando paquetes...</p>';
+
+        fetch('/api/points/redeem-options?game_id=' + encodeURIComponent(data.game_id))
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                renderPointsRedeemOptions((res && res.options) || [], data.balance);
+            })
+            .catch(function () {
+                if (list) list.innerHTML = '<p class="points-modal-error" style="margin:0;display:block;">No se pudieron cargar los paquetes.</p>';
+            });
+    }
+
+    function enterPointsChoiceStep(data) {
+        hidePointsSteps();
+        pointsEl('pointsChoiceStep').style.display = 'block';
+        pointsEl('pointsChoiceGameLabel').textContent = data.game_name;
+        pointsEl('pointsChoiceIdLabel').textContent = 'ID: ' + data.player_id;
+        pointsEl('pointsChoiceBalanceValue').textContent = data.balance;
+    }
+
+    function showPointsBalance(data) {
+        pointsState.gameId = data.game_id;
+        pointsState.playerId = data.player_id;
+        pointsState.spinCost = data.spin_cost;
+        pointsState.lastBalanceData = data;
+
+        var caps = pointsState.gameCaps[data.game_id] || {};
+        pointsEl('pointsLookupStep').style.display = 'none';
+
+        if (caps.hasSpin && caps.hasRedeem) {
+            enterPointsChoiceStep(data);
+        } else if (caps.hasRedeem) {
+            enterPointsRedeemStep(data);
+        } else {
+            enterPointsSpinStep(data);
+        }
     }
 
     function handlePointsLookup() {
@@ -982,6 +1098,72 @@
                     resultEl.textContent = 'Error de conexión. Intenta de nuevo.';
                     resultEl.classList.add('is-miss');
                     resultEl.style.display = 'block';
+                }
+            });
+    }
+
+    function handlePointsRedeemSubmit() {
+        if (pointsState.redeemBusy || !pointsState.gameId || !pointsState.playerId || !pointsState.selectedRedeemOptionId) return;
+
+        var btn = pointsEl('pointsRedeemBtn');
+        var backBtn = pointsEl('pointsRedeemBackBtn');
+        var errEl = pointsEl('pointsRedeemError');
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+        pointsState.redeemBusy = true;
+        if (btn) { btn.disabled = true; btn.textContent = 'CANJEANDO...'; }
+        if (backBtn) backBtn.disabled = true;
+
+        fetch('/api/points/redeem', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                game_id: pointsState.gameId,
+                player_id: pointsState.playerId,
+                option_id: pointsState.selectedRedeemOptionId
+            })
+        })
+            .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+            .then(function (res) {
+                pointsState.redeemBusy = false;
+                if (backBtn) backBtn.disabled = false;
+                if (btn) { btn.disabled = true; btn.textContent = 'CANJEAR'; }
+
+                if (!res.data.ok) {
+                    if (errEl) {
+                        errEl.textContent = res.data.message || 'No se pudo procesar el canje.';
+                        errEl.style.display = 'block';
+                    }
+                    return;
+                }
+
+                var result = res.data.result;
+                pointsEl('pointsRedeemBalanceValue').textContent = result.points_balance;
+                // El saldo guardado en memoria también tiene que quedar al
+                // día: es lo que reusan el paso de elección y "Volver" para
+                // no tener que volver a consultar el servidor, y si se queda
+                // con el saldo de antes del canje, "Volver" lo muestra viejo.
+                if (pointsState.lastBalanceData) pointsState.lastBalanceData.balance = result.points_balance;
+
+                var gameLabel = pointsEl('pointsRedeemGameLabel');
+                showPointsResultModal(true, result.package_name, gameLabel ? gameLabel.textContent : '', true);
+
+                // Se vuelve a pedir la lista: ya gastó el canje del día, así
+                // que todas las opciones deben verse deshabilitadas ahora.
+                fetch('/api/points/redeem-options?game_id=' + encodeURIComponent(pointsState.gameId))
+                    .then(function (r) { return r.json(); })
+                    .then(function (optRes) {
+                        renderPointsRedeemOptions((optRes && optRes.options) || [], 0);
+                    })
+                    .catch(function () {});
+            })
+            .catch(function () {
+                pointsState.redeemBusy = false;
+                if (backBtn) backBtn.disabled = false;
+                if (btn) { btn.disabled = false; btn.textContent = 'CANJEAR'; }
+                if (errEl) {
+                    errEl.textContent = 'Error de conexión. Intenta de nuevo.';
+                    errEl.style.display = 'block';
                 }
             });
     }
@@ -2412,6 +2594,42 @@
     var pointsSpinBtnEl = document.getElementById('pointsSpinBtn');
     if (pointsSpinBtnEl) {
         pointsSpinBtnEl.addEventListener('click', handlePointsSpin);
+    }
+
+    var pointsGoSpinBtnEl = document.getElementById('pointsGoSpinBtn');
+    if (pointsGoSpinBtnEl) {
+        pointsGoSpinBtnEl.addEventListener('click', function () {
+            if (pointsState.lastBalanceData) enterPointsSpinStep(pointsState.lastBalanceData);
+        });
+    }
+
+    var pointsGoRedeemBtnEl = document.getElementById('pointsGoRedeemBtn');
+    if (pointsGoRedeemBtnEl) {
+        pointsGoRedeemBtnEl.addEventListener('click', function () {
+            if (pointsState.lastBalanceData) enterPointsRedeemStep(pointsState.lastBalanceData);
+        });
+    }
+
+    var pointsChoiceChangeIdBtnEl = document.getElementById('pointsChoiceChangeIdBtn');
+    if (pointsChoiceChangeIdBtnEl) {
+        pointsChoiceChangeIdBtnEl.addEventListener('click', resetPointsModal);
+    }
+
+    var pointsRedeemBackBtnEl = document.getElementById('pointsRedeemBackBtn');
+    if (pointsRedeemBackBtnEl) {
+        pointsRedeemBackBtnEl.addEventListener('click', function () {
+            var caps = pointsState.gameCaps[pointsState.gameId] || {};
+            if (caps.hasSpin && pointsState.lastBalanceData) {
+                enterPointsChoiceStep(pointsState.lastBalanceData);
+            } else {
+                resetPointsModal();
+            }
+        });
+    }
+
+    var pointsRedeemBtnEl = document.getElementById('pointsRedeemBtn');
+    if (pointsRedeemBtnEl) {
+        pointsRedeemBtnEl.addEventListener('click', handlePointsRedeemSubmit);
     }
 
     if (rankingModalCloseBtn && rankingModal) {

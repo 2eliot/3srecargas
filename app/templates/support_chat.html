@@ -7,6 +7,8 @@
 
 {% block content %}
 <div class="sc-wrap">
+  <a href="{{ url_for('main_bp.index') }}" class="rdm-back sc-back-desktop">← Volver a la tienda</a>
+
   <div class="sc-window">
 
     <header class="sc-head">
@@ -48,6 +50,13 @@
         </p>
         <textarea id="scFirstMessage" rows="4" maxlength="2000"
                   placeholder="¿En qué te ayudamos?">{{ suggested_message }}</textarea>
+
+        <label class="sc-start-file-label" for="scStartFile">
+          📎 Adjuntar comprobante de pago (opcional)
+        </label>
+        <input type="file" id="scStartFile" accept="image/*,video/*">
+        <p class="sc-start-file-name" id="scStartFileName" hidden></p>
+
         <!-- Campo trampa: oculto, una persona nunca lo rellena. -->
         <input type="text" id="scWebsite" name="website" tabindex="-1" autocomplete="off"
                aria-hidden="true" class="sc-trap">
@@ -110,6 +119,10 @@
   window.SUPPORT_IDLE_MINUTES = {{ idle_minutes|tojson }};
   window.SUPPORT_HAS_CHAT = {{ 'true' if chat else 'false' }};
   window.SUPPORT_LAST_ID = {{ (messages|map(attribute='id')|max) if messages else 0 }};
+  window.SUPPORT_AUTO_START = {{ 'true' if auto_start else 'false' }};
+  window.SUPPORT_AUTO_EMAIL = {{ auto_start_email|tojson }};
+  window.SUPPORT_AUTO_SEND = {{ 'true' if auto_send else 'false' }};
+  window.SUPPORT_AUTO_MESSAGE = {{ suggested_message|tojson }};
 </script>
 <script src="{{ static_v('js/support-chat.js') }}"></script>
 {% endblock %}

@@ -39,10 +39,30 @@
             <span class="detail-label">Fecha</span>
             <span class="detail-value">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M:%S') }}</span>
         </div>
+        {% if order.status == 'pending' and same_game_packages|length > 1 %}
+        <div style="margin:12px 0 4px;padding:10px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-secondary)">
+            <form method="POST" action="{{ url_for('admin_bp.order_update_package', order_id=order.id) }}">
+                <div class="form-group" style="margin-bottom:8px">
+                    <label for="package_id_edit" style="font-size:12px">Corregir paquete</label>
+                    <select id="package_id_edit" name="package_id" required style="font-size:13px;padding:6px 10px">
+                        {% for pkg in same_game_packages %}
+                        <option value="{{ pkg.id }}" {% if pkg.id == order.package_id %}selected{% endif %}>
+                            {{ pkg.name }} — ${{ "%.2f"|format(pkg.price) }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small style="display:block;margin-top:4px;color:var(--text-muted);font-size:11px">
+                        Si el cliente pidió la cantidad equivocada.
+                    </small>
+                </div>
+                <button type="submit" class="btn-sm btn-secondary">Guardar paquete</button>
+            </form>
+        </div>
+        {% endif %}
         {% if order.notes %}
-        <div class="detail-row">
+        <div class="detail-row" style="align-items:flex-start">
             <span class="detail-label">Notas</span>
-            <span class="detail-value">{{ order.notes }}</span>
+            <span class="detail-value" style="white-space:pre-line;text-align:left;max-width:70%">{{ order.notes }}</span>
         </div>
         {% endif %}
     </div>
@@ -57,10 +77,10 @@
         </div>
         {% endif %}
         {% if order.status == 'pending' and order.game.category.slug != 'tarjetas' %}
-        <div style="margin:12px 0 18px;padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--bg-secondary)">
+        <div style="margin:12px 0 18px;padding:10px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-secondary)">
             <form method="POST" action="{{ url_for('admin_bp.order_update_player_id', order_id=order.id) }}">
-                <div class="form-group" style="margin-bottom:12px">
-                    <label for="player_id_edit">Editar {{ order.game.player_id_label }}</label>
+                <div class="form-group" style="margin-bottom:8px">
+                    <label for="player_id_edit" style="font-size:12px">Editar {{ order.game.player_id_label }}</label>
                     <input
                         id="player_id_edit"
                         name="player_id"
@@ -69,14 +89,19 @@
                         required
                         autocomplete="off"
                         placeholder="Corrige el ID del jugador"
+                        style="font-size:13px;padding:6px 10px"
                     >
-                    <small style="display:block;margin-top:6px;color:var(--text-muted)">
-                        Si el ID vino incorrecto, puedes corregirlo aquí. Al cambiarlo se limpia el nickname guardado y cualquier intento automático previo para reprocesar la orden manualmente.
+                    <small style="display:block;margin-top:4px;color:var(--text-muted);font-size:11px">
+                        Corrige el ID para reprocesar la orden manualmente.
                     </small>
                 </div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap">
-                    <button type="submit" class="btn-secondary">Guardar ID</button>
-                    <button type="submit" name="reprocess" value="1" class="btn-primary">Guardar ID y reprocesar</button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <button type="submit" class="btn-sm btn-secondary">Guardar ID</button>
+                    <button type="submit" name="reprocess" value="1" class="btn-sm btn-primary">Guardar ID y reprocesar</button>
+                    {% if can_verify_player %}
+                    <button type="button" class="btn-sm btn-outline" id="orderVerifyPlayerBtn" data-order-id="{{ order.id }}">Verificar nombre</button>
+                    <span class="gift-nick" id="orderVerifyPlayerResult" hidden></span>
+                    {% endif %}
                 </div>
             </form>
         </div>
@@ -286,20 +311,31 @@
 {% if order.status == 'pending' %}
 <div class="admin-card" style="margin-top:20px;padding:20px">
     <h3 style="margin-bottom:16px">Acciones</h3>
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" class="approve-form" enctype="multipart/form-data" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" class="approve-form" enctype="multipart/form-data" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
             {% if can_send_delivery_proof %}
-            <div class="form-group" style="margin:0;min-width:280px;">
-                <label for="delivery_proof" style="display:block;margin-bottom:6px;">Comprobante para enviar por correo</label>
-                <input id="delivery_proof" name="delivery_proof" type="file" accept="image/*">
-                <small style="display:block;margin-top:6px;color:var(--text-muted)">Opcional. Se adjunta al correo cuando apruebes esta orden manual.</small>
-            </div>
+            <label class="file-attach-btn file-attach-btn-lg" for="delivery_proof" title="Adjuntar comprobante para el correo (opcional)">📎</label>
+            <input id="delivery_proof" name="delivery_proof" type="file" accept="image/*" class="file-attach-input">
             {% endif %}
-            <button type="submit" class="btn-primary approve-btn">✓ Aprobar Orden</button>
+            <button type="button" class="btn-primary approve-btn" onclick="document.getElementById('approveModal').style.display='flex'">✓ Aprobar Orden</button>
         </form>
         <button class="btn-danger-solid" onclick="document.getElementById('rejectModal').style.display='flex'">
-            ✗ Rechazar Orden
+            ✕ Rechazar Orden
         </button>
+    </div>
+    {% if can_send_delivery_proof %}
+    <small style="display:block;margin-top:10px;color:var(--text-muted);font-size:11px">📎 Comprobante opcional para el correo de entrega.</small>
+    {% endif %}
+</div>
+
+<div class="modal-overlay" id="approveModal" style="display:none">
+    <div class="modal-box">
+        <h3>¿Aprobar esta orden?</h3>
+        <p class="form-hint" style="margin-top:10px">Se va a procesar la recarga. Verifica que le diste al botón correcto antes de continuar.</p>
+        <div class="modal-actions" style="margin-top:16px">
+            <button type="button" onclick="document.getElementById('approveModal').style.display='none'" class="btn-secondary">Cancelar</button>
+            <button type="button" class="btn-primary" id="approveModalConfirmBtn">✓ Sí, aprobar</button>
+        </div>
     </div>
 </div>
 
@@ -400,6 +436,59 @@
                 btn.textContent = 'Procesando ' + seconds + 's';
             }, 1000);
         });
+    });
+})();
+
+// El botón "Aprobar Orden" ya no envía el formulario directo: primero pide
+// confirmar en un modal, porque quedaba pegado al de "Rechazar" y un clic
+// mal apuntado aprobaba la orden sin querer.
+(function () {
+    var confirmBtn = document.getElementById('approveModalConfirmBtn');
+    if (!confirmBtn) return;
+    confirmBtn.addEventListener('click', function () {
+        var form = document.querySelector('.approve-form');
+        if (form) form.requestSubmit();
+    });
+})();
+
+// "Verificar nombre": consulta el mismo verificador que usa la tienda para
+// confirmar de quién es el ID antes de aprobar la orden manualmente.
+(function () {
+    var btn = document.getElementById('orderVerifyPlayerBtn');
+    var resultEl = document.getElementById('orderVerifyPlayerResult');
+    if (!btn || !resultEl) return;
+
+    btn.addEventListener('click', function () {
+        var etiquetaPrevia = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Verificando…';
+        resultEl.hidden = false;
+        resultEl.className = 'gift-nick is-loading';
+        resultEl.textContent = 'Consultando…';
+
+        fetch('/admin/orders/' + btn.dataset.orderId + '/verify-player', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+            .then(function (r) {
+                return r.json().catch(function () {
+                    throw new Error('No se pudo contactar al servidor.');
+                }).then(function (data) {
+                    if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo verificar.');
+                    return data;
+                });
+            })
+            .then(function (data) {
+                resultEl.className = 'gift-nick is-ok';
+                resultEl.textContent = data.nick || '';
+                btn.textContent = 'Actualizar nombre';
+            })
+            .catch(function (err) {
+                resultEl.className = 'gift-nick is-error';
+                resultEl.textContent = err.message;
+                btn.textContent = etiquetaPrevia;
+            })
+            .finally(function () { btn.disabled = false; });
     });
 })();
 </script>
