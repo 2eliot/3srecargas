@@ -62,7 +62,13 @@
         {% if order.notes %}
         <div class="detail-row" style="align-items:flex-start">
             <span class="detail-label">Notas</span>
-            <span class="detail-value" style="white-space:pre-line;text-align:left;max-width:70%">{{ order.notes }}</span>
+            <div class="detail-value" style="text-align:left;max-width:70%;display:flex;flex-direction:column;gap:8px">
+                {% for line in order.notes.split('\n') %}
+                {% if line.strip() %}
+                <span>{{ line }}</span>
+                {% endif %}
+                {% endfor %}
+            </div>
         </div>
         {% endif %}
     </div>

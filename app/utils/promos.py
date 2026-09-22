@@ -61,16 +61,26 @@ def get_accumulated_levels(game_id):
 
 
 def get_accumulated_enabled_games():
-    """Juegos activos que tienen al menos un nivel configurado."""
-    game_ids = [row[0] for row in db.session.query(PromoAccumulatedLevel.game_id).distinct()]
-    if not game_ids:
+    """Juegos activos que tienen al menos un nivel configurado, ordenados
+    por el campo "Posición" propio de esta promo (editable en Admin >
+    Mini Juegos, junto al selector de juego) — el más bajo va primero, y
+    ese primero es el que queda seleccionado por defecto sin game_id en
+    la URL."""
+    order_by_game = dict(
+        db.session.query(
+            PromoAccumulatedLevel.game_id,
+            db.func.min(PromoAccumulatedLevel.sort_order),
+        ).group_by(PromoAccumulatedLevel.game_id).all()
+    )
+    if not order_by_game:
         return []
-    return (
+    games = (
         Game.query
-        .filter(Game.id.in_(game_ids), Game.is_active.is_(True))
-        .order_by(Game.name.asc())
+        .filter(Game.id.in_(order_by_game.keys()), Game.is_active.is_(True))
         .all()
     )
+    games.sort(key=lambda g: (order_by_game.get(g.id) or 100, g.name.lower()))
+    return games
 
 
 def award_accumulated_recharge_for_order(order):
@@ -170,11 +180,13 @@ def get_accumulated_progress_state(game_id, player_id):
 
     player_id = str(player_id).strip()
 
-    # Busca el apodo real solo si el juego tiene verificación configurada;
-    # si no la tiene, o falla, se sigue mostrando el progreso igual — ver
-    # el progreso no depende de poder verificar el ID, solo el nombre que
-    # se muestra junto a él es mejor cuando se puede conseguir.
-    _ok, _error, nick = _verify_id_if_needed(game_id, player_id, True)
+    # Si el juego tiene verificación configurada, el ID tiene que existir de
+    # verdad: no tiene sentido mostrarle una barra de progreso a un ID
+    # inventado. En juegos sin verificador configurado esto se salta solo
+    # (ver _verify_id_if_needed) y el progreso se sigue mostrando igual.
+    ok, error, nick = _verify_id_if_needed(game_id, player_id, True)
+    if not ok:
+        raise ValueError(error)
     result['player_nick'] = nick
 
     progress = PromoAccumulatedProgress.query.filter_by(
@@ -210,16 +222,19 @@ def get_raffle_config(game_id):
 
 
 def get_raffle_enabled_games():
+    """Juegos con el Sorteo Diario activo, ordenados por su "Posición en el
+    selector" propia de esta promo (editable en Admin > Mini Juegos)."""
     configs = PromoRaffleConfig.query.filter_by(is_active=True).all()
-    game_ids = [c.game_id for c in configs]
-    if not game_ids:
+    order_by_game = {c.game_id: (c.sort_order or 100) for c in configs}
+    if not order_by_game:
         return []
-    return (
+    games = (
         Game.query
-        .filter(Game.id.in_(game_ids), Game.is_active.is_(True))
-        .order_by(Game.name.asc())
+        .filter(Game.id.in_(order_by_game.keys()), Game.is_active.is_(True))
         .all()
     )
+    games.sort(key=lambda g: (order_by_game.get(g.id, 100), g.name.lower()))
+    return games
 
 
 def _raffle_open_day_key(game_id):
@@ -462,16 +477,19 @@ def get_guess_config(game_id):
 
 
 def get_guess_enabled_games():
+    """Juegos con Adivina el Número activo, ordenados por su "Posición en
+    el selector" propia de esta promo (editable en Admin > Mini Juegos)."""
     configs = PromoGuessConfig.query.filter_by(is_active=True).all()
-    game_ids = [c.game_id for c in configs]
-    if not game_ids:
+    order_by_game = {c.game_id: (c.sort_order or 100) for c in configs}
+    if not order_by_game:
         return []
-    return (
+    games = (
         Game.query
-        .filter(Game.id.in_(game_ids), Game.is_active.is_(True))
-        .order_by(Game.name.asc())
+        .filter(Game.id.in_(order_by_game.keys()), Game.is_active.is_(True))
         .all()
     )
+    games.sort(key=lambda g: (order_by_game.get(g.id, 100), g.name.lower()))
+    return games
 
 
 def _get_or_create_round(game_id, number_max):

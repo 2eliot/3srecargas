@@ -85,10 +85,6 @@ ALLOWED_EXT = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 ALLOWED_VIDEO_EXT = {'mp4', 'webm', 'mov', 'm4v'}
 PROTECTED_CATEGORY_SLUGS = {'juegos', 'tarjetas', 'wallet'}
 RANKING_PRIZE_POSITIONS = [1, 2, 3, 4, 5]
-RANKING_PRIZE_LABELS = {
-    'free_fire': ['6160 diamantes', '2398 diamantes', '1166 diamantes', '572 diamantes', '341 diamantes'],
-    'blood_strike': ['1500 oro', '700 oro', '350 oro', '200 oro', '120 oro'],
-}
 GAME_PLAYER_INPUT_TYPES = {'numeric', 'text', 'email'}
 
 
@@ -2706,6 +2702,7 @@ def _build_admin_rankings_payload():
         _get_ranking_entries,
         _is_ranking_enabled,
         _resolve_ranking_game,
+        get_ranking_prize_config,
     )
 
     month_label = now_ve().strftime('%m/%Y')
@@ -2714,7 +2711,7 @@ def _build_admin_rankings_payload():
     for ranking_key, config in RANKING_DEFS.items():
         game = _resolve_ranking_game(config)
         enabled = bool(game and _is_ranking_enabled(config, game))
-        rewards = config.get('rewards') or []
+        prize_config = get_ranking_prize_config(ranking_key)
         item = {
             'key': ranking_key,
             'label': config.get('label') or ranking_key,
@@ -2733,16 +2730,16 @@ def _build_admin_rankings_payload():
             entries = _get_ranking_entries(game.id)
             item['total_players'] = len(entries)
             for index, entry in enumerate(entries[:10], start=1):
-                reward_value = rewards[index - 1] if index - 1 < len(rewards) else None
+                package = prize_config.get(index, {}).get('package')
                 item['leaders'].append({
                     'position': index,
                     'player_id': (entry.get('player_id') or '').strip() or '----',
                     'nickname': (entry.get('nickname') or '').strip() or 'Sin nickname',
                     'total_units': int(entry.get('total_units') or 0),
                     'total_spent': round(float(entry.get('total_spent') or 0), 2),
-                    'reward_value': reward_value,
-                    'prize_label': str(reward_value) if reward_value is not None else 'Sin premio',
-                    'is_prize_eligible': index <= len(rewards),
+                    'reward_value': package.name if package else None,
+                    'prize_label': package.name if package else 'Sin premio',
+                    'is_prize_eligible': index <= 5,
                 })
 
         rankings.append(item)
@@ -2895,14 +2892,15 @@ def settings():
 
     ranking_prize_settings = {'free_fire': {}, 'blood_strike': {}}
     for ranking_key_name in ranking_prize_settings.keys():
-        labels = RANKING_PRIZE_LABELS.get(ranking_key_name, [])
         for position in RANKING_PRIZE_POSITIONS:
             package_setting = Setting.query.filter_by(key=_ranking_prize_package_key(ranking_key_name, position)).first()
             auto_setting = Setting.query.filter_by(key=_ranking_prize_auto_key(ranking_key_name, position)).first()
+            package_id = package_setting.value if package_setting else ''
+            package = Package.query.get(int(package_id)) if str(package_id).isdigit() else None
             ranking_prize_settings[ranking_key_name][position] = {
-                'package_id': package_setting.value if package_setting else '',
+                'package_id': package_id,
                 'auto': auto_setting.value if auto_setting else '0',
-                'reward_label': labels[position - 1] if position - 1 < len(labels) else f'Puesto #{position}',
+                'reward_label': package.name if package else 'Sin premio configurado',
             }
 
     if request.method == 'POST':
@@ -3296,7 +3294,6 @@ def settings():
         ranking_games=ranking_games,
         ranking_prize_settings=ranking_prize_settings,
         ranking_prize_positions=RANKING_PRIZE_POSITIONS,
-        ranking_prize_labels=RANKING_PRIZE_LABELS,
         ranking_packages_by_game=ranking_packages_by_game,
         community_popup_settings=community_popup_settings,
         manual_schedule_settings=manual_schedule_settings,
@@ -3443,10 +3440,15 @@ def minigames():
                 else:
                     promos_guess_today_slots.append({'slot': slot, 'status': 'pending', 'number': None, 'player_id': None})
 
+        promos_accumulated_sort_order = next(
+            (lvl.sort_order for lvl in promos_levels.values() if lvl.sort_order is not None), 100
+        )
+
         promos_context = dict(
             selected_game=promos_selected_game,
             game_packages=promos_game_packages,
             levels=promos_levels,
+            accumulated_sort_order=promos_accumulated_sort_order,
             raffle_config=promos_raffle_config,
             guess_config=promos_guess_config,
             recent_awards=promos_recent_awards,
@@ -3716,6 +3718,7 @@ def promos():
 def promos_accumulated_save():
     game_id = request.form.get('game_id', type=int)
     game = Game.query.get_or_404(game_id)
+    sort_order = request.form.get('sort_order', type=int) or 100
 
     new_levels = []
     for number in (1, 2, 3):
@@ -3737,6 +3740,7 @@ def promos_accumulated_save():
         db.session.add(PromoAccumulatedLevel(
             game_id=game.id, level_number=number, level_name=name,
             threshold_amount=threshold, package_id=package_id,
+            sort_order=sort_order,
         ))
     db.session.commit()
 
@@ -3758,6 +3762,7 @@ def promos_raffle_save():
     winners_per_draw = request.form.get('winners_per_draw', type=int)
     package_id = request.form.get('package_id', type=int)
     require_verification = request.form.get('require_verification') == 'on'
+    sort_order = request.form.get('sort_order', type=int) or 100
 
     config = PromoRaffleConfig.query.filter_by(game_id=game.id).first()
     if not config:
@@ -3769,6 +3774,7 @@ def promos_raffle_save():
     config.winners_per_draw = winners_per_draw if winners_per_draw and winners_per_draw > 0 else 5
     config.package_id = package_id
     config.require_verification = require_verification
+    config.sort_order = sort_order
     db.session.commit()
 
     flash(f'Sorteo Diario {"activado" if config.is_active else "guardado (inactivo)"} para {game.name}.', 'success')
@@ -3787,6 +3793,7 @@ def promos_guess_save():
     winners_per_day = request.form.get('winners_per_day', type=int)
     package_id = request.form.get('package_id', type=int)
     require_verification = request.form.get('require_verification') == 'on'
+    sort_order = request.form.get('sort_order', type=int) or 100
 
     config = PromoGuessConfig.query.filter_by(game_id=game.id).first()
     if not config:
@@ -3799,6 +3806,7 @@ def promos_guess_save():
     config.winners_per_day = winners_per_day if winners_per_day and winners_per_day > 0 else 3
     config.package_id = package_id
     config.require_verification = require_verification
+    config.sort_order = sort_order
     db.session.commit()
 
     flash(f'Adivina el Número {"activado" if config.is_active else "guardado (inactivo)"} para {game.name}.', 'success')

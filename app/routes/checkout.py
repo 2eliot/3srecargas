@@ -1381,12 +1381,28 @@ def points_balance():
     if not game:
         return jsonify({'ok': False, 'message': 'Juego no encontrado.'}), 404
 
+    # El ID tiene que existir de verdad en el juego (cuando hay verificador
+    # configurado) antes de dejar consultar saldo — evita que alguien
+    # consulte/gire con un ID inventado. De paso, el nombre real se le
+    # muestra al cliente junto al ID para que confirme que es el suyo.
+    from .verify import verifiable_game_ids, verify_player_nick
+    player_nick = None
+    if game_id in verifiable_game_ids():
+        verify_payload, verify_status = verify_player_nick(player_id, str(game_id), mode='auto')
+        if not verify_payload.get('ok'):
+            return jsonify({
+                'ok': False,
+                'message': verify_payload.get('error') or 'No se pudo verificar tu ID.',
+            }), verify_status
+        player_nick = verify_payload.get('nick')
+
     balance = get_player_points_balance(game_id, player_id)
     return jsonify({
         'ok': True,
         'game_id': game_id,
         'game_name': game.name,
         'player_id': player_id,
+        'player_nick': player_nick,
         'balance': balance,
         'spin_cost': get_points_spin_cost(),
     })

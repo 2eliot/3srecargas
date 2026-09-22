@@ -10,7 +10,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
 body { font-family: 'Outfit', sans-serif; background-color: #000000; color: #f8fafc; -webkit-tap-highlight-color: transparent; }
 .custom-glow { box-shadow: 0 0 20px rgba(220, 38, 38, 0.2); }
-.mobile-shell { width: 100%; max-width: 440px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; background-color: #000000; position: relative; }
+.mobile-shell { width: 100%; max-width: 440px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; background-color: #000000; position: relative; }
 button, input, select { touch-action: manipulation; }
 [hidden] { display: none !important; }
 </style>
@@ -29,7 +29,7 @@ button, input, select { touch-action: manipulation; }
         <p id="scheduleLabel" class="text-slate-400 text-[11px] mt-1"></p>
     </header>
 
-    <main class="w-full flex flex-col items-center gap-4 my-auto">
+    <main class="w-full flex flex-col items-center gap-4">
         {% if not games %}
         <div class="w-full bg-[#050505] border border-red-500/30 p-6 rounded-2xl text-center text-slate-300 text-sm">
             Este juego no está activo en este momento. Vuelve pronto.
@@ -37,11 +37,14 @@ button, input, select { touch-action: manipulation; }
         {% else %}
 
         {% if games|length > 1 %}
-        <select id="gameSelect" class="w-full bg-black border border-red-500/40 rounded-xl px-3 py-2.5 text-xs text-white">
-            {% for g in games %}
-            <option value="{{ g.id }}" {{ 'selected' if game and game.id == g.id }}>{{ g.name }}</option>
-            {% endfor %}
-        </select>
+        <div class="w-full">
+            <span class="text-xs uppercase tracking-widest text-white font-extrabold block mb-1.5">Selecciona otro juego:</span>
+            <select id="gameSelect" class="w-full bg-black border border-red-500/40 rounded-xl px-3 py-2.5 text-xs text-white">
+                {% for g in games %}
+                <option value="{{ g.id }}" {{ 'selected' if game and game.id == g.id }}>{{ g.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
         {% endif %}
 
         <div id="live-panel" class="w-full bg-[#050505] border border-red-500/30 p-3.5 rounded-2xl shadow-xl flex items-center justify-between">
@@ -61,8 +64,16 @@ button, input, select { touch-action: manipulation; }
             </div>
             <p id="rangeText" class="text-slate-300 text-[11px] max-w-xs leading-relaxed text-center"></p>
             <div class="w-full flex flex-col gap-2.5">
-                <input type="tel" inputmode="numeric" id="playerIdInput" placeholder="Tu ID de Juego..."
-                       class="w-full bg-[#000000] border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
+                <div class="w-full flex gap-2">
+                    <input type="tel" inputmode="numeric" id="playerIdInput" placeholder="Tu ID de Juego..."
+                           class="flex-1 min-w-0 bg-[#000000] border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
+                    {% if verifiable %}
+                    <button type="button" id="verifyIdBtn" class="flex-shrink-0 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 text-slate-200 hover:text-white font-extrabold text-[10px] px-3.5 rounded-xl uppercase tracking-wider">🔍 Verificar</button>
+                    {% endif %}
+                </div>
+                {% if verifiable %}
+                <p id="verifyIdMsg" class="text-[11px] font-bold -mt-1 min-h-[14px]"></p>
+                {% endif %}
                 <input type="tel" inputmode="numeric" id="guessInput" placeholder="Tu número..."
                        class="w-full bg-[#000000] border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
                 <button id="guessBtn" class="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-extrabold text-xs py-3 rounded-xl shadow-lg shadow-red-600/30 uppercase tracking-wider">🚀 Adivinar Número</button>
@@ -176,11 +187,66 @@ async function refreshState(playerId) {
     return data;
 }
 
+const verifyIdBtn = document.getElementById('verifyIdBtn');
+const playerIdInputEl = document.getElementById('playerIdInput');
+let verifiedPlayerId = null; // ID que ya pasó la verificación, exacto (string)
+
+if (verifyIdBtn) {
+    // Si el cliente toca el ID después de verificarlo, ya no vale: tiene
+    // que volver a verificar antes de poder adivinar.
+    playerIdInputEl.addEventListener('input', () => {
+        if (verifiedPlayerId !== null && playerIdInputEl.value.trim() !== verifiedPlayerId) {
+            verifiedPlayerId = null;
+            document.getElementById('verifyIdMsg').textContent = '';
+        }
+    });
+
+    verifyIdBtn.addEventListener('click', async () => {
+        const playerId = playerIdInputEl.value.trim();
+        const msg = document.getElementById('verifyIdMsg');
+        if (!playerId) {
+            msg.className = 'text-[11px] font-bold -mt-1 min-h-[14px] text-red-400';
+            msg.textContent = 'Escribe tu ID primero.';
+            return;
+        }
+        verifyIdBtn.disabled = true;
+        verifyIdBtn.textContent = '⏳ Verificando...';
+        msg.className = 'text-[11px] font-bold -mt-1 min-h-[14px] text-slate-400';
+        msg.textContent = 'Consultando...';
+        try {
+            const res = await fetch(`/promos/api/verify-player?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
+            const data = await res.json();
+            if (!data.ok) {
+                verifiedPlayerId = null;
+                msg.className = 'text-[11px] font-bold -mt-1 min-h-[14px] text-red-400';
+                msg.textContent = data.error || 'No se pudo verificar tu ID.';
+            } else {
+                verifiedPlayerId = playerId;
+                msg.className = 'text-[11px] font-bold -mt-1 min-h-[14px] text-emerald-400';
+                msg.textContent = `✅ ${data.nick}`;
+            }
+        } catch (e) {
+            verifiedPlayerId = null;
+            msg.className = 'text-[11px] font-bold -mt-1 min-h-[14px] text-red-400';
+            msg.textContent = 'Error de conexión, intenta de nuevo.';
+        } finally {
+            verifyIdBtn.disabled = false;
+            verifyIdBtn.textContent = '🔍 Verificar';
+        }
+    });
+}
+
 document.getElementById('guessBtn').addEventListener('click', async () => {
-    const playerId = document.getElementById('playerIdInput').value.trim();
+    const playerId = playerIdInputEl.value.trim();
     const guess = document.getElementById('guessInput').value.trim();
     const feedback = document.getElementById('feedbackMsg');
     feedback.textContent = '';
+
+    if (verifyIdBtn && playerId !== verifiedPlayerId) {
+        feedback.className = 'text-[11px] font-bold mt-1 min-h-[16px] text-red-400';
+        feedback.textContent = '⚠️ Debes verificar tu ID primero (botón "Verificar").';
+        return;
+    }
 
     try {
         const res = await fetch('/promos/api/adivina/intentar', {

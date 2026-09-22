@@ -286,6 +286,7 @@ def create_app(config_class=Config):
         _ensure_revendedores_mapping_columns()
         _ensure_binance_columns()
         _ensure_support_columns()
+        _ensure_promo_accumulated_columns()
         _init_default_data(app)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -772,6 +773,13 @@ def _ensure_order_idempotency_column():
 
 def _ensure_ranking_archive_columns():
     try:
+        if _ensure_postgres_columns('ranking_archives', [
+            'player_id VARCHAR(100)',
+            'nickname VARCHAR(200)',
+            'prize_order_id INTEGER',
+        ]):
+            return
+
         if db.engine.dialect.name != 'sqlite':
             return
 
@@ -781,6 +789,8 @@ def _ensure_ranking_archive_columns():
             db.session.execute(text('ALTER TABLE ranking_archives ADD COLUMN player_id VARCHAR(100)'))
         if 'nickname' not in existing:
             db.session.execute(text('ALTER TABLE ranking_archives ADD COLUMN nickname VARCHAR(200)'))
+        if 'prize_order_id' not in existing:
+            db.session.execute(text('ALTER TABLE ranking_archives ADD COLUMN prize_order_id INTEGER'))
 
         db.session.commit()
     except Exception:
@@ -902,6 +912,27 @@ def _ensure_support_columns():
                     db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN {column_def}'))
 
         db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_promo_accumulated_columns():
+    """Orden del juego en el selector de cada promo (Recarga Acumulada,
+    Sorteo Diario, Adivina el Número), editable desde Admin > Mini Juegos
+    sin depender de la Posición general de la tienda. Cada promo tiene su
+    propio "sort_order" porque no necesariamente comparten el mismo orden
+    entre sí."""
+    try:
+        for table in ('promo_accumulated_levels', 'promo_raffle_configs', 'promo_guess_configs'):
+            if _ensure_postgres_columns(table, ['sort_order INTEGER DEFAULT 100']):
+                continue
+            if db.engine.dialect.name != 'sqlite':
+                continue
+            rows = db.session.execute(text(f'PRAGMA table_info({table})')).fetchall()
+            existing = {r[1] for r in rows}
+            if 'sort_order' not in existing:
+                db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN sort_order INTEGER DEFAULT 100'))
+                db.session.commit()
     except Exception:
         db.session.rollback()
 

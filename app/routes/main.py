@@ -37,7 +37,6 @@ RANKING_DEFS = {
         'units_label': 'Diamantes',
         'setting_key': 'ranking_free_fire_game_id',
         'enabled_key': 'ranking_free_fire_enabled',
-        'rewards': [6160, 2398, 1166, 572, 341],
         'aliases': ['free fire', 'freefire', 'ff'],
     },
     'blood_strike': {
@@ -45,10 +44,36 @@ RANKING_DEFS = {
         'units_label': 'Oro',
         'setting_key': 'ranking_blood_strike_game_id',
         'enabled_key': 'ranking_blood_strike_enabled',
-        'rewards': [1500, 700, 350, 200, 120],
         'aliases': ['blood strike', 'bloodstrike'],
     },
 }
+
+# Las 5 posiciones premiadas de cada ranking. El premio de cada una ya no
+# es un número fijo en el código: es el paquete real que el admin elige en
+# Configuración > Rankings Mensuales — así lo que se muestra como premio es
+# exactamente lo que se entrega (antes eran dos cosas separadas que podían
+# no coincidir).
+RANKING_PRIZE_POSITIONS = [1, 2, 3, 4, 5]
+
+
+def _ranking_prize_package_key(ranking_key, position):
+    return f'ranking_{ranking_key}_prize_package_{position}'
+
+
+def _ranking_prize_auto_key(ranking_key, position):
+    return f'ranking_{ranking_key}_prize_auto_{position}'
+
+
+def get_ranking_prize_config(ranking_key):
+    """{posición: {'package': Package|None, 'auto': bool}} para las 5
+    posiciones premiadas de este ranking."""
+    result = {}
+    for position in RANKING_PRIZE_POSITIONS:
+        package_id_raw = _get_setting_val(_ranking_prize_package_key(ranking_key, position), '')
+        package = Package.query.get(int(package_id_raw)) if str(package_id_raw).isdigit() else None
+        auto = _get_setting_val(_ranking_prize_auto_key(ranking_key, position), '0') == '1'
+        result[position] = {'package': package, 'auto': auto}
+    return result
 
 
 def _month_range_for_ve(target_date=None):
@@ -365,23 +390,24 @@ def _build_ranking_payload(ranking_key, target_date=None):
         return payload
 
     entries = _get_ranking_entries(game.id, target_date=target_date)
-    rewards = config.get('rewards') or []
-    for reward_index, reward_value in enumerate(rewards, start=1):
+    prize_config = get_ranking_prize_config(ranking_key)
+    for position in RANKING_PRIZE_POSITIONS:
+        package = prize_config[position]['package']
         payload['reward_ladder'].append({
-            'position': reward_index,
-            'reward_value': reward_value,
-            'reward_label': str(reward_value),
+            'position': position,
+            'reward_value': package.name if package else None,
+            'reward_label': package.name if package else 'Sin premio configurado',
         })
 
     for index, entry in enumerate(entries[:10], start=1):
-        reward_value = rewards[index - 1] if index - 1 < len(rewards) else None
+        package = prize_config.get(index, {}).get('package')
         payload['entries'].append({
             'position': index,
             'masked_player_id': _mask_player_id(entry['player_id']),
             'masked_nickname': _mask_nickname(entry['nickname']),
             'total_units': entry['total_units'],
-            'prize_label': str(reward_value) if reward_value is not None else 'Sin premio',
-            'reward_value': reward_value,
+            'prize_label': package.name if package else 'Sin premio',
+            'reward_value': package.name if package else None,
             'is_prize_eligible': index <= 5,
         })
 
@@ -436,22 +462,40 @@ def archive_previous_month_rankings_if_needed():
         if not entries:
             continue
 
-        rewards = config.get('rewards') or []
+        prize_config = get_ranking_prize_config(ranking_key)
 
         for index, entry in enumerate(entries[:5], start=1):
-            reward_value = rewards[index - 1] if index - 1 < len(rewards) else None
+            slot = prize_config.get(index) or {}
+            package = slot.get('package')
+            player_id = (entry.get('player_id') or '').strip() or None
+
+            prize_order_id = None
+            if package and slot.get('auto') and player_id:
+                # Mismo mecanismo que cualquier otro premio automático del
+                # sitio (Recarga Acumulada, Adivina el Número, etc.): crea
+                # una orden interna de $0 y la entrega por el camino normal
+                # (PIN propio o bot), así queda auditable en Órdenes.
+                from ..utils.order_processing import deliver_prize_to_player
+                prize_order, _approval = deliver_prize_to_player(
+                    game, package, player_id,
+                    note=f'Premio Ranking Mensual — puesto #{index} de {config["label"]} ({year}-{month:02d}).',
+                    reference_prefix='RANKING',
+                )
+                prize_order_id = prize_order.id if prize_order else None
+
             db.session.add(RankingArchive(
                 ranking_key=ranking_key,
                 year=year,
                 month=month,
                 position=index,
                 game_name=game.name,
-                player_id=(entry.get('player_id') or '').strip() or None,
+                player_id=player_id,
                 nickname=(entry.get('nickname') or '').strip() or None,
                 masked_player_id=_mask_player_id(entry.get('player_id')),
                 masked_nickname=_mask_nickname(entry.get('nickname')),
                 total_units=entry.get('total_units') or 0,
-                prize_label=str(reward_value) if reward_value is not None else 'Sin premio',
+                prize_label=package.name if package else 'Sin premio',
+                prize_order_id=prize_order_id,
             ))
 
     db.session.commit()

@@ -41,15 +41,16 @@
     {% else %}
 
     {% if games|length > 1 %}
-    <select id="gameSelect" class="w-full bg-black border border-red-500/40 rounded-xl px-3 py-2.5 text-xs text-white">
+    <span class="text-xs uppercase tracking-widest text-white font-extrabold block mb-1.5">Selecciona otro juego:</span>
+    <select id="gameSelect" class="w-full bg-black border-2 border-red-500 rounded-xl px-3 py-2.5 text-xs text-white">
         {% for g in games %}
         <option value="{{ g.id }}" {{ 'selected' if game and game.id == g.id }}>{{ g.name }}</option>
         {% endfor %}
     </select>
     {% endif %}
 
-    <div id="idFormBox" class="w-full bg-[#000000] border border-red-500/40 p-4 rounded-xl shadow-inner flex flex-col gap-2.5">
-        <span class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Tu ID de {{ game.name if game else 'juego' }}</span>
+    <div id="idFormBox" class="w-full bg-[#000000] border-2 border-red-500 p-4 rounded-xl shadow-inner flex flex-col gap-2.5">
+        <span class="text-[10px] uppercase tracking-widest text-white font-extrabold">Tu ID de {{ game.name if game else 'juego' }}</span>
         <div class="flex gap-2">
             <input type="text" inputmode="numeric" id="playerIdInput" placeholder="Tu ID (ej: 123456789)..."
                    class="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono">

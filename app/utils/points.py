@@ -104,7 +104,7 @@ def order_qualifies_for_points(order):
         return False
     if order.status == 'rejected':
         return False
-    if not (order.status == 'completed' or order.payment_verified_at):
+    if not (order.status in ('completed', 'approved') or order.payment_verified_at):
         return False
     if not (order.player_id or '').strip():
         return False

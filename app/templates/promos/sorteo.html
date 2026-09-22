@@ -25,7 +25,6 @@
             min-height: 100vh;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
             background-color: #000000;
             box-shadow: 0 0 40px rgba(0,0,0,0.8);
             position: relative;
@@ -56,6 +55,7 @@
         </header>
 
         {% if games and games|length > 1 %}
+        <span class="text-xs uppercase tracking-widest text-white font-extrabold block mb-1.5">Selecciona otro juego:</span>
         <select id="gameSelect" class="w-full bg-black border border-red-500/40 rounded-xl px-3 py-2.5 text-xs text-white mb-3">
             {% for g in games %}
             <option value="{{ g.id }}" {{ 'selected' if game and game.id == g.id }}>{{ g.name }}</option>
@@ -63,7 +63,7 @@
         </select>
         {% endif %}
 
-        <main class="w-full flex flex-col items-center gap-4 my-auto">
+        <main class="w-full flex flex-col items-center gap-4">
 
             {% if not games %}
             <div class="w-full bg-[#050505] border border-red-500/30 p-6 rounded-2xl text-center text-slate-300 text-sm">
@@ -93,7 +93,7 @@
                 </div>
             </div>
 
-            <div id="slot-section" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl flex flex-col items-center gap-3 custom-glow">
+            <div id="slot-section" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl hidden flex flex-col items-center gap-3 custom-glow">
                 <div class="relative w-full bg-gradient-to-b from-[#000000] to-[#030303] border-2 border-red-600/50 rounded-xl shadow-2xl overflow-hidden flex flex-col items-center p-2">
                     <div class="absolute top-2 left-2.5 flex items-center gap-1 text-[10px] text-red-400/90 font-bold tracking-wider uppercase truncate max-w-[65%]">
                         <span>🎰</span> <span id="timer-display" class="truncate">Iniciando giro...</span>
@@ -109,7 +109,7 @@
                 </button>
             </div>
 
-            <div id="register-section" class="w-full bg-[#050505] border-2 border-red-500/50 p-4 rounded-2xl shadow-xl hidden flex flex-col gap-3.5 text-center relative overflow-hidden">
+            <div id="register-section" class="w-full bg-[#050505] border-2 border-red-500/50 p-4 rounded-2xl shadow-xl flex flex-col gap-3.5 text-center relative overflow-hidden">
                 <div class="absolute inset-0 bg-gradient-to-r from-red-600/5 via-transparent to-red-600/5 pointer-events-none"></div>
 
                 <div class="bg-black border border-red-500/40 rounded-xl p-3 shadow-inner flex flex-col items-center">
@@ -146,8 +146,8 @@
                             <input type="tel" inputmode="numeric" id="user-id-input" placeholder="Tu ID (ej: 12345678)..." class="w-full bg-[#000000] border border-zinc-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
                         </div>
                         <div class="grid grid-cols-2 gap-2 w-full">
-                            <button onclick="registrarNuevoJugador()" class="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold px-3 py-2.5 rounded-xl transition shadow-md text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 border border-red-400/40 active:scale-95">
-                                <span>✨</span> Registrarme
+                            <button id="register-btn" onclick="registrarNuevoJugador()" class="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold px-3 py-2.5 rounded-xl transition shadow-md text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 border border-red-400/40 active:scale-95">
+                                <span id="register-btn-label">✨ Registrarme</span>
                             </button>
                             <button onclick="consultarTicketPorId()" class="w-full bg-zinc-900 hover:bg-zinc-800 text-slate-200 hover:text-white font-extrabold px-3 py-2.5 rounded-xl transition shadow-md text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 border border-zinc-700/60 active:scale-95">
                                 <span>🔍</span> Consultar
@@ -556,6 +556,8 @@
             const msg = document.getElementById('register-msg');
             const successCard = document.getElementById('registered-success-card');
             const successTitle = document.getElementById('success-card-title');
+            const btn = document.getElementById('register-btn');
+            const btnLabel = document.getElementById('register-btn-label');
 
             const idVal = idInput.value.trim();
 
@@ -564,6 +566,15 @@
                 successCard.classList.add('hidden');
                 return;
             }
+
+            // El registro verifica el ID contra el sistema real del juego antes
+            // de aceptarlo (si el juego tiene verificador configurado) — un ID
+            // inválido no se registra, para no arriesgar el premio automático
+            // en un ganador que no existe.
+            btn.disabled = true;
+            btnLabel.textContent = '🔎 Verificando ID...';
+            msg.innerText = "";
+            successCard.classList.add('hidden');
 
             fetch('/promos/api/sorteo/registrar', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -581,13 +592,18 @@
                 successTitle.innerHTML = "<span>🎉</span> ¡Registro Exitoso!";
                 successCard.classList.remove('hidden');
                 document.getElementById('assigned-ticket-info').innerText = `Ticket #${data.ticket_number}`;
-                document.getElementById('assigned-player-info').innerText = `ID: ${idVal}`;
+                document.getElementById('assigned-player-info').innerText =
+                    data.player_nick ? `${data.player_nick} • ID: ${idVal}` : `ID: ${idVal}`;
                 if (typeof confetti === 'function') confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 }, colors: ['#ef4444', '#ffffff', '#dc2626'] });
                 idInput.value = "";
             })
             .catch(() => {
                 msg.innerText = "❌ Error de conexión, intenta de nuevo.";
                 successCard.classList.add('hidden');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btnLabel.textContent = '✨ Registrarme';
             });
         }
 
@@ -651,13 +667,26 @@
                 if (alreadySeenToday()) {
                     showConcludedState();
                 } else if (!isSpinning && winners.length === 0) {
+                    document.getElementById('slot-section').classList.remove('hidden');
+                    document.getElementById('register-section').classList.add('hidden');
                     document.getElementById('countdown-timer').innerText = '✨ ¡EN PROGRESO! ✨';
                     setTimeout(() => iniciarSorteo(), 1200);
                 }
             } else if (data.is_draw_time) {
+                // Hora del sorteo pero el servidor todavía no marcó "drawn": se
+                // ve la ruleta con un mensaje de espera, no el formulario de
+                // registro (ya cerró) ni la animación (los ganadores reales
+                // todavía no existen).
+                document.getElementById('slot-section').classList.remove('hidden');
+                document.getElementById('register-section').classList.add('hidden');
                 document.getElementById('countdown-timer').innerText = '✨ ¡EN PROGRESO! ✨';
                 drawStaticDisplay(participants.length ? '🎲 ¡SORTEO EN VIVO! 🎲' : 'Esperando participantes...');
             } else {
+                // Fuera del horario del sorteo: lo que se ve primero es el
+                // registro, no la ruleta (esa recién arranca a la hora del
+                // sorteo, cuando data.is_draw_time o data.drawn se activan).
+                document.getElementById('slot-section').classList.add('hidden');
+                document.getElementById('register-section').classList.remove('hidden');
                 document.getElementById('countdown-timer').innerText = `📡 Registro abierto — sorteo a las ${String(data.draw_hour).padStart(2, '0')}:00`;
                 drawStaticDisplay(`🎲 ¡SORTEO ${String(data.draw_hour).padStart(2, '0')}:00 (Venezuela)! 🎲`);
             }

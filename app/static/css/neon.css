@@ -1623,6 +1623,77 @@ body.drawer-open { overflow: hidden; }
     color: var(--nx-text);
 }
 
+/* ── Ranking mensual: mismo vidrio esmerilado (glass) que el resto de
+   la tienda — main.css lo dejaba con fondos planos sin transparencia. ── */
+.ranking-tab {
+    background: rgba(255,255,255,.04) !important;
+    backdrop-filter: blur(6px) saturate(190%);
+    -webkit-backdrop-filter: blur(6px) saturate(190%);
+    border: 1px solid rgba(255,255,255,.12) !important;
+    border-top: 1px solid rgba(255,255,255,.22) !important;
+    transition: background .15s ease, border-color .15s ease;
+}
+.ranking-tab:hover { background: rgba(255,255,255,.08) !important; }
+.ranking-tab.active {
+    background: linear-gradient(135deg, rgba(255,0,0,.92), rgba(200,0,0,.88)) !important;
+    border: 1px solid rgba(255,255,255,.4) !important;
+    box-shadow: 0 4px 20px rgba(255,0,0,.5), inset 0 1.5px 2px rgba(255,255,255,.4);
+}
+
+.ranking-prizes {
+    background: linear-gradient(135deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.005) 100%) !important;
+    backdrop-filter: blur(10px) saturate(190%);
+    -webkit-backdrop-filter: blur(10px) saturate(190%);
+    border: 1px solid rgba(255,0,0,.22) !important;
+    border-top: 1px solid rgba(255,255,255,.18) !important;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.08), 0 10px 25px rgba(0,0,0,.25);
+}
+.ranking-prizes-title { background: rgba(255,0,0,.1) !important; }
+
+.ranking-main-card {
+    background:
+        radial-gradient(circle at top left, rgba(255,60,92,.16), transparent 32%),
+        linear-gradient(135deg, rgba(255,255,255,.025) 0%, rgba(10,10,10,.55) 100%) !important;
+    backdrop-filter: blur(14px) saturate(200%);
+    -webkit-backdrop-filter: blur(14px) saturate(200%);
+    border: 1.5px solid rgba(255,0,0,.35) !important;
+    box-shadow: 0 0 30px rgba(255,0,0,.12), inset 0 1.5px 2px rgba(255,255,255,.08);
+}
+
+.ranking-live-chip {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 0 16px rgba(255,22,60,.35);
+}
+
+.ranking-table-wrap {
+    background: rgba(0,0,0,.28) !important;
+    backdrop-filter: blur(10px) saturate(180%);
+    -webkit-backdrop-filter: blur(10px) saturate(180%);
+    border: 1px solid rgba(255,255,255,.1) !important;
+}
+.ranking-table th {
+    background: rgba(255,26,60,.14) !important;
+    backdrop-filter: blur(6px);
+}
+.ranking-table tbody tr:hover td { background: rgba(255,255,255,.03); }
+
+.ranking-current-card,
+.ranking-archive-card {
+    background: linear-gradient(135deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.006) 100%) !important;
+    backdrop-filter: blur(8px) saturate(190%);
+    -webkit-backdrop-filter: blur(8px) saturate(190%);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.08);
+}
+
+.ranking-progress {
+    background: rgba(255,255,255,.06) !important;
+    backdrop-filter: blur(4px);
+}
+.ranking-progress-bar {
+    box-shadow: 0 0 12px rgba(248,209,106,.5);
+}
+
 .store-popup-header,
 .payment-warning-head {
     font-family: var(--nx-font-display) !important;
@@ -1853,8 +1924,8 @@ body.drawer-open { overflow: hidden; }
     background: rgba(3, 3, 3, .95);
     border-bottom: 1px solid rgba(255, 0, 0, .2);
     align-items: center;
-    padding: 24px;
-    margin-bottom: 24px;
+    padding: 28px;
+    margin-bottom: 28px;
 }
 
 /* La X cuadrada del diseno, no la redonda gris del resto de modales. */
@@ -1883,24 +1954,34 @@ body.drawer-open { overflow: hidden; }
     color: #fff;
 }
 
-.points-modal-hint { font-size: 12.5px; color: var(--nx-muted); line-height: 1.5; margin: 0 0 14px; padding: 0 24px; }
+.points-modal-hint { font-size: 12.5px; color: var(--nx-muted); line-height: 1.5; margin: 0 0 14px; padding: 0 28px; }
 .points-modal-hint strong { color: #fff; }
-.points-form-group { padding: 0 24px; margin-bottom: 14px; }
+.points-form-group { padding: 0 28px; margin-bottom: 14px; }
 .points-form-group label { display: block; font-size: 11px; color: var(--nx-dim); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; font-weight: 700; }
 .points-form-group select,
 .points-form-group input {
     width: 100%;
     padding: 12px 14px;
     border-radius: 12px;
-    background: rgba(2, 2, 2, .9);
-    border: 1px solid rgba(255, 0, 0, .25);
+    background: rgba(0, 0, 0, .35);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, .15);
+    border-top: 1px solid rgba(255, 255, 255, .25);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, .1), 0 1px 1px rgba(255, 255, 255, .1);
     color: #fff;
     font-family: inherit;
     font-size: 14px;
 }
+.points-form-group select:focus,
+.points-form-group input:focus {
+    border-color: rgba(255, 0, 0, .65);
+    box-shadow: 0 0 0 3px rgba(255, 0, 0, .15), inset 0 2px 4px rgba(0, 0, 0, .1);
+    outline: none;
+}
 
 .points-modal-error {
-    margin: 0 24px 12px;
+    margin: 0 28px 12px;
     padding: 10px 12px;
     border-radius: 10px;
     background: rgba(255, 0, 0, .12);
@@ -1912,7 +1993,7 @@ body.drawer-open { overflow: hidden; }
 /* El resultado del giro vive en su propio modal; este parrafo quedo solo
    para los avisos de la API (saldo insuficiente, fallo de conexion). */
 .points-modal-result {
-    margin: 0 24px 12px;
+    margin: 0 28px 12px;
     padding: 12px 14px;
     border-radius: 12px;
     background: rgba(255, 0, 0, .12);
@@ -1932,8 +2013,8 @@ body.drawer-open { overflow: hidden; }
 .points-primary-btn,
 .points-secondary-btn {
     display: block;
-    width: calc(100% - 48px);
-    margin: 0 24px 24px;
+    width: calc(100% - 56px);
+    margin: 0 28px 28px;
     padding: 16px;
     border-radius: 16px;
     font-family: var(--nx-font-display);
@@ -1960,26 +2041,29 @@ body.drawer-open { overflow: hidden; }
 .points-primary-btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .points-secondary-btn {
-    background: #121212;
-    border: 1px solid rgba(255, 0, 0, .3);
+    background: rgba(255, 255, 255, .05);
+    backdrop-filter: blur(8px) saturate(190%);
+    -webkit-backdrop-filter: blur(8px) saturate(190%);
+    border: 1px solid rgba(255, 255, 255, .14);
+    border-top: 1px solid rgba(255, 255, 255, .24);
     color: #d1d5db;
     margin-bottom: 0;
 }
 
-.points-secondary-btn:hover:not(:disabled) { background: #1a1a1a; }
+.points-secondary-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .1); border-color: rgba(255, 0, 0, .5); }
 
 .points-modal-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
-    padding: 8px 24px 14px;
+    padding: 8px 28px 14px;
 }
 
 .points-modal-actions .points-secondary-btn,
 .points-modal-actions .points-primary-btn { width: auto; margin: 0; }
 
 .points-status-msg {
-    margin: 0 24px 24px;
+    margin: 0 28px 28px;
     text-align: center;
     font-size: 12px;
     font-weight: 500;
@@ -1989,12 +2073,15 @@ body.drawer-open { overflow: hidden; }
 .points-status-msg b { color: #ff0000; font-weight: 800; }
 
 .points-balance-card {
-    margin: 0 24px 14px;
+    margin: 0 28px 14px;
     padding: 16px;
     border-radius: 16px;
-    background: #050505;
-    border: 1px solid rgba(255, 0, 0, .25);
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, .6);
+    background: linear-gradient(135deg, rgba(255,255,255,.04) 0%, rgba(255,255,255,.005) 100%);
+    backdrop-filter: blur(10px) saturate(190%);
+    -webkit-backdrop-filter: blur(10px) saturate(190%);
+    border: 1px solid rgba(255, 0, 0, .28);
+    border-top: 1px solid rgba(255, 255, 255, .18);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, .08), 0 10px 25px rgba(0, 0, 0, .3);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2016,28 +2103,32 @@ body.drawer-open { overflow: hidden; }
 .points-balance-amount span { font-size: 10.5px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .08em; }
 
 /* Paso de elección: ruleta vs canje directo por paquete. */
-.points-choice-options { display: flex; flex-direction: column; gap: 12px; margin: 0 24px 18px; }
+.points-choice-options { display: flex; flex-direction: column; gap: 12px; margin: 0 28px 18px; }
 .points-choice-option {
     display: flex;
     align-items: center;
     gap: 14px;
     padding: 16px;
     border-radius: 16px;
-    background: #0a0a0a;
+    background: rgba(255, 255, 255, .035);
+    backdrop-filter: blur(8px) saturate(190%);
+    -webkit-backdrop-filter: blur(8px) saturate(190%);
     border: 1px solid rgba(255, 0, 0, .3);
+    border-top: 1px solid rgba(255, 255, 255, .18);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, .06);
     color: #fff;
     text-align: left;
     cursor: pointer;
     transition: all .2s ease;
 }
-.points-choice-option:hover { background: #151515; border-color: rgba(255, 0, 0, .6); }
+.points-choice-option:hover { background: rgba(255, 255, 255, .08); border-color: rgba(255, 0, 0, .6); box-shadow: 0 0 20px rgba(255, 0, 0, .2), inset 0 1px 1px rgba(255, 255, 255, .1); }
 .points-choice-icon { font-size: 26px; line-height: 1; flex-shrink: 0; }
 .points-choice-text { display: flex; flex-direction: column; gap: 2px; }
 .points-choice-text strong { font-family: var(--nx-font-display); font-size: 14px; font-weight: 800; }
 .points-choice-text small { font-size: 11.5px; color: var(--nx-muted); }
 
 /* Lista de paquetes canjeables directo, tipo tarjetas seleccionables. */
-.points-redeem-list { display: flex; flex-direction: column; gap: 10px; margin: 0 24px 14px; max-height: 260px; overflow-y: auto; }
+.points-redeem-list { display: flex; flex-direction: column; gap: 10px; margin: 0 28px 14px; max-height: 260px; overflow-y: auto; }
 .points-redeem-option {
     display: flex;
     align-items: center;
@@ -2045,13 +2136,16 @@ body.drawer-open { overflow: hidden; }
     gap: 10px;
     padding: 13px 14px;
     border-radius: 14px;
-    background: #0a0a0a;
+    background: rgba(255, 255, 255, .035);
+    backdrop-filter: blur(8px) saturate(190%);
+    -webkit-backdrop-filter: blur(8px) saturate(190%);
     border: 1px solid rgba(255, 0, 0, .25);
+    border-top: 1px solid rgba(255, 255, 255, .16);
     color: #fff;
     cursor: pointer;
     transition: all .2s ease;
 }
-.points-redeem-option:hover { background: #151515; }
+.points-redeem-option:hover { background: rgba(255, 255, 255, .08); }
 .points-redeem-option.is-selected { border-color: #ff0000; background: rgba(255, 0, 0, .12); box-shadow: 0 0 18px rgba(255, 0, 0, .3); }
 .points-redeem-option-name { font-size: 13.5px; font-weight: 700; }
 .points-redeem-option-cost { font-size: 12px; font-weight: 800; color: #ff8080; white-space: nowrap; }
@@ -2061,7 +2155,7 @@ body.drawer-open { overflow: hidden; }
    laser central es el resultado real; el resto es solo relleno visual. */
 .points-strip-viewport {
     position: relative;
-    margin: 0 24px 16px;
+    margin: 0 28px 16px;
     padding: 16px 0;
     border-radius: 16px;
     overflow: hidden;

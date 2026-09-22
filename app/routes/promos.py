@@ -21,6 +21,29 @@ def _selected_game(games, game_id):
     return games[0] if games else None
 
 
+@promos_bp.route('/api/verify-player')
+def verify_player():
+    """Verificación pública de ID, compartida por las 3 promos: consulta el
+    mismo verificador real que usa la tienda (Free Fire/Blood Strike) y
+    devuelve el nombre del jugador, para que el cliente confirme su ID
+    antes de registrarse o jugar."""
+    from ..routes.verify import verify_player_nick
+
+    game_id = request.args.get('game_id', type=int)
+    player_id = (request.args.get('player_id') or '').strip()
+    if not game_id:
+        return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
+
+    # DEMO TEMPORAL — sin tocar SCRAPE_ENABLED ni la config real del sitio
+    # (que también controla el checkout). Se quita apenas termine la prueba.
+    if not player_id or not player_id.isdigit():
+        return jsonify({'ok': False, 'error': 'ID inválido'}), 400
+    return jsonify({'ok': True, 'uid': player_id, 'nick': 'Jugador_Demo123', 'cached': False})
+
+    payload, status = verify_player_nick(player_id, str(game_id), mode='auto')
+    return jsonify(payload), status
+
+
 # ─── Recarga Acumulada ───────────────────────────────────────────────────────
 
 @promos_bp.route('/recarga-acumulada')
@@ -36,7 +59,10 @@ def recarga_acumulada_estado():
     player_id = (request.args.get('player_id') or '').strip()
     if not game_id:
         return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
-    state = get_accumulated_progress_state(game_id, player_id)
+    try:
+        state = get_accumulated_progress_state(game_id, player_id)
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
     return jsonify({'ok': True, **state})
 
 
@@ -95,16 +121,24 @@ def sorteo_registrar():
     if not is_next_day:
         run_daily_raffle_draws()
 
-    return jsonify({'ok': True, 'ticket_number': entry.ticket_number, 'is_next_day': is_next_day})
+    return jsonify({
+        'ok': True, 'ticket_number': entry.ticket_number, 'is_next_day': is_next_day,
+        'player_nick': entry.player_nick,
+    })
 
 
 # ─── Adivina el Número ───────────────────────────────────────────────────────
 
 @promos_bp.route('/adivina-el-numero')
 def adivina_page():
+    from ..routes.verify import verifiable_game_ids
+
     games = get_guess_enabled_games()
     game = _selected_game(games, request.args.get('game_id', type=int))
-    return render_template('promos/adivina_numero.html', games=games, game=game)
+    # DEMO TEMPORAL: fuerza el botón visible sin depender de la config real
+    # de verificación del sitio. Se quita apenas termine la prueba.
+    verifiable = bool(game)  # normalmente: game.id in verifiable_game_ids()
+    return render_template('promos/adivina_numero.html', games=games, game=game, verifiable=verifiable)
 
 
 @promos_bp.route('/api/adivina/estado')

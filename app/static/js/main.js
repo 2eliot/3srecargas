@@ -884,6 +884,14 @@
         }, 1600));
     }
 
+    // El ID solo, o "ID + nombre real" cuando el juego tiene verificador
+    // configurado y ya se consiguió el nick al consultar el saldo.
+    function pointsIdLabelText(data) {
+        var text = 'ID: ' + data.player_id;
+        if (data.player_nick) text += ' • ' + data.player_nick;
+        return text;
+    }
+
     function enterPointsSpinStep(data) {
         var select = pointsEl('pointsGameSelect');
         var selectedOption = select ? select.options[select.selectedIndex] : null;
@@ -892,7 +900,7 @@
         hidePointsSteps();
         pointsEl('pointsSpinStep').style.display = 'block';
         pointsEl('pointsSpinGameLabel').textContent = data.game_name;
-        pointsEl('pointsSpinIdLabel').textContent = 'ID: ' + data.player_id;
+        pointsEl('pointsSpinIdLabel').textContent = pointsIdLabelText(data);
         pointsEl('pointsBalanceValue').textContent = data.balance;
         pointsEl('pointsPrizeLabel').textContent = prizeLabel;
         pointsEl('pointsSpinCostLabel').textContent = data.spin_cost;
@@ -948,7 +956,7 @@
         hidePointsSteps();
         pointsEl('pointsRedeemStep').style.display = 'block';
         pointsEl('pointsRedeemGameLabel').textContent = data.game_name;
-        pointsEl('pointsRedeemIdLabel').textContent = 'ID: ' + data.player_id;
+        pointsEl('pointsRedeemIdLabel').textContent = pointsIdLabelText(data);
         pointsEl('pointsRedeemBalanceValue').textContent = data.balance;
         var errEl = pointsEl('pointsRedeemError');
         if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
@@ -972,7 +980,7 @@
         hidePointsSteps();
         pointsEl('pointsChoiceStep').style.display = 'block';
         pointsEl('pointsChoiceGameLabel').textContent = data.game_name;
-        pointsEl('pointsChoiceIdLabel').textContent = 'ID: ' + data.player_id;
+        pointsEl('pointsChoiceIdLabel').textContent = pointsIdLabelText(data);
         pointsEl('pointsChoiceBalanceValue').textContent = data.balance;
     }
 

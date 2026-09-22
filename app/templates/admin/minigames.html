@@ -186,6 +186,11 @@
     </p>
     <form method="POST" action="{{ url_for('admin_bp.promos_accumulated_save') }}">
         <input type="hidden" name="game_id" value="{{ selected_game.id }}">
+        <div class="form-group" style="max-width:220px;margin-bottom:14px;">
+            <label>Posición del juego en el selector</label>
+            <input type="number" step="1" min="1" name="sort_order" value="{{ accumulated_sort_order }}">
+            <small class="form-hint" style="display:block;margin-top:4px;">La 1 aparece primero y queda seleccionada por defecto.</small>
+        </div>
         {% for number in (1, 2, 3) %}
         {% set lvl = levels.get(number) %}
         <div class="form-grid-2" style="margin-bottom:10px;align-items:end;">
@@ -282,6 +287,11 @@
                     <option value="{{ pkg.id }}" {{ 'selected' if raffle_config and raffle_config.package_id == pkg.id }}>{{ pkg.name }}</option>
                     {% endfor %}
                 </select>
+            </div>
+            <div class="form-group">
+                <label>Posición del juego en el selector</label>
+                <input type="number" step="1" min="1" name="sort_order" value="{{ raffle_config.sort_order if raffle_config else 100 }}">
+                <small class="form-hint" style="display:block;margin-top:4px;">La 1 aparece primero y queda seleccionada por defecto.</small>
             </div>
         </div>
         <div class="form-group">
@@ -396,6 +406,11 @@
                     <option value="{{ pkg.id }}" {{ 'selected' if guess_config and guess_config.package_id == pkg.id }}>{{ pkg.name }}</option>
                     {% endfor %}
                 </select>
+            </div>
+            <div class="form-group">
+                <label>Posición del juego en el selector</label>
+                <input type="number" step="1" min="1" name="sort_order" value="{{ guess_config.sort_order if guess_config else 100 }}">
+                <small class="form-hint" style="display:block;margin-top:4px;">La 1 aparece primero y queda seleccionada por defecto.</small>
             </div>
         </div>
         <div class="form-group">

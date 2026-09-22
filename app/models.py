@@ -505,6 +505,7 @@ class RankingArchive(db.Model):
     masked_nickname = db.Column(db.String(200), nullable=False)
     total_units = db.Column(db.Integer, default=0)
     prize_label = db.Column(db.String(100), default='')
+    prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
@@ -1012,6 +1013,10 @@ class PromoAccumulatedLevel(db.Model):
     level_name = db.Column(db.String(60), nullable=False)
     threshold_amount = db.Column(db.Numeric(10, 2), nullable=False)
     package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    # Orden del juego en el selector de la promo (no en la tienda general):
+    # el mismo valor se guarda en los 3 niveles del juego. Menor va primero,
+    # y el primero de la lista es el que queda seleccionado por defecto.
+    sort_order = db.Column(db.Integer, default=100, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     game = db.relationship('Game')
@@ -1070,6 +1075,7 @@ class PromoRaffleConfig(db.Model):
     winners_per_draw = db.Column(db.Integer, default=5)
     package_id = db.Column(db.Integer, db.ForeignKey('packages.id'))
     require_verification = db.Column(db.Boolean, default=True)
+    sort_order = db.Column(db.Integer, default=100, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     game = db.relationship('Game')
@@ -1122,6 +1128,7 @@ class PromoGuessConfig(db.Model):
     winners_per_day = db.Column(db.Integer, default=3)
     package_id = db.Column(db.Integer, db.ForeignKey('packages.id'))
     require_verification = db.Column(db.Boolean, default=True)
+    sort_order = db.Column(db.Integer, default=100, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     game = db.relationship('Game')
