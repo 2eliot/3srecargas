@@ -534,7 +534,7 @@ def submit_guess(game_id, player_id, guess_value):
 
     round_row = _get_or_create_round(game_id, config.number_max)
     if round_row.winners_count >= config.winners_per_day:
-        raise ValueError('Ya se completaron los cupos ganadores de hoy. Vuelve mañana.')
+        raise ValueError('Ya se completaron los cupos ganadores de hoy. Espera al reinicio (mira el temporizador arriba).')
 
     already_won = PromoGuessWinner.query.filter_by(
         game_id=game_id, day_key=round_row.day_key, player_id=player_id,
@@ -555,7 +555,7 @@ def submit_guess(game_id, player_id, guess_value):
 
     # La verificación corre antes de gastar el intento: un ID inválido no
     # debe consumirle una oportunidad a nadie.
-    ok, error, _nick = _verify_id_if_needed(game_id, player_id, config.require_verification)
+    ok, error, verified_nick = _verify_id_if_needed(game_id, player_id, config.require_verification)
     if not ok:
         raise ValueError(error)
 
@@ -578,6 +578,7 @@ def submit_guess(game_id, player_id, guess_value):
         db.session.add(PromoGuessWinner(
             game_id=game_id, day_key=round_row.day_key, player_id=player_id,
             slot_index=round_row.winners_count, guessed_number=guess_value,
+            player_nick=verified_nick,
             prize_order_id=prize_order.id if prize_order else None,
         ))
 
@@ -650,8 +651,16 @@ def get_guess_public_state(game_id, player_id):
     history_by_day = {}
     for w in history:
         history_by_day.setdefault(w.day_key, []).append({
-            'player_id': w.player_id, 'guessed_number': w.guessed_number,
+            'player_id': w.player_id,
+            'player_nick': w.player_nick,
+            'guessed_number': w.guessed_number,
+            'won_at': format_ve(w.created_at, '%d/%m/%Y %H:%M:%S'),
         })
+
+    # Medianoche Venezuela del día siguiente: es cuando se reinician los
+    # cupos, así el frontend arma la cuenta regresiva una vez se agotan.
+    now = now_ve()
+    next_reset = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
 
     return {
         'enabled': True,
@@ -663,6 +672,12 @@ def get_guess_public_state(game_id, player_id):
         'attempts_remaining': max(0, config.max_attempts - attempts_used),
         'already_won': already_won,
         'closed_for_today': round_row.winners_count >= config.winners_per_day,
-        'winners_today': [{'player_id': w.player_id, 'guessed_number': w.guessed_number} for w in winners_today],
+        'next_reset_at': next_reset.isoformat(),
+        'winners_today': [{
+            'player_id': w.player_id,
+            'player_nick': w.player_nick,
+            'guessed_number': w.guessed_number,
+            'won_at': format_ve(w.created_at, '%d/%m/%Y %H:%M:%S'),
+        } for w in winners_today],
         'history': [{'day_key': day, 'winners': items} for day, items in history_by_day.items()],
     }

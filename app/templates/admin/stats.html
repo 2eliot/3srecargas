@@ -381,6 +381,11 @@
         <span class="stats-summary-value is-plain">{{ selected_summary.no_coupon_orders }}</span>
         <div class="stats-summary-meta">Órdenes del día sin código aplicado</div>
     </div>
+    <div class="stats-summary-card">
+        <span class="stats-summary-label">Recargas gratuitas (premios)</span>
+        <span class="stats-summary-value is-plain">{{ zero_amount_total }}</span>
+        <div class="stats-summary-meta">Entregadas en $0: sorteos, códigos regalo, puntos, etc.</div>
+    </div>
 </div>
 
 <div class="admin-card">
@@ -432,6 +437,24 @@
         <span class="coupon-badge is-muted"><strong>Sin cupón</strong> / {{ no_coupon_total }} ventas</span>
         {% if not coupon_summary and not no_coupon_total %}
         <div class="empty-state-admin">No hay órdenes para ese día con los filtros actuales.</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="stats-section-head">
+        <div>
+            <h2>Detalle de recargas gratuitas (premios)</h2>
+            <p class="stats-section-note">Recargas en $0 entregadas el {{ selected_date.strftime('%d/%m/%Y') }}{% if selected_service %} para {{ selected_service.name }}{% endif %}: sorteos, códigos regalo, canjes de puntos, ranking y mini juegos.</p>
+        </div>
+    </div>
+
+    <div class="coupon-stack">
+        {% for item in zero_amount_summary %}
+        <span class="coupon-badge"><strong>{{ item.label }}</strong> / {{ item.count }}</span>
+        {% endfor %}
+        {% if not zero_amount_summary %}
+        <div class="empty-state-admin">No hubo recargas gratuitas ese día con los filtros actuales.</div>
         {% endif %}
     </div>
 </div>

@@ -486,7 +486,7 @@ class Setting(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(100), unique=True, nullable=False)
-    value = db.Column(db.String(255), nullable=False)
+    value = db.Column(db.Text, nullable=False)
     description = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -939,6 +939,12 @@ class SupportMessage(db.Model):
     body = db.Column(db.Text)
     attachment = db.Column(db.String(255))
 
+    # "Eliminar para todos": el mensaje se queda en la base (por si hace
+    # falta auditar qué se borró y quién lo mandó) pero deja de mostrarse
+    # tal cual — se sirve como "Mensaje eliminado" a ambos lados del chat.
+    is_deleted = db.Column(db.Boolean, default=False)
+    deleted_at = db.Column(db.DateTime)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     read_at = db.Column(db.DateTime)
 
@@ -993,6 +999,7 @@ class SupportQuickReply(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(60), nullable=False)
     body = db.Column(db.Text, nullable=False)
+    attachment = db.Column(db.String(255))
     sort_order = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -1178,6 +1185,7 @@ class PromoGuessWinner(db.Model):
     player_id = db.Column(db.String(100), nullable=False)
     slot_index = db.Column(db.Integer, nullable=False)
     guessed_number = db.Column(db.Integer)
+    player_nick = db.Column(db.String(150))
     prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

@@ -144,6 +144,60 @@
     </div>
 </div>
 
+<h2 style="margin:28px 0 14px;">Participación diaria</h2>
+
+<div class="ranking-prize-config-grid">
+    <div class="admin-card">
+        <div class="card-header">
+            <h3>Sorteo Diario</h3>
+        </div>
+        <div style="padding:0 20px 4px;">
+            <p class="form-hint">Cuántos IDs distintos se registraron cada día, por juego. Queda archivado solo — nunca se borra.</p>
+        </div>
+        <div class="table-wrap">
+            <table class="admin-table">
+                <thead><tr><th>Fecha</th><th>Juego</th><th>Participantes</th></tr></thead>
+                <tbody>
+                    {% for row in raffle_participation %}
+                    <tr>
+                        <td>{{ row.day_key.split('-')[2] }}/{{ row.day_key.split('-')[1] }}/{{ row.day_key.split('-')[0] }}</td>
+                        <td>{{ row.game_name }}</td>
+                        <td>{{ row.participants }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="empty-row">Todavía no hay registros.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="card-header">
+            <h3>Adivina el Número</h3>
+        </div>
+        <div style="padding:0 20px 4px;">
+            <p class="form-hint">Cuántos IDs distintos intentaron adivinar cada día, por juego. Queda archivado solo — nunca se borra.</p>
+        </div>
+        <div class="table-wrap">
+            <table class="admin-table">
+                <thead><tr><th>Fecha</th><th>Juego</th><th>Participantes</th></tr></thead>
+                <tbody>
+                    {% for row in guess_participation %}
+                    <tr>
+                        <td>{{ row.day_key.split('-')[2] }}/{{ row.day_key.split('-')[1] }}/{{ row.day_key.split('-')[0] }}</td>
+                        <td>{{ row.game_name }}</td>
+                        <td>{{ row.participants }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="empty-row">Todavía no hay registros.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <h2 style="margin:28px 0 14px;">Promociones (Recarga Acumulada / Sorteo Diario / Adivina el Número)</h2>
 
 {% if not all_games %}

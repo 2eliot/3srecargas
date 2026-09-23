@@ -386,8 +386,41 @@ def add_client_message(chat, body, attachment=None):
     return message
 
 
+SIGNATURE_SETTING_KEY = 'support_signature'
+
+
+def get_support_signature():
+    """Firma que se agrega sola al final de cada respuesta del admin (ej.
+    "— Equipo 3S Recargas"), para que el cliente sepa quién le contesta sin
+    que haya que escribirla a mano en cada mensaje."""
+    from ..models import Setting
+    row = Setting.query.filter_by(key=SIGNATURE_SETTING_KEY).first()
+    return (row.value or '').strip() if row else ''
+
+
+def save_support_signature(text):
+    from ..models import Setting
+    text = str(text or '').replace('\r\n', '\n').replace('\r', '\n')
+    text = _INVISIBLE_CHARS_MULTILINE.sub('', text).strip()[:300]
+
+    row = Setting.query.filter_by(key=SIGNATURE_SETTING_KEY).first()
+    if not row:
+        row = Setting(key=SIGNATURE_SETTING_KEY, value=text,
+                      description='Firma agregada sola al final de cada respuesta de soporte.')
+        db.session.add(row)
+    else:
+        row.value = text
+    db.session.commit()
+    return text
+
+
 def add_admin_message(chat, body, admin_id=None, attachment=None):
     body = clean_body(body, allow_empty=bool(attachment))
+
+    signature = get_support_signature()
+    if body and signature:
+        body = (body + '\n\n' + signature)[:MAX_BODY_LENGTH]
+
     message = SupportMessage(chat_id=chat.id, sender='admin', body=body,
                              admin_id=admin_id, attachment=attachment)
     db.session.add(message)
@@ -399,6 +432,73 @@ def add_admin_message(chat, body, admin_id=None, attachment=None):
 
     db.session.commit()
     return message
+
+
+def delete_message(message, admin_id=None):
+    """'Eliminar para todos': borra el adjunto de disco (si tiene) y deja el
+    mensaje marcado — se sigue sirviendo, pero como "Mensaje eliminado" en
+    vez de su contenido real, a ambos lados del chat.
+
+    Solo tiene sentido para mensajes del propio admin (arrepentirse de algo
+    que mandaste); borrar lo que escribió el cliente no es el caso de uso
+    ("me equivoqué en un mensaje") y ocultaría contexto real del reclamo.
+    """
+    if message.sender != 'admin':
+        raise SupportError('Solo se pueden eliminar mensajes enviados por soporte.', status=403)
+    if message.is_deleted:
+        return message
+
+    if message.attachment:
+        path = os.path.join(current_app.config.get('UPLOAD_FOLDER', ''), message.attachment)
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+        except OSError:
+            logger.warning('No se pudo borrar el adjunto eliminado %s', path)
+
+    message.is_deleted = True
+    message.deleted_at = datetime.utcnow()
+    message.body = ''
+    message.attachment = None
+    db.session.commit()
+    return message
+
+
+def recently_deleted_ids(chat, minutes=10):
+    """IDs de mensajes borrados hace poco en este chat, para que quien ya
+    tenía el mensaje original pintado en pantalla (llegó por un poll
+    anterior a que se borrara) lo actualice también, no solo quien todavía
+    no lo había recibido."""
+    cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+    rows = (SupportMessage.query
+            .filter(SupportMessage.chat_id == chat.id,
+                    SupportMessage.is_deleted.is_(True),
+                    SupportMessage.deleted_at.isnot(None),
+                    SupportMessage.deleted_at >= cutoff)
+            .with_entities(SupportMessage.id)
+            .all())
+    return [r[0] for r in rows]
+
+
+def send_quick_reply(chat, quick_reply, admin_id=None):
+    """Envía una respuesta rápida como mensaje del admin. Si tiene adjunto,
+    se copia a un archivo propio de este mensaje (no se reutiliza el mismo
+    path del catálogo): así, si alguien borra el mensaje enviado, no se
+    lleva por delante el adjunto de la respuesta rápida guardada."""
+    attachment = None
+    if quick_reply.attachment:
+        src = os.path.join(current_app.config.get('UPLOAD_FOLDER', ''), quick_reply.attachment)
+        if os.path.isfile(src):
+            ext = quick_reply.attachment.rsplit('.', 1)[-1] if '.' in quick_reply.attachment else 'bin'
+            filename = f"{now_ve_naive().strftime('%Y%m%d%H%M%S%f')}_qr.{ext}"
+            folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'support')
+            os.makedirs(folder, exist_ok=True)
+            dest = os.path.join(folder, filename)
+            with open(src, 'rb') as fsrc, open(dest, 'wb') as fdst:
+                fdst.write(fsrc.read())
+            attachment = 'support/' + filename
+
+    return add_admin_message(chat, quick_reply.body, admin_id=admin_id, attachment=attachment)
 
 
 def close_chat(chat, by_admin=False, admin_id=None):
@@ -554,6 +654,7 @@ def serialize_message(message):
         'body': message.body or '',
         'attachment': message.attachment or '',
         'is_video': is_video_attachment(message.attachment),
+        'is_deleted': bool(message.is_deleted),
         'created_at': created.isoformat() + 'Z',
         # Hora ya lista para pintar, en horario de Venezuela. El ISO se
         # queda por si algun cliente quiere formatear a su manera, pero

@@ -69,7 +69,10 @@
     <div class="sc-body sc-thread-body" id="scChat" {% if not chat %}hidden{% endif %}>
       <div class="sc-thread" id="scThread" aria-live="polite">
         {% for m in messages %}
-        <div class="sc-msg {{ m.sender }}" data-id="{{ m.id }}">
+        <div class="sc-msg {{ m.sender }}{% if m.is_deleted %} deleted{% endif %}" data-id="{{ m.id }}">
+          {% if m.is_deleted %}
+          <span class="sc-msg-body sc-msg-deleted-text">🚫 Mensaje eliminado</span>
+          {% else %}
           {%- if m.body %}<span class="sc-msg-body">{{ m.body }}</span>{% endif -%}
           {% if m.attachment %}
           {% if m.is_video %}
@@ -82,6 +85,7 @@
                  alt="Imagen del chat" loading="lazy">
             <span class="sc-media-open">Abrir ⤢</span>
           </a>
+          {% endif %}
           {% endif %}
           {% endif %}
           {% if m.sender != 'system' %}<span class="sc-time">{{ m.time_label }}</span>{% endif %}

@@ -215,6 +215,7 @@ def thread():
         'ok': True,
         'chat': support_service.serialize_chat_for_client(chat),
         'messages': messages,
+        'deleted_ids': support_service.recently_deleted_ids(chat),
     })
 
 

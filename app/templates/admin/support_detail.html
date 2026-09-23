@@ -24,6 +24,11 @@
     flex:none;display:flex;align-items:center;gap:10px;padding:11px 14px;
     background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.08);
 }
+.sup-bar-back{
+    flex:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;
+    border-radius:9px;border:1px solid transparent;color:#94a3b8;
+}
+.sup-bar-back:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e2e8f0}
 .sup-bar-avatar{
     flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
     background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;
@@ -91,6 +96,21 @@
     padding:5px 12px;border-radius:8px}
 .sup-t{display:block;text-align:right;font-size:.66rem;opacity:.55;margin-top:2px}
 
+/* Botón "eliminar para todos": solo en las burbujas propias (admin), y
+   solo visible al pasar el mouse para que no ensucie el hilo todo el
+   tiempo — es una acción de arrepentirse, no algo que se use seguido. */
+.sup-msg.admin{position:relative}
+.sup-msg-del{
+    position:absolute;top:-8px;left:-8px;width:20px;height:20px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:.6rem;
+    background:#1e1b3a;border:1px solid rgba(255,255,255,.15);color:#94a3b8;
+    opacity:0;transition:opacity .15s ease;cursor:pointer;
+}
+.sup-msg.admin:hover .sup-msg-del{opacity:1}
+.sup-msg-del:hover{color:#fca5a5;border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.15)}
+.sup-msg.deleted{opacity:.6}
+.sup-msg-deleted-text{font-style:italic;color:inherit;opacity:.85}
+
 /* Miniatura acotada: a tamaño real una captura de móvil llenaba el hilo y
    empujaba la conversación fuera de vista. Se acota igual que el
    comprobante en el detalle de una orden, y el original abre en pestaña. */
@@ -134,7 +154,17 @@ video.sup-media{object-fit:contain;max-height:240px}
 .sup-note-foot{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-top:8px}
 #supNoteMeta{font-size:.72rem;color:#64748b;flex:1}
 
-.sup-qr-list{display:flex;flex-direction:column;gap:6px}
+/* <details> nativo: colapsa solo, sin JS, para que la tarjeta no ocupe
+   tanto espacio cuando hay muchas respuestas guardadas. */
+.sup-qr-details summary{
+    cursor:pointer;list-style:none;font-weight:700;font-size:.95rem;
+    display:flex;align-items:center;gap:6px;
+}
+.sup-qr-details summary::-webkit-details-marker{display:none}
+.sup-qr-details summary::before{content:'▸';font-size:.7rem;color:#94a3b8;transition:transform .15s ease}
+.sup-qr-details[open] summary::before{transform:rotate(90deg)}
+.sup-qr-count{font-weight:400;color:#94a3b8;font-size:.8rem}
+.sup-qr-list{display:flex;flex-direction:column;gap:6px;margin-top:12px}
 .sup-qr-item{display:flex;align-items:stretch;gap:6px}
 .sup-qr-insert{
     flex:1;text-align:left;cursor:pointer;font-size:.8rem;padding:7px 11px;border-radius:9px;
@@ -155,6 +185,9 @@ video.sup-media{object-fit:contain;max-height:240px}
 
   <div class="sup-chat">
     <div class="sup-bar">
+      <a href="{{ url_for('admin_support_bp.inbox') }}" class="sup-bar-back" title="Volver a la bandeja" aria-label="Volver a la bandeja">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </a>
       <div class="sup-bar-avatar">{{ chat.client_name[:1]|upper }}</div>
       <div class="sup-bar-who">
         <strong>{{ chat.client_name }}</strong>
@@ -196,6 +229,7 @@ video.sup-media{object-fit:contain;max-height:240px}
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
         </button>
         <div class="sup-actions-panel" id="supActionsPanel" hidden>
+          <button type="button" class="btn-secondary" id="supSignatureBtn">Cambiar firma</button>
           {% if chat.status == 'closed' %}
           <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
             <input type="hidden" name="action" value="reabrir">
@@ -218,7 +252,10 @@ video.sup-media{object-fit:contain;max-height:240px}
 
     <div class="sup-thread" id="supThread">
       {% for m in messages %}
-      <div class="sup-msg {{ m.sender }}" data-id="{{ m.id }}">
+      <div class="sup-msg {{ m.sender }}{% if m.is_deleted %} deleted{% endif %}" data-id="{{ m.id }}">
+        {% if m.is_deleted %}
+        <span class="sup-msg-body sup-msg-deleted-text">🚫 Mensaje eliminado</span>
+        {% else %}
         {%- if m.body %}<span class="sup-msg-body">{{ m.body }}</span>{% endif -%}
         {% if m.attachment %}
           {% if m.attachment.rsplit('.', 1)[-1]|lower in ['mp4','webm','mov','m4v'] %}
@@ -232,6 +269,10 @@ video.sup-media{object-fit:contain;max-height:240px}
             <span class="sup-media-open">Abrir ⤢</span>
           </a>
           {% endif %}
+        {% endif %}
+        {% if m.sender == 'admin' %}
+        <button type="button" class="sup-msg-del" title="Eliminar para todos" data-id="{{ m.id }}">✕</button>
+        {% endif %}
         {% endif %}
         {% if m.sender != 'system' %}<span class="sup-t">{{ m.time_label }}</span>{% endif %}
       </div>
@@ -281,31 +322,40 @@ video.sup-media{object-fit:contain;max-height:240px}
     </div>
 
     <div class="admin-card">
-      <h3>Respuestas rápidas</h3>
-      <div class="sup-qr-list" id="supQuickReplies">
-        {% for qr in quick_replies %}
-        <div class="sup-qr-item">
-          <button type="button" class="sup-qr-insert" data-body="{{ qr.body }}" title="{{ qr.body }}">{{ qr.title }}</button>
-          <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_delete', reply_id=qr.id) }}" style="display:inline">
-            <button type="submit" class="sup-qr-del" title="Borrar" onclick="return confirm('¿Borrar esta respuesta rápida?')">✕</button>
-          </form>
+      <details class="sup-qr-details">
+        <summary>Respuestas rápidas <span class="sup-qr-count">({{ quick_replies|length }})</span></summary>
+        <div class="sup-qr-list" id="supQuickReplies">
+          {% for qr in quick_replies %}
+          <div class="sup-qr-item">
+            <button type="button" class="sup-qr-insert" data-reply-id="{{ qr.id }}" title="{{ qr.body }}">
+              {{ qr.title }}{% if qr.attachment %} <span class="sup-qr-attach-icon" title="Incluye adjunto">📎</span>{% endif %}
+            </button>
+            <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_delete', reply_id=qr.id) }}" style="display:inline" class="sup-qr-del-form">
+              <button type="button" class="sup-qr-del" title="Borrar">✕</button>
+            </form>
+          </div>
+          {% else %}
+          <p class="form-hint" style="margin:0;">Todavía no hay respuestas guardadas.</p>
+          {% endfor %}
         </div>
-        {% else %}
-        <p class="form-hint" style="margin:0;">Todavía no hay respuestas guardadas.</p>
-        {% endfor %}
-      </div>
-      <button type="button" class="btn-secondary" id="supQrAddToggle" style="margin-top:10px;">+ Nueva respuesta rápida</button>
-      <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_create') }}" id="supQrAddForm" style="display:none; margin-top:10px;">
-        <div class="form-group">
-          <label>Título del botón</label>
-          <input type="text" name="title" maxlength="60" placeholder="Ej. Horario" required>
-        </div>
-        <div class="form-group">
-          <label>Texto a enviar</label>
-          <textarea name="body" rows="3" maxlength="2000" placeholder="Ej. Atendemos de 10am a 8pm todos los días." required></textarea>
-        </div>
-        <button type="submit" class="btn-primary">Guardar</button>
-      </form>
+        <button type="button" class="btn-secondary" id="supQrAddToggle" style="margin-top:10px;">+ Nueva respuesta rápida</button>
+        <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_create') }}" id="supQrAddForm"
+              enctype="multipart/form-data" style="display:none; margin-top:10px;">
+          <div class="form-group">
+            <label>Título del botón</label>
+            <input type="text" name="title" maxlength="60" placeholder="Ej. Horario" required>
+          </div>
+          <div class="form-group">
+            <label>Texto a enviar</label>
+            <textarea name="body" rows="3" maxlength="2000" placeholder="Ej. Atendemos de 10am a 8pm todos los días."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Imagen o video (opcional)</label>
+            <input type="file" name="file" accept="image/*,video/*">
+          </div>
+          <button type="submit" class="btn-primary">Guardar</button>
+        </form>
+      </details>
     </div>
 
     <div class="admin-card">
@@ -320,9 +370,6 @@ video.sup-media{object-fit:contain;max-height:240px}
         </span>
         <button type="button" class="btn-sm btn-secondary" id="supNoteSaveBtn">Guardar nota</button>
       </div>
-      <p class="form-hint" style="font-size:.72rem;margin-top:6px">
-        El cliente nunca la ve: no viaja en ninguna respuesta del chat.
-      </p>
     </div>
 
     {% if chat.context_order_number or chat.context_player_id or chat.context_email or chat.context_phone or chat.context_game or chat.context_package %}
@@ -359,6 +406,43 @@ video.sup-media{object-fit:contain;max-height:240px}
 
   </div>
 </div>
+
+<div class="modal-overlay" id="supSignatureModal" style="display:none">
+  <div class="modal-box">
+    <h3>Firma de tus mensajes</h3>
+    <p class="form-hint" style="margin-top:10px">Se agrega sola al final de cada respuesta que mandes. Déjala vacía para no firmar nada.</p>
+    <form method="POST" action="{{ url_for('admin_support_bp.save_signature') }}">
+      <div class="form-group" style="margin-top:12px">
+        <textarea name="signature" rows="3" maxlength="300" placeholder="Ej. — Equipo 3S Recargas">{{ support_signature }}</textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="supSignatureCancel">Cancelar</button>
+        <button type="submit" class="btn-primary">Guardar firma</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="supDeleteQrModal" style="display:none">
+  <div class="modal-box">
+    <h3>¿Borrar esta respuesta rápida?</h3>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" id="supDeleteQrCancel">Cancelar</button>
+      <button type="button" class="btn-danger-solid" id="supDeleteQrConfirm">✕ Borrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="supDeleteMsgModal" style="display:none">
+  <div class="modal-box">
+    <h3>¿Eliminar este mensaje?</h3>
+    <p class="form-hint" style="margin-top:10px">Se elimina para todos — el cliente ya no va a poder verlo.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" id="supDeleteMsgCancel">Cancelar</button>
+      <button type="button" class="btn-danger-solid" id="supDeleteMsgConfirm">✕ Eliminar</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -387,8 +471,25 @@ video.sup-media{object-fit:contain;max-height:240px}
     // por JSON, sin pasar por el autoescape de Jinja.
     function render(m) {
         var el = document.createElement('div');
-        el.className = 'sup-msg ' + m.sender;
+        el.className = 'sup-msg ' + m.sender + (m.is_deleted ? ' deleted' : '');
         el.dataset.id = m.id;
+
+        if (m.is_deleted) {
+            var deletedText = document.createElement('span');
+            deletedText.className = 'sup-msg-body sup-msg-deleted-text';
+            deletedText.textContent = '🚫 Mensaje eliminado';
+            el.appendChild(deletedText);
+            if (m.sender !== 'system') {
+                var t2 = document.createElement('span');
+                t2.className = 'sup-t';
+                t2.textContent = timeLabel(m);
+                el.appendChild(t2);
+            }
+            thread.appendChild(el);
+            lastId = Math.max(lastId, m.id);
+            scrollDown();
+            return;
+        }
 
         if (m.body) {
             var body = document.createElement('span');
@@ -431,6 +532,16 @@ video.sup-media{object-fit:contain;max-height:240px}
             }
         }
 
+        if (m.sender === 'admin') {
+            var delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'sup-msg-del';
+            delBtn.title = 'Eliminar para todos';
+            delBtn.dataset.id = m.id;
+            delBtn.textContent = '✕';
+            el.appendChild(delBtn);
+        }
+
         if (m.sender !== 'system') {
             var t = document.createElement('span');
             t.className = 'sup-t';
@@ -443,6 +554,21 @@ video.sup-media{object-fit:contain;max-height:240px}
         scrollDown();
     }
 
+    // Convierte una burbuja YA pintada en pantalla al estado "eliminado",
+    // por si se borró después de que este navegador ya la había recibido
+    // en un poll anterior (si nunca la había recibido, ni falta hace: le
+    // va a llegar directo como eliminada la primera vez).
+    function applyDeleted(id) {
+        var el = thread.querySelector('.sup-msg[data-id="' + id + '"]');
+        if (!el || el.classList.contains('deleted')) return;
+        el.classList.add('deleted');
+        el.innerHTML = '';
+        var deletedText = document.createElement('span');
+        deletedText.className = 'sup-msg-body sup-msg-deleted-text';
+        deletedText.textContent = '🚫 Mensaje eliminado';
+        el.appendChild(deletedText);
+    }
+
     function poll() {
         fetch('/admin/soporte/' + CHAT_ID + '/hilo.json?after_id=' + lastId,
               { credentials: 'same-origin' })
@@ -450,8 +576,91 @@ video.sup-media{object-fit:contain;max-height:240px}
             .then(function (data) {
                 if (!data || !data.ok) return;
                 (data.messages || []).forEach(render);
+                (data.deleted_ids || []).forEach(applyDeleted);
             })
             .catch(function () {});
+    }
+
+    // ── Borrar respuesta rápida: modal propio en vez del confirm() nativo ──
+    var deleteQrModal = document.getElementById('supDeleteQrModal');
+    var deleteQrCancelBtn = document.getElementById('supDeleteQrCancel');
+    var deleteQrConfirmBtn = document.getElementById('supDeleteQrConfirm');
+    var pendingDeleteQrForm = null;
+
+    document.querySelectorAll('.sup-qr-del').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!deleteQrModal) return;
+            pendingDeleteQrForm = btn.closest('form');
+            deleteQrModal.style.display = 'flex';
+        });
+    });
+    if (deleteQrCancelBtn && deleteQrModal) {
+        deleteQrCancelBtn.addEventListener('click', function () {
+            deleteQrModal.style.display = 'none';
+            pendingDeleteQrForm = null;
+        });
+    }
+    if (deleteQrConfirmBtn) {
+        deleteQrConfirmBtn.addEventListener('click', function () {
+            if (pendingDeleteQrForm) pendingDeleteQrForm.submit();
+        });
+    }
+
+    // ── Cambiar firma (desde el menú de los 3 puntos) ──────────────────────
+    var signatureBtn = document.getElementById('supSignatureBtn');
+    var signatureModal = document.getElementById('supSignatureModal');
+    var signatureCancelBtn = document.getElementById('supSignatureCancel');
+    if (signatureBtn && signatureModal) {
+        signatureBtn.addEventListener('click', function () {
+            if (actionsPanel) actionsPanel.hidden = true;
+            signatureModal.style.display = 'flex';
+        });
+    }
+    if (signatureCancelBtn && signatureModal) {
+        signatureCancelBtn.addEventListener('click', function () {
+            signatureModal.style.display = 'none';
+        });
+    }
+
+    // Botón "eliminar para todos" — delegado en el hilo porque las
+    // burbujas se van agregando dinámicamente con cada poll. Abre el modal
+    // propio del sitio en vez del confirm() nativo del navegador.
+    var deleteMsgModal = document.getElementById('supDeleteMsgModal');
+    var deleteMsgCancelBtn = document.getElementById('supDeleteMsgCancel');
+    var deleteMsgConfirmBtn = document.getElementById('supDeleteMsgConfirm');
+    var pendingDeleteBtn = null;
+
+    function closeDeleteMsgModal() {
+        if (deleteMsgModal) deleteMsgModal.style.display = 'none';
+        pendingDeleteBtn = null;
+    }
+    if (deleteMsgCancelBtn) deleteMsgCancelBtn.addEventListener('click', closeDeleteMsgModal);
+
+    thread.addEventListener('click', function (evt) {
+        var btn = evt.target.closest('.sup-msg-del');
+        if (!btn || !btn.dataset.id || !deleteMsgModal) return;
+        pendingDeleteBtn = btn;
+        deleteMsgModal.style.display = 'flex';
+    });
+
+    if (deleteMsgConfirmBtn) {
+        deleteMsgConfirmBtn.addEventListener('click', function () {
+            var btn = pendingDeleteBtn;
+            if (!btn) return;
+            var id = btn.dataset.id;
+            closeDeleteMsgModal();
+
+            btn.disabled = true;
+            fetch('/admin/soporte/' + CHAT_ID + '/mensajes/' + id + '/borrar', {
+                method: 'POST', credentials: 'same-origin'
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data && data.ok) applyDeleted(id);
+                    else { btn.disabled = false; alert((data && data.error) || 'No se pudo eliminar.'); }
+                })
+                .catch(function () { btn.disabled = false; alert('No se pudo eliminar.'); });
+        });
     }
 
     // 4 s con la pestaña a la vista; en segundo plano no se pregunta nada,
@@ -587,13 +796,31 @@ video.sup-media{object-fit:contain;max-height:240px}
         });
     }
 
-    // ── Respuestas rápidas ───────────────────────────────────────────────
+    // ── Respuestas rápidas: se mandan directo con un clic (no solo
+    // rellenan el texto) porque un adjunto no se puede "escribir" en el
+    // textarea — así el mismo botón sirve para las que tienen solo texto
+    // y las que traen imagen o video.
     document.querySelectorAll('.sup-qr-insert').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (!input) return;
-            input.value = btn.dataset.body || '';
-            input.dispatchEvent(new Event('input'));
-            input.focus();
+            var replyId = btn.dataset.replyId;
+            if (!replyId || btn.disabled) return;
+            btn.disabled = true;
+            var prevText = btn.textContent;
+            btn.textContent = 'Enviando…';
+
+            fetch('/admin/soporte/' + CHAT_ID + '/respuestas-rapidas/' + replyId + '/enviar', {
+                method: 'POST', credentials: 'same-origin'
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data && data.ok) render(data.message);
+                    else alert((data && data.error) || 'No se pudo enviar.');
+                })
+                .catch(function () { alert('No se pudo enviar.'); })
+                .finally(function () {
+                    btn.disabled = false;
+                    btn.textContent = prevText;
+                });
         });
     });
 

@@ -95,8 +95,6 @@ def _run_tick(app):
 
     auto_verify_on = is_auto_verify_enabled()
     binance_on = is_binance_auto_enabled(app)
-    if not auto_verify_on and not binance_on:
-        return
 
     # Imports diferidos: evitan depender del orden de carga de módulos
     # al arrancar la app (routes.checkout ya importa de utils en su
@@ -128,9 +126,14 @@ def _run_tick(app):
 
         try:
             if auto_resp.get('pending_verification'):
-                if auto_verify_on:
-                    process_revendedores_queue(order, base_state=auto_resp, force=False)
-                    processed += 1
+                # Reintenta el siguiente paso de un mapeo Revendedores con
+                # varios items (cantidad ≥ 2): es continuar una entrega YA
+                # aprobada, no verificar un pago nuevo, así que no depende
+                # de "auto_verify_payments" ni de Binance — si dependiera,
+                # con ese interruptor apagado (como en este sitio) el paso
+                # 2 en adelante se quedaba en "procesando" para siempre.
+                process_revendedores_queue(order, base_state=auto_resp, force=False)
+                processed += 1
             elif binance_on and is_binance_auto_order(order):
                 # El hilo dedicado que se lanza al crear la orden vive dentro
                 # de un worker concreto: si ese worker se recicla o se

@@ -83,9 +83,12 @@ def inbox():
             SupportChat.admin_note.ilike(like),
         ))
 
+    # Antes ordenaba primero por "no leídos": un chat que acababas de
+    # responder (unread_admin=0) se hundía debajo de cualquier otro con
+    # mensajes sin leer, aunque fuera el más reciente de todos. Ahora es
+    # puramente por hora del último mensaje, más recientes arriba.
     pagination = (query
-                  .order_by(SupportChat.unread_admin.desc(),
-                            SupportChat.last_message_at.desc())
+                  .order_by(SupportChat.last_message_at.desc())
                   .paginate(page=page, per_page=PAGE_SIZE, error_out=False))
 
     return render_template(
@@ -128,6 +131,7 @@ def detail(chat_id):
         error_tags=SupportTag.query.filter_by(kind='error', is_active=True)
                              .order_by(SupportTag.sort_order).all(),
         applied_tag_ids={t.id for t in chat.tags},
+        support_signature=support_service.get_support_signature(),
         quick_replies=SupportQuickReply.query
                              .order_by(SupportQuickReply.sort_order, SupportQuickReply.id).all(),
     )
@@ -136,7 +140,9 @@ def detail(chat_id):
 @admin_support_bp.route('/<int:chat_id>/hilo.json')
 @login_required
 def thread_json(chat_id):
-    """Sondeo de la vista del hilo. Solo mensajes nuevos."""
+    """Sondeo de la vista del hilo. Solo mensajes nuevos, más los IDs
+    borrados hace poco (para actualizar burbujas que ya estaban pintadas
+    antes de que alguien las eliminara)."""
     chat = SupportChat.query.get_or_404(chat_id)
     after_id = request.args.get('after_id', type=int) or 0
 
@@ -153,6 +159,7 @@ def thread_json(chat_id):
         'status': chat.status,
         'status_label': chat.status_label,
         'messages': [support_service.serialize_message(m) for m in messages],
+        'deleted_ids': support_service.recently_deleted_ids(chat),
     })
 
 
@@ -191,6 +198,22 @@ def reply(chat_id):
         'status_label': chat.status_label,
         'message': support_service.serialize_message(message),
     })
+
+
+@admin_support_bp.route('/<int:chat_id>/mensajes/<int:message_id>/borrar', methods=['POST'])
+@login_required
+def delete_message(chat_id, message_id):
+    """Eliminar para todos: por si el admin se equivocó en algo que mandó y
+    quiere borrarlo antes de que el cliente lo lea."""
+    chat = SupportChat.query.get_or_404(chat_id)
+    message = SupportMessage.query.filter_by(id=message_id, chat_id=chat.id).first_or_404()
+
+    try:
+        support_service.delete_message(message, admin_id=_admin_id())
+    except SupportError as exc:
+        return jsonify({'ok': False, 'error': exc.message}), exc.status
+
+    return jsonify({'ok': True, 'message': support_service.serialize_message(message)})
 
 
 # ─── Etiquetas aplicadas ─────────────────────────────────────────────────────
@@ -315,6 +338,12 @@ def set_status(chat_id):
 
     if request.is_json:
         return jsonify({'ok': True, 'status': chat.status, 'blocked': bool(chat.is_blocked)})
+    # Cerrar o bloquear termina la conversación: vuelve a la bandeja en vez
+    # de dejar al admin mirando un chat que ya no tiene nada más que hacer.
+    # Reabrir/desbloquear sí se quedan en el hilo, porque lo lógico es
+    # seguir trabajando ahí mismo.
+    if action in ('cerrar', 'bloquear'):
+        return redirect(url_for('admin_support_bp.inbox'))
     return redirect(url_for('admin_support_bp.detail', chat_id=chat.id))
 
 
@@ -419,6 +448,16 @@ def tag_delete(tag_id):
     return redirect(url_for('admin_support_bp.tags'))
 
 
+# ─── Firma de los mensajes ────────────────────────────────────────────────────
+
+@admin_support_bp.route('/firma', methods=['POST'])
+@login_required
+def save_signature():
+    text = support_service.save_support_signature(request.form.get('signature'))
+    flash('Firma actualizada.' if text else 'Firma quitada.', 'success')
+    return redirect(request.referrer or url_for('admin_support_bp.inbox'))
+
+
 # ─── Respuestas rápidas ──────────────────────────────────────────────────────
 
 @admin_support_bp.route('/respuestas-rapidas/crear', methods=['POST'])
@@ -428,18 +467,49 @@ def quick_reply_create():
     body = (request.form.get('body') or '').strip()
     redirect_target = request.referrer or url_for('admin_support_bp.inbox')
 
-    if not title or not body:
-        flash('La respuesta rápida necesita un título y un texto.', 'danger')
+    if not title or not (body or request.files.get('file')):
+        flash('La respuesta rápida necesita un título y un texto o un adjunto.', 'danger')
+        return redirect(redirect_target)
+
+    try:
+        attachment = support_service.save_attachment(request.files.get('file'))
+    except SupportError as exc:
+        flash(exc.message, 'danger')
         return redirect(redirect_target)
 
     last = SupportQuickReply.query.order_by(SupportQuickReply.sort_order.desc()).first()
     db.session.add(SupportQuickReply(
-        title=title[:60], body=body[:2000],
+        title=title[:60], body=body[:2000], attachment=attachment,
         sort_order=(last.sort_order or 0) + 1 if last else 1,
     ))
     db.session.commit()
     flash('Respuesta rápida guardada.', 'success')
     return redirect(redirect_target)
+
+
+@admin_support_bp.route('/<int:chat_id>/respuestas-rapidas/<int:reply_id>/enviar', methods=['POST'])
+@login_required
+def quick_reply_send(chat_id, reply_id):
+    """Manda la respuesta rápida (texto + adjunto, si tiene) directo al
+    chat con un clic, en vez de solo rellenar el cuadro de texto — hace
+    falta para poder mandar el adjunto, que no se puede "escribir" en el
+    textarea como el texto."""
+    chat = SupportChat.query.get_or_404(chat_id)
+    qr = SupportQuickReply.query.get_or_404(reply_id)
+
+    try:
+        message = support_service.send_quick_reply(chat, qr, admin_id=_admin_id())
+    except SupportError as exc:
+        return jsonify({'ok': False, 'error': exc.message}), exc.status
+
+    notify_support_admin_reply(chat, message)
+
+    return jsonify({
+        'ok': True,
+        'status': chat.status,
+        'status_label': chat.status_label,
+        'message': support_service.serialize_message(message),
+    })
 
 
 @admin_support_bp.route('/respuestas-rapidas/<int:reply_id>/borrar', methods=['POST'])

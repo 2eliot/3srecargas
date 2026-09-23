@@ -47,7 +47,7 @@
                 <span>⚡</span> 3S RECARGAS • Sorteo Automático <span>🔥</span>
             </div>
             <h1 id="page-title" class="text-2xl font-extrabold tracking-wider text-white bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-300">
-                🎲 RULETA • ... 💎
+                🎲 SORTEO DIARIO
             </h1>
             <p id="schedule-sub" class="text-slate-400 text-[11px] mt-1 flex items-center justify-center gap-1">
                 <span>🕒</span> Todos los días a las <strong class="text-red-400">09:00 PM (Venezuela)</strong>
@@ -99,7 +99,7 @@
                         <span>🎰</span> <span id="timer-display" class="truncate">Iniciando giro...</span>
                     </div>
                     <div class="absolute top-2 right-2.5 text-[10px] text-amber-400 font-bold tracking-widest flex items-center gap-1">
-                        <span>💎</span> <span id="reward-label-badge">--</span>
+                        <span id="reward-label-badge">--</span>
                     </div>
                     <!-- Canvas adaptable optimizado mobile -->
                     <canvas id="slotCanvas" width="360" height="140" class="w-full h-[140px] rounded-lg mt-5 bg-black object-contain"></canvas>
@@ -117,7 +117,7 @@
                         🏆
                     </div>
                     <h3 id="concluded-date-title" class="text-xs font-extrabold text-white tracking-wider uppercase">
-                        Sorteo Concluido • --/--/----
+                        Sorteo • --/--/----
                     </h3>
                     <p class="text-slate-400 text-[10px] mt-0.5">Cupo completado con éxito.</p>
                 </div>
@@ -184,7 +184,7 @@
                         </p>
                     </div>
                     <span class="text-[9px] bg-red-600/20 border border-red-500/30 text-red-400 px-2 py-1 rounded-full font-bold flex items-center gap-1">
-                        <span>💎</span> <span id="reward-per-winner">--</span> c/u
+                        <span id="reward-per-winner">--</span> c/u
                     </span>
                 </div>
                 <div id="winners-grid" class="grid grid-cols-1 gap-2">
@@ -248,6 +248,11 @@
         let isSpinning = false;
         let registeredIdsSet = new Set();
         let pollTimer = null;
+        // Solo se anima la ruleta para quien estuvo en la página viendo el
+        // "registro abierto" o "sorteo en vivo" antes de que hubiera
+        // ganadores — así nadie que entra después de que ya se sorteó ve
+        // una repetición de la animación, solo el registro + el historial.
+        let witnessedLiveTransition = false;
 
         function switchGame(id) {
             const url = new URL(window.location.href);
@@ -286,11 +291,7 @@
         const currentDateLabelEl = document.getElementById('current-date-label');
         if (currentDateLabelEl) currentDateLabelEl.innerHTML = `<span>📅</span> ${fechaHoyStr}`;
         const concludedTitleEl = document.getElementById('concluded-date-title');
-        if (concludedTitleEl) concludedTitleEl.innerText = `Sorteo Concluido • ${fechaHoyStr}`;
-
-        function seenKey(dayKey, ticketsSignature) {
-            return `sorteo_seen_${GAME_ID}_${dayKey}_${ticketsSignature}`;
-        }
+        if (concludedTitleEl) concludedTitleEl.innerText = `Sorteo • ${fechaHoyStr}`;
 
         function drawStaticDisplay(text) {
             if (!ctx) return;
@@ -373,13 +374,19 @@
                             <div class="flex items-center gap-1.5 text-white font-bold text-[11px] truncate">
                                 <span>🏆</span> <span class="truncate">${dia.day_key}</span>
                             </div>
-                            <span class="text-[9px] bg-red-600/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-bold">${dia.winners.length * rewardPerWinnerValue} 💎</span>
+                            <span class="text-[9px] bg-red-600/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-bold">${dia.winners.length * rewardPerWinnerValue}</span>
                         </div>
                         ${badgesHtml}
                     </div>
                 `;
             });
             historyList.innerHTML = html;
+            // El historial es de días anteriores, no depende de si el
+            // sorteo de HOY ya corrió — antes solo se mostraba cuando hoy
+            // ya había concluido, así que alguien que entraba a registrarse
+            // antes de esa hora no veía nada, como si nunca se hubiera
+            // hecho ningún sorteo.
+            if (historySection) historySection.classList.remove('hidden');
         }
 
         let rewardPerWinnerValue = 0;
@@ -514,7 +521,6 @@
                                 document.getElementById('today-winners-container').classList.add('hidden');
                                 document.getElementById('history-section').classList.remove('hidden');
                                 document.getElementById('register-section').classList.remove('hidden');
-                                markDrawAsSeen();
                             }
                         }
                     }, 1000);
@@ -550,18 +556,6 @@
             }
 
             requestAnimationFrame(animate);
-        }
-
-        function currentSignature() {
-            return serverWinners.map(w => w.ticket).join(',');
-        }
-
-        function markDrawAsSeen() {
-            try { localStorage.setItem(seenKey(fechaHoyStr, currentSignature()), '1'); } catch (e) {}
-        }
-
-        function alreadySeenToday() {
-            try { return !!localStorage.getItem(seenKey(fechaHoyStr, currentSignature())); } catch (e) { return false; }
         }
 
         function showConcludedState() {
@@ -711,7 +705,7 @@
             participants = data.participants || [];
             serverWinners = data.winners_show || [];
 
-            document.getElementById('page-title').innerText = `🎲 RULETA • ${winnersTotal * rewardPerWinnerValue} 💎`;
+            document.getElementById('page-title').innerText = `🎲 SORTEO DIARIO • ${rewardLabel} c/u`;
             document.getElementById('schedule-sub').innerHTML =
                 `<span>🕒</span> Todos los días a las <strong class="text-red-400">${formatDrawTime(data)} (Venezuela)</strong>`;
             document.getElementById('reward-label-badge').innerText = rewardLabel;
@@ -721,7 +715,11 @@
             generarHistorial(data.history);
 
             if (data.drawn) {
-                if (alreadySeenToday()) {
+                if (!witnessedLiveTransition && winners.length === 0) {
+                    // Ya se sorteó y esta pestaña nunca vio el "en vivo"
+                    // antes de que hubiera ganadores: llegó tarde, así que
+                    // ve directo el resultado (registro + historial), no la
+                    // animación completa de un sorteo que ya pasó.
                     showConcludedState();
                 } else if (!isSpinning && winners.length === 0) {
                     document.getElementById('slot-section').classList.remove('hidden');
@@ -733,7 +731,10 @@
                 // Hora del sorteo pero el servidor todavía no marcó "drawn": se
                 // ve la ruleta con un mensaje de espera, no el formulario de
                 // registro (ya cerró) ni la animación (los ganadores reales
-                // todavía no existen).
+                // todavía no existen). Esta pestaña sí está presente desde
+                // antes de que hubiera ganadores, así que si luego "drawn" se
+                // activa, le toca ver la animación en vivo.
+                witnessedLiveTransition = true;
                 document.getElementById('slot-section').classList.remove('hidden');
                 document.getElementById('register-section').classList.add('hidden');
                 document.getElementById('countdown-timer').innerText = '✨ ¡EN PROGRESO! ✨';

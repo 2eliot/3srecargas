@@ -53,6 +53,7 @@ button, input, select { touch-action: manipulation; }
                 <div class="text-left">
                     <h3 class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estado del evento</h3>
                     <div id="statusLine" class="text-xs font-black text-red-500 tracking-wider mt-0.5">Cargando...</div>
+                    <div id="resetCountdown" class="text-sm text-red-400 font-black tracking-wide mt-1" hidden></div>
                 </div>
             </div>
         </div>
@@ -130,10 +131,15 @@ function renderWinners(winners) {
         return;
     }
     box.innerHTML = winners.map((w, i) => `
-        <div class="bg-black border border-amber-500/40 rounded-xl p-2.5 text-center text-slate-400 text-xs flex items-center justify-between shadow-inner">
-            <span class="text-[9px] text-amber-400 font-extrabold uppercase">👑 Cupo #${i + 1}</span>
-            <span class="text-[11px] font-black text-amber-300">ID: ${w.player_id}</span>
-            <span class="text-[10px] font-bold text-white">#${w.guessed_number}</span>
+        <div class="bg-black border border-amber-500/40 rounded-xl p-2.5 text-slate-400 text-xs shadow-inner">
+            <div class="flex items-center justify-between">
+                <span class="text-[9px] text-amber-400 font-extrabold uppercase">👑 Cupo #${i + 1}</span>
+                <span class="text-[10px] font-bold text-white">Número #${w.guessed_number}</span>
+            </div>
+            <div class="flex items-center justify-between mt-1">
+                <span class="text-[11px] font-black text-amber-300 truncate max-w-[55%]">${w.player_nick || 'Jugador'} • ID: ${w.player_id}</span>
+                <span class="text-[9px] font-mono text-slate-500">${w.won_at || ''}</span>
+            </div>
         </div>`).join('');
 }
 
@@ -147,13 +153,46 @@ function renderHistory(history) {
             <div class="text-white font-bold text-[11px] mb-1.5">📅 ${day.day_key}</div>
             <div class="grid grid-cols-1 gap-1.5">
                 ${day.winners.map((w, i) => `
-                    <div class="bg-[#080808] border border-zinc-800/80 rounded-lg p-2 flex items-center justify-between text-[10px]">
-                        <span class="text-amber-400 font-extrabold">👑 #${i + 1}</span>
-                        <span class="font-mono text-slate-300">ID: ${w.player_id}</span>
-                        <span class="text-slate-400">#${w.guessed_number}</span>
+                    <div class="bg-[#080808] border border-zinc-800/80 rounded-lg p-2 text-[10px]">
+                        <div class="flex items-center justify-between">
+                            <span class="text-amber-400 font-extrabold">👑 #${i + 1}</span>
+                            <span class="text-slate-400">Número #${w.guessed_number}</span>
+                        </div>
+                        <div class="flex items-center justify-between mt-1">
+                            <span class="font-mono text-slate-300 truncate max-w-[55%]">${w.player_nick || 'Jugador'} • ID: ${w.player_id}</span>
+                            <span class="text-slate-500">${w.won_at || ''}</span>
+                        </div>
                     </div>`).join('')}
             </div>
         </div>`).join('');
+}
+
+let resetIntervalId = null;
+
+// Cuenta regresiva hasta la medianoche (Venezuela), cuando se reinician
+// los cupos del día — solo se muestra una vez que ya se entregaron todos
+// los premios de hoy, para que quede claro cuándo puede volver a jugar.
+function iniciarTemporizadorReinicio(nextResetIso, show) {
+    const el = document.getElementById('resetCountdown');
+    if (!el) return;
+    if (resetIntervalId) { clearInterval(resetIntervalId); resetIntervalId = null; }
+    if (!show || !nextResetIso) { el.hidden = true; return; }
+    el.hidden = false;
+    const target = new Date(nextResetIso).getTime();
+
+    function tick() {
+        const diff = target - Date.now();
+        if (diff <= 0) {
+            el.textContent = '⏳ Reiniciando cupos...';
+            return;
+        }
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        el.textContent = `⏳ Se reinicia en ${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+    }
+    tick();
+    resetIntervalId = setInterval(tick, 1000);
 }
 
 async function refreshState(playerId) {
@@ -165,9 +204,17 @@ async function refreshState(playerId) {
     document.getElementById('scheduleLabel').textContent = `Se reinicia todos los días a las 00:00 (Venezuela)`;
     document.getElementById('rangeText').innerHTML =
         `Adivina el número secreto entre <strong class="text-white">1 y ${data.number_max}</strong>. Hay <strong class="text-amber-400">${data.winners_per_day} premios</strong> diarios de <strong class="text-amber-400">${data.reward_label}</strong>.`;
-    document.getElementById('chancesDisplay').textContent = `⚡ ${data.attempts_remaining} de ${data.max_attempts} Intentos`;
+    // Si ya no hay cupos hoy, mostrar "2 de 2 intentos" junto a un botón
+    // bloqueado era confuso (parecía que sí se podía jugar). Los intentos
+    // de este ID no sirven de nada hasta que reinicie, así que se avisa
+    // eso en vez del conteo.
+    document.getElementById('chancesDisplay').textContent = data.closed_for_today
+        ? '🔒 Sin cupos por hoy, intenta mañana cuando se reinicien los cupos'
+        : `⚡ ${data.attempts_remaining} de ${data.max_attempts} Intentos`;
 
     const guessBtn = document.getElementById('guessBtn');
+    iniciarTemporizadorReinicio(data.next_reset_at, data.closed_for_today);
+
     if (data.closed_for_today) {
         document.getElementById('statusLine').textContent = '🏆 Cupos de hoy completados';
         guessBtn.disabled = true;
@@ -257,6 +304,12 @@ document.getElementById('guessBtn').addEventListener('click', async () => {
         if (!data.ok) {
             feedback.className = 'text-[11px] font-bold mt-1 min-h-[16px] text-red-400';
             feedback.textContent = data.error || 'No se pudo procesar tu intento.';
+            // El intento pudo fallar porque justo se completaron los cupos
+            // (otro jugador se adelantó) o el juego cerró mientras esta
+            // pantalla estaba abierta — refresca todo (botón, estado,
+            // temporizador) para que quede claro que hay que esperar al
+            // reinicio, no solo el mensaje suelto de error.
+            refreshState(playerId);
             return;
         }
         if (data.won) {

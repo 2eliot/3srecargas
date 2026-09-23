@@ -87,8 +87,25 @@
     // llega por JSON, sin pasar por el autoescape de Jinja.
     function render(message) {
         var el = document.createElement('div');
-        el.className = 'sc-msg ' + (message.sender || 'admin');
+        el.className = 'sc-msg ' + (message.sender || 'admin') + (message.is_deleted ? ' deleted' : '');
         el.dataset.id = message.id;
+
+        if (message.is_deleted) {
+            var deletedText = document.createElement('span');
+            deletedText.className = 'sc-msg-body sc-msg-deleted-text';
+            deletedText.textContent = '🚫 Mensaje eliminado';
+            el.appendChild(deletedText);
+            if (message.sender !== 'system') {
+                var t2 = document.createElement('span');
+                t2.className = 'sc-time';
+                t2.textContent = timeLabel(message);
+                el.appendChild(t2);
+            }
+            thread.appendChild(el);
+            state.lastId = Math.max(state.lastId, message.id || 0);
+            scrollDown();
+            return;
+        }
 
         if (message.body) {
             var body = document.createElement('span');
@@ -161,6 +178,19 @@
         if (input) input.focus();
     }
 
+    // Actualiza una burbuja ya pintada si soporte borró ese mensaje después
+    // de que este navegador ya la había recibido en un poll anterior.
+    function applyDeleted(id) {
+        var el = thread.querySelector('.sc-msg[data-id="' + id + '"]');
+        if (!el || el.classList.contains('deleted')) return;
+        el.classList.add('deleted');
+        el.innerHTML = '';
+        var deletedText = document.createElement('span');
+        deletedText.className = 'sc-msg-body sc-msg-deleted-text';
+        deletedText.textContent = '🚫 Mensaje eliminado';
+        el.appendChild(deletedText);
+    }
+
     function poll() {
         if (!state.token) return;
         fetch('/soporte/hilo?after_id=' + state.lastId, {
@@ -172,6 +202,7 @@
                 if (!data || !data.ok) return;
                 applyChat(data.chat);
                 (data.messages || []).forEach(render);
+                (data.deleted_ids || []).forEach(applyDeleted);
             })
             .catch(function () {});
     }

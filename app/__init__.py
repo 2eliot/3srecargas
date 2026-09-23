@@ -288,6 +288,9 @@ def create_app(config_class=Config):
         _ensure_support_columns()
         _ensure_promo_accumulated_columns()
         _ensure_raffle_draw_minute_column()
+        _ensure_setting_value_text_column()
+        _ensure_guess_winner_nick_column()
+        _ensure_support_delete_columns()
         _init_default_data(app)
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -934,6 +937,67 @@ def _ensure_promo_accumulated_columns():
             if 'sort_order' not in existing:
                 db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN sort_order INTEGER DEFAULT 100'))
                 db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_setting_value_text_column():
+    """`settings.value` nació como VARCHAR(255) para valores cortos, pero
+    ahora también guarda cosas largas como las reglas del programa de
+    minis (varios párrafos). En SQLite (dev local) el límite nunca se
+    aplicó de verdad, así que esto pasaba desapercibido; en Postgres (el
+    VPS de producción) sí es un límite duro y guardar un texto largo
+    tiraba un error 500 al hacer clic en "Guardar". Se pasa a TEXT (sin
+    límite) en ambos motores."""
+    try:
+        if db.engine.dialect.name == 'postgresql':
+            db.session.execute(text('ALTER TABLE settings ALTER COLUMN value TYPE TEXT'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_support_delete_columns():
+    """'Eliminar para todos' en el chat de soporte (mensajes) y adjunto
+    opcional en las respuestas rápidas (imagen o video)."""
+    try:
+        if not _ensure_postgres_columns('support_messages', [
+            'is_deleted BOOLEAN DEFAULT FALSE',
+            'deleted_at TIMESTAMP',
+        ]) and db.engine.dialect.name == 'sqlite':
+            rows = db.session.execute(text('PRAGMA table_info(support_messages)')).fetchall()
+            existing = {r[1] for r in rows}
+            if 'is_deleted' not in existing:
+                db.session.execute(text('ALTER TABLE support_messages ADD COLUMN is_deleted BOOLEAN DEFAULT 0'))
+            if 'deleted_at' not in existing:
+                db.session.execute(text('ALTER TABLE support_messages ADD COLUMN deleted_at DATETIME'))
+            db.session.commit()
+
+        if not _ensure_postgres_columns('support_quick_replies', [
+            'attachment VARCHAR(255)',
+        ]) and db.engine.dialect.name == 'sqlite':
+            rows = db.session.execute(text('PRAGMA table_info(support_quick_replies)')).fetchall()
+            existing = {r[1] for r in rows}
+            if 'attachment' not in existing:
+                db.session.execute(text('ALTER TABLE support_quick_replies ADD COLUMN attachment VARCHAR(255)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_guess_winner_nick_column():
+    """Nombre real del jugador en cada ganador de Adivina el Número, igual
+    que ya se guarda en el Sorteo Diario, para mostrarlo junto al ID."""
+    try:
+        if _ensure_postgres_columns('promo_guess_winners', ['player_nick VARCHAR(150)']):
+            return
+        if db.engine.dialect.name != 'sqlite':
+            return
+        rows = db.session.execute(text('PRAGMA table_info(promo_guess_winners)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'player_nick' not in existing:
+            db.session.execute(text('ALTER TABLE promo_guess_winners ADD COLUMN player_nick VARCHAR(150)'))
+            db.session.commit()
     except Exception:
         db.session.rollback()
 

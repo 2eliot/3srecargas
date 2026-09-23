@@ -311,6 +311,8 @@ video.sc-media { object-fit: contain; max-height: 240px; }
     padding: 5px 12px;
     border-radius: 8px;
 }
+.sc-msg.deleted { opacity: .6; }
+.sc-msg-deleted-text { font-style: italic; color: inherit; opacity: .85; }
 
 .sc-closed {
     flex: none;

@@ -11,7 +11,7 @@ from flask import (
     url_for, flash, session, current_app, jsonify
 )
 from flask_login import login_user, logout_user, login_required, current_user
-from sqlalchemy import or_, false
+from sqlalchemy import or_, false, func
 from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 from ..models import (
@@ -22,8 +22,8 @@ from ..models import (
     RevendedoresCatalogItem, RevendedoresItemMapping, RevendedoresMappingItem, GiftCode,
     AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod,
     PromoAccumulatedAward, PromoAccumulatedLevel,
-    PromoRaffleConfig, PromoRaffleWinner,
-    PromoGuessConfig, PromoGuessRound, PromoGuessWinner,
+    PromoRaffleConfig, PromoRaffleWinner, PromoRaffleEntry,
+    PromoGuessConfig, PromoGuessRound, PromoGuessWinner, PromoGuessAttempt,
 )
 from ..utils.availability import format_hour, get_manual_schedule
 from ..utils.gift_codes import create_batch as create_gift_batch, format_code as format_gift_code
@@ -3458,6 +3458,40 @@ def minigames():
             today_key=promos_today_key,
         )
 
+    # Participación diaria de Sorteo Diario y Adivina el Número: cuántas
+    # personas distintas jugaron cada día, por juego. Se arma directo de
+    # las tablas de registros/intentos (que ya quedan archivadas por
+    # fecha en day_key, nunca se borran), no hace falta una tabla aparte.
+    all_game_names = {g.id: g.name for g in Game.query.all()}
+
+    raffle_participation = [
+        {'day_key': day_key, 'game_name': all_game_names.get(game_id, f'Juego #{game_id}'), 'participants': count}
+        for day_key, game_id, count in (
+            db.session.query(
+                PromoRaffleEntry.day_key, PromoRaffleEntry.game_id,
+                func.count(func.distinct(PromoRaffleEntry.player_id)),
+            )
+            .group_by(PromoRaffleEntry.day_key, PromoRaffleEntry.game_id)
+            .order_by(PromoRaffleEntry.day_key.desc())
+            .limit(120)
+            .all()
+        )
+    ]
+
+    guess_participation = [
+        {'day_key': day_key, 'game_name': all_game_names.get(game_id, f'Juego #{game_id}'), 'participants': count}
+        for day_key, game_id, count in (
+            db.session.query(
+                PromoGuessAttempt.day_key, PromoGuessAttempt.game_id,
+                func.count(func.distinct(PromoGuessAttempt.player_id)),
+            )
+            .group_by(PromoGuessAttempt.day_key, PromoGuessAttempt.game_id)
+            .order_by(PromoGuessAttempt.day_key.desc())
+            .limit(120)
+            .all()
+        )
+    ]
+
     return render_template(
         'admin/minigames.html',
         slot_defs=slot_defs,
@@ -3468,6 +3502,8 @@ def minigames():
         counter_cards=counter_cards,
         winners=winners,
         minigame_dev_mode=is_minigame_dev_mode(),
+        raffle_participation=raffle_participation,
+        guess_participation=guess_participation,
         **promos_context,
     )
 
@@ -4246,6 +4282,35 @@ def stats():
     def _sort_text(value):
         return str(value or '').strip().lower()
 
+    # Recargas de $0: no son ventas, son premios entregados en automático
+    # (sorteos, regalos, canjes de puntos, etc.) — cada una nace con un
+    # prefijo propio en payment_reference (ver deliver_prize_to_player en
+    # cada punto donde se entregan). "CANJE" lo comparten códigos regalo y
+    # canje directo por puntos, así que ahí se distingue por el texto de
+    # las notas, que sí difiere entre los dos.
+    _ZERO_AMOUNT_LABELS = {
+        'RANKING': 'Premio de Ranking Mensual',
+        'MINIJUEGO': 'Premio de Mini Juego (ruleta/tragaperras)',
+        'PUNTOS': 'Premio canjeado con puntos (ruleta)',
+        'RECARGA-ACUM': 'Premio de Recarga Acumulada',
+        'SORTEO': 'Premio de Sorteo Diario',
+        'ADIVINA': 'Premio de Adivina el Número',
+    }
+
+    def _zero_amount_category(order):
+        reference = (order.payment_reference or '').strip().upper()
+        notes = (order.notes or '').strip().lower()
+        if reference.startswith('CANJE-'):
+            if 'código de regalo' in notes or 'codigo de regalo' in notes:
+                return 'Código regalo canjeado'
+            if 'canjeado con puntos' in notes:
+                return 'Canje directo por puntos'
+            return 'Canje (código regalo o puntos)'
+        for prefix, label in _ZERO_AMOUNT_LABELS.items():
+            if reference.startswith(prefix + '-'):
+                return label
+        return 'Otra recarga gratuita'
+
     window_start = ve_day_start_utc_naive(history_start)
     window_end = ve_day_start_utc_naive(today + timedelta(days=1))
 
@@ -4279,6 +4344,8 @@ def stats():
 
     package_rows = {}
     daily_orders = []
+    zero_amount_breakdown = defaultdict(int)
+    zero_amount_total = 0
 
     for order in orders:
         created_at_ve = to_ve(order.created_at)
@@ -4311,6 +4378,10 @@ def stats():
 
         if day_iso != selected_date.isoformat():
             continue
+
+        if sold_order and amount_value == 0:
+            zero_amount_total += 1
+            zero_amount_breakdown[_zero_amount_category(order)] += 1
 
         pkg_key = order.package_id
         row = package_rows.get(pkg_key)
@@ -4399,6 +4470,11 @@ def stats():
     selected_summary = daily_stats[selected_date.isoformat()]
     daily_history = [daily_stats[day.isoformat()] for day in reversed(history_days)]
 
+    zero_amount_summary = [
+        {'label': label, 'count': count}
+        for label, count in sorted(zero_amount_breakdown.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
     return render_template(
         'admin/stats.html',
         today=today,
@@ -4412,4 +4488,6 @@ def stats():
         coupon_summary=coupon_summary,
         no_coupon_total=no_coupon_total,
         daily_orders=daily_orders,
+        zero_amount_total=zero_amount_total,
+        zero_amount_summary=zero_amount_summary,
     )
