@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from ..models import Affiliate, AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier, Order, db
+from ..models import Affiliate, AffiliateWithdrawal, MiniNotification, MiniRank, MiniVideo, MiniViewTier, Order, db
 from .locks import acquire_lock, release_lock
 
 # TTL del lock de aprobación de retiro: alcanza de sobra para una operación
@@ -130,6 +130,16 @@ def _ranks_paid_list(raw):
     return [name.strip() for name in (raw or '').split(',') if name.strip()]
 
 
+# ─── Notificaciones ────────────────────────────────────────────────────────
+
+def notify_mini(affiliate, message):
+    """Deja un aviso en el panel del mini. No hace commit: siempre se llama
+    justo antes del commit que ya cierra la operación que dispara el aviso,
+    para que ambos queden atómicos (si algo falla después, no queda un
+    aviso huérfano de un cambio que no se guardó)."""
+    db.session.add(MiniNotification(affiliate_id=affiliate.id, message=message[:300]))
+
+
 def get_rank_progress(affiliate):
     uses = count_qualifying_uses(affiliate.id)
     ranks = MiniRank.query.order_by(MiniRank.uses_required.asc()).all()
@@ -178,6 +188,7 @@ def award_rank_bonus(affiliate, rank_name, bonus_amount=None):
     affiliate.ranks_paid = ','.join(paid)
     affiliate.balance = float(affiliate.balance or 0) + amount
     affiliate.total_earned = float(affiliate.total_earned or 0) + amount
+    notify_mini(affiliate, f'🏆 ¡Alcanzaste el rango {match.name}! Se te acreditó un premio de ${amount:.2f}.')
     db.session.commit()
     return True, None
 
@@ -204,9 +215,14 @@ def review_mini_video(video, action, reward_amount=None, note=''):
             affiliate = video.affiliate
             affiliate.balance = float(affiliate.balance or 0) + amount
             affiliate.total_earned = float(affiliate.total_earned or 0) + amount
+            notify_mini(affiliate, f'✅ Tu video fue aprobado — se te acreditó un bono de ${amount:.2f}.')
+        else:
+            notify_mini(video.affiliate, '✅ Tu video fue aprobado.')
     elif action == 'reject':
         video.status = 'rejected'
         video.reward_amount = 0
+        reason = f' Motivo: {video.note}' if video.note else ''
+        notify_mini(video.affiliate, f'❌ Tu video fue rechazado.{reason}')
     else:
         return False, 'Acción inválida.'
 
@@ -245,6 +261,7 @@ def approve_withdrawal(withdrawal, proof_path=None):
         withdrawal.reviewed_at = datetime.utcnow()
         if proof_path:
             withdrawal.payment_proof = proof_path
+        notify_mini(affiliate, f'✅ Tu retiro de ${float(withdrawal.amount):.2f} fue aprobado.')
         db.session.commit()
         return True, None
     finally:
@@ -257,5 +274,7 @@ def reject_withdrawal(withdrawal, reason=''):
     withdrawal.status = 'rejected'
     withdrawal.rejection_reason = (reason or '').strip()[:300] or None
     withdrawal.reviewed_at = datetime.utcnow()
+    reason_txt = f' Motivo: {withdrawal.rejection_reason}' if withdrawal.rejection_reason else ''
+    notify_mini(withdrawal.affiliate, f'❌ Tu retiro de ${float(withdrawal.amount):.2f} fue rechazado.{reason_txt}')
     db.session.commit()
     return True, None

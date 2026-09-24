@@ -385,6 +385,68 @@
     </div>
 </div>
 
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Curso de edición (videos de YouTube)</h3>
+        <button class="btn-primary btn-sm" onclick="openCourseAddModal()">+ Nuevo video</button>
+    </div>
+    <p class="form-hint" style="padding:0 20px;">Lo que el mini ve al tocar "Curso de edición" en su panel: una lista de videos de YouTube, cada uno con su descripción.</p>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Título</th><th>Descripción</th><th>Orden</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for v in course_videos %}
+                <tr>
+                    <td>{{ v.title }}</td>
+                    <td>{{ (v.description or '')[:80] }}{% if v.description and v.description|length > 80 %}…{% endif %}</td>
+                    <td>{{ v.sort_order }}</td>
+                    <td>
+                        <div class="action-btns">
+                            <button class="btn-sm btn-outline"
+                                    onclick="openCourseEditModal({{ v.id }}, {{ v.title|tojson }}, {{ v.youtube_url|tojson }}, {{ v.description|tojson }}, {{ v.sort_order }})">Editar</button>
+                            <form method="POST" action="{{ url_for('admin_bp.mini_course_video_delete', video_id=v.id) }}" style="display:inline">
+                                <button class="btn-sm btn-danger" type="submit" onclick="return confirm('¿Borrar este video?')">Borrar</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="empty-row">No hay videos del curso configurados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal: video del curso (agregar/editar) -->
+<div class="modal-overlay" id="courseMiniModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3 id="courseMiniTitle">Nuevo video</h3><button onclick="closeModal('courseMiniModal')">✕</button></div>
+        <form method="POST" id="courseMiniForm">
+            <div class="form-group">
+                <label>Título *</label>
+                <input type="text" name="title" id="courseMiniName" maxlength="150" required>
+            </div>
+            <div class="form-group">
+                <label>Link de YouTube *</label>
+                <input type="url" name="youtube_url" id="courseMiniUrl" placeholder="https://www.youtube.com/watch?v=..." required>
+            </div>
+            <div class="form-group">
+                <label>Descripción</label>
+                <textarea name="description" id="courseMiniDesc" rows="3" placeholder="De qué trata este video..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Orden</label>
+                <input type="number" name="sort_order" id="courseMiniSort" step="1" value="100">
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('courseMiniModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Modal: tramo (agregar/editar) -->
 <div class="modal-overlay" id="tierMiniModal" style="display:none">
     <div class="modal-box">
@@ -705,6 +767,24 @@ function openMiniCommissionModal(id, name, commissionRate, clientDiscountRate, i
         if (emptyRow) emptyRow.hidden = !(term && visibles === 0);
     });
 })();
+
+function openCourseAddModal() {
+    document.getElementById('courseMiniForm').action = '/admin/minis/course-videos/add';
+    document.getElementById('courseMiniTitle').textContent = 'Nuevo video';
+    document.getElementById('courseMiniForm').reset();
+    document.getElementById('courseMiniSort').value = 100;
+    openModal('courseMiniModal');
+}
+
+function openCourseEditModal(id, title, youtubeUrl, description, sortOrder) {
+    document.getElementById('courseMiniForm').action = '/admin/minis/course-videos/' + id + '/edit';
+    document.getElementById('courseMiniTitle').textContent = 'Editar video';
+    document.getElementById('courseMiniName').value = title;
+    document.getElementById('courseMiniUrl').value = youtubeUrl;
+    document.getElementById('courseMiniDesc').value = description || '';
+    document.getElementById('courseMiniSort').value = sortOrder;
+    openModal('courseMiniModal');
+}
 
 function openTierAddModal() {
     document.getElementById('tierMiniForm').action = '/admin/minis/tiers/add';

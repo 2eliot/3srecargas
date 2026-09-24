@@ -7,6 +7,10 @@
     <a href="{{ url_for('main_bp.index') }}" class="rdm-back">← Volver a la tienda</a>
 
     <section class="glass-panel rdm-card">
+        <button type="button" class="mn-notif-btn" id="mnNotifBtn" aria-label="Notificaciones">
+            🔔
+            <span class="mn-notif-badge" id="mnNotifBadge" hidden>0</span>
+        </button>
         <div class="rdm-head">
             <span class="rdm-kicker">Mini influencer</span>
             <h1 class="rdm-title">Hola, {{ affiliate.name }}</h1>
@@ -27,69 +31,17 @@
         </div>
         {% else %}
 
-        <!-- Perfil -->
-        <div class="mn-stat-row">
-            <div class="mn-stat">
-                <span>Tu código</span>
-                <div class="mn-code-row" id="mnCodeViewRow">
-                    <strong id="mnCodeDisplay">{{ affiliate.code }}</strong>
-                    <button type="button" class="mn-copy-btn" id="mnCopyCode">Copiar link</button>
-                    <button type="button" class="mn-copy-btn" id="mnEditCodeBtn">Editar</button>
-                </div>
-                <div class="mn-code-row" id="mnCodeEditRow" hidden style="margin-top:8px;">
-                    <input type="text" id="mnCodeInput" class="glass-input" maxlength="20"
-                           style="text-transform:uppercase;" value="{{ affiliate.code }}" autocomplete="off">
-                    <button type="button" class="mn-copy-btn" id="mnCodeSaveBtn">Guardar</button>
-                    <button type="button" class="mn-copy-btn" id="mnCodeCancelBtn">Cancelar</button>
-                </div>
-                <p class="rdm-feedback" id="mnCodeFeedback" aria-live="polite"></p>
-            </div>
-            <div class="mn-stat">
-                <span>Balance disponible</span>
-                <strong class="is-accent">${{ '%.2f'|format(affiliate.balance or 0) }}</strong>
-            </div>
-        </div>
-        <div class="mn-stat-row">
-            <div class="mn-stat">
-                <span>Descuento para tu comunidad</span>
-                <strong>{{ affiliate.client_discount_rate or 0 }}%</strong>
-            </div>
-            <div class="mn-stat">
-                <span>Total ganado</span>
-                <strong>${{ '%.2f'|format(affiliate.total_earned or 0) }}</strong>
-            </div>
-        </div>
-
-        <!-- Rango -->
-        {% if rank_progress %}
-        <div class="mn-section">
-            <div class="mn-section-head">
-                <h3>Tu rango</h3>
-                <p>{{ rank_progress.uses }} compras con tu código</p>
-            </div>
-            <div class="mn-progress-head">
-                <strong>{{ rank_progress.current.name if rank_progress.current else 'Sin rango aún' }}</strong>
-                {% if rank_progress.next %}
-                <small>Faltan {{ rank_progress.uses_to_next }} para {{ rank_progress.next.name }}</small>
-                {% else %}
-                <small>Rango máximo alcanzado</small>
-                {% endif %}
-            </div>
-            <div class="mn-progress-track"><div class="mn-progress-fill" style="width: {{ rank_progress.progress_percent }}%;"></div></div>
-            {% if rank_progress.unpaid %}
-            <p class="rdm-feedback is-success" style="margin-top:10px;">
-                Tienes {{ rank_progress.unpaid|length }} bono(s) de rango pendiente(s) de pago — te lo acreditamos pronto.
-            </p>
-            {% endif %}
-        </div>
-        {% endif %}
-
-        <!-- Reglas del programa y grupo de WhatsApp -->
-        {% if mini_rules_text or mini_whatsapp_group_url %}
-        <div class="mn-section">
+        <!-- Reglas del programa, curso de edición y grupo de WhatsApp -->
+        {% if mini_rules_text or mini_whatsapp_group_url or course_videos %}
+        <div class="mn-section" style="margin-top:0; padding-top:0; border-top:none;">
             {% if mini_rules_text %}
             <button type="button" class="rdm-btn red-glow-pill" id="mnRulesBtn" style="margin-bottom:10px;">
                 <span class="rdm-btn-label">Ver reglas del programa</span>
+            </button>
+            {% endif %}
+            {% if course_videos %}
+            <button type="button" class="rdm-btn red-glow-pill" id="mnCourseBtn" style="margin-bottom:10px;">
+                <span class="rdm-btn-label">Curso de edición</span>
             </button>
             {% endif %}
             {% if mini_whatsapp_group_url %}
@@ -102,12 +54,91 @@
         </div>
         {% endif %}
 
-        <!-- Videos -->
+        <!-- Perfil -->
         <div class="mn-section">
-            <div class="mn-section-head">
-                <h3>Bono por video</h3>
-                <p>Sube el link de cada video donde menciones la tienda. Debe tener 1000 vistas o más. Lo revisamos y, según su alcance, te acreditamos un bono.</p>
+            <div class="mn-section-head mn-section-head-center">
+                <h3>Código Creador</h3>
+                <p>No importa el tamaño de tu comunidad: donde hay ventas, hay ganancias.</p>
             </div>
+            <div class="mn-stat-row">
+                <div class="mn-stat">
+                    <span>Tu código</span>
+                    <div class="mn-code-row" id="mnCodeViewRow">
+                        <strong id="mnCodeDisplay">{{ affiliate.code }}</strong>
+                        <div class="mn-code-actions">
+                            <button type="button" class="mn-copy-btn" id="mnCopyCode">Copiar link</button>
+                            <button type="button" class="mn-copy-btn" id="mnEditCodeBtn">Editar</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mn-stat">
+                    <span>Descuento para tu comunidad</span>
+                    <strong>{{ affiliate.client_discount_rate or 0 }}%</strong>
+                </div>
+            </div>
+            <div class="mn-stat-row">
+                <div class="mn-stat">
+                    <span>Balance disponible</span>
+                    <strong class="is-accent">${{ '%.2f'|format(affiliate.balance or 0) }}</strong>
+                </div>
+                <div class="mn-stat">
+                    <span>Total ganado</span>
+                    <strong>${{ '%.2f'|format(affiliate.total_earned or 0) }}</strong>
+                </div>
+            </div>
+        <p class="mn-creator-tip">
+            Comparte tu código donde quieras: publica videos en todas las redes que puedas y promociona tu enlace.
+            Mientras más vendas con tu código, más rápido subes de rango y más ganas.
+        </p>
+        </div>
+
+        <!-- Rango -->
+        {% if rank_progress %}
+        <div class="mn-section mn-rango-box">
+            <div class="mn-section-head">
+                <h3>Tu rango</h3>
+                <p class="mn-rango-uses"><strong class="is-accent">{{ rank_progress.uses }}</strong> compras con tu código</p>
+            </div>
+            <div class="mn-progress-head">
+                <strong>{{ rank_progress.current.name if rank_progress.current else (rank_progress.next.name if rank_progress.next else '') }}</strong>
+                {% if rank_progress.next %}
+                <small class="mn-rango-hint">Faltan <strong>{{ rank_progress.uses_to_next }}</strong> compras
+                    (<span class="is-accent">{{ (100 - rank_progress.progress_percent)|round(1) }}%</span>)
+                    para {{ rank_progress.next.name }}</small>
+                {% else %}
+                <small class="mn-rango-hint">Rango máximo alcanzado</small>
+                {% endif %}
+            </div>
+            <div class="mn-progress-track"><div class="mn-progress-fill" style="width: {{ rank_progress.progress_percent }}%;"></div></div>
+            {% if all_ranks %}
+            <button type="button" class="rdm-btn red-glow-pill" id="mnRanksBtn" style="margin-top:14px;">
+                <span class="rdm-btn-label">Ver rangos y premios</span>
+            </button>
+            {% endif %}
+            {% if rank_progress.current %}
+            <p class="rdm-sub" style="margin-top:10px; text-align:left; max-width:none;">
+                🏆 Rango <strong>{{ rank_progress.current.name }}</strong> completado — premio de
+                <strong class="is-accent">${{ '%.2f'|format(rank_progress.current.bonus_amount) }}</strong>
+                {{ 'ya acreditado.' if rank_progress.current.name in rank_progress.paid else 'pendiente de acreditar.' }}
+            </p>
+            {% endif %}
+            {% if rank_progress.unpaid %}
+            <p class="rdm-feedback is-success" style="margin-top:10px;">
+                Tienes {{ rank_progress.unpaid|length }} bono(s) de rango pendiente(s) de pago — te lo acreditamos pronto.
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Videos -->
+        <details class="mn-section mn-section-collapsible">
+            <summary class="mn-section-head">
+                <span class="mn-section-head-text">
+                    <h3>Videos Pagos (Solo TikTok)</h3>
+                    <p>Sube el link de cada video donde menciones la tienda. Debe tener 1000 vistas o más. Lo revisamos y, según su alcance, te acreditamos un bono.</p>
+                </span>
+                <span class="mn-section-chevron">▾</span>
+            </summary>
 
             <label class="rdm-label" for="mnVideoUrl">Link del video</label>
             <input type="url" id="mnVideoUrl" class="glass-input" placeholder="https://www.tiktok.com/@tu/video/..." maxlength="500">
@@ -151,14 +182,17 @@
                 <p class="mn-list-empty">Aún no subiste ningún video.</p>
                 {% endfor %}
             </div>
-        </div>
+        </details>
 
         <!-- Retiro -->
-        <div class="mn-section">
-            <div class="mn-section-head">
-                <h3>Retirar balance</h3>
-                <p>Tienes ${{ '%.2f'|format(affiliate.balance or 0) }} disponibles.</p>
-            </div>
+        <details class="mn-section mn-section-collapsible"{% if has_pending_withdrawal %} open{% endif %}>
+            <summary class="mn-section-head">
+                <span class="mn-section-head-text">
+                    <h3>Retirar balance</h3>
+                    <p>Tienes ${{ '%.2f'|format(affiliate.balance or 0) }} disponibles.</p>
+                </span>
+                <span class="mn-section-chevron">▾</span>
+            </summary>
 
             {% if has_pending_withdrawal %}
             <p class="rdm-feedback is-success">Ya tienes un retiro en revisión — espera a que se resuelva antes de pedir otro.</p>
@@ -203,7 +237,7 @@
                 <p class="mn-list-empty">Aún no pediste ningún retiro.</p>
                 {% endfor %}
             </div>
-        </div>
+        </details>
         {% endif %}
 
         <div class="mn-section" style="text-align:center;">
@@ -212,6 +246,82 @@
             </form>
         </div>
     </section>
+
+    {% if course_videos %}
+    <!-- Curso de edición -->
+    <div class="rdm-modal" id="mnCourseModal" aria-hidden="true" hidden>
+        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="mnCourseTitle">
+            <div class="rdm-modal-head">
+                <h3 id="mnCourseTitle">Curso de edición</h3>
+                <button type="button" class="rdm-modal-close" id="mnCourseCloseBtn" aria-label="Cerrar">✕</button>
+            </div>
+            <div class="mn-course-list">
+                {% for v in course_videos %}
+                <a href="{{ v.youtube_url }}" target="_blank" rel="noopener" class="mn-course-item">
+                    <strong>▶ {{ v.title }}</strong>
+                    {% if v.description %}<p>{{ v.description }}</p>{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Notificaciones -->
+    <div class="rdm-modal" id="mnNotifModal" aria-hidden="true" hidden>
+        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="mnNotifTitle">
+            <div class="rdm-modal-head">
+                <h3 id="mnNotifTitle">Notificaciones</h3>
+                <button type="button" class="rdm-modal-close" id="mnNotifCloseBtn" aria-label="Cerrar">✕</button>
+            </div>
+            <div class="mn-notif-list" id="mnNotifList">
+                <p class="mn-list-empty">Cargando...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Editar código -->
+    <div class="rdm-modal" id="mnCodeEditModal" aria-hidden="true" hidden>
+        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="mnCodeEditTitle">
+            <div class="rdm-modal-head">
+                <h3 id="mnCodeEditTitle">Editar tu código</h3>
+                <button type="button" class="rdm-modal-close" id="mnCodeEditCloseBtn" aria-label="Cerrar">✕</button>
+            </div>
+            <label class="rdm-label" for="mnCodeInput">Nuevo código</label>
+            <input type="text" id="mnCodeInput" class="glass-input" maxlength="20"
+                   style="text-transform:uppercase;" value="{{ affiliate.code }}" autocomplete="off">
+            <p class="rdm-feedback" id="mnCodeFeedback" aria-live="polite"></p>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <button type="button" class="rdm-btn red-glow-pill" id="mnCodeSaveBtn" style="flex:1;">
+                    <span class="rdm-btn-label">Guardar</span>
+                </button>
+                <button type="button" class="mn-copy-btn" id="mnCodeCancelBtn">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    {% if all_ranks %}
+    <!-- Rangos y premios -->
+    <div class="rdm-modal" id="mnRanksModal" aria-hidden="true" hidden>
+        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="mnRanksTitle">
+            <div class="rdm-modal-head">
+                <h3 id="mnRanksTitle">Rangos y premios</h3>
+                <button type="button" class="rdm-modal-close" id="mnRanksCloseBtn" aria-label="Cerrar">✕</button>
+            </div>
+            <div class="mn-rank-list">
+                {% for r in all_ranks %}
+                <div class="mn-rank-list-item{% if rank_progress and rank_progress.current and rank_progress.current.id == r.id %} is-current{% endif %}">
+                    <div>
+                        <strong>{{ r.name }}</strong>
+                        <small>{{ r.uses_required }} compras con tu código</small>
+                    </div>
+                    <span class="is-accent">${{ '%.2f'|format(r.bonus_amount) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     {% if mini_rules_text %}
     <!-- Reglas del programa -->
@@ -250,6 +360,110 @@
         rulesModal.addEventListener('click', function (evt) {
             if (evt.target === rulesModal) closeRulesModal();
         });
+    }
+
+    var courseBtn = document.getElementById('mnCourseBtn');
+    var courseModal = document.getElementById('mnCourseModal');
+    var courseCloseBtn = document.getElementById('mnCourseCloseBtn');
+    if (courseBtn && courseModal) {
+        courseBtn.addEventListener('click', function () {
+            courseModal.hidden = false;
+            courseModal.setAttribute('aria-hidden', 'false');
+        });
+        function closeCourseModal() {
+            courseModal.hidden = true;
+            courseModal.setAttribute('aria-hidden', 'true');
+        }
+        if (courseCloseBtn) courseCloseBtn.addEventListener('click', closeCourseModal);
+        courseModal.addEventListener('click', function (evt) {
+            if (evt.target === courseModal) closeCourseModal();
+        });
+    }
+
+    var ranksBtn = document.getElementById('mnRanksBtn');
+    var ranksModal = document.getElementById('mnRanksModal');
+    var ranksCloseBtn = document.getElementById('mnRanksCloseBtn');
+    if (ranksBtn && ranksModal) {
+        ranksBtn.addEventListener('click', function () {
+            ranksModal.hidden = false;
+            ranksModal.setAttribute('aria-hidden', 'false');
+        });
+        function closeRanksModal() {
+            ranksModal.hidden = true;
+            ranksModal.setAttribute('aria-hidden', 'true');
+        }
+        if (ranksCloseBtn) ranksCloseBtn.addEventListener('click', closeRanksModal);
+        ranksModal.addEventListener('click', function (evt) {
+            if (evt.target === ranksModal) closeRanksModal();
+        });
+    }
+
+    /* Notificaciones */
+    var notifBtn = document.getElementById('mnNotifBtn');
+    var notifBadge = document.getElementById('mnNotifBadge');
+    var notifModal = document.getElementById('mnNotifModal');
+    var notifCloseBtn = document.getElementById('mnNotifCloseBtn');
+    var notifList = document.getElementById('mnNotifList');
+
+    function renderNotifBadge(count) {
+        if (!notifBadge) return;
+        if (count > 0) {
+            notifBadge.textContent = count > 9 ? '9+' : String(count);
+            notifBadge.hidden = false;
+        } else {
+            notifBadge.hidden = true;
+        }
+    }
+
+    function refreshNotifBadge() {
+        fetch('{{ url_for("minis_bp.mini_notifications") }}', {credentials: 'same-origin'})
+            .then(function (r) { return r.json(); })
+            .then(function (data) { if (data.ok) renderNotifBadge(data.unread_count); })
+            .catch(function () {});
+    }
+
+    function loadNotifList() {
+        notifList.innerHTML = '<p class="mn-list-empty">Cargando...</p>';
+        fetch('{{ url_for("minis_bp.mini_notifications") }}', {credentials: 'same-origin'})
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.ok) throw new Error();
+                if (!data.notifications.length) {
+                    notifList.innerHTML = '<p class="mn-list-empty">Todavía no tienes notificaciones.</p>';
+                    return;
+                }
+                notifList.innerHTML = data.notifications.map(function (n) {
+                    return '<div class="mn-notif-item' + (n.is_read ? '' : ' is-unread') + '">' +
+                        '<p>' + n.message.replace(/</g, '&lt;') + '</p>' +
+                        '<small>' + n.created_at + '</small>' +
+                        '</div>';
+                }).join('');
+                if (data.unread_count > 0) {
+                    fetch('{{ url_for("minis_bp.mini_notifications_mark_read") }}', {
+                        method: 'POST', credentials: 'same-origin',
+                    }).then(function () { renderNotifBadge(0); }).catch(function () {});
+                }
+            })
+            .catch(function () {
+                notifList.innerHTML = '<p class="mn-list-empty">No se pudieron cargar las notificaciones.</p>';
+            });
+    }
+
+    if (notifBtn && notifModal) {
+        notifBtn.addEventListener('click', function () {
+            notifModal.hidden = false;
+            notifModal.setAttribute('aria-hidden', 'false');
+            loadNotifList();
+        });
+        function closeNotifModal() {
+            notifModal.hidden = true;
+            notifModal.setAttribute('aria-hidden', 'true');
+        }
+        if (notifCloseBtn) notifCloseBtn.addEventListener('click', closeNotifModal);
+        notifModal.addEventListener('click', function (evt) {
+            if (evt.target === notifModal) closeNotifModal();
+        });
+        refreshNotifBadge();
     }
 
     function setFeedback(el, msg, kind) {
@@ -299,30 +513,34 @@
         });
     }
 
-    /* Editar código propio */
-    var codeViewRow = document.getElementById('mnCodeViewRow');
-    var codeEditRow = document.getElementById('mnCodeEditRow');
+    /* Editar código propio (en modal) */
+    var codeEditModal = document.getElementById('mnCodeEditModal');
     var editCodeBtn = document.getElementById('mnEditCodeBtn');
     var codeInput = document.getElementById('mnCodeInput');
     var codeSaveBtn = document.getElementById('mnCodeSaveBtn');
     var codeCancelBtn = document.getElementById('mnCodeCancelBtn');
+    var codeEditCloseBtn = document.getElementById('mnCodeEditCloseBtn');
     var codeFeedback = document.getElementById('mnCodeFeedback');
 
-    if (editCodeBtn) {
-        editCodeBtn.addEventListener('click', function () {
-            codeViewRow.hidden = true;
-            codeEditRow.hidden = false;
-            setFeedback(codeFeedback, '');
-            codeInput.focus();
-            codeInput.select();
-        });
+    function openCodeEditModal() {
+        codeEditModal.hidden = false;
+        codeEditModal.setAttribute('aria-hidden', 'false');
+        setFeedback(codeFeedback, '');
+        codeInput.focus();
+        codeInput.select();
     }
-    if (codeCancelBtn) {
-        codeCancelBtn.addEventListener('click', function () {
-            codeInput.value = document.getElementById('mnCodeDisplay').textContent.trim();
-            codeEditRow.hidden = true;
-            codeViewRow.hidden = false;
-            setFeedback(codeFeedback, '');
+    function closeCodeEditModal() {
+        codeInput.value = document.getElementById('mnCodeDisplay').textContent.trim();
+        codeEditModal.hidden = true;
+        codeEditModal.setAttribute('aria-hidden', 'true');
+        setFeedback(codeFeedback, '');
+    }
+    if (editCodeBtn) editCodeBtn.addEventListener('click', openCodeEditModal);
+    if (codeCancelBtn) codeCancelBtn.addEventListener('click', closeCodeEditModal);
+    if (codeEditCloseBtn) codeEditCloseBtn.addEventListener('click', closeCodeEditModal);
+    if (codeEditModal) {
+        codeEditModal.addEventListener('click', function (evt) {
+            if (evt.target === codeEditModal) closeCodeEditModal();
         });
     }
     if (codeSaveBtn) {

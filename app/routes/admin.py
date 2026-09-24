@@ -20,7 +20,7 @@ from ..models import (
     OrderMiniGameOpportunity, PlayerPoints, PointsPrizeMapping, PointsSpinLog,
     PointsRedeemOption, PointsRedeemLog,
     RevendedoresCatalogItem, RevendedoresItemMapping, RevendedoresMappingItem, GiftCode,
-    AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod,
+    AffiliateWithdrawal, MiniCourseVideo, MiniNotification, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod,
     PromoAccumulatedAward, PromoAccumulatedLevel,
     PromoRaffleConfig, PromoRaffleWinner, PromoRaffleEntry,
     PromoGuessConfig, PromoGuessRound, PromoGuessWinner, PromoGuessAttempt,
@@ -31,6 +31,7 @@ from ..utils.mini_influencers import (
     award_rank_bonus,
     approve_withdrawal as approve_mini_withdrawal,
     get_rank_progress,
+    notify_mini,
     reject_withdrawal as reject_mini_withdrawal,
     review_mini_video,
     suggested_reward_for_views,
@@ -2007,6 +2008,7 @@ def minis():
     ranks = MiniRank.query.order_by(MiniRank.sort_order.asc(), MiniRank.uses_required.asc()).all()
     view_tiers = MiniViewTier.query.order_by(MiniViewTier.sort_order.asc(), MiniViewTier.min_views.asc()).all()
     mini_payout_methods = MiniPayoutMethod.query.order_by(MiniPayoutMethod.sort_order.asc(), MiniPayoutMethod.name.asc()).all()
+    course_videos = MiniCourseVideo.query.order_by(MiniCourseVideo.sort_order.asc(), MiniCourseVideo.id.asc()).all()
 
     program_settings = {
         s.key: s.value for s in Setting.query.filter(
@@ -2020,6 +2022,7 @@ def minis():
         mini_rules_video_url=program_settings.get('mini_rules_video_url', ''),
         mini_whatsapp_group_url=program_settings.get('mini_whatsapp_group_url', ''),
         mini_payout_methods=mini_payout_methods,
+        course_videos=course_videos,
         section=section,
         pending_applications=pending_applications,
         reviewed_applications=reviewed_applications,
@@ -2183,6 +2186,65 @@ def mini_tier_delete(tier_id):
     return redirect(url_for('admin_bp.minis', section='config'))
 
 
+@admin_bp.route('/minis/course-videos/add', methods=['POST'])
+@login_required
+def mini_course_video_add():
+    title = (request.form.get('title') or '').strip()[:150]
+    youtube_url = (request.form.get('youtube_url') or '').strip()[:500]
+    description = (request.form.get('description') or '').strip()
+    if not title or not youtube_url:
+        flash('El video necesita título y link.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    try:
+        sort_order = int(request.form.get('sort_order') or 100)
+    except ValueError:
+        flash('Revisa el orden del video.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    db.session.add(MiniCourseVideo(
+        title=title, youtube_url=youtube_url, description=description, sort_order=sort_order,
+    ))
+    db.session.commit()
+    flash('Video agregado al curso.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/course-videos/<int:video_id>/edit', methods=['POST'])
+@login_required
+def mini_course_video_edit(video_id):
+    video = MiniCourseVideo.query.get_or_404(video_id)
+    title = (request.form.get('title') or '').strip()[:150]
+    youtube_url = (request.form.get('youtube_url') or '').strip()[:500]
+    if not title or not youtube_url:
+        flash('El video necesita título y link.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    try:
+        sort_order = int(request.form.get('sort_order') or video.sort_order or 100)
+    except ValueError:
+        flash('Revisa el orden del video.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+
+    video.title = title
+    video.youtube_url = youtube_url
+    video.description = (request.form.get('description') or '').strip()
+    video.sort_order = sort_order
+    db.session.commit()
+    flash('Video actualizado.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
+@admin_bp.route('/minis/course-videos/<int:video_id>/delete', methods=['POST'])
+@login_required
+def mini_course_video_delete(video_id):
+    video = MiniCourseVideo.query.get_or_404(video_id)
+    db.session.delete(video)
+    db.session.commit()
+    flash('Video eliminado del curso.', 'success')
+    return redirect(url_for('admin_bp.minis', section='config'))
+
+
 @admin_bp.route('/minis/ranks/add', methods=['POST'])
 @login_required
 def mini_rank_add():
@@ -2294,6 +2356,7 @@ def mini_approve(aff_id):
     aff.is_active = True
     aff.rejection_reason = None
     aff.reviewed_at = datetime.utcnow()
+    notify_mini(aff, f'🎉 ¡Tu solicitud fue aprobada! Ya puedes compartir tu código {code} y empezar a ganar.')
     db.session.commit()
     flash(f'Mini influencer "{aff.name}" aprobado con código {code}.', 'success')
     return redirect(url_for('admin_bp.minis'))
@@ -2314,6 +2377,8 @@ def mini_reject(aff_id):
     aff.is_active = False
     aff.rejection_reason = (request.form.get('rejection_reason') or '').strip() or None
     aff.reviewed_at = datetime.utcnow()
+    reason_txt = f' Motivo: {aff.rejection_reason}' if aff.rejection_reason else ''
+    notify_mini(aff, f'❌ Tu solicitud fue rechazada.{reason_txt}')
     db.session.commit()
     flash(f'Solicitud de "{aff.name}" rechazada.', 'success')
     return redirect(url_for('admin_bp.minis'))
@@ -2340,6 +2405,8 @@ def mini_delete(aff_id):
         db.session.delete(commission)
     for withdrawal in AffiliateWithdrawal.query.filter_by(affiliate_id=aff.id).all():
         db.session.delete(withdrawal)
+    for notif in MiniNotification.query.filter_by(affiliate_id=aff.id).all():
+        db.session.delete(notif)
 
     db.session.delete(aff)
     db.session.commit()

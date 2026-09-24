@@ -15,7 +15,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy.exc import IntegrityError
 
-from ..models import Affiliate, AffiliateWithdrawal, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod, Setting, db
+from ..models import Affiliate, AffiliateWithdrawal, MiniCourseVideo, MiniNotification, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod, Setting, db
 from ..utils.mini_influencers import (
     clear_attempts,
     count_qualifying_uses,
@@ -195,6 +195,8 @@ def panel():
         if affiliate.status == 'approved' else []
     )
     view_tiers = MiniViewTier.query.order_by(MiniViewTier.sort_order.asc(), MiniViewTier.min_views.asc()).all()
+    all_ranks = MiniRank.query.order_by(MiniRank.uses_required.asc()).all()
+    course_videos = MiniCourseVideo.query.order_by(MiniCourseVideo.sort_order.asc(), MiniCourseVideo.id.asc()).all()
     payment_methods = MiniPayoutMethod.query.filter_by(is_active=True).order_by(MiniPayoutMethod.sort_order.asc(), MiniPayoutMethod.name.asc()).all()
     has_pending_withdrawal = any(w.status == 'pending' for w in withdrawals)
 
@@ -208,6 +210,8 @@ def panel():
         'minis/panel.html',
         affiliate=affiliate,
         rank_progress=rank_progress,
+        all_ranks=all_ranks,
+        course_videos=course_videos,
         videos=videos,
         withdrawals=withdrawals,
         view_tiers=view_tiers,
@@ -355,6 +359,36 @@ def mini_withdraw():
     db.session.commit()
 
     return jsonify({'ok': True, 'message': 'Solicitud de retiro enviada. La revisamos pronto.'})
+
+
+@minis_bp.route('/notificaciones', methods=['GET'])
+@login_required
+def mini_notifications():
+    notifs = (
+        MiniNotification.query.filter_by(affiliate_id=current_user.id)
+        .order_by(MiniNotification.created_at.desc())
+        .limit(30)
+        .all()
+    )
+    unread_count = MiniNotification.query.filter_by(affiliate_id=current_user.id, is_read=False).count()
+    return jsonify({
+        'ok': True,
+        'unread_count': unread_count,
+        'notifications': [{
+            'id': n.id,
+            'message': n.message,
+            'is_read': n.is_read,
+            'created_at': n.created_at.strftime('%d/%m/%Y %H:%M') if n.created_at else '',
+        } for n in notifs],
+    })
+
+
+@minis_bp.route('/notificaciones/marcar-leidas', methods=['POST'])
+@login_required
+def mini_notifications_mark_read():
+    MiniNotification.query.filter_by(affiliate_id=current_user.id, is_read=False).update({'is_read': True})
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @minis_bp.route('/logout', methods=['POST'])

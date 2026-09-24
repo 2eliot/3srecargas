@@ -401,6 +401,31 @@ class AffiliateWithdrawal(db.Model):
     affiliate = db.relationship('Affiliate', backref='withdrawals')
 
 
+class MiniNotification(db.Model):
+    """Aviso para el panel del mini: se crea cada vez que el admin aprueba o
+    rechaza algo suyo (video, retiro, solicitud) o le paga un bono de rango,
+    para que lo vea sin tener que estar revisando el panel a cada rato."""
+    __tablename__ = 'mini_notifications'
+    id = db.Column(db.Integer, primary_key=True)
+    affiliate_id = db.Column(db.Integer, db.ForeignKey('affiliates.id'), nullable=False)
+    message = db.Column(db.String(300), nullable=False)
+    is_read = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    affiliate = db.relationship('Affiliate', backref='notifications')
+
+
+class MiniCourseVideo(db.Model):
+    """Video del "Curso de edición" que el mini ve en un popup de su panel
+    (varios links de YouTube, cada uno con su propia descripción de qué
+    enseña), configurable desde Admin > Minis > Config."""
+    __tablename__ = 'mini_course_videos'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    description = db.Column(db.Text)
+    youtube_url = db.Column(db.String(500), nullable=False)
+    sort_order = db.Column(db.Integer, default=100)
+
+
 class MiniViewTier(db.Model):
     """Tramo "vistas de un video -> recompensa sugerida" que se muestra en
     el panel del mini. Es solo referencia: el admin igual fija el monto real
