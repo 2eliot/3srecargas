@@ -41,15 +41,23 @@
     {% endfor %}
 </div>
 
-<div class="admin-card" style="margin-bottom:20px;">
-    <div class="card-header">
-        <h2>Configuración por juego</h2>
-        <p class="form-hint">
-            Solo estos 3 juegos ofrecen minijuego tras la recarga; el resto no muestra ruleta. El premio configurado
-            es el ÚNICO ganable — se entrega en automático (diamantes/oro real) al ID que hizo la recarga cada
-            cierta cantidad de giros. En la ruleta aparecerán más opciones de relleno, pero nunca se otorgan.
-        </p>
-    </div>
+<h2 style="margin:28px 0 14px;">Mini Juegos Final de la Orden</h2>
+
+<details class="admin-card" style="margin-bottom:20px;">
+    <summary class="card-header settings-section-summary" style="align-items:flex-start;">
+        <span style="display:flex; flex-direction:column; gap:6px;">
+            <h2>🎰 Ruleta post-recarga (Mini Juego)</h2>
+            <p class="form-hint">
+                Esta sección es solo para la <strong>ruleta de premios</strong> que le sale al cliente justo después de
+                pagar una recarga — no la confundas con Recarga Acumulada, Sorteo Diario ni Adivina el Número, que se
+                configuran más abajo, aparte. Solo estos 3 juegos ofrecen minijuego tras la recarga; el resto no muestra
+                ruleta. El premio configurado es el ÚNICO ganable — se entrega en automático (diamantes/oro real) al ID
+                que hizo la recarga cada cierta cantidad de giros. En la ruleta aparecerán más opciones de relleno, pero
+                nunca se otorgan.
+            </p>
+        </span>
+        <span class="settings-chevron" style="margin-top:4px;">▾</span>
+    </summary>
     <form method="POST" class="mg-config-form">
         <div class="form-grid-2" style="margin-bottom:16px;">
             <div class="form-group">
@@ -61,13 +69,16 @@
         </div>
 
         {% for slot in slots_config %}
-        <div class="admin-card" style="margin-bottom:14px;">
-            <div class="card-header">
-                <h3>{{ slot.label }}</h3>
-                <span class="badge {% if slot.enabled %}badge-active{% else %}badge-inactive{% endif %}">
-                    {{ 'Activo' if slot.enabled else 'Sin configurar' }}
+        <details class="admin-card" style="margin-bottom:14px;">
+            <summary class="card-header settings-section-summary">
+                <span style="display:flex; align-items:center; gap:10px;">
+                    <h3>{{ slot.label }}</h3>
+                    <span class="badge {% if slot.enabled %}badge-active{% else %}badge-inactive{% endif %}">
+                        {{ 'Activo' if slot.enabled else 'Sin configurar' }}
+                    </span>
                 </span>
-            </div>
+                <span class="settings-chevron">▾</span>
+            </summary>
             <div class="form-grid-2 mg-slot-grid">
                 <div class="form-group">
                     <label for="minigame_slot_{{ slot.slot_key }}_game_id">Juego de la tienda</label>
@@ -93,18 +104,17 @@
                     <p class="form-hint">Debe ser un paquete real de ese juego con stock de PINs o mapeo de Revendedores, para que se entregue solo.</p>
                 </div>
             </div>
-        </div>
+        </details>
         {% endfor %}
 
         <div class="form-group">
             <button type="submit" class="btn-primary">Guardar configuración</button>
         </div>
     </form>
-</div>
 
-<div class="admin-card">
-    <div class="card-header">
-        <h2>Ganadores recientes</h2>
+    <hr style="margin:24px 20px; border-color: rgba(255,255,255,.08);">
+    <div style="padding:0 20px 12px;">
+        <h3 style="margin-bottom:6px;">Ganadores recientes</h3>
         <p class="form-hint">Cada premio ganado genera una orden interna de $0 que se procesa igual que cualquier compra — si en ese momento no hay stock, queda pendiente para completarla a mano.</p>
     </div>
     <div class="table-wrap">
@@ -120,7 +130,7 @@
                     <th>Giro #</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="mgWinnersBody" data-page-size="6">
                 {% for item in winners %}
                 <tr>
                     <td>{{ item.played_at|datetime_ve('%d/%m/%Y %H:%M') if item.played_at else '—' }}</td>
@@ -142,24 +152,67 @@
             </tbody>
         </table>
     </div>
-</div>
+    <div class="row-pager" id="mgWinnersPager" style="display:none; padding:12px 20px;"></div>
+</details>
+
+<h2 style="margin:28px 0 14px;">Recarga Acumulada</h2>
+
+<details class="admin-card" style="margin-bottom:20px;">
+    <summary class="card-header settings-section-summary">
+        <span style="display:flex; flex-direction:column; gap:4px;">
+            <h2>Ganadores — Recarga Acumulada</h2>
+            <p class="form-hint">De todos los juegos juntos. Para configurar los niveles de uno en particular, bajá hasta "Promociones".</p>
+        </span>
+        <span class="settings-chevron">▾</span>
+    </summary>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Juego</th>
+                    <th>ID</th>
+                    <th>Nivel</th>
+                    <th>Mes</th>
+                    <th>Orden del premio</th>
+                </tr>
+            </thead>
+            <tbody id="accGlobalWinnersBody" data-page-size="6">
+                {% for a in accumulated_winners %}
+                <tr>
+                    <td>{{ a.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ a.game.name if a.game else '—' }}</td>
+                    <td>{{ a.player_id }}</td>
+                    <td>{{ a.level_name }}</td>
+                    <td>{{ a.month_key }}</td>
+                    <td>{% if a.prize_order %}<a href="{{ url_for('admin_bp.order_detail', order_id=a.prize_order.id) }}">#{{ a.prize_order.order_number }}</a>{% else %}—{% endif %}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="empty-row">Todavía no hay premios ganados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="row-pager" id="accGlobalWinnersPager" style="display:none; padding:12px 20px;"></div>
+</details>
 
 <h2 style="margin:28px 0 14px;">Participación diaria</h2>
 
 <div class="ranking-prize-config-grid">
-    <div class="admin-card">
-        <div class="card-header">
+    <details class="admin-card">
+        <summary class="card-header settings-section-summary">
             <h3>Sorteo Diario</h3>
-        </div>
+            <span class="settings-chevron">▾</span>
+        </summary>
         <div style="padding:0 20px 4px;">
             <p class="form-hint">Cuántos IDs distintos se registraron cada día, por juego. Queda archivado solo — nunca se borra.</p>
         </div>
         <div class="table-wrap">
             <table class="admin-table">
                 <thead><tr><th>Fecha</th><th>Juego</th><th>Participantes</th></tr></thead>
-                <tbody>
+                <tbody id="rafflePartBody" data-day-page-size="6">
                     {% for row in raffle_participation %}
-                    <tr>
+                    <tr data-day="{{ row.day_key }}">
                         <td>{{ row.day_key.split('-')[2] }}/{{ row.day_key.split('-')[1] }}/{{ row.day_key.split('-')[0] }}</td>
                         <td>{{ row.game_name }}</td>
                         <td>{{ row.participants }}</td>
@@ -170,21 +223,23 @@
                 </tbody>
             </table>
         </div>
-    </div>
+        <div class="day-pager" id="rafflePartPager" style="display:none; padding:12px 20px;"></div>
+    </details>
 
-    <div class="admin-card">
-        <div class="card-header">
+    <details class="admin-card">
+        <summary class="card-header settings-section-summary">
             <h3>Adivina el Número</h3>
-        </div>
+            <span class="settings-chevron">▾</span>
+        </summary>
         <div style="padding:0 20px 4px;">
             <p class="form-hint">Cuántos IDs distintos intentaron adivinar cada día, por juego. Queda archivado solo — nunca se borra.</p>
         </div>
         <div class="table-wrap">
             <table class="admin-table">
                 <thead><tr><th>Fecha</th><th>Juego</th><th>Participantes</th></tr></thead>
-                <tbody>
+                <tbody id="guessPartBody" data-day-page-size="6">
                     {% for row in guess_participation %}
-                    <tr>
+                    <tr data-day="{{ row.day_key }}">
                         <td>{{ row.day_key.split('-')[2] }}/{{ row.day_key.split('-')[1] }}/{{ row.day_key.split('-')[0] }}</td>
                         <td>{{ row.game_name }}</td>
                         <td>{{ row.participants }}</td>
@@ -195,7 +250,8 @@
                 </tbody>
             </table>
         </div>
-    </div>
+        <div class="day-pager" id="guessPartPager" style="display:none; padding:12px 20px;"></div>
+    </details>
 </div>
 
 <h2 style="margin:28px 0 14px;">Promociones (Recarga Acumulada / Sorteo Diario / Adivina el Número)</h2>
@@ -223,13 +279,16 @@
 </div>
 
 <!-- Recarga Acumulada -->
-<div class="admin-card" style="margin-bottom:20px;">
-    <div class="card-header">
-        <h2>Recarga Acumulada — {{ selected_game.name }}</h2>
-        <span class="badge {% if levels %}badge-active{% else %}badge-inactive{% endif %}">
-            {{ 'Activa' if levels else 'Sin configurar' }}
+<details class="admin-card" style="margin-bottom:20px;">
+    <summary class="card-header settings-section-summary">
+        <span style="display:flex; align-items:center; gap:10px;">
+            <h2>Recarga Acumulada — {{ selected_game.name }}</h2>
+            <span class="badge {% if levels %}badge-active{% else %}badge-inactive{% endif %}">
+                {{ 'Activa' if levels else 'Sin configurar' }}
+            </span>
         </span>
-    </div>
+        <span class="settings-chevron">▾</span>
+    </summary>
     <div class="mg-promo-body">
     <p class="form-hint">
         Barra por niveles: suma los diamantes/oro que el ID recarga durante el mes (hora Venezuela) — el mismo
@@ -280,7 +339,7 @@
     <div class="table-wrap" style="margin-top:14px;">
         <table class="admin-table">
             <thead><tr><th>Fecha</th><th>ID</th><th>Nivel</th><th>Mes</th><th>Orden del premio</th></tr></thead>
-            <tbody>
+            <tbody id="accWinnersBody" data-page-size="6">
                 {% for a in recent_awards %}
                 <tr>
                     <td>{{ a.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
@@ -293,17 +352,21 @@
             </tbody>
         </table>
     </div>
+    <div class="row-pager" id="accWinnersPager" style="display:none; padding:12px 20px;"></div>
     {% endif %}
-</div>
+</details>
 
 <!-- Sorteo Diario -->
-<div class="admin-card" style="margin-bottom:20px;">
-    <div class="card-header">
-        <h2>Sorteo Diario — {{ selected_game.name }}</h2>
-        <span class="badge {% if raffle_config and raffle_config.is_active %}badge-active{% else %}badge-inactive{% endif %}">
-            {{ 'Activo' if raffle_config and raffle_config.is_active else 'Inactivo' }}
+<details class="admin-card" style="margin-bottom:20px;">
+    <summary class="card-header settings-section-summary">
+        <span style="display:flex; align-items:center; gap:10px;">
+            <h2>Sorteo Diario — {{ selected_game.name }}</h2>
+            <span class="badge {% if raffle_config and raffle_config.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                {{ 'Activo' if raffle_config and raffle_config.is_active else 'Inactivo' }}
+            </span>
         </span>
-    </div>
+        <span class="settings-chevron">▾</span>
+    </summary>
     <div class="mg-promo-body">
     <p class="form-hint">
         Los clientes registran su ID una vez al día (se verifica contra el sistema real de este juego, si lo tiene
@@ -362,7 +425,7 @@
     <div class="table-wrap" style="margin-top:14px;">
         <table class="admin-table">
             <thead><tr><th>Fecha</th><th>Día del sorteo</th><th>ID</th><th>Ticket</th><th>Orden del premio</th></tr></thead>
-            <tbody>
+            <tbody id="raffleWinnersBody" data-page-size="6">
                 {% for w in recent_raffle_winners %}
                 <tr>
                     <td>{{ w.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
@@ -375,17 +438,21 @@
             </tbody>
         </table>
     </div>
+    <div class="row-pager" id="raffleWinnersPager" style="display:none; padding:12px 20px;"></div>
     {% endif %}
-</div>
+</details>
 
 <!-- Adivina el Número -->
-<div class="admin-card">
-    <div class="card-header">
-        <h2>Adivina el Número — {{ selected_game.name }}</h2>
-        <span class="badge {% if guess_config and guess_config.is_active %}badge-active{% else %}badge-inactive{% endif %}">
-            {{ 'Activo' if guess_config and guess_config.is_active else 'Inactivo' }}
+<details class="admin-card">
+    <summary class="card-header settings-section-summary">
+        <span style="display:flex; align-items:center; gap:10px;">
+            <h2>Adivina el Número — {{ selected_game.name }}</h2>
+            <span class="badge {% if guess_config and guess_config.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                {{ 'Activo' if guess_config and guess_config.is_active else 'Inactivo' }}
+            </span>
         </span>
-    </div>
+        <span class="settings-chevron">▾</span>
+    </summary>
     <div class="mg-promo-body">
     <p class="form-hint">
         El cliente adivina un número secreto (con verificación de ID real, si el juego la tiene configurada) con un
@@ -450,7 +517,7 @@
             </div>
             <div class="form-group">
                 <label>Intentos por ID al día</label>
-                <input type="number" min="1" name="max_attempts" value="{{ guess_config.max_attempts if guess_config else 2 }}">
+                <input type="number" min="1" name="max_attempts" value="{{ guess_config.max_attempts if guess_config else 1 }}">
             </div>
             <div class="form-group">
                 <label>Ganadores por día</label>
@@ -481,7 +548,7 @@
     <div class="table-wrap" style="margin-top:14px;">
         <table class="admin-table">
             <thead><tr><th>Fecha</th><th>Día</th><th>ID</th><th>Cupo</th><th>Número</th><th>Orden del premio</th></tr></thead>
-            <tbody>
+            <tbody id="guessWinnersBody" data-page-size="6">
                 {% for w in recent_guess_winners %}
                 <tr>
                     <td>{{ w.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
@@ -495,8 +562,9 @@
             </tbody>
         </table>
     </div>
+    <div class="row-pager" id="guessWinnersPager" style="display:none; padding:12px 20px;"></div>
     {% endif %}
-</div>
+</details>
 
 {% endif %}
 {% endblock %}
@@ -523,5 +591,98 @@
             });
         });
     });
+
+    // Paginación por día en las tablas de "Participación diaria": cada
+    // tabla puede tener varias filas por día (una por juego), así que se
+    // pagina por día_key único, no por cantidad de filas.
+    function initDayPagination(tbodyId, pagerId) {
+        var tbody = document.getElementById(tbodyId);
+        var pager = document.getElementById(pagerId);
+        if (!tbody || !pager) return;
+
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-day]'));
+        if (!rows.length) return;
+
+        var pageSize = parseInt(tbody.getAttribute('data-day-page-size'), 10) || 6;
+        var days = [];
+        rows.forEach(function (row) {
+            var day = row.getAttribute('data-day');
+            if (days.indexOf(day) === -1) days.push(day);
+        });
+        if (days.length <= pageSize) return; // no hace falta paginar
+
+        var totalPages = Math.ceil(days.length / pageSize);
+        var currentPage = 0;
+
+        function render() {
+            var pageDays = days.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+            rows.forEach(function (row) {
+                row.hidden = pageDays.indexOf(row.getAttribute('data-day')) === -1;
+            });
+            pager.innerHTML =
+                '<button type="button" class="btn-sm btn-outline" data-dir="prev"' + (currentPage === 0 ? ' disabled' : '') + '>← Más recientes</button>' +
+                '<span style="margin:0 10px;color:var(--text-muted);font-size:12px;">Página ' + (currentPage + 1) + ' de ' + totalPages + '</span>' +
+                '<button type="button" class="btn-sm btn-outline" data-dir="next"' + (currentPage === totalPages - 1 ? ' disabled' : '') + '>Más antiguas →</button>';
+        }
+
+        pager.style.display = 'flex';
+        pager.style.alignItems = 'center';
+        pager.addEventListener('click', function (evt) {
+            var btn = evt.target.closest('button[data-dir]');
+            if (!btn || btn.disabled) return;
+            currentPage += btn.getAttribute('data-dir') === 'next' ? 1 : -1;
+            render();
+        });
+
+        render();
+    }
+
+    initDayPagination('rafflePartBody', 'rafflePartPager');
+    initDayPagination('guessPartBody', 'guessPartPager');
+
+    // Paginación simple por cantidad de filas para las tablas de
+    // "ganadores recientes" (acá cada fila es un ganador/evento, no hace
+    // falta agrupar por día como en la participación).
+    function initRowPagination(tbodyId, pagerId) {
+        var tbody = document.getElementById(tbodyId);
+        var pager = document.getElementById(pagerId);
+        if (!tbody || !pager) return;
+
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+        if (!rows.length || rows[0].querySelector('.empty-row')) return;
+
+        var pageSize = parseInt(tbody.getAttribute('data-page-size'), 10) || 6;
+        if (rows.length <= pageSize) return;
+
+        var totalPages = Math.ceil(rows.length / pageSize);
+        var currentPage = 0;
+
+        function render() {
+            rows.forEach(function (row, idx) {
+                row.hidden = idx < currentPage * pageSize || idx >= (currentPage + 1) * pageSize;
+            });
+            pager.innerHTML =
+                '<button type="button" class="btn-sm btn-outline" data-dir="prev"' + (currentPage === 0 ? ' disabled' : '') + '>← Más recientes</button>' +
+                '<span style="margin:0 10px;color:var(--text-muted);font-size:12px;">Página ' + (currentPage + 1) + ' de ' + totalPages + '</span>' +
+                '<button type="button" class="btn-sm btn-outline" data-dir="next"' + (currentPage === totalPages - 1 ? ' disabled' : '') + '>Más antiguas →</button>';
+        }
+
+        pager.style.display = 'flex';
+        pager.style.alignItems = 'center';
+        pager.addEventListener('click', function (evt) {
+            var btn = evt.target.closest('button[data-dir]');
+            if (!btn || btn.disabled) return;
+            currentPage += btn.getAttribute('data-dir') === 'next' ? 1 : -1;
+            render();
+        });
+
+        render();
+    }
+
+    initRowPagination('mgWinnersBody', 'mgWinnersPager');
+    initRowPagination('accGlobalWinnersBody', 'accGlobalWinnersPager');
+    initRowPagination('accWinnersBody', 'accWinnersPager');
+    initRowPagination('raffleWinnersBody', 'raffleWinnersPager');
+    initRowPagination('guessWinnersBody', 'guessWinnersPager');
 </script>
 {% endblock %}

@@ -233,12 +233,13 @@ body.modal-open {
 }
 
 .ranking-tab {
-    padding: 10px 14px;
+    padding: 6px 12px;
     border-radius: 999px;
     border: 1px solid rgba(255,255,255,.1);
     background: rgba(255,255,255,.03);
     color: var(--text-primary);
     font-weight: 700;
+    font-size: 13px;
 }
 
 .ranking-tab.active {
@@ -276,10 +277,10 @@ body.modal-open {
 }
 
 .ranking-prizes-title {
-    padding: 12px 10px;
+    padding: 6px 10px;
     background: rgba(255,255,255,.04);
     color: #f8fafc;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: .08em;
@@ -303,9 +304,20 @@ body.modal-open {
     color: var(--text-muted);
 }
 
+/* Mismos colores de podio que la tabla: oro/plata/bronce para el top 3,
+   rojo de la marca para el #4 y #5. */
+.ranking-podium-1 span { color: #ffd700; }
+.ranking-podium-1 strong { color: #ffd700 !important; text-shadow: 0 0 10px rgba(255,215,0,.5); }
+
+.ranking-podium-2 span { color: #d9d9e3; }
+.ranking-podium-2 strong { color: #d9d9e3 !important; text-shadow: 0 0 10px rgba(217,217,227,.4); }
+
+.ranking-podium-3 span { color: #e0a05a; }
+.ranking-podium-3 strong { color: #e0a05a !important; text-shadow: 0 0 10px rgba(224,160,90,.4); }
+
 .ranking-prize-item strong {
     font-size: 16px;
-    color: #7dd3fc;
+    color: #ff2d55;
 }
 
 .ranking-main-card {
@@ -322,25 +334,45 @@ body.modal-open {
 .ranking-live-chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     margin-bottom: 14px;
-    padding: 6px 10px;
+    padding: 4px 8px;
     border-radius: 999px;
     background: rgba(255, 22, 60, .18);
     border: 1px solid rgba(255, 22, 60, .28);
     color: #fff;
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 800;
     letter-spacing: .08em;
 }
 
 .ranking-live-chip::before {
     content: '';
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 999px;
     background: #ff2d55;
-    box-shadow: 0 0 0 4px rgba(255,45,85,.16);
+    box-shadow: 0 0 0 3px rgba(255,45,85,.16);
+}
+
+.ranking-show-more-btn {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 9px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.1);
+    background: rgba(255,255,255,.04);
+    color: #f8fafc;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+}
+
+.ranking-show-more-btn:hover {
+    background: rgba(255,0,0,.1);
+    border-color: rgba(255,0,0,.35);
 }
 
 .ranking-table-wrap {
@@ -378,19 +410,48 @@ body.modal-open {
     background: rgba(255,26,60,.08);
 }
 
-.ranking-position-cell {
-    font-weight: 900;
-    color: #f8d16a;
+.ranking-units-sublabel {
+    display: inline-block;
+    margin-top: 2px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: none;
+    color: rgba(252,165,165,.65);
 }
 
-.ranking-table tbody tr:nth-child(-n+5) td:first-child {
-    color: #f8d16a;
-    font-weight: 800;
+.ranking-position-cell {
+    font-weight: 900;
+    color: #f8fafc;
 }
+
+.ranking-table tbody tr:nth-child(-n+5) .ranking-position-cell {
+    font-size: 16px;
+}
+
+/* Podio con su propio color por puesto: oro/plata/bronce para el top 3,
+   rojo de la marca para el resto del top 5 con premio, blanco para el resto.
+   Se aplica a toda la fila (nombre, ID y diamantes), no solo al numerito. */
+.ranking-table tbody tr:nth-child(1) td { color: #ffd700; }
+.ranking-table tbody tr:nth-child(1) .ranking-position-cell { text-shadow: 0 0 10px rgba(255,215,0,.5); }
+
+.ranking-table tbody tr:nth-child(2) td { color: #d9d9e3; }
+.ranking-table tbody tr:nth-child(2) .ranking-position-cell { text-shadow: 0 0 10px rgba(217,217,227,.4); }
+
+.ranking-table tbody tr:nth-child(3) td { color: #e0a05a; }
+.ranking-table tbody tr:nth-child(3) .ranking-position-cell { text-shadow: 0 0 10px rgba(224,160,90,.4); }
+
+.ranking-table tbody tr:nth-child(4) td,
+.ranking-table tbody tr:nth-child(5) td { color: #ff2d55; }
 
 .ranking-table td:last-child,
 .ranking-table th:last-child {
     text-align: right;
+}
+
+.ranking-table td:last-child {
+    font-size: 17px;
+    font-weight: 800;
 }
 
 .ranking-empty {
@@ -419,6 +480,14 @@ body.modal-open {
     margin-bottom: 8px;
 }
 
+.ranking-current-position-num {
+    color: #ff2d55;
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: normal;
+    text-shadow: 0 0 12px rgba(255,45,85,.5);
+}
+
 .ranking-current-meta {
     display: flex;
     justify-content: space-between;
@@ -444,7 +513,7 @@ body.modal-open {
 .ranking-progress-bar {
     height: 100%;
     border-radius: inherit;
-    background: linear-gradient(90deg, #f8d16a, #7bd88f);
+    background: linear-gradient(90deg, #ff2d55, #ff0000);
 }
 
 .ranking-progress span {
@@ -461,6 +530,52 @@ body.modal-open {
     color: var(--text-muted);
     font-size: 13px;
 }
+
+.ranking-lookup-row {
+    display: flex;
+    gap: 8px;
+}
+
+.ranking-lookup-row input {
+    flex: 1;
+    min-width: 0;
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 10px;
+    padding: 9px 12px;
+    color: #fff;
+    font-size: 13px;
+    outline: none;
+}
+
+.ranking-lookup-row input:focus {
+    border-color: rgba(255,0,0,.65);
+    box-shadow: 0 0 0 3px rgba(255,0,0,.15);
+}
+
+.ranking-lookup-row button {
+    flex-shrink: 0;
+    padding: 9px 16px;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg, #ff2d55, #ff0000);
+    color: #fff;
+    font-weight: 800;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.ranking-lookup-row button:disabled { opacity: .6; cursor: not-allowed; }
+
+.ranking-lookup-msg {
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 14px;
+    color: var(--text-muted);
+}
+
+.ranking-lookup-msg.is-error { color: #fb7185; }
 
 .ranking-archive-card {
     margin-top: 16px;
@@ -497,7 +612,7 @@ body.modal-open {
 }
 
 .ranking-archive-item strong {
-    color: #f8d16a;
+    color: #ff2d55;
 }
 
 .support-form {
@@ -692,6 +807,21 @@ body.modal-open {
 
     .ranking-prize-item {
         min-height: 56px;
+        min-width: 0;
+        padding: 8px 3px;
+        gap: 3px;
+        border-left: 1px solid rgba(255,255,255,.08);
+    }
+
+    .ranking-prize-item span {
+        font-size: 8.5px;
+    }
+
+    .ranking-prize-item strong {
+        font-size: 11px;
+        line-height: 1.15;
+        overflow-wrap: break-word;
+        word-break: break-word;
     }
 }
 
@@ -759,7 +889,7 @@ body.modal-open {
     }
 
     .ranking-prize-item strong {
-        font-size: 14px;
+        font-size: 11px;
     }
 
     .ranking-current-title,
@@ -2622,6 +2752,7 @@ body.modal-open {
     padding: 18px;
     background: linear-gradient(180deg, rgba(31, 41, 55, 0.98), rgba(17, 24, 39, 0.98));
     box-shadow: 0 24px 54px rgba(0,0,0,.38);
+    font-family: var(--nx-font-display);
 }
 
 .payment-method-video-card__close {
@@ -4040,6 +4171,7 @@ body.modal-open {
 
 .store-popup-lead {
     font-size: 13px;
+    font-weight: 700;
     line-height: 1.45;
     margin-bottom: 12px;
 }
@@ -4050,15 +4182,79 @@ body.modal-open {
     padding-left: 16px;
     color: #d1fae5;
     font-size: 12px;
+    font-weight: 600;
     line-height: 1.45;
 }
 
 .store-popup-list strong {
     color: #4ade80;
+    font-weight: 900;
+}
+
+.pc-detail-list {
+    padding-left: 0;
+    list-style: none;
+}
+
+.pc-detail-list .pc-label {
+    color: rgba(255,255,255,.65);
+    font-weight: 600;
+}
+
+.pc-detail-list strong {
+    color: #f8fafc;
+    font-weight: 900;
+}
+
+.pc-lead {
+    font-size: 16px !important;
+    font-weight: 900 !important;
+    line-height: 1.4 !important;
+    color: #fff59d !important;
+    text-shadow: 0 0 12px rgba(255, 214, 51, .5);
+}
+
+.pc-lead strong {
+    color: #ffd633;
+}
+
+.pc-detail-list li {
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.04);
+}
+
+.pc-urgent-row {
+    background: rgba(255,45,85,.12) !important;
+    border: 1px solid rgba(255,45,85,.35);
+}
+
+.pc-value-cyan {
+    color: #22d3ee !important;
+    text-shadow: 0 0 10px rgba(34,211,238,.45);
+}
+
+.pc-value-purple {
+    color: #c084fc !important;
+    text-shadow: 0 0 10px rgba(192,132,252,.45);
+}
+
+.pc-value-gold {
+    color: #fbbf24 !important;
+    text-shadow: 0 0 10px rgba(251,191,36,.45);
+}
+
+.pc-highlight {
+    color: #ff2d55 !important;
+    font-size: 15px !important;
+    text-shadow: 0 0 14px rgba(255,45,85,.55);
 }
 
 .store-popup-actions {
     padding: 14px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .store-popup-confirm {
@@ -4069,6 +4265,18 @@ body.modal-open {
     color: #04220c;
     font-size: 12px;
     font-weight: 900;
+    letter-spacing: .03em;
+}
+
+.store-popup-ghost {
+    width: 100%;
+    min-height: 40px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,.22);
+    color: rgba(255,255,255,.75);
+    font-size: 12px;
+    font-weight: 700;
     letter-spacing: .03em;
 }
 

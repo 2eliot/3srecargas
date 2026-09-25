@@ -59,6 +59,18 @@
             </form>
         </div>
         {% endif %}
+        <div style="margin-top:12px;padding:10px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-secondary)">
+            <form method="POST" action="{{ url_for('admin_bp.order_add_note', order_id=order.id) }}">
+                <div class="form-group" style="margin-bottom:8px">
+                    <label for="note_text" style="font-size:12px">Agregar nota manual</label>
+                    <textarea id="note_text" name="note" rows="2" placeholder="Ej: Cliente reportó que el ID estaba mal escrito..." style="font-size:13px"></textarea>
+                    <small style="display:block;margin-top:4px;color:var(--text-muted);font-size:11px">
+                        Queda guardada en la orden sin importar si se aprueba o se rechaza.
+                    </small>
+                </div>
+                <button type="submit" class="btn-sm btn-secondary">Guardar nota</button>
+            </form>
+        </div>
         {% if order.notes %}
         <div class="detail-row" style="align-items:flex-start">
             <span class="detail-label">Notas</span>
@@ -332,6 +344,16 @@
     {% if can_send_delivery_proof %}
     <small style="display:block;margin-top:10px;color:var(--text-muted);font-size:11px">📎 Comprobante opcional para el correo de entrega.</small>
     {% endif %}
+
+    <div style="margin-top:18px;padding-top:16px;border-top:1px dashed var(--border-color)">
+        <button type="button" class="btn-sm" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.5);color:#f59e0b" onclick="document.getElementById('forceApproveModal').style.display='flex'">
+            ⚠ Forzar aprobación manual (emergencia)
+        </button>
+        <small style="display:block;margin-top:8px;color:var(--text-muted);font-size:11px">
+            Solo para cuando la API falla o el proveedor se queda sin saldo y ya hiciste la recarga por fuera de la web con otro proveedor.
+            No vuelve a intentar la recarga automática: solo marca la orden como completada y la saca de la cola.
+        </small>
+    </div>
 </div>
 
 <div class="modal-overlay" id="approveModal" style="display:none">
@@ -356,6 +378,26 @@
             <div class="modal-actions">
                 <button type="button" onclick="document.getElementById('rejectModal').style.display='none'" class="btn-secondary">Cancelar</button>
                 <button type="submit" class="btn-danger-solid">Rechazar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="forceApproveModal" style="display:none">
+    <div class="modal-box">
+        <h3>⚠ Forzar aprobación manual</h3>
+        <p class="form-hint" style="margin-top:10px">
+            Úsalo solo si la recarga se hizo por fuera de la web (proveedor externo) porque la API falló o no tenía saldo.
+            La orden se marca como completada tal cual, sin llamar al bot ni a Revendedores, y sale de la cola de reintentos para que no se recargue dos veces.
+        </p>
+        <form method="POST" action="{{ url_for('admin_bp.order_force_approve', order_id=order.id) }}">
+            <div class="form-group" style="margin-top:16px">
+                <label>Nota (opcional)</label>
+                <textarea name="admin_note" rows="2" placeholder="Ej: API sin saldo, recargado con proveedor X..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="document.getElementById('forceApproveModal').style.display='none'" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary" style="background:#f59e0b;border-color:#f59e0b">⚠ Sí, forzar aprobación</button>
             </div>
         </form>
     </div>

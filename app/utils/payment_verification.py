@@ -172,6 +172,51 @@ def _get_bs_amount(order):
     return None
 
 
+def recompute_order_payment_amount(order):
+    """Recalcula order.payment_amount para que quede en línea con
+    order.amount (p.ej. justo después de que el admin corrige el paquete
+    de una orden pendiente).
+
+    order.payment_amount se calcula UNA vez en el checkout (ver
+    routes/checkout.py) y de ahí en adelante _get_bs_amount lo usa como
+    fuente de verdad con prioridad sobre order.amount — así el monto
+    esperado no se mueve si la tasa global cambia después. El problema es
+    que si el paquete de la orden se corrige más tarde, ese monto queda
+    calculado para el paquete viejo y la verificación de Pabilo sigue
+    comparando contra un monto que ya no corresponde. Esta función repite
+    el mismo cálculo del checkout con el monto ya actualizado."""
+    currency = (order.payment_currency or '').lower()
+    if not currency or order.amount is None:
+        return
+
+    if currency == 'usd':
+        order.payment_amount = round(float(order.amount), 2)
+        return
+
+    if currency != 'bs':
+        return
+
+    method_code = (getattr(order, 'payment_method', '') or '').strip().lower()
+    method = PaymentMethod.query.filter_by(code=method_code).first() if method_code else None
+
+    if method and not bool(method.uses_rate):
+        order.payment_amount = normalize_bs_integer_amount(order.amount)
+        return
+
+    try:
+        rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
+        usd_rate = float(rate_setting.value) if rate_setting and rate_setting.value else 0.0
+    except Exception:
+        usd_rate = 0.0
+
+    game = getattr(order, 'game', None)
+    if game is not None:
+        usd_rate = game.get_bs_rate(usd_rate)
+
+    if usd_rate > 0:
+        order.payment_amount = normalize_bs_integer_amount(float(order.amount) * usd_rate)
+
+
 def _coerce_decimal_amount(value):
     if value is None:
         return None
@@ -340,9 +385,17 @@ def _validate_verified_payment_amount(order, payload_data, full_data):
 
     minimum_amount = (expected_amount * PABILO_MIN_ACCEPTANCE_RATIO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     if reported_amount < minimum_amount:
+        missing_amount = (expected_amount - reported_amount).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         return {
             'ok': False,
             'verified': False,
+            # El pago SÍ se encontró en Pabilo (no es "aún no aparece"), solo
+            # que el monto no alcanza: es un caso distinto de "no encontrado"
+            # que dispara el flujo de "completar el pago restante".
+            'underpaid': True,
+            'expected_amount': str(expected_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
+            'reported_amount': str(reported_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)),
+            'missing_amount': str(missing_amount),
             'message': (
                 f'Pabilo devolvió un monto menor al permitido para la orden. '
                 f'Esperado: Bs {expected_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)}. '
@@ -671,6 +724,164 @@ def verify_order_payment(order, force_reference=False):
         'verified': False,
         'message': 'No se pudo consultar una referencia bancaria válida para esta orden.',
     }
+
+
+def verify_remainder_reference(order, reference):
+    """Verifica en Pabilo una referencia de un PAGO RESTANTE (el cliente
+    completó lo que le faltaba con un segundo pago/referencia distinta).
+
+    A diferencia de verify_order_payment, no compara el monto contra el
+    total de la orden: solo confirma que el pago existe en Pabilo, que no es
+    un duplicado de otra orden, y devuelve cuánto reportó Pabilo para ÉL. El
+    caller (complete-payment) es quien suma esto a lo ya confirmado antes y
+    decide si con eso ya se cubre la orden.
+    """
+    reference = str(reference or '').strip()
+    if not order or not reference:
+        return {'ok': False, 'verified': False, 'message': 'Falta la referencia del pago restante.'}
+
+    payment_method = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
+    if not payment_method:
+        return {'ok': False, 'verified': False, 'message': 'Método de pago no encontrado.'}
+
+    api_key = get_pabilo_api_key()
+    if not api_key:
+        return {'ok': False, 'verified': False, 'message': 'Falta configurar la API key de Pabilo.'}
+
+    user_bank_id = (payment_method.pabilo_user_bank_id or '').strip()
+    if not user_bank_id:
+        return {'ok': False, 'verified': False, 'message': 'Este método de pago no tiene userBankId de Pabilo.'}
+
+    duplicate = find_reference_conflict(
+        reference=reference,
+        payment_method_code=order.payment_method,
+        exclude_order_id=order.id,
+    )
+    if duplicate:
+        return {
+            'ok': False,
+            'verified': False,
+            'message': 'Se detectó otra orden con la misma referencia bancaria. La verificación fue bloqueada.',
+            'duplicate_order_id': duplicate.id,
+        }
+
+    url = f"{current_app.config.get('PABILO_BASE_URL', 'https://api.pabilo.app').rstrip('/')}/userbankpayment/{user_bank_id}/betaserio"
+    timeout = current_app.config.get('PABILO_TIMEOUT', 30)
+
+    accepted_statuses = {
+        'verified', 'approve', 'approved', 'aprobado',
+        'success', 'successful', 'completed', 'completada',
+        'paid', 'pagado',
+    }
+
+    last_soft_result = {
+        'ok': True,
+        'verified': False,
+        'message': 'El pago restante todavía no aparece verificado en Pabilo.',
+    }
+
+    for variant_ref in _generate_reference_variants(reference):
+        payload, payload_error = build_pabilo_reference_payload(variant_ref)
+        if payload_error:
+            continue
+
+        response, data = _request_pabilo_verify(url, api_key, payload, timeout)
+        if response is None:
+            return data
+
+        payload_data, full_data = _extract_pabilo_payload(data)
+
+        if _is_not_found_response(response.status_code, data):
+            continue
+        if response.status_code == 401:
+            return {'ok': False, 'verified': False, 'message': 'La API key de Pabilo es inválida o está inactiva.', 'response': full_data}
+        if response.status_code == 402:
+            return {'ok': False, 'verified': False, 'message': 'La cuenta de Pabilo no tiene créditos suficientes.', 'response': full_data}
+        if _is_rate_limited_response(response.status_code, data):
+            return {
+                'ok': True,
+                'verified': False,
+                'message': 'Pabilo está recibiendo demasiadas solicitudes (429). Intenta de nuevo en unos segundos.',
+                'rate_limited': True,
+                'response': full_data,
+            }
+        if response.status_code >= 400:
+            message = full_data.get('message') or full_data.get('error') or f'Pabilo devolvió HTTP {response.status_code}.'
+            return {'ok': False, 'verified': False, 'message': message, 'response': full_data}
+
+        payment_data = payload_data.get('user_bank_payment') or {}
+        verification_id = str(payment_data.get('id') or '').strip()
+        payment_status = str(payment_data.get('status') or '').strip().lower()
+        is_new = bool(payload_data.get('is_new'))
+
+        if verification_id:
+            existing_by_verification = Order.query.filter(
+                Order.payment_verification_id == verification_id,
+                Order.id != order.id,
+                Order.status.in_(['approved', 'completed']),
+            ).first()
+            if existing_by_verification:
+                return {
+                    'ok': False,
+                    'verified': False,
+                    'message': 'Ese pago ya fue usado para aprobar otra orden.',
+                    'response': full_data,
+                }
+
+        root_status = str(data.get('status') or '').strip().lower()
+        is_verified_flag = bool(payload_data.get('verified') or full_data.get('verified'))
+        status_is_verified = payment_status in accepted_statuses or root_status in accepted_statuses or is_verified_flag
+
+        if not status_is_verified:
+            last_soft_result = {
+                'ok': True,
+                'verified': False,
+                'message': 'El pago restante todavía no está marcado como verificado en Pabilo.',
+                'response': full_data,
+            }
+            continue
+
+        reported_amount = _extract_pabilo_reported_amount(payload_data, full_data)
+        if reported_amount is None or reported_amount <= 0:
+            last_soft_result = {
+                'ok': False,
+                'verified': False,
+                'message': 'Pabilo confirmó el pago restante, pero no devolvió un monto válido.',
+                'response': full_data,
+            }
+            continue
+
+        date_verdict = _check_payment_min_date(payment_data, is_new)
+        if date_verdict == 'old':
+            return {
+                'ok': False,
+                'verified': False,
+                'message': 'Ese pago es anterior a la fecha mínima aceptada por la tienda.',
+                'response': full_data,
+            }
+        if date_verdict == 'unknown':
+            return {
+                'ok': True,
+                'verified': False,
+                'message': 'Pabilo no informó la fecha del pago restante; queda para revisión manual.',
+                'response': full_data,
+            }
+
+        if not verification_id:
+            verification_id = f"fallback:{payment_method.id}:{variant_ref}"
+
+        quantized_amount = reported_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return {
+            'ok': True,
+            'verified': True,
+            'verification_id': verification_id,
+            'reported_amount': str(quantized_amount),
+            'resolved_reference': variant_ref,
+            'message': f'Pago restante verificado. Monto reportado: Bs {quantized_amount}.',
+            'response': full_data,
+        }
+
+    return last_soft_result
 
 
 def _parse_pabilo_date(value):

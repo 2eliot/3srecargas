@@ -60,10 +60,15 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 .nx-no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* ── Paneles glass (tokens de los mockups) ────────────────── */
+/* Blur mobile-first: la web es sobre todo para celulares y estos paneles
+   están SIEMPRE visibles (no son popups puntuales), así que el radio de
+   blur por defecto es más liviano aquí. En pantallas grandes (más aliento
+   de GPU y menos el foco del sitio) se restaura el blur completo más abajo
+   con @media (min-width: 768px). */
 .glass-panel {
     background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
-    backdrop-filter: blur(8px) saturate(200%) brightness(1.2);
-    -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.2);
+    backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    -webkit-backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
     border: 1px solid rgba(255,255,255,0.18);
     border-top: 1px solid rgba(255,255,255,0.35);
     border-left: 1px solid rgba(255,255,255,0.25);
@@ -76,8 +81,8 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 
 .glass-subpanel {
     background: linear-gradient(135deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.001) 100%);
-    backdrop-filter: blur(6px) saturate(190%);
-    -webkit-backdrop-filter: blur(6px) saturate(190%);
+    backdrop-filter: blur(3px) saturate(170%);
+    -webkit-backdrop-filter: blur(3px) saturate(170%);
     border: 1px solid rgba(255,255,255,0.1);
     border-top: 1px solid rgba(255,255,255,0.2);
     box-shadow: inset 0 1px 1px rgba(255,255,255,0.12), 0 4px 15px rgba(0,0,0,0.05);
@@ -85,8 +90,8 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 
 .ios-glass-card {
     background: rgba(20,20,25,0.06);
-    backdrop-filter: blur(12px) saturate(190%);
-    -webkit-backdrop-filter: blur(12px) saturate(190%);
+    backdrop-filter: blur(6px) saturate(170%);
+    -webkit-backdrop-filter: blur(6px) saturate(170%);
     border: 1px solid rgba(255,255,255,0.1);
     border-top: 1px solid rgba(255,255,255,0.2);
     box-shadow: 0 8px 32px 0 rgba(0,0,0,0.1), inset 0 1px 1px rgba(255,255,255,0.1);
@@ -94,11 +99,18 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 
 .ios-glass-card-active {
     background: rgba(255,0,0,0.08);
-    backdrop-filter: blur(16px) saturate(200%);
-    -webkit-backdrop-filter: blur(16px) saturate(200%);
+    backdrop-filter: blur(8px) saturate(180%);
+    -webkit-backdrop-filter: blur(8px) saturate(180%);
     border: 1.5px solid rgba(255,0,0,0.8);
     border-top: 1.5px solid rgba(255,255,255,0.4);
     box-shadow: 0 0 25px rgba(255,0,0,0.4), inset 0 1.5px 2px rgba(255,255,255,0.3);
+}
+
+@media (min-width: 768px) {
+    .glass-panel { backdrop-filter: blur(8px) saturate(200%) brightness(1.2); -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.2); }
+    .glass-subpanel { backdrop-filter: blur(6px) saturate(190%); -webkit-backdrop-filter: blur(6px) saturate(190%); }
+    .ios-glass-card { backdrop-filter: blur(12px) saturate(190%); -webkit-backdrop-filter: blur(12px) saturate(190%); }
+    .ios-glass-card-active { backdrop-filter: blur(16px) saturate(200%); -webkit-backdrop-filter: blur(16px) saturate(200%); }
 }
 
 .glass-input,
@@ -108,9 +120,10 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 .nx-store select,
 .nx-checkout input[type="text"],
 .nx-checkout select {
-    background: rgba(0,0,0,0.35) !important;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: rgba(0,0,0,0.55) !important;
+    /* Sin backdrop-filter: son muchos inputs por formulario y con el fondo
+       ya al 55% de opacidad la diferencia visual del blur era mínima —
+       no vale el costo en móviles, sobre todo con el teclado abierto. */
     border: 1px solid rgba(255,255,255,0.15) !important;
     border-top: 1px solid rgba(255,255,255,0.25) !important;
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 1px rgba(255,255,255,0.15) !important;
@@ -134,7 +147,10 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 /* ── Botones neón ─────────────────────────────────────────── */
 .red-glow-pill {
     background: linear-gradient(135deg, rgba(255,0,0,1) 0%, rgba(200,0,0,0.95) 100%);
-    backdrop-filter: blur(10px);
+    /* Sin backdrop-filter a propósito: el fondo es rojo prácticamente
+       opaco (se usa en decenas de botones por página), así que el blur
+       detrás no se alcanza a ver — solo consumía GPU sin ningún efecto
+       visual, especialmente costoso en móviles de gama media/baja. */
     box-shadow: 0 4px 20px rgba(255,0,0,0.6), inset 0 1.5px 2px rgba(255,255,255,0.5);
     border: 1px solid rgba(255,255,255,0.4);
     border-radius: 6px;
@@ -155,8 +171,13 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 .red-glow-border {
     border: 1.5px solid rgba(255,0,0,0.8);
     background: linear-gradient(135deg, rgba(255,0,0,0.15) 0%, rgba(185,0,0,0.05) 100%);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     box-shadow: 0 0 25px rgba(255,0,0,0.4), inset 0 1.5px 2px rgba(255,255,255,0.3);
+}
+
+@media (min-width: 768px) {
+    .red-glow-border { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
 }
 
 @keyframes nx-pulse-glow {
@@ -362,6 +383,43 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     background: rgba(255,0,0,.07);
 }
 .drawer-item:active { transform: scale(.985); }
+
+/* Fondo opcional por ítem del menú (configurable en Admin > Configuración):
+   overlay oscuro en degradé para que el texto siga siendo legible encima
+   de cualquier imagen, ícono/texto por encima del overlay, y un glow que
+   pulsa solo (sin depender de :hover, que en mobile no existe). */
+.drawer-item.has-bg {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    position: relative;
+    overflow: hidden;
+    border-color: rgba(255,255,255,.14);
+    animation: drawer-bg-glow 3.2s ease-in-out infinite;
+}
+.drawer-item.has-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(5,5,8,.82) 0%, rgba(5,5,8,.6) 55%, rgba(5,5,8,.25) 100%);
+    transition: background .25s ease;
+}
+.drawer-item.has-bg:hover::before,
+.drawer-item.has-bg:focus-visible::before {
+    background: linear-gradient(90deg, rgba(255,0,0,.4) 0%, rgba(5,5,8,.55) 55%, rgba(5,5,8,.2) 100%);
+}
+.drawer-item.has-bg .drawer-item-icon,
+.drawer-item.has-bg .drawer-item-text,
+.drawer-item.has-bg .drawer-item-chevron {
+    position: relative;
+    z-index: 1;
+}
+.drawer-item.has-bg .drawer-item-text small { color: rgba(255,255,255,.8); }
+
+@keyframes drawer-bg-glow {
+    0%, 100% { box-shadow: 0 0 0 rgba(255,0,0,0); }
+    50% { box-shadow: 0 0 18px rgba(255,0,0,.4); }
+}
 
 .drawer-item-icon {
     width: 34px;
@@ -765,7 +823,12 @@ body.drawer-open { overflow: hidden; }
     display: flex;
     flex-direction: column;
     background: rgba(20,20,25,0.06) !important;
-    backdrop-filter: blur(12px) saturate(190%);
+    /* Puede haber decenas de estas tarjetas en la grilla de juegos, así que
+       el blur mobile-first es más liviano — cada una es una capa de GPU
+       aparte y en un scroll largo se nota. Se restaura en pantallas
+       grandes más abajo. */
+    backdrop-filter: blur(5px) saturate(170%);
+    -webkit-backdrop-filter: blur(5px) saturate(170%);
     border: 1px solid rgba(255,255,255,0.1) !important;
     border-top: 1px solid rgba(255,255,255,0.2) !important;
     box-shadow: 0 8px 20px rgba(0,0,0,0.25) !important;
@@ -773,6 +836,10 @@ body.drawer-open { overflow: hidden; }
     padding: 0 !important;
 }
 .nx-store .game-card:hover { border-color: rgba(255,0,0,.55) !important; transform: translateY(-2px); }
+
+@media (min-width: 768px) {
+    .nx-store .game-card { backdrop-filter: blur(12px) saturate(190%); -webkit-backdrop-filter: blur(12px) saturate(190%); }
+}
 
 .nx-store .game-card.active {
     background: rgba(255,0,0,0.08) !important;
@@ -1368,6 +1435,21 @@ body.drawer-open { overflow: hidden; }
     color: #fff;
 }
 
+/* Dentro de .nx-manual-wa (tarjeta "completar pago restante"), la regla
+   ".nx-manual-wa button { display:block; width:100% }" se cuela en los
+   botones "Copiar" de cada fila y los estira a lo ancho, tapando el dato.
+   Se restaura aquí el tamaño de pastilla compacta que ya tienen en el
+   checkout normal. */
+.nx-manual-wa .nx-pay-row .nx-copy-btn,
+.nx-manual-wa .nx-pay-amount-row .nx-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    padding: 5px 12px;
+    box-shadow: none;
+}
+
 .nx-pay-label {
     font-size: 10px;
     font-weight: 900;
@@ -1610,25 +1692,40 @@ body.drawer-open { overflow: hidden; }
 }
 
 /* ── Modales / popups retematizados ───────────────────────── */
-.overlay-modal { background: rgba(0,0,0,.85) !important; backdrop-filter: blur(6px); }
+/* Fondo "cristal" único para TODOS los popups del sitio (antes cada uno
+   tenía su propio gradiente casi opaco al 97-98%, sin transparencia real —
+   se ve plano en vez de vidrio esmerilado). Mismo tratamiento que se probó
+   primero en el modal de Ranking: gradiente translúcido + borde/glow rojo
+   parejo en las 4 esquinas. Sin backdrop-filter a propósito: sobre este
+   gradiente diagonal deja una línea de "costura" visible en el medio de la
+   tarjeta (se vio primero en los botones de selección de juego). */
+/* Sin backdrop-filter: al 85% de opacidad el blur de pantalla completa
+   (lo más caro de calcular en móviles) no se alcanzaba a notar. */
+.overlay-modal { background: rgba(0,0,0,.85) !important; }
 .overlay-modal-card,
 .store-popup-card,
-.payment-warning-card {
+.payment-warning-card,
+.nx-video-card,
+.rdm-modal-card {
     background:
-        linear-gradient(135deg, rgba(30,32,40,.97) 0%, rgba(10,12,18,.98) 100%) !important;
+        linear-gradient(135deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.015) 45%, rgba(20,5,5,.9) 100%) !important;
     border: 1px solid rgba(255,0,0,.45) !important;
-    border-top: 1px solid rgba(255,255,255,.25) !important;
+    border-top: 1px solid rgba(255,0,0,.45) !important;
     box-shadow: 0 25px 70px rgba(0,0,0,.7), 0 0 40px rgba(255,0,0,.12) !important;
     border-radius: 20px !important;
     color: var(--nx-text);
+    /* Misma fuente "display" (Outfit) que usa el resto de la tienda (p.ej.
+       "Validando la Orden"), para que el texto de los popups no se sienta
+       distinto solo porque heredaba la fuente base del body (Space
+       Grotesk). Se hereda hacia todo el contenido interno que no tenga
+       ya su propia font-family declarada. */
+    font-family: var(--nx-font-display);
 }
 
 /* ── Ranking mensual: mismo vidrio esmerilado (glass) que el resto de
    la tienda — main.css lo dejaba con fondos planos sin transparencia. ── */
 .ranking-tab {
-    background: rgba(255,255,255,.04) !important;
-    backdrop-filter: blur(6px) saturate(190%);
-    -webkit-backdrop-filter: blur(6px) saturate(190%);
+    background: rgba(255,255,255,.06) !important;
     border: 1px solid rgba(255,255,255,.12) !important;
     border-top: 1px solid rgba(255,255,255,.22) !important;
     transition: background .15s ease, border-color .15s ease;
@@ -1641,9 +1738,7 @@ body.drawer-open { overflow: hidden; }
 }
 
 .ranking-prizes {
-    background: linear-gradient(135deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.005) 100%) !important;
-    backdrop-filter: blur(10px) saturate(190%);
-    -webkit-backdrop-filter: blur(10px) saturate(190%);
+    background: linear-gradient(135deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.01) 100%) !important;
     border: 1px solid rgba(255,0,0,.22) !important;
     border-top: 1px solid rgba(255,255,255,.18) !important;
     box-shadow: inset 0 1px 1px rgba(255,255,255,.08), 0 10px 25px rgba(0,0,0,.25);
@@ -1653,42 +1748,32 @@ body.drawer-open { overflow: hidden; }
 .ranking-main-card {
     background:
         radial-gradient(circle at top left, rgba(255,60,92,.16), transparent 32%),
-        linear-gradient(135deg, rgba(255,255,255,.025) 0%, rgba(10,10,10,.55) 100%) !important;
-    backdrop-filter: blur(14px) saturate(200%);
-    -webkit-backdrop-filter: blur(14px) saturate(200%);
+        linear-gradient(135deg, rgba(255,255,255,.04) 0%, rgba(10,10,10,.6) 100%) !important;
     border: 1.5px solid rgba(255,0,0,.35) !important;
     box-shadow: 0 0 30px rgba(255,0,0,.12), inset 0 1.5px 2px rgba(255,255,255,.08);
 }
 
 .ranking-live-chip {
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     box-shadow: 0 0 16px rgba(255,22,60,.35);
 }
 
 .ranking-table-wrap {
-    background: rgba(0,0,0,.28) !important;
-    backdrop-filter: blur(10px) saturate(180%);
-    -webkit-backdrop-filter: blur(10px) saturate(180%);
+    background: rgba(0,0,0,.4) !important;
     border: 1px solid rgba(255,255,255,.1) !important;
 }
 .ranking-table th {
     background: rgba(255,26,60,.14) !important;
-    backdrop-filter: blur(6px);
 }
 .ranking-table tbody tr:hover td { background: rgba(255,255,255,.03); }
 
 .ranking-current-card,
 .ranking-archive-card {
-    background: linear-gradient(135deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.006) 100%) !important;
-    backdrop-filter: blur(8px) saturate(190%);
-    -webkit-backdrop-filter: blur(8px) saturate(190%);
+    background: linear-gradient(135deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.01) 100%) !important;
     box-shadow: inset 0 1px 1px rgba(255,255,255,.08);
 }
 
 .ranking-progress {
     background: rgba(255,255,255,.06) !important;
-    backdrop-filter: blur(4px);
 }
 .ranking-progress-bar {
     box-shadow: 0 0 12px rgba(248,209,106,.5);
@@ -1720,7 +1805,6 @@ body.drawer-open { overflow: hidden; }
     inset: 0;
     z-index: 1300;
     background: rgba(0,0,0,.82);
-    backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1737,6 +1821,7 @@ body.drawer-open { overflow: hidden; }
     border-top: 1px solid rgba(255,255,255,.25);
     box-shadow: 0 25px 70px rgba(0,0,0,.7), 0 0 40px rgba(255,0,0,.15);
     color: var(--nx-text);
+    font-family: var(--nx-font-display);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1908,13 +1993,15 @@ body.drawer-open { overflow: hidden; }
 .points-modal-card {
     width: min(100%, 512px);
     background: rgba(8, 8, 8, .85) !important;
-    backdrop-filter: blur(40px);
-    -webkit-backdrop-filter: blur(40px);
+    /* blur(40px) quitado: con el fondo ya al 85% de opacidad casi no se
+       notaba, pero era el blur más pesado de todo el sitio (GPU/batería
+       en móviles de gama media/baja cada vez que se abre este popup). */
     border: 1px solid rgba(255, 0, 0, .35) !important;
     border-top: 1px solid rgba(255, 0, 0, .35) !important;
     border-radius: 44px !important;
     box-shadow: 0 0 30px rgba(255, 0, 0, .25), inset 0 0 15px rgba(255, 0, 0, .15) !important;
     animation: pointsIosPulse 4s infinite ease-in-out;
+    font-family: var(--nx-font-display);
 }
 
 /* Mientras la caja se abre, toda la ventana respira mas fuerte. */
@@ -2051,6 +2138,11 @@ body.drawer-open { overflow: hidden; }
 }
 
 .points-secondary-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .1); border-color: rgba(255, 0, 0, .5); }
+
+/* #pointsChoiceChangeIdBtn no está dentro de .points-modal-actions (que da
+   el espacio de abajo con su padding) — sin este margen queda pegado al
+   borde inferior del modal. */
+#pointsChoiceStep > .points-secondary-btn { margin-bottom: 28px; }
 
 .points-modal-actions {
     display: grid;
@@ -2229,7 +2321,6 @@ body.drawer-open { overflow: hidden; }
     justify-content: center;
     padding: 16px;
     background: rgba(0, 0, 0, .9);
-    backdrop-filter: blur(12px);
     opacity: 0;
     transition: opacity .3s ease;
 }
@@ -2337,7 +2428,6 @@ body.drawer-open { overflow: hidden; }
     inset: 0;
     z-index: 1200;
     background: rgba(0,0,0,.88);
-    backdrop-filter: blur(8px);
     display: none;
     align-items: center;
     justify-content: center;
@@ -2346,11 +2436,7 @@ body.drawer-open { overflow: hidden; }
 .nx-video-modal.is-open { display: flex; }
 .nx-video-card {
     width: min(100%, 460px);
-    border-radius: 20px;
     padding: 16px;
-    background: linear-gradient(135deg, rgba(30,32,40,.97), rgba(10,12,18,.98));
-    border: 1px solid rgba(255,0,0,.5);
-    box-shadow: 0 25px 70px rgba(0,0,0,.75);
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -2597,14 +2683,18 @@ body.drawer-open { overflow: hidden; }
 .nx-checkout .reference-card,
 .nx-checkout .proof-card {
     background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%) !important;
-    backdrop-filter: blur(8px) saturate(200%) brightness(1.2);
-    -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.2);
+    backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    -webkit-backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
     border: 1px solid rgba(255,255,255,0.18) !important;
     border-top: 1px solid rgba(255,255,255,0.35) !important;
     border-radius: 16px !important;
     box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), 0 0 30px rgba(255,0,0,0.08) !important;
     color: var(--nx-text);
     padding: 14px !important;
+}
+
+@media (min-width: 768px) {
+    .nx-checkout .proof-card { backdrop-filter: blur(8px) saturate(200%) brightness(1.2); -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.2); }
 }
 
 .nx-checkout .form-title,
@@ -3064,7 +3154,7 @@ body.drawer-open { overflow: hidden; }
     letter-spacing: .05em;
     text-transform: uppercase;
     cursor: pointer;
-    box-shadow: 0 0 15px rgba(16,185,129,.5);
+    box-shadow: 0 0 15px rgba(255,0,0,.5);
 }
 
 /* Botones inferiores */
@@ -3421,7 +3511,6 @@ body.drawer-open { overflow: hidden; }
     justify-content: center;
     padding: 16px;
     background: rgba(0,0,0,.8);
-    backdrop-filter: blur(5px);
 }
 .rdm-modal[hidden] { display: none; }
 .rdm-modal-card {
@@ -3429,10 +3518,6 @@ body.drawer-open { overflow: hidden; }
     max-height: 86vh;
     overflow-y: auto;
     padding: 20px 18px;
-    border-radius: 18px;
-    background: linear-gradient(180deg, #14070a 0%, #0a0508 100%);
-    border: 1px solid rgba(255,0,0,.3);
-    box-shadow: 0 24px 60px rgba(0,0,0,.7);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -3599,6 +3684,59 @@ body.drawer-open { overflow: hidden; }
 .mn-status-banner strong { font-family: var(--nx-font-display); font-size: 15px; color: #fff; }
 .mn-status-banner span { font-size: 12px; color: rgba(255,255,255,.6); line-height: 1.5; }
 
+/* Banner promocional en el login de minis: invita a registrarse y usar
+   el código, antes de llegar al formulario de entrar/solicitar. */
+.mn-promo-banner {
+    margin: 18px 0 22px;
+    padding: 18px;
+    border-radius: 16px;
+    text-align: center;
+    background: linear-gradient(135deg, rgba(255,0,0,.1) 0%, rgba(255,0,0,.02) 60%, rgba(0,0,0,0) 100%);
+    border: 1px solid rgba(255,0,0,.25);
+}
+.mn-promo-title {
+    font-family: var(--nx-font-display);
+    font-weight: 900;
+    font-size: 17px;
+    color: #fff;
+    margin: 0 0 8px;
+    line-height: 1.3;
+}
+.mn-promo-text {
+    font-size: 12.5px;
+    color: rgba(255,255,255,.65);
+    line-height: 1.6;
+    margin: 0 0 14px;
+}
+.mn-promo-pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+.mn-promo-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.12);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+}
+.mn-promo-ranks-title {
+    margin: 18px 0 10px;
+    font-family: var(--nx-font-display);
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.55);
+    text-align: left;
+}
+
 /* Perfil: código + link para compartir + saldo. */
 .mn-stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
 .mn-stat {
@@ -3697,6 +3835,12 @@ body.drawer-open { overflow: hidden; }
 .mn-rank-list-item strong { display: block; font-family: var(--nx-font-display); font-size: 14px; color: #fff; }
 .mn-rank-list-item small { display: block; font-size: 11px; color: rgba(255,255,255,.5); margin-top: 2px; }
 .mn-rank-list-item .is-accent { font-family: "Space Grotesk", monospace; font-size: 15px; font-weight: 700; }
+
+.mn-rank-list-compact { gap: 5px; }
+.mn-rank-list-compact .mn-rank-list-item { padding: 6px 10px; }
+.mn-rank-list-compact .mn-rank-list-item strong { font-size: 12.5px; }
+.mn-rank-list-compact .mn-rank-list-item small { font-size: 10px; margin-top: 0; }
+.mn-rank-list-compact .mn-rank-list-item .is-accent { font-size: 13px; }
 
 .mn-page .rdm-card { position: relative; border-radius: 20px; overflow: hidden; }
 .mn-notif-btn {
@@ -4028,7 +4172,6 @@ body.drawer-open { overflow: hidden; }
     position: absolute;
     inset: 0;
     background: rgba(0,0,0,.82);
-    backdrop-filter: blur(3px);
 }
 .nx-tutorial-modal-card {
     position: relative;
@@ -4040,6 +4183,7 @@ body.drawer-open { overflow: hidden; }
     border-radius: 16px;
     box-shadow: 0 20px 50px rgba(0,0,0,.6);
     overflow: hidden;
+    font-family: var(--nx-font-display);
 }
 .nx-tutorial-modal-head {
     display: flex;

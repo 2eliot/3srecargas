@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
 import os
 from uuid import uuid4
@@ -27,6 +27,8 @@ from ..utils.points import (
     get_points_spin_cost, redeem_points_for_package, spend_points_and_spin,
 )
 from ..utils.payment_verification import (
+    PABILO_MIN_ACCEPTANCE_RATIO,
+    _get_expected_order_amount,
     find_reference_conflict,
     is_auto_verify_enabled,
     normalize_bs_integer_amount,
@@ -35,6 +37,7 @@ from ..utils.payment_verification import (
     payment_method_uses_payer_identity_verification,
     stamp_verified_payment,
     verify_order_payment,
+    verify_remainder_reference,
 )
 from ..utils.binance_pay import (
     is_binance_auto_enabled,
@@ -154,6 +157,18 @@ def auto_verify_and_process_order(order, force=False):
     if not order or order.status != 'pending' or not is_auto_verify_enabled() or not payment_verify_allowed:
         return {'checked': False, 'verified': False, 'message': '', 'stop_polling': True}
 
+    if order.awaiting_payment_completion:
+        # Ya sabemos que ese pago no alcanza: reintentar la MISMA referencia
+        # no cambia nada. Queda esperando a que el cliente suba el pago
+        # restante en /order/<numero>/complete-payment.
+        return {
+            'checked': False,
+            'verified': False,
+            'underpaid': True,
+            'message': 'Esperando que completes el pago restante.',
+            'stop_polling': True,
+        }
+
     if order.payment_verified_at and not auto_approve_allowed:
         return {
             'ok': True,
@@ -238,6 +253,30 @@ def auto_verify_and_process_order(order, force=False):
             approval['payment_verified'] = approval.get('ok', False)
             approval['stop_polling'] = True
             return approval
+
+        if verification.get('underpaid'):
+            reported_amount = Decimal(str(verification.get('reported_amount') or '0'))
+            order.awaiting_payment_completion = True
+            order.paid_amount_bs = reported_amount
+            underpaid_note = (
+                f"[Pabilo] Pago incompleto: reportó Bs {verification.get('reported_amount')} "
+                f"de Bs {verification.get('expected_amount')} esperados. "
+                f"Falta Bs {verification.get('missing_amount')}. Esperando pago restante."
+            )
+            existing_notes = order.notes or ''
+            if underpaid_note not in existing_notes:
+                order.notes = (existing_notes + '\n' + underpaid_note).strip()
+            db.session.commit()
+            return {
+                'ok': True,
+                'checked': True,
+                'verified': False,
+                'payment_verified': False,
+                'underpaid': True,
+                'missing_amount': verification.get('missing_amount'),
+                'message': verification.get('message', ''),
+                'stop_polling': True,
+            }
 
         if verification.get('message'):
             existing_notes = order.notes or ''
@@ -1259,6 +1298,13 @@ def order_status(order_number):
     )
     minigame_state = get_order_minigame_state(order)
 
+    missing_amount_bs = None
+    if order.awaiting_payment_completion:
+        expected_amount, amount_error = _get_expected_order_amount(order)
+        if not amount_error and expected_amount is not None:
+            already_paid = Decimal(str(order.paid_amount_bs or 0))
+            missing_amount_bs = float((expected_amount - already_paid).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
     return render_template(
         'order_status.html',
         order=order,
@@ -1272,6 +1318,8 @@ def order_status(order_number):
         is_binance_auto_order=is_binance_awaiting_payment,
         order_status_image=order_status_image,
         minigame_state=minigame_state,
+        missing_amount_bs=missing_amount_bs,
+        payment_method_details=method,
     )
 
 
@@ -1303,6 +1351,8 @@ def order_auto_verify(order_number):
         'verified': result.get('verified', False),
         'payment_verified': result.get('payment_verified', result.get('verified', False)),
         'manual_review_required': result.get('manual_review_required', False),
+        'underpaid': result.get('underpaid', False),
+        'missing_amount': result.get('missing_amount'),
         'message': result.get('message', ''),
         'stop_polling': result.get('stop_polling', False),
         'next_retry_in_seconds': result.get('next_retry_in_seconds', 0),
@@ -1310,6 +1360,178 @@ def order_auto_verify(order_number):
         'status_label': order.status_label,
         'auto_verify_enabled': is_auto_verify_enabled(),
         'auto_verify_allowed': auto_verify_allowed,
+    })
+
+
+@checkout_bp.route('/order/<order_number>/complete-payment', methods=['POST'])
+def order_complete_payment(order_number):
+    """El cliente sube el pago RESTANTE cuando Pabilo detectó que el primer
+    pago no alcanzaba. Verifica solo esa referencia nueva y, si sumada a lo
+    ya confirmado cubre la orden, sigue el mismo camino que una verificación
+    normal (aprobación automática o revisión manual)."""
+    order = Order.query.filter_by(order_number=order_number).first_or_404()
+
+    if order.status != 'pending' or not order.awaiting_payment_completion:
+        return jsonify({
+            'ok': False,
+            'message': 'Esta orden no está esperando un pago restante.',
+        }), 400
+
+    manual_reference = (request.form.get('payment_reference') or '').strip()
+    capture_file = request.files.get('payment_capture')
+    capture_path = None
+    ai_reference = ''
+
+    if capture_file and capture_file.filename:
+        if not is_allowed_capture_file(capture_file.filename):
+            return jsonify({'ok': False, 'message': 'El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.'}), 400
+        capture_path = save_capture(capture_file)
+        extraction = extract_reference_from_saved_capture(capture_path)
+        ai_reference = str((extraction or {}).get('reference') or '').strip()
+
+    candidate_references = []
+    for ref in (manual_reference, ai_reference):
+        if ref and ref not in candidate_references:
+            candidate_references.append(ref)
+
+    if not candidate_references:
+        if capture_path:
+            delete_path = os.path.join(current_app.config['UPLOAD_FOLDER'], capture_path)
+            try:
+                os.remove(delete_path)
+            except OSError:
+                pass
+        return jsonify({'ok': False, 'message': 'Ingresa la referencia del pago restante o adjunta el comprobante.'}), 400
+
+    if capture_path:
+        order.remainder_capture = capture_path
+    if ai_reference:
+        order.remainder_ai_extracted_reference = ai_reference
+
+    verification = None
+    for candidate in candidate_references:
+        verification = verify_remainder_reference(order, candidate)
+        if verification.get('verified'):
+            break
+
+    if not verification:
+        return jsonify({'ok': False, 'message': 'No se pudo verificar el pago restante.'})
+
+    order.remainder_reference = verification.get('resolved_reference') or candidate_references[0]
+
+    if not verification.get('verified'):
+        db.session.commit()
+        return jsonify({
+            'ok': verification.get('ok', False),
+            'verified': False,
+            'message': verification.get('message', 'El pago restante todavía no aparece verificado en Pabilo.'),
+        })
+
+    new_amount = Decimal(str(verification.get('reported_amount') or '0'))
+    already_paid = Decimal(str(order.paid_amount_bs or 0))
+    total_paid = already_paid + new_amount
+    order.paid_amount_bs = total_paid
+
+    note = f"[Pabilo] Pago restante verificado: Bs {new_amount} (ref: {order.remainder_reference}). Total acumulado: Bs {total_paid}."
+    order.notes = ((order.notes or '') + '\n' + note).strip()
+
+    expected_amount, amount_error = _get_expected_order_amount(order)
+    covers_total = (
+        not amount_error
+        and expected_amount is not None
+        and total_paid >= (expected_amount * PABILO_MIN_ACCEPTANCE_RATIO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    )
+
+    if not covers_total:
+        still_missing = (expected_amount - total_paid) if expected_amount is not None else None
+        order.remainder_reference = None
+        order.remainder_capture = None
+        order.remainder_ai_extracted_reference = None
+        db.session.commit()
+        return jsonify({
+            'ok': True,
+            'verified': True,
+            'covered': False,
+            'missing_amount': str(still_missing.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)) if still_missing is not None else None,
+            'message': 'Se sumó el pago restante, pero todavía falta completar el monto de la orden.',
+        })
+
+    order.awaiting_payment_completion = False
+    order.payment_verified_at = datetime.utcnow()
+    order.payment_verification_id = verification.get('verification_id') or order.payment_verification_id
+    complete_note = '[Pabilo] Pago completado: el total acumulado ya cubre la orden.'
+    if complete_note not in (order.notes or ''):
+        order.notes = ((order.notes or '') + '\n' + complete_note).strip()
+
+    auto_approve_allowed = order_qualifies_for_auto_verify(order)
+    if not auto_approve_allowed:
+        ensure_minigame_opportunity(order)
+        award_points_for_order(order)
+        manual_note = '[Pabilo] Orden manual: pago verificado sin aprobación automática.'
+        if manual_note not in (order.notes or ''):
+            order.notes = ((order.notes or '') + '\n' + manual_note).strip()
+        db.session.commit()
+        return jsonify({
+            'ok': True,
+            'verified': True,
+            'covered': True,
+            'manual_review_required': True,
+            'message': 'Pago completado y verificado. La orden sigue pendiente de revisión manual.',
+            'status': order.status,
+        })
+
+    db.session.commit()
+    approval = approve_order(order)
+    return jsonify({
+        'ok': approval.get('ok', False),
+        'verified': True,
+        'covered': True,
+        'message': approval.get('message', ''),
+        'status': order.status,
+    })
+
+
+@checkout_bp.route('/order/pending-completion')
+def order_pending_completion():
+    """Para el popup del storefront: ¿este ID tiene una orden esperando el
+    pago restante? Solo dispara si el primer pago SÍ fue verificado por
+    Pabilo (insuficiente) -- una orden pendiente sin ningún pago verificado
+    nunca entra aquí, a propósito."""
+    game_id = (request.args.get('game_id') or '').strip()
+    player_id = (request.args.get('player_id') or '').strip()
+    if not game_id.isdigit() or not player_id:
+        return jsonify({'ok': True, 'has_pending': False})
+
+    order = (
+        Order.query
+        .filter(
+            Order.game_id == int(game_id),
+            Order.player_id == player_id,
+            Order.status == 'pending',
+            Order.awaiting_payment_completion.is_(True),
+        )
+        .order_by(Order.id.desc())
+        .first()
+    )
+    if not order:
+        return jsonify({'ok': True, 'has_pending': False})
+
+    expected_amount, amount_error = _get_expected_order_amount(order)
+    already_paid = Decimal(str(order.paid_amount_bs or 0))
+    missing_amount = None
+    if not amount_error and expected_amount is not None:
+        missing_amount = str((expected_amount - already_paid).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+    return jsonify({
+        'ok': True,
+        'has_pending': True,
+        'order_number': order.order_number,
+        'package_name': order.package.name if order.package else '',
+        'player_id': order.player_id or '',
+        'player_nickname': order.player_nickname or '',
+        'missing_amount': missing_amount,
+        'paid_amount': str(already_paid),
+        'order_url': url_for('checkout_bp.order_status', order_number=order.order_number),
     })
 
 

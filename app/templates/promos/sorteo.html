@@ -32,6 +32,57 @@
         button, input, select {
             touch-action: manipulation;
         }
+
+        /* Botones de selector de juego, estilo "cristal" igual al de la
+           tienda principal: gradiente translúcido + blur + brillo en el
+           borde superior, en vez del negro/rojo plano. */
+        .glass-game-btn {
+            background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 45%, rgba(10,10,15,0.03) 100%);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-top: 1px solid rgba(255,255,255,0.3);
+            border-left: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25), inset 0 1px 2px rgba(255,255,255,0.15);
+            transition: all .2s ease;
+        }
+        .glass-game-btn.is-selected {
+            background: linear-gradient(135deg, rgba(255,0,0,0.35) 0%, rgba(255,0,0,0.12) 45%, rgba(20,0,0,0.05) 100%);
+            border-color: rgba(255,60,60,0.6);
+            border-top-color: rgba(255,150,150,0.6);
+            box-shadow: 0 10px 25px rgba(255,0,0,0.25), inset 0 1px 2px rgba(255,255,255,0.25);
+        }
+        .glass-game-btn:not(.is-selected):hover { border-color: rgba(255,0,0,0.4); background: rgba(255,255,255,0.07); }
+
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 45%, rgba(10,10,15,0.04) 100%);
+            border: 1px solid rgba(255,60,60,0.45);
+            border-top: 1px solid rgba(255,150,150,0.5);
+            border-left: 1px solid rgba(255,100,100,0.35);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.15);
+        }
+        .glass-card.is-current { box-shadow: 0 10px 25px rgba(255,0,0,0.35), inset 0 1px 2px rgba(255,255,255,0.2); border-color: rgba(255,60,60,0.75); }
+
+        .step-num-badge {
+            width: 22px; height: 22px;
+            border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 900;
+            background: linear-gradient(135deg, #ff3333, #cc0000);
+            color: #fff;
+            box-shadow: 0 0 12px rgba(255,0,0,0.6), inset 0 1px 2px rgba(255,255,255,0.3);
+            flex: 0 0 auto;
+        }
+        .glass-input-field {
+            background: rgba(0,0,0,0.35);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-top: 1px solid rgba(255,255,255,0.25);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 1px rgba(255,255,255,0.15);
+            color: #fff;
+        }
+        .glass-input-field::placeholder { color: #94a3b8; font-weight: 600; }
+        .glass-input-field:focus {
+            border-color: rgba(255,0,0,0.65);
+            box-shadow: 0 0 0 3px rgba(255,0,0,0.15), inset 0 2px 4px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body class="bg-black text-slate-100 flex justify-center">
@@ -55,23 +106,27 @@
         </header>
 
         {% if games and games|length > 1 %}
-        <span class="text-xs uppercase tracking-widest text-white font-extrabold block mb-1.5">Selecciona otro juego:</span>
-        <select id="gameSelect" class="w-full bg-black border border-red-500/40 rounded-xl px-3 py-2.5 text-xs text-white mb-3">
+        <span class="text-xs uppercase tracking-widest text-white font-extrabold block mb-1.5">Selecciona un Juego:</span>
+        <div class="w-full flex flex-wrap gap-2 mb-3">
             {% for g in games %}
-            <option value="{{ g.id }}" {{ 'selected' if game and game.id == g.id }}>{{ g.name }}</option>
+            <button type="button" onclick="switchGame({{ g.id }})"
+                    class="glass-game-btn flex-1 min-w-[100px] text-center px-3 py-2.5 rounded-xl text-xs font-bold
+                           {% if game and game.id == g.id %}is-selected text-white{% else %}text-slate-300{% endif %}">
+                {{ g.name }}
+            </button>
             {% endfor %}
-        </select>
+        </div>
         {% endif %}
 
         <main class="w-full flex flex-col items-center gap-4">
 
             {% if not games %}
-            <div class="w-full bg-[#050505] border border-red-500/30 p-6 rounded-2xl text-center text-slate-300 text-sm">
+            <div class="glass-card w-full p-6 rounded-2xl text-center text-slate-300 text-sm">
                 El sorteo no está activo en este momento. Vuelve pronto.
             </div>
             {% else %}
 
-            <div id="live-panel" class="w-full bg-[#050505] border border-red-500/30 p-3.5 rounded-2xl shadow-xl flex flex-col justify-between items-center gap-2.5 relative overflow-hidden">
+            <div id="live-panel" class="glass-card w-full p-3.5 rounded-2xl flex flex-col justify-between items-center gap-2.5 relative overflow-hidden">
                 <div class="absolute -right-8 -bottom-8 w-24 h-24 bg-red-600/10 rounded-full blur-xl pointer-events-none"></div>
                 <div class="flex items-center gap-2.5 z-10 text-center flex-row w-full justify-between">
                     <div class="flex items-center gap-2.5">
@@ -93,7 +148,7 @@
                 </div>
             </div>
 
-            <div id="slot-section" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl hidden flex flex-col items-center gap-3 custom-glow">
+            <div id="slot-section" class="glass-card w-full p-3.5 rounded-2xl hidden flex flex-col items-center gap-3 custom-glow">
                 <div class="relative w-full bg-gradient-to-b from-[#000000] to-[#030303] border-2 border-red-600/50 rounded-xl shadow-2xl overflow-hidden flex flex-col items-center p-2">
                     <div class="absolute top-2 left-2.5 flex items-center gap-1 text-[10px] text-red-400/90 font-bold tracking-wider uppercase truncate max-w-[65%]">
                         <span>🎰</span> <span id="timer-display" class="truncate">Iniciando giro...</span>
@@ -109,20 +164,21 @@
                 </button>
             </div>
 
-            <div id="register-section" class="w-full bg-[#050505] border-2 border-red-500/50 p-4 rounded-2xl shadow-xl flex flex-col gap-3.5 text-center relative overflow-hidden">
+            <div id="register-section" class="glass-card w-full p-4 rounded-2xl flex flex-col gap-3.5 text-center relative overflow-hidden">
                 <div class="absolute inset-0 bg-gradient-to-r from-red-600/5 via-transparent to-red-600/5 pointer-events-none"></div>
 
-                <div class="bg-black border border-red-500/40 rounded-xl p-3 shadow-inner flex flex-col items-center">
+                <div class="glass-card rounded-xl p-3 flex flex-col items-center">
                     <div class="inline-flex p-1.5 rounded-lg bg-red-600/20 text-red-500 text-lg mb-1 border border-red-500/30">
                         🏆
                     </div>
-                    <h3 id="concluded-date-title" class="text-xs font-extrabold text-white tracking-wider uppercase">
-                        Sorteo • --/--/----
+                    <h3 class="text-xs font-extrabold text-white tracking-wider uppercase">
+                        Siguiente Sorteo
                     </h3>
-                    <p class="text-slate-400 text-[10px] mt-0.5">Cupo completado con éxito.</p>
+                    <div id="concluded-date-title" class="text-amber-400 font-black text-sm tracking-wide mt-1">--</div>
+                    <p class="text-slate-400 text-[10px] mt-1">Fecha y hora exactas del próximo sorteo en vivo.</p>
                 </div>
 
-                <div class="bg-black border border-red-500/40 rounded-xl p-3 shadow-inner flex flex-col items-center">
+                <div class="glass-card rounded-xl p-3 flex flex-col items-center">
                     <span class="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-0.5 flex items-center gap-1">
                         <span>⏳</span> Próximo Sorteo en Vivo
                     </span>
@@ -131,7 +187,7 @@
                     </div>
                 </div>
 
-                <div class="bg-black border border-red-500/40 rounded-xl p-3.5 shadow-inner flex flex-col items-center gap-2.5">
+                <div class="glass-card rounded-xl p-3.5 flex flex-col items-center gap-2.5">
                     <div class="inline-flex p-1.5 rounded-lg bg-red-600/20 text-red-500 text-base border border-red-500/30">
                         🎟️
                     </div>
@@ -143,7 +199,7 @@
                     <div id="register-form-container" class="w-full flex flex-col gap-2 mt-0.5">
                         <div class="relative w-full">
                             <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-xs">🎮</span>
-                            <input type="tel" inputmode="numeric" id="user-id-input" placeholder="Tu ID (ej: 12345678)..." class="w-full bg-[#000000] border border-zinc-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
+                            <input type="tel" inputmode="numeric" id="user-id-input" placeholder="Tu ID (ej: 12345678)..." class="glass-input-field w-full rounded-xl pl-9 pr-3 py-2.5 text-xs text-white focus:outline-none font-mono">
                         </div>
                         <div class="grid grid-cols-2 gap-2 w-full">
                             <button id="register-btn" onclick="registrarNuevoJugador()" class="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold px-3 py-2.5 rounded-xl transition shadow-md text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 border border-red-400/40 active:scale-95">
@@ -173,7 +229,7 @@
                 </div>
             </div>
 
-            <div id="today-winners-container" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl">
+            <div id="today-winners-container" class="glass-card w-full p-3.5 rounded-2xl">
                 <div class="flex justify-between items-center mb-3 border-b border-zinc-900 pb-2">
                     <div>
                         <h2 class="text-xs font-extrabold text-white flex items-center gap-1.5">
@@ -192,7 +248,7 @@
                 </div>
             </div>
 
-            <div id="history-section" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl hidden">
+            <div id="history-section" class="glass-card w-full p-3.5 rounded-2xl hidden">
                 <div class="flex items-center justify-between mb-3 border-b border-zinc-900 pb-2">
                     <h2 class="text-xs font-extrabold text-white flex items-center gap-1.5">
                         <span>📜</span> Historial Anterior
@@ -231,6 +287,19 @@
             </div>
         </div>
 
+        <div id="replay-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+            <div class="bg-gradient-to-b from-[#080808] to-[#000000] border-2 border-red-500/60 p-4 rounded-2xl shadow-2xl w-full max-w-sm text-center relative overflow-hidden custom-glow">
+                <button onclick="cerrarRepeticion()" class="absolute top-2.5 right-2.5 text-slate-400 hover:text-white text-sm w-7 h-7 flex items-center justify-center rounded-lg bg-white/5 border border-zinc-800 z-10">✕</button>
+                <h3 class="text-xs font-black text-white tracking-wider uppercase mb-1">🎬 Repetición del Sorteo</h3>
+                <p id="replay-day-label" class="text-[10px] text-slate-400 mb-3">--</p>
+
+                <div class="bg-black border border-red-500/40 rounded-xl p-2.5 shadow-inner relative overflow-hidden">
+                    <canvas id="replayCanvas" width="340" height="140" class="w-full h-[140px] rounded-lg bg-black object-contain"></canvas>
+                </div>
+                <p id="replay-status" class="text-[10px] text-slate-400 mt-2.5 min-h-[14px]">Cargando participantes...</p>
+            </div>
+        </div>
+
         <footer class="text-[10px] text-slate-500 text-center py-2 mt-2 flex items-center justify-center gap-1">
             <span>🛡️</span> 3SRecargas • Mobile Experience
         </footer>
@@ -259,9 +328,6 @@
             url.searchParams.set('game_id', id);
             window.location.href = url.toString();
         }
-        const gameSelectEl = document.getElementById('gameSelect');
-        if (gameSelectEl) gameSelectEl.addEventListener('change', () => switchGame(gameSelectEl.value));
-
         const canvas = document.getElementById('slotCanvas');
         const ctx = canvas ? canvas.getContext('2d') : null;
 
@@ -291,7 +357,19 @@
         const currentDateLabelEl = document.getElementById('current-date-label');
         if (currentDateLabelEl) currentDateLabelEl.innerHTML = `<span>📅</span> ${fechaHoyStr}`;
         const concludedTitleEl = document.getElementById('concluded-date-title');
-        if (concludedTitleEl) concludedTitleEl.innerText = `Sorteo • ${fechaHoyStr}`;
+
+        function formatearProximoSorteo(iso) {
+            if (!iso) return null;
+            const fecha = new Date(iso);
+            if (isNaN(fecha.getTime())) return null;
+
+            const dia = new Intl.DateTimeFormat('es-VE', { timeZone: 'America/Caracas', weekday: 'long' }).format(fecha);
+            const diaCap = dia.charAt(0).toUpperCase() + dia.slice(1);
+            const fechaStr = new Intl.DateTimeFormat('es-VE', { timeZone: 'America/Caracas', day: '2-digit', month: '2-digit', year: 'numeric' }).format(fecha);
+            const horaStr = new Intl.DateTimeFormat('es-VE', { timeZone: 'America/Caracas', hour: 'numeric', minute: '2-digit', hour12: true }).format(fecha);
+
+            return `${diaCap} ${fechaStr}, ${horaStr}`;
+        }
 
         function drawStaticDisplay(text) {
             if (!ctx) return;
@@ -374,7 +452,9 @@
                             <div class="flex items-center gap-1.5 text-white font-bold text-[11px] truncate">
                                 <span>🏆</span> <span class="truncate">${dia.day_key}</span>
                             </div>
-                            <span class="text-[9px] bg-red-600/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-bold">${dia.winners.length * rewardPerWinnerValue}</span>
+                            <button onclick="abrirRepeticion('${dia.day_key}')" class="text-[9px] bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full font-bold uppercase tracking-wide flex items-center gap-1 flex-shrink-0">
+                                <span>🎬</span> Ver repetición
+                            </button>
                         </div>
                         ${badgesHtml}
                     </div>
@@ -558,6 +638,170 @@
             requestAnimationFrame(animate);
         }
 
+        // ── Repetición de un sorteo ya pasado: usa su propio canvas y su
+        // propio estado (replayParticipants/replayWinners/replayIndex), sin
+        // tocar nada del sorteo en vivo — solo dramatiza, con los mismos
+        // datos reales de ese día, cómo fueron saliendo los ganadores.
+        let replayCanvas, replayCtx;
+        let replayParticipants = [];
+        let replayWinners = [];
+        let replayIndex = 0;
+        let replaySpinning = false;
+        let replayAbortId = 0;
+
+        function configurarReplayCanvasHD() {
+            replayCanvas = document.getElementById('replayCanvas');
+            if (!replayCanvas) return;
+            replayCtx = replayCanvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const displayWidth = replayCanvas.clientWidth || 320;
+            const displayHeight = 140;
+            replayCanvas.width = displayWidth * dpr;
+            replayCanvas.height = displayHeight * dpr;
+            replayCtx.scale(dpr, dpr);
+            replayCanvas.style.width = displayWidth + 'px';
+            replayCanvas.style.height = displayHeight + 'px';
+        }
+
+        function replayDrawStatic(text) {
+            if (!replayCtx) return;
+            const width = replayCanvas.width / (window.devicePixelRatio || 1);
+            const height = replayCanvas.height / (window.devicePixelRatio || 1);
+            replayCtx.fillStyle = '#000000';
+            replayCtx.fillRect(0, 0, width, height);
+            replayCtx.fillStyle = '#ffffff';
+            replayCtx.font = 'bold 13px Outfit, sans-serif';
+            replayCtx.textAlign = 'center';
+            replayCtx.textBaseline = 'middle';
+            replayCtx.fillText(text, width / 2, height / 2);
+        }
+
+        async function abrirRepeticion(dayKey) {
+            const modal = document.getElementById('replay-modal');
+            const statusEl = document.getElementById('replay-status');
+            const dayLabelEl = document.getElementById('replay-day-label');
+            const myAbortId = ++replayAbortId;
+
+            modal.classList.remove('hidden');
+            dayLabelEl.innerText = dayKey;
+            statusEl.innerText = 'Cargando participantes...';
+            configurarReplayCanvasHD();
+            replayDrawStatic('Cargando...');
+
+            try {
+                const res = await fetch(`/promos/api/sorteo/replay?game_id=${GAME_ID}&day_key=${encodeURIComponent(dayKey)}`);
+                const data = await res.json();
+                if (myAbortId !== replayAbortId) return; // el usuario ya cerró/abrió otra
+                if (!data.ok) {
+                    statusEl.innerText = data.error || 'No se pudo cargar ese sorteo.';
+                    replayDrawStatic('Sin datos disponibles');
+                    return;
+                }
+                replayParticipants = data.participants || [];
+                replayWinners = data.winners || [];
+                replayIndex = 0;
+                if (!replayParticipants.length || !replayWinners.length) {
+                    statusEl.innerText = 'Ese día no tiene suficientes datos para repetir la animación.';
+                    replayDrawStatic('Sin datos disponibles');
+                    return;
+                }
+                reproducirSiguienteGiroReplay(myAbortId);
+            } catch (e) {
+                if (myAbortId !== replayAbortId) return;
+                statusEl.innerText = 'Error de conexión, intenta de nuevo.';
+            }
+        }
+
+        function cerrarRepeticion() {
+            replayAbortId++; // invalida cualquier giro/temporizador en curso
+            replaySpinning = false;
+            document.getElementById('replay-modal').classList.add('hidden');
+        }
+
+        function reproducirSiguienteGiroReplay(myAbortId) {
+            if (myAbortId !== replayAbortId) return;
+            const statusEl = document.getElementById('replay-status');
+
+            if (replayIndex >= replayWinners.length) {
+                statusEl.innerText = '🏁 Repetición finalizada.';
+                replayDrawStatic('🏁 ¡Repetición finalizada!');
+                return;
+            }
+
+            replaySpinning = true;
+            const finalWinner = replayWinners[replayIndex];
+            const duration = 2600;
+            let startTime = null;
+            let virtualIndex = Math.floor(Math.random() * replayParticipants.length);
+            statusEl.innerText = `Girando por el ganador #${replayIndex + 1} de ${replayWinners.length}...`;
+
+            function animateReplay(timestamp) {
+                if (myAbortId !== replayAbortId) return;
+                if (!startTime) startTime = timestamp;
+                const elapsed = timestamp - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const width = replayCanvas.width / (window.devicePixelRatio || 1);
+                const height = replayCanvas.height / (window.devicePixelRatio || 1);
+
+                replayCtx.fillStyle = '#000000';
+                replayCtx.fillRect(0, 0, width, height);
+                replayCtx.textAlign = 'center';
+                replayCtx.textBaseline = 'middle';
+
+                if (progress >= 1) {
+                    replaySpinning = false;
+                    lanzarConfetiGanador();
+
+                    replayCtx.fillStyle = '#ffffff';
+                    replayCtx.font = '800 15px Outfit, sans-serif';
+                    replayCtx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+                    replayCtx.shadowBlur = 12;
+                    replayCtx.fillText(`👑 ¡Ganador #${replayIndex + 1}! Ticket #${finalWinner.ticket}`, width / 2, 55);
+
+                    replayCtx.fillStyle = '#ffffff';
+                    replayCtx.font = '700 12px Outfit, sans-serif';
+                    replayCtx.fillText(`${finalWinner.name} • ID: ${finalWinner.id}`, width / 2, 85);
+                    replayCtx.shadowBlur = 0;
+
+                    replayIndex++;
+                    statusEl.innerText = replayIndex >= replayWinners.length
+                        ? '🏆 ¡Último ganador! Terminando...'
+                        : `👑 Ganador #${replayIndex} • siguiente en unos segundos...`;
+
+                    setTimeout(() => reproducirSiguienteGiroReplay(myAbortId), 2200);
+                    return;
+                }
+
+                let speedFactor = 45;
+                virtualIndex += speedFactor * 0.25;
+                const currentIndex = Math.floor(virtualIndex) % replayParticipants.length;
+                const itemPrev = replayParticipants[(currentIndex - 1 + replayParticipants.length) % replayParticipants.length];
+                const itemCurr = replayParticipants[currentIndex % replayParticipants.length];
+                const itemNext = replayParticipants[(currentIndex + 1) % replayParticipants.length];
+
+                if (itemPrev && itemCurr && itemNext) {
+                    replayCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                    replayCtx.font = '10px Outfit, sans-serif';
+                    replayCtx.fillText(`Ticket #${itemPrev.ticket} • ${itemPrev.name}`, width / 2, 28);
+
+                    replayCtx.fillStyle = '#ffffff';
+                    replayCtx.font = '800 14px Outfit, sans-serif';
+                    replayCtx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+                    replayCtx.shadowBlur = 12;
+                    replayCtx.fillText(`Ticket #${itemCurr.ticket} • ${itemCurr.name} (ID: ${itemCurr.id})`, width / 2, 70);
+                    replayCtx.shadowBlur = 0;
+
+                    replayCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                    replayCtx.font = '10px Outfit, sans-serif';
+                    replayCtx.fillText(`Ticket #${itemNext.ticket} • ${itemNext.name}`, width / 2, 112);
+                }
+
+                requestAnimationFrame(animateReplay);
+            }
+
+            requestAnimationFrame(animateReplay);
+        }
+
         function showConcludedState() {
             document.getElementById('live-panel').classList.add('hidden');
             document.getElementById('slot-section').classList.add('hidden');
@@ -711,6 +955,10 @@
             document.getElementById('reward-label-badge').innerText = rewardLabel;
             document.getElementById('reward-per-winner').innerText = rewardLabel;
             document.getElementById('winners-total').innerText = winnersTotal;
+            if (concludedTitleEl) {
+                const proximoLabel = formatearProximoSorteo(data.next_draw_at);
+                concludedTitleEl.innerText = proximoLabel || '--';
+            }
             iniciarTemporizadorProximoSorteo(data.next_draw_at);
             generarHistorial(data.history);
 

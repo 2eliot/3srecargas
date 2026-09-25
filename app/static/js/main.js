@@ -135,8 +135,11 @@
         loading: false,
         loaded: false,
         activeKey: null,
-        items: []
+        items: [],
+        showAllPositions: false,
+        lookupInputValue: ''
     };
+    var RANKING_COLLAPSED_ROWS = 6;
 
     function gamesGridHasOverflow() {
         if (!gamesViewportEl) return false;
@@ -494,12 +497,12 @@
         var html =
             '<div class="ranking-shell">' +
                 '<div class="ranking-prizes">' +
-                    '<div class="ranking-prizes-title">Premio</div>';
+                    '<div class="ranking-prizes-title">Premios</div>';
 
         if (activeItem.reward_ladder && activeItem.reward_ladder.length) {
             activeItem.reward_ladder.forEach(function (reward) {
                 html +=
-                    '<div class="ranking-prize-item">' +
+                    '<div class="ranking-prize-item ranking-podium-' + escHtml(reward.position) + '">' +
                         '<span>#' + escHtml(reward.position) + '</span>' +
                         '<strong>' + escHtml(formatRewardValue(reward.reward_label, activeItem.key)) + '</strong>' +
                     '</div>';
@@ -522,25 +525,33 @@
                                 '<th>#</th>' +
                                 '<th>Jugador</th>' +
                                 '<th>ID</th>' +
-                                '<th>' + escHtml(activeItem.units_label || 'Total') + '</th>' +
-                                '<th>Premio</th>' +
+                                '<th>' + escHtml(activeItem.units_label || 'Total') + '<br><span class="ranking-units-sublabel">recargado' + (activeItem.units_label === 'Oro' ? '' : 's') + '</span></th>' +
                             '</tr>' +
                         '</thead>' +
                         '<tbody>';
 
-            activeItem.entries.forEach(function (entry) {
-                var prizeClass = isPrizeLabel(entry.prize_label, entry.is_prize_eligible) ? ' style="color:#f8d16a;font-weight:800"' : '';
+            var visibleEntries = rankingState.showAllPositions
+                ? activeItem.entries
+                : activeItem.entries.slice(0, RANKING_COLLAPSED_ROWS);
+
+            visibleEntries.forEach(function (entry) {
                 html +=
                     '<tr>' +
                         '<td class="ranking-position-cell">#' + escHtml(entry.position) + '</td>' +
                         '<td>' + escHtml(entry.masked_nickname || 'Jugador***') + '</td>' +
                         '<td>' + escHtml(entry.masked_player_id || '----') + '</td>' +
                         '<td>' + escHtml(entry.total_units) + '</td>' +
-                        '<td' + prizeClass + '>' + escHtml(formatRewardValue(entry.prize_label || 'Sin premio', activeItem.key)) + '</td>' +
                     '</tr>';
             });
 
             html += '</tbody></table></div>';
+
+            if (activeItem.entries.length > RANKING_COLLAPSED_ROWS) {
+                html +=
+                    '<button type="button" class="ranking-show-more-btn" id="rankingShowMoreBtn">' +
+                        (rankingState.showAllPositions ? '▲ Ver menos' : '▼ Ver más (hasta Top ' + activeItem.entries.length + ')') +
+                    '</button>';
+            }
         }
 
         if (activeItem.previous_winners && activeItem.previous_winners.entries && activeItem.previous_winners.entries.length) {
@@ -564,7 +575,7 @@
         if (activeItem.current_position) {
             html +=
                 '<div class="ranking-current-card">' +
-                    '<div class="ranking-current-title">Tu posición actual #' + escHtml(activeItem.current_position.position) + '</div>' +
+                    '<div class="ranking-current-title">Tu posición actual <span class="ranking-current-position-num">#' + escHtml(activeItem.current_position.position) + '</span></div>' +
                     '<div class="ranking-current-meta">' +
                         '<span>' + escHtml(activeItem.current_position.masked_player_id || '----') + '</span>' +
                         '<strong>' + escHtml(activeItem.current_position.total_units) + ' ' + escHtml(activeItem.units_label || '') + '</strong>' +
@@ -577,14 +588,22 @@
             if (activeItem.current_position.missing_units > 0) {
                 html += '<div class="ranking-current-hint">Te faltan ' + escHtml(activeItem.current_position.missing_units) + ' ' + escHtml(activeItem.units_label || '') + ' para el siguiente puesto.</div>';
             } else if (Number(activeItem.current_position.position) === 1) {
-                html += '<div class="ranking-current-hint">Ya estás en el primer puesto de este ranking.</div>';
+                html += '<div class="ranking-current-hint">Eres el líder de este ranking. Recarga más para mantener tu puesto y que nadie te alcance.</div>';
             } else {
-                html += '<div class="ranking-current-hint">Ya alcanzaste el puntaje del siguiente puesto. La tabla se reordenará cuando se actualice el ranking.</div>';
+                html += '<div class="ranking-current-hint">Recarga más para subir al siguiente puesto en la próxima actualización del ranking.</div>';
             }
 
             html += '</div>';
         } else {
-            html += '<div class="ranking-current-card is-empty"><div class="ranking-current-title">Tu posición actual</div><div class="ranking-current-hint">Ingresa tu ID del juego actual o inicia sesión con tu cuenta de ese servicio para ver tu puesto.</div></div>';
+            html +=
+                '<div class="ranking-current-card is-empty">' +
+                    '<div class="ranking-current-title">Tu posición actual</div>' +
+                    '<div class="ranking-lookup-row">' +
+                        '<input type="text" inputmode="numeric" id="rankingLookupIdInput" placeholder="Tu ID de ' + escHtml(activeItem.game_name || 'juego') + '..." value="' + escHtml(rankingState.lookupInputValue || '') + '">' +
+                        '<button type="button" id="rankingLookupBtn">Ver</button>' +
+                    '</div>' +
+                    '<p class="ranking-lookup-msg" id="rankingLookupMsg"></p>' +
+                '</div>';
         }
 
         html += '</div></div>';
@@ -595,6 +614,76 @@
             rankingStatusEl.style.display = 'none';
         }
         renderRankingTabs();
+    }
+
+    function runRankingPositionLookup() {
+        var input = document.getElementById('rankingLookupIdInput');
+        var msgEl = document.getElementById('rankingLookupMsg');
+        var btn = document.getElementById('rankingLookupBtn');
+        if (!input || !msgEl) return;
+
+        var activeItem = null;
+        for (var i = 0; i < rankingState.items.length; i += 1) {
+            if (rankingState.items[i].key === rankingState.activeKey) {
+                activeItem = rankingState.items[i];
+                break;
+            }
+        }
+        if (!activeItem || !activeItem.game_id) return;
+
+        var identifier = String(input.value || '').trim();
+        rankingState.lookupInputValue = identifier;
+
+        msgEl.className = 'ranking-lookup-msg';
+        if (!identifier) {
+            msgEl.textContent = 'Escribe tu ID primero.';
+            msgEl.classList.add('is-error');
+            return;
+        }
+
+        if (btn) { btn.disabled = true; btn.textContent = 'Buscando...'; }
+        msgEl.textContent = '';
+
+        fetch('/promos/api/verify-player?game_id=' + encodeURIComponent(activeItem.game_id) + '&player_id=' + encodeURIComponent(identifier))
+            .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+            .then(function (result) {
+                var verifyOk = result.data && result.data.ok;
+                // 403 = este juego no tiene API de verificación configurada:
+                // no bloquea la búsqueda, solo no se puede confirmar el ID de antemano.
+                var verifyUnavailable = result.status === 403;
+                if (!verifyOk && !verifyUnavailable) {
+                    throw new Error((result.data && result.data.error) || 'ID no encontrado');
+                }
+                return fetch('/api/rankings?lookup_game_id=' + encodeURIComponent(activeItem.game_id) + '&lookup_identifier=' + encodeURIComponent(identifier));
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var rankings = data && Array.isArray(data.rankings) ? data.rankings : [];
+                var updated = null;
+                for (var k = 0; k < rankings.length; k += 1) {
+                    if (rankings[k] && rankings[k].key === rankingState.activeKey) { updated = rankings[k]; break; }
+                }
+                if (updated) {
+                    for (var j = 0; j < rankingState.items.length; j += 1) {
+                        if (rankingState.items[j].key === updated.key) {
+                            rankingState.items[j].current_position = updated.current_position;
+                            break;
+                        }
+                    }
+                }
+                if (updated && updated.current_position) {
+                    renderRankingBoard();
+                } else {
+                    msgEl.textContent = 'Ese ID no aparece en el ranking de este mes.';
+                    msgEl.classList.add('is-error');
+                    if (btn) { btn.disabled = false; btn.textContent = 'Ver'; }
+                }
+            })
+            .catch(function (err) {
+                msgEl.textContent = (err && err.message) || 'ID no encontrado';
+                msgEl.classList.add('is-error');
+                if (btn) { btn.disabled = false; btn.textContent = 'Ver'; }
+            });
     }
 
     function fetchRankings(forceReload) {
@@ -1948,6 +2037,94 @@
         return 'Por favor ingresa tu ' + (game.player_id_label || 'ID del jugador') + '.';
     }
 
+    /* ── Aviso de orden con pago incompleto (cualquier juego) ──────────── */
+    var pendingCompletionState = { lastChecked: '', timer: null };
+
+    function pendingCompletionDismissKey(orderNumber) {
+        return 'nx_pending_completion_ignored_' + orderNumber;
+    }
+
+    function isPendingCompletionDismissed(orderNumber) {
+        try { return sessionStorage.getItem(pendingCompletionDismissKey(orderNumber)) === '1'; } catch (_) { return false; }
+    }
+
+    function markPendingCompletionDismissed(orderNumber) {
+        try { sessionStorage.setItem(pendingCompletionDismissKey(orderNumber), '1'); } catch (_) {}
+    }
+
+    function showPendingCompletionPopup(data) {
+        var popup = document.getElementById('pendingCompletionPopup');
+        if (!popup) return;
+        var orderNumberEl = document.getElementById('pendingCompletionOrderNumber');
+        var packageEl = document.getElementById('pendingCompletionPackage');
+        var playerIdEl = document.getElementById('pendingCompletionPlayerId');
+        var nicknameWrap = document.getElementById('pendingCompletionNicknameWrap');
+        var nicknameEl = document.getElementById('pendingCompletionNickname');
+        var missingEl = document.getElementById('pendingCompletionMissing');
+        var goBtn = document.getElementById('pendingCompletionGoBtn');
+        var ignoreBtn = document.getElementById('pendingCompletionIgnoreBtn');
+        if (orderNumberEl) orderNumberEl.textContent = '#' + data.order_number;
+        if (packageEl) packageEl.textContent = data.package_name || '';
+        if (playerIdEl) playerIdEl.textContent = data.player_id || '';
+        if (nicknameWrap && nicknameEl) {
+            if (data.player_nickname) {
+                nicknameEl.textContent = data.player_nickname;
+                nicknameWrap.hidden = false;
+            } else {
+                nicknameWrap.hidden = true;
+            }
+        }
+        if (missingEl) missingEl.textContent = data.missing_amount || '0';
+        if (goBtn) goBtn.onclick = function () { window.location.href = data.order_url; };
+        if (ignoreBtn) ignoreBtn.onclick = function () {
+            markPendingCompletionDismissed(data.order_number);
+            popup.style.display = 'none';
+            popup.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-open');
+        };
+        popup.style.display = 'flex';
+        popup.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('modal-open');
+    }
+
+    function checkPendingCompletion(uid) {
+        if (!currentGame || !currentGame.id || !uid) return;
+        var key = currentGame.id + ':' + uid;
+        if (pendingCompletionState.lastChecked === key) return;
+        pendingCompletionState.lastChecked = key;
+
+        fetch('/order/pending-completion?game_id=' + encodeURIComponent(currentGame.id) + '&player_id=' + encodeURIComponent(uid))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok || !data.has_pending) return;
+                if (isPendingCompletionDismissed(data.order_number)) return;
+                showPendingCompletionPopup(data);
+            })
+            .catch(function () {});
+    }
+
+    function schedulePendingCompletionCheck() {
+        var input = document.getElementById('playerId');
+        if (!input) return;
+        if (pendingCompletionState.timer) {
+            clearTimeout(pendingCompletionState.timer);
+            pendingCompletionState.timer = null;
+        }
+        var uid = (input.value || '').trim();
+        if (!uid) return;
+        pendingCompletionState.timer = setTimeout(function () {
+            checkPendingCompletion(uid);
+        }, 900);
+    }
+
+    function setupPendingCompletionListener() {
+        var input = document.getElementById('playerId');
+        if (!input || input.dataset.pendingCheckBound) return;
+        input.addEventListener('input', schedulePendingCompletionCheck);
+        input.addEventListener('blur', schedulePendingCompletionCheck);
+        input.dataset.pendingCheckBound = '1';
+    }
+
     function setupVerifyListeners() {
         var btn = document.getElementById('btnVerifyPlayer');
         var input = document.getElementById('playerId');
@@ -2034,6 +2211,7 @@
     function applyGameToSidebar(game) {
         currentGame = game;
         invalidateRankingLookup();
+        setupPendingCompletionListener();
         var sidebarGameName = document.getElementById('sidebarGameName');
         var sidebarTitle = document.getElementById('sidebarTitle');
         
@@ -2654,7 +2832,34 @@
             var tabBtn = evt.target && evt.target.closest('.ranking-tab');
             if (!tabBtn) return;
             rankingState.activeKey = tabBtn.dataset.rankingKey || null;
+            rankingState.showAllPositions = false;
             renderRankingBoard();
+        });
+    }
+
+    if (rankingBoardEl) {
+        rankingBoardEl.addEventListener('click', function (evt) {
+            var moreBtn = evt.target && evt.target.closest('#rankingShowMoreBtn');
+            if (moreBtn) {
+                rankingState.showAllPositions = !rankingState.showAllPositions;
+                renderRankingBoard();
+                return;
+            }
+            var lookupBtn = evt.target && evt.target.closest('#rankingLookupBtn');
+            if (lookupBtn) {
+                runRankingPositionLookup();
+            }
+        });
+        rankingBoardEl.addEventListener('keydown', function (evt) {
+            if (evt.key === 'Enter' && evt.target && evt.target.id === 'rankingLookupIdInput') {
+                evt.preventDefault();
+                runRankingPositionLookup();
+            }
+        });
+        rankingBoardEl.addEventListener('input', function (evt) {
+            if (evt.target && evt.target.id === 'rankingLookupIdInput') {
+                rankingState.lookupInputValue = evt.target.value;
+            }
         });
     }
 

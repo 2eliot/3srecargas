@@ -601,6 +601,81 @@ def approve_order(order, delivery_proof_path=None):
         release_lock(lock_key, lock_holder)
 
 
+def force_approve_order_manually(order, admin_note=''):
+    """Aprueba una orden pendiente sin pasar por el bot ni por Revendedores.
+
+    Es el botón de emergencia: cuando la API falla o el proveedor se queda
+    sin saldo, el admin hace la recarga por fuera de la web con otro
+    proveedor y necesita marcar la orden como completada a mano, sin que el
+    sistema intente recargarla también — de ahí que use el MISMO lock que
+    `approve_order` (evita chocar con un intento automático en curso) y deje
+    la orden en 'completed' en vez de 'pending', que es justo lo que hace
+    que el scheduler de recuperación deje de tocarla (solo mira pendientes).
+    Si había un PIN propio reservado para esta orden, se libera al stock:
+    la recarga real se hizo con otro proveedor, no con ese PIN.
+    """
+    if order.status != 'pending':
+        return {
+            'ok': False,
+            'changed': False,
+            'message': 'Solo se pueden forzar órdenes pendientes.',
+            'category': 'warning',
+        }
+
+    lock_key = f'order_approve:{order.id}'
+    lock_holder = uuid4().hex
+    if not acquire_lock(lock_key, ORDER_APPROVE_LOCK_TTL_SECONDS, lock_holder):
+        return {
+            'ok': False,
+            'changed': False,
+            'message': 'Esta orden ya se está procesando en este momento (otra solicitud en curso). Intenta de nuevo en unos segundos.',
+            'category': 'warning',
+        }
+
+    try:
+        db.session.refresh(order)
+        if order.status != 'pending':
+            return {
+                'ok': False,
+                'changed': False,
+                'message': 'Solo se pueden forzar órdenes pendientes.',
+                'category': 'warning',
+            }
+
+        reserved_pin = Pin.query.filter_by(order_id=order.id, is_used=False).first()
+        if reserved_pin:
+            reserved_pin.order_id = None
+
+        note = '[Admin] Recarga forzada manualmente (hecha con un proveedor externo a la web).'
+        if admin_note:
+            note += f' {admin_note}'
+        order.notes = ((order.notes or '') + '\n' + note).strip()
+
+        order.status = 'completed'
+        order.automation_response = json.dumps({
+            'success': True,
+            'manual_override': True,
+            'message': 'Aprobada manualmente por el admin: recarga realizada por fuera de la web.',
+        })
+        ensure_minigame_opportunity(order)
+        award_points_for_order(order)
+        order.updated_at = datetime.utcnow()
+        process_affiliate_commission(order)
+        db.session.commit()
+        try:
+            notify_order_completed(order, order.package, order.game)
+        except Exception:
+            pass
+        return {
+            'ok': True,
+            'changed': True,
+            'message': f'Orden #{order.order_number} aprobada manualmente y sacada de la cola.',
+            'category': 'success',
+        }
+    finally:
+        release_lock(lock_key, lock_holder)
+
+
 def deliver_prize_to_player(game, package, player_id, zone_id=None, note='', reference_prefix='PREMIO'):
     """Entrega un premio (minijuego ganado o canje de puntos) a un ID real.
 

@@ -13,6 +13,57 @@ body { font-family: 'Outfit', sans-serif; background-color: #000000; color: #f8f
 .mobile-shell { width: 100%; max-width: 440px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; background-color: #000000; position: relative; }
 button, input, select { touch-action: manipulation; }
 [hidden] { display: none !important; }
+
+/* Botones de selector de juego, estilo "cristal" igual al de la tienda
+   principal: gradiente translúcido + blur + brillo en el borde superior,
+   en vez del negro/rojo plano. */
+.glass-game-btn {
+    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 45%, rgba(10,10,15,0.03) 100%);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-top: 1px solid rgba(255,255,255,0.3);
+    border-left: 1px solid rgba(255,255,255,0.2);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.25), inset 0 1px 2px rgba(255,255,255,0.15);
+    transition: all .2s ease;
+}
+.glass-game-btn.is-selected {
+    background: linear-gradient(135deg, rgba(255,0,0,0.35) 0%, rgba(255,0,0,0.12) 45%, rgba(20,0,0,0.05) 100%);
+    border-color: rgba(255,60,60,0.6);
+    border-top-color: rgba(255,150,150,0.6);
+    box-shadow: 0 10px 25px rgba(255,0,0,0.25), inset 0 1px 2px rgba(255,255,255,0.25);
+}
+.glass-game-btn:not(.is-selected):hover { border-color: rgba(255,0,0,0.4); background: rgba(255,255,255,0.07); }
+
+.glass-card {
+    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 45%, rgba(10,10,15,0.04) 100%);
+    border: 1px solid rgba(255,60,60,0.45);
+    border-top: 1px solid rgba(255,150,150,0.5);
+    border-left: 1px solid rgba(255,100,100,0.35);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.15);
+}
+.glass-card.is-current { box-shadow: 0 10px 25px rgba(255,0,0,0.35), inset 0 1px 2px rgba(255,255,255,0.2); border-color: rgba(255,60,60,0.75); }
+
+.step-num-badge {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 900;
+    background: linear-gradient(135deg, #ff3333, #cc0000);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(255,0,0,0.6), inset 0 1px 2px rgba(255,255,255,0.3);
+    flex: 0 0 auto;
+}
+.glass-input-field {
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-top: 1px solid rgba(255,255,255,0.25);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 1px rgba(255,255,255,0.15);
+    color: #fff;
+}
+.glass-input-field::placeholder { color: #94a3b8; font-weight: 600; }
+.glass-input-field:focus {
+    border-color: rgba(255,0,0,0.65);
+    box-shadow: 0 0 0 3px rgba(255,0,0,0.15), inset 0 2px 4px rgba(0,0,0,0.1);
+}
 </style>
 </head>
 <body class="bg-black text-slate-100 flex justify-center">
@@ -31,23 +82,27 @@ button, input, select { touch-action: manipulation; }
 
     <main class="w-full flex flex-col items-center gap-4">
         {% if not games %}
-        <div class="w-full bg-[#050505] border border-red-500/30 p-6 rounded-2xl text-center text-slate-300 text-sm">
+        <div class="glass-card w-full p-6 rounded-2xl text-center text-slate-300 text-sm">
             Este juego no está activo en este momento. Vuelve pronto.
         </div>
         {% else %}
 
         {% if games|length > 1 %}
         <div class="w-full">
-            <span class="text-xs uppercase tracking-widest text-white font-extrabold block mb-1.5">Selecciona otro juego:</span>
-            <select id="gameSelect" class="w-full bg-black border border-red-500/40 rounded-xl px-3 py-2.5 text-xs text-white">
+            <span class="text-xs uppercase tracking-widest text-white font-extrabold block mb-1.5">Selecciona un Juego:</span>
+            <div class="w-full flex flex-wrap gap-2">
                 {% for g in games %}
-                <option value="{{ g.id }}" {{ 'selected' if game and game.id == g.id }}>{{ g.name }}</option>
+                <button type="button" onclick="switchGame({{ g.id }})"
+                        class="glass-game-btn flex-1 min-w-[100px] text-center px-3 py-2.5 rounded-xl text-xs font-bold
+                               {% if game and game.id == g.id %}is-selected text-white{% else %}text-slate-300{% endif %}">
+                    {{ g.name }}
+                </button>
                 {% endfor %}
-            </select>
+            </div>
         </div>
         {% endif %}
 
-        <div id="live-panel" class="w-full bg-[#050505] border border-red-500/30 p-3.5 rounded-2xl shadow-xl flex items-center justify-between">
+        <div id="live-panel" class="glass-card w-full p-3.5 rounded-2xl flex items-center justify-between">
             <div class="flex items-center gap-2.5">
                 <div class="w-9 h-9 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-500 text-lg font-bold shadow-inner animate-pulse">🔴</div>
                 <div class="text-left">
@@ -58,7 +113,7 @@ button, input, select { touch-action: manipulation; }
             </div>
         </div>
 
-        <div id="game-section" class="w-full bg-[#050505] border border-zinc-900 p-4 rounded-2xl shadow-xl flex flex-col items-center gap-3.5 custom-glow">
+        <div id="game-section" class="glass-card w-full p-4 rounded-2xl flex flex-col items-center gap-3.5 custom-glow">
             <div class="mt-1 mb-1 text-center">
                 <span class="text-[10px] uppercase tracking-widest text-slate-400 font-bold block mb-1">Oportunidades restantes</span>
                 <div id="chancesDisplay" class="text-xl font-black text-red-500 tracking-wider">⚡ -- de -- intentos</div>
@@ -67,7 +122,7 @@ button, input, select { touch-action: manipulation; }
             <div class="w-full flex flex-col gap-2.5">
                 <div class="w-full flex gap-2">
                     <input type="tel" inputmode="numeric" id="playerIdInput" placeholder="Tu ID de Juego..."
-                           class="flex-1 min-w-0 bg-[#000000] border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
+                           class="glass-input-field flex-1 min-w-0 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none font-mono">
                     {% if verifiable %}
                     <button type="button" id="verifyIdBtn" class="flex-shrink-0 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 text-slate-200 hover:text-white font-extrabold text-[10px] px-3.5 rounded-xl uppercase tracking-wider">🔍 Verificar</button>
                     {% endif %}
@@ -76,18 +131,18 @@ button, input, select { touch-action: manipulation; }
                 <p id="verifyIdMsg" class="text-[11px] font-bold -mt-1 min-h-[14px]"></p>
                 {% endif %}
                 <input type="tel" inputmode="numeric" id="guessInput" placeholder="Tu número..."
-                       class="w-full bg-[#000000] border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500 font-mono shadow-inner">
+                       class="glass-input-field w-full rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none font-mono">
                 <button id="guessBtn" class="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-extrabold text-xs py-3 rounded-xl shadow-lg shadow-red-600/30 uppercase tracking-wider">🚀 Adivinar Número</button>
             </div>
             <p id="feedbackMsg" class="text-[11px] font-bold mt-1 min-h-[16px]"></p>
         </div>
 
-        <div id="winnersContainer" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl">
+        <div id="winnersContainer" class="glass-card w-full p-3.5 rounded-2xl">
             <h2 class="text-xs font-extrabold text-white flex items-center gap-1.5 mb-2">🏆 Ganadores de hoy</h2>
             <div id="winnersBox" class="flex flex-col gap-1.5"></div>
         </div>
 
-        <div id="historyContainer" class="w-full bg-[#050505] border border-zinc-900 p-3.5 rounded-2xl shadow-xl" hidden>
+        <div id="historyContainer" class="glass-card w-full p-3.5 rounded-2xl" hidden>
             <h2 class="text-xs font-extrabold text-white flex items-center gap-1.5 mb-2">📜 Historial</h2>
             <div id="historyList" class="space-y-2.5"></div>
         </div>
@@ -121,8 +176,6 @@ function switchGame(id) {
     url.searchParams.set('game_id', id);
     window.location.href = url.toString();
 }
-const gameSelect = document.getElementById('gameSelect');
-if (gameSelect) gameSelect.addEventListener('change', () => switchGame(gameSelect.value));
 
 function renderWinners(winners) {
     const box = document.getElementById('winnersBox');
@@ -318,10 +371,10 @@ document.getElementById('guessBtn').addEventListener('click', async () => {
             if (typeof confetti === 'function') confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 }, colors: ['#ef4444', '#ffffff', '#fbbf24'] });
         } else {
             feedback.className = 'text-[11px] font-bold mt-1 min-h-[16px] text-amber-400';
-            if (data.hint) {
-                feedback.textContent = `Pista: el número secreto es ${data.hint === 'mayor' ? 'MAYOR' : 'MENOR'}. Te quedan ${data.attempts_remaining} intento(s).`;
+            if (data.attempts_remaining > 0) {
+                feedback.textContent = `¡Estás cerca! Te quedan ${data.attempts_remaining} intento(s).`;
             } else {
-                feedback.textContent = 'Agotaste tus intentos de hoy para este ID.';
+                feedback.textContent = '¡Estás cerca! Agotaste tus intentos de hoy para este ID.';
             }
         }
         document.getElementById('guessInput').value = '';

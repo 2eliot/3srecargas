@@ -179,6 +179,15 @@ class Order(db.Model):
     payment_verification_attempts = db.Column(db.Integer, default=0)
     payment_last_verification_at = db.Column(db.DateTime)
     idempotency_key = db.Column(db.String(64), unique=True, index=True)
+    # Pago incompleto detectado por Pabilo (el banco reportó menos de lo
+    # esperado): mientras esto sea True la orden espera a que el cliente
+    # suba el pago restante en /order/<numero>. paid_amount_bs es el total
+    # en Bs ya confirmado hasta ahora (puede sumar más de un pago).
+    awaiting_payment_completion = db.Column(db.Boolean, default=False)
+    paid_amount_bs = db.Column(db.Numeric(10, 2))
+    remainder_reference = db.Column(db.String(255))
+    remainder_capture = db.Column(db.String(255))
+    remainder_ai_extracted_reference = db.Column(db.String(255))
     # ID de la transacción de Binance Pay que saldó esta orden. Es único: una
     # misma transferencia no puede acreditarse a dos órdenes distintas (algo
     # posible antes, cuando el emparejamiento por monto no dejaba rastro).

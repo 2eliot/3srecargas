@@ -479,6 +479,49 @@ def get_raffle_show_state(game_id, player_id):
     return base
 
 
+def get_raffle_replay_state(game_id, day_key):
+    """Participantes y ganadores de un día YA sorteado, para que el front
+    pueda reproducir de nuevo la animación de la ruleta sobre ese resultado
+    real — ver "Ver repetición del sorteo" en el historial. No decide nada
+    nuevo, solo relee lo que run_daily_raffle_draws ya resolvió ese día."""
+    config = get_raffle_config(game_id)
+    if not config:
+        return {'enabled': False, 'error': 'Este sorteo no está activo.'}
+
+    winners = (
+        PromoRaffleWinner.query
+        .filter_by(game_id=game_id, day_key=day_key)
+        .order_by(PromoRaffleWinner.created_at.asc())
+        .all()
+    )
+    if not winners:
+        return {'enabled': False, 'error': 'Ese día no tiene un sorteo registrado.'}
+
+    entries = (
+        PromoRaffleEntry.query
+        .filter_by(game_id=game_id, day_key=day_key)
+        .order_by(PromoRaffleEntry.ticket_number.asc())
+        .all()
+    )
+
+    def _display_name(nick):
+        return nick or 'Jugador'
+
+    return {
+        'enabled': True,
+        'day_key': day_key,
+        'reward_label': config.package.name if config.package else '',
+        'participants': [
+            {'ticket': e.ticket_number, 'id': e.player_id, 'name': _display_name(e.player_nick)}
+            for e in entries
+        ],
+        'winners': [
+            {'ticket': w.ticket_number, 'id': w.player_id, 'name': _display_name(w.player_nick)}
+            for w in winners
+        ],
+    }
+
+
 # ─── Adivina el Número ───────────────────────────────────────────────────────
 
 def get_guess_config(game_id):
@@ -606,11 +649,15 @@ def submit_guess(game_id, player_id, guess_value):
             'closed_for_today': closed_for_today,
         }
 
-    hint = 'mayor' if guess_value < round_row.secret_number else 'menor'
     db.session.commit()
     return {
         'won': False,
-        'hint': hint if remaining_attempts > 0 else None,
+        # Ya no se dice si el número real es mayor o menor: con esa pista,
+        # entre varias personas comparando resultados (o generando IDs falsos
+        # para sacar más intentos) le hacían búsqueda binaria al número
+        # secreto y lo sacaban en un puñado de intentos. Ahora solo se les
+        # da ánimo genérico, sin información real para acorralar el número.
+        'hint': 'cerca',
         'attempts_remaining': remaining_attempts,
     }
 

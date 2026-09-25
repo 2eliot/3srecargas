@@ -49,7 +49,7 @@ from ..utils.minigames import (
 from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
-from ..utils.order_processing import approve_order, get_revendedores_env, process_affiliate_commission, process_revendedores_queue
+from ..utils.order_processing import approve_order, force_approve_order_manually, get_revendedores_env, process_affiliate_commission, process_revendedores_queue
 from ..models import PushSubscription
 from ..utils.push_notifications import is_push_configured, send_push_broadcast
 from ..utils.points import (
@@ -71,6 +71,7 @@ from ..utils.payment_verification import (
     clear_pabilo_verification_state,
     normalize_reference_last5,
     payment_method_uses_payer_identity_verification,
+    recompute_order_payment_amount,
     stamp_verified_payment,
     verify_order_payment,
 )
@@ -84,6 +85,17 @@ _last_housekeeping_run = None
 
 ALLOWED_EXT = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 ALLOWED_VIDEO_EXT = {'mp4', 'webm', 'mov', 'm4v'}
+
+# Fondos opcionales por ítem del menú lateral (ver Configuración General >
+# Fondos de los accesos del menú). Mismo Setting key/value que el resto de
+# imágenes de branding — (clave, descripción, etiqueta para el form).
+DRAWER_BG_ITEMS = [
+    ('drawer_bg_recarga', 'Fondo del acceso "Recarga Acumulada"', 'Recarga Acumulada'),
+    ('drawer_bg_sorteo', 'Fondo del acceso "Sorteo Diario"', 'Sorteo Diario'),
+    ('drawer_bg_adivina', 'Fondo del acceso "Adivina el Número"', 'Adivina el Número'),
+    ('drawer_bg_canjear', 'Fondo del acceso "Canjear código"', 'Canjear código'),
+    ('drawer_bg_mini', 'Fondo del acceso "Soy mini influencer"', 'Soy mini influencer'),
+]
 PROTECTED_CATEGORY_SLUGS = {'juegos', 'tarjetas', 'wallet'}
 RANKING_PRIZE_POSITIONS = [1, 2, 3, 4, 5]
 GAME_PLAYER_INPUT_TYPES = {'numeric', 'text', 'email'}
@@ -1252,6 +1264,7 @@ def order_update_package(order_id):
         old_amount = order.amount
         order.package_id = new_package.id
         order.amount = new_package.price
+        recompute_order_payment_amount(order)
         order.updated_at = datetime.utcnow()
 
         note = (
@@ -1377,13 +1390,33 @@ def order_approve(order_id):
         return redirect(redirect_target)
 
 
+@admin_bp.route('/orders/<int:order_id>/force-approve', methods=['POST'])
+@login_required
+def order_force_approve(order_id):
+    order = Order.query.get_or_404(order_id)
+    admin_note = request.form.get('admin_note', '').strip()
+    try:
+        result = force_approve_order_manually(order, admin_note=admin_note)
+        flash(result['message'], result['category'])
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            'Error al forzar la aprobación manual de la orden %s',
+            getattr(order, 'id', None),
+        )
+        flash('Ocurrió un error interno al forzar la aprobación. Revisa el log del servidor para el detalle.', 'danger')
+    return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
+
 @admin_bp.route('/orders/<int:order_id>/reject', methods=['POST'])
 @login_required
 def order_reject(order_id):
     order = Order.query.get_or_404(order_id)
     notes = request.form.get('notes', '').strip()
     order.status = 'rejected'
-    order.notes = notes
+    if notes:
+        existing_notes = order.notes or ''
+        order.notes = (existing_notes + '\n' + notes).strip()
     order.updated_at = datetime.utcnow()
     db.session.commit()
     try:
@@ -1392,6 +1425,25 @@ def order_reject(order_id):
         pass
     flash(f'Orden #{order.order_number} rechazada.', 'warning')
     return redirect(url_for('admin_bp.orders'))
+
+
+@admin_bp.route('/orders/<int:order_id>/add-note', methods=['POST'])
+@login_required
+def order_add_note(order_id):
+    order = Order.query.get_or_404(order_id)
+    note_text = request.form.get('note', '').strip()
+    if not note_text:
+        flash('Escribe una nota antes de guardar.', 'warning')
+        return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
+    stamp = format_ve(datetime.utcnow(), '%d/%m/%Y %H:%M')
+    note = f'[Nota {stamp}] {note_text}'
+    existing_notes = order.notes or ''
+    order.notes = (existing_notes + '\n' + note).strip()
+    order.updated_at = datetime.utcnow()
+    db.session.commit()
+    flash('Nota guardada.', 'success')
+    return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
 
 # ─── PINs ────────────────────────────────────────────────────────────────────
@@ -2012,7 +2064,7 @@ def minis():
 
     program_settings = {
         s.key: s.value for s in Setting.query.filter(
-            Setting.key.in_(['mini_rules_text', 'mini_rules_video_url', 'mini_whatsapp_group_url'])
+            Setting.key.in_(['mini_rules_text', 'mini_rules_video_url', 'mini_whatsapp_group_url', 'mini_registration_enabled'])
         ).all()
     }
 
@@ -2021,6 +2073,7 @@ def minis():
         mini_rules_text=program_settings.get('mini_rules_text', ''),
         mini_rules_video_url=program_settings.get('mini_rules_video_url', ''),
         mini_whatsapp_group_url=program_settings.get('mini_whatsapp_group_url', ''),
+        mini_registration_enabled=program_settings.get('mini_registration_enabled', 'true') != 'false',
         mini_payout_methods=mini_payout_methods,
         course_videos=course_videos,
         section=section,
@@ -2057,6 +2110,25 @@ def mini_set_password(aff_id):
     return redirect(url_for('admin_bp.minis', section='aprobados'))
 
 
+@admin_bp.route('/minis/<int:aff_id>/nota', methods=['POST'])
+@login_required
+def mini_send_note(aff_id):
+    aff = Affiliate.query.get_or_404(aff_id)
+    if not aff.is_mini:
+        flash('Ese afiliado no es un mini influencer.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='aprobados'))
+
+    message = (request.form.get('message') or '').strip()
+    if not message:
+        flash('Escribe la nota que le vas a mandar.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='aprobados'))
+
+    notify_mini(aff, f'📩 {message[:280]}')
+    db.session.commit()
+    flash(f'Nota enviada a "{aff.name}".', 'success')
+    return redirect(url_for('admin_bp.minis', section='aprobados'))
+
+
 # ─── Config: tramos de vistas y rangos ────────────────────────────────────────
 
 @admin_bp.route('/minis/program-config', methods=['POST'])
@@ -2069,6 +2141,7 @@ def mini_program_config_save():
         'mini_rules_text': (request.form.get('mini_rules_text', '') or '').strip(),
         'mini_rules_video_url': (request.form.get('mini_rules_video_url', '') or '').strip(),
         'mini_whatsapp_group_url': (request.form.get('mini_whatsapp_group_url', '') or '').strip(),
+        'mini_registration_enabled': 'true' if request.form.get('mini_registration_enabled') else 'false',
     }
     for key, value in updates.items():
         setting = Setting.query.filter_by(key=key).first()
@@ -2343,8 +2416,8 @@ def mini_approve(aff_id):
         return redirect(url_for('admin_bp.minis'))
 
     try:
-        client_discount_rate = float(request.form.get('client_discount_rate', 2.0))
-        commission_rate = float(request.form.get('commission_rate', 1.0))
+        client_discount_rate = float(request.form.get('client_discount_rate', 3.0))
+        commission_rate = float(request.form.get('commission_rate', 0.0))
     except ValueError:
         flash('Los porcentajes deben ser números.', 'danger')
         return redirect(url_for('admin_bp.minis'))
@@ -2849,6 +2922,11 @@ def settings():
     promo_banner_image_value = promo_banner_image_setting.value if promo_banner_image_setting else ''
     promo_banner_link_setting = Setting.query.filter_by(key='promo_banner_link').first()
     promo_banner_link_value = promo_banner_link_setting.value if promo_banner_link_setting else ''
+    drawer_bg_settings = {
+        s.key: s for s in Setting.query.filter(
+            Setting.key.in_([key for key, _, _ in DRAWER_BG_ITEMS])
+        ).all()
+    }
     checkout_payment_video_method_setting = Setting.query.filter_by(key='checkout_payment_video_method').first()
     checkout_payment_video_method_value = checkout_payment_video_method_setting.value if checkout_payment_video_method_setting else ''
     checkout_payment_video_title_setting = Setting.query.filter_by(key='checkout_payment_video_title').first()
@@ -2982,6 +3060,8 @@ def settings():
         remove_promo_banner_image = request.form.get('remove_promo_banner_image')
         promo_banner_image_file = request.files.get('promo_banner_image')
         promo_banner_link = (request.form.get('promo_banner_link', '') or '').strip()
+        drawer_bg_removes = {key: request.form.get('remove_' + key) for key, _, _ in DRAWER_BG_ITEMS}
+        drawer_bg_files = {key: request.files.get(key) for key, _, _ in DRAWER_BG_ITEMS}
         checkout_payment_video_method = (request.form.get('checkout_payment_video_method', '') or '').strip().lower()
         checkout_payment_video_title = (request.form.get('checkout_payment_video_title', '') or '').strip()
         checkout_payment_video_message = (request.form.get('checkout_payment_video_message', '') or '').strip()
@@ -3144,6 +3224,25 @@ def settings():
             db.session.add(promo_banner_link_setting)
         else:
             promo_banner_link_setting.value = promo_banner_link
+
+        for key, description, _label in DRAWER_BG_ITEMS:
+            setting = drawer_bg_settings.get(key)
+            if drawer_bg_removes.get(key) and setting:
+                delete_uploaded_file(setting.value)
+                setting.value = ''
+
+            bg_file = drawer_bg_files.get(key)
+            if bg_file and bg_file.filename:
+                saved_bg = save_image(bg_file, 'branding')
+                if saved_bg:
+                    if setting and setting.value:
+                        delete_uploaded_file(setting.value)
+                    if not setting:
+                        setting = Setting(key=key, value=saved_bg, description=description)
+                        db.session.add(setting)
+                        drawer_bg_settings[key] = setting
+                    else:
+                        setting.value = saved_bg
 
         valid_video_method = ''
         if checkout_payment_video_method:
@@ -3345,6 +3444,10 @@ def settings():
         order_status_image=order_status_image_value,
         promo_banner_image=promo_banner_image_value,
         promo_banner_link=promo_banner_link_value,
+        drawer_bg_items=[
+            (key, label, (drawer_bg_settings[key].value if key in drawer_bg_settings and drawer_bg_settings[key].value else ''))
+            for key, _description, label in DRAWER_BG_ITEMS
+        ],
         social_settings=social_settings,
         email_settings=email_settings,
         payment_verify_settings=payment_verify_settings,
@@ -3434,6 +3537,17 @@ def minigames():
             joinedload(OrderMiniGameOpportunity.prize_order),
         )
         .order_by(OrderMiniGameOpportunity.played_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    # Recarga Acumulada no tenía ningún resumen a la vista sin entrar juego
+    # por juego más abajo — acá se junta el historial de TODOS los juegos,
+    # igual que "Ganadores recientes" hace para la ruleta.
+    accumulated_winners = (
+        PromoAccumulatedAward.query
+        .options(joinedload(PromoAccumulatedAward.game), joinedload(PromoAccumulatedAward.prize_order))
+        .order_by(PromoAccumulatedAward.created_at.desc())
         .limit(100)
         .all()
     )
@@ -3568,6 +3682,7 @@ def minigames():
         win_interval=win_interval,
         counter_cards=counter_cards,
         winners=winners,
+        accumulated_winners=accumulated_winners,
         minigame_dev_mode=is_minigame_dev_mode(),
         raffle_participation=raffle_participation,
         guess_participation=guess_participation,

@@ -20,7 +20,6 @@ from ..utils.mini_influencers import (
     clear_attempts,
     count_qualifying_uses,
     detect_platform,
-    generate_temp_code,
     get_rank_progress,
     is_rate_limited,
     normalize_video_url,
@@ -29,6 +28,17 @@ from ..utils.mini_influencers import (
 )
 
 minis_bp = Blueprint('minis_bp', __name__)
+
+# El registro ya no pasa por aprobación manual: la cuenta queda activa de
+# una con estas tasas por defecto. El admin las puede ajustar después desde
+# Admin > Minis > Aprobados > "Editar %" si hace falta.
+#
+# La comisión por uso queda en 0 a propósito: el mini no cobra nada por
+# cada venta con su código, solo el cliente recibe el descuento. Lo único
+# que le paga al mini es la escalera de rangos (MiniRank/award_rank_bonus)
+# cuando junta la cantidad de usos configurada para cada rango.
+MINI_DEFAULT_DISCOUNT_RATE = 3.0
+MINI_DEFAULT_COMMISSION_RATE = 0.0
 
 # Código elegido a mano por el mini al registrarse: mismo tipo de charset que
 # ya acepta el admin al tipear uno a mano en /admin/affiliates, con un largo
@@ -59,11 +69,17 @@ def minis_access_guard():
     return None
 
 
+def _registration_enabled():
+    setting = Setting.query.filter_by(key='mini_registration_enabled').first()
+    return (setting.value if setting else 'true') != 'false'
+
+
 @minis_bp.route('', methods=['GET'])
 def login():
     if current_user.is_authenticated and _current_mini_ok():
         return redirect(url_for('minis_bp.panel'))
-    return render_template('minis/login.html')
+    all_ranks = MiniRank.query.order_by(MiniRank.uses_required.asc()).all()
+    return render_template('minis/login.html', all_ranks=all_ranks, registration_enabled=_registration_enabled())
 
 
 @minis_bp.route('/ingresar', methods=['POST'])
@@ -103,6 +119,9 @@ def mini_login_submit():
 
 @minis_bp.route('/solicitar', methods=['POST'])
 def mini_register_submit():
+    if not _registration_enabled():
+        return jsonify({'ok': False, 'message': 'El registro de nuevos minis está cerrado por ahora.'}), 403
+
     ip = _client_ip()
     if is_rate_limited(ip):
         return jsonify({'ok': False, 'message': 'Demasiados intentos seguidos. Espera unos minutos.'}), 429
@@ -128,8 +147,9 @@ def mini_register_submit():
         return jsonify({'ok': False, 'message': 'Escribe tu número de WhatsApp.'}), 400
     if not application_note:
         return jsonify({'ok': False, 'message': 'Cuéntanos de qué trata tu contenido.'}), 400
-
-    if desired_code and not CODE_PATTERN.match(desired_code):
+    if not desired_code:
+        return jsonify({'ok': False, 'message': 'Elige el código que vas a usar.'}), 400
+    if not CODE_PATTERN.match(desired_code):
         return jsonify({'ok': False, 'message': 'El código debe tener 3-20 caracteres: letras, números, guion o guion bajo.'}), 400
 
     existing = Affiliate.query.filter(
@@ -144,26 +164,28 @@ def mini_register_submit():
     # colisión de carrera entre dos registros con el mismo código deseado la
     # resuelve la constraint UNIQUE de la base (el segundo ve el error de
     # abajo), no una condición leída-y-luego-escrita en dos pasos.
-    if desired_code:
-        if Affiliate.query.filter_by(code=desired_code).first():
-            register_failed_attempt(ip)
-            return jsonify({'ok': False, 'message': 'Ese código ya está en uso, elige otro.'}), 409
-        code = desired_code
-    else:
-        code = generate_temp_code()
+    if Affiliate.query.filter_by(code=desired_code).first():
+        register_failed_attempt(ip)
+        return jsonify({'ok': False, 'message': 'Ese código ya está en uso, elige otro.'}), 409
+    code = desired_code
 
+    # Alta inmediata, sin cola de aprobación manual: la cuenta queda activa
+    # al instante con el código y las tasas por defecto del programa. El
+    # admin las sigue pudiendo ajustar después desde /admin/minis si hace
+    # falta, pero ya no bloquea que el mini empiece a compartir su código.
     affiliate = Affiliate(
         name=channel_name,
         email=email,
         code=code,
-        commission_rate=0,
-        client_discount_rate=0,
-        is_active=False,
-        status='pending',
+        commission_rate=MINI_DEFAULT_COMMISSION_RATE,
+        client_discount_rate=MINI_DEFAULT_DISCOUNT_RATE,
+        is_active=True,
+        status='approved',
         is_mini=True,
         channel_url=channel_url,
         whatsapp_phone=whatsapp_phone,
         application_note=application_note,
+        reviewed_at=datetime.utcnow(),
     )
     affiliate.set_password(password)
     db.session.add(affiliate)
@@ -178,7 +200,8 @@ def mini_register_submit():
         return jsonify({'ok': False, 'message': 'Ese código ya está en uso, elige otro.'}), 409
 
     clear_attempts(ip)
-    return jsonify({'ok': True, 'message': 'Tu solicitud quedó registrada. Te avisaremos cuando sea aprobada.'})
+    login_user(affiliate)
+    return jsonify({'ok': True, 'redirect': url_for('minis_bp.panel')})
 
 
 @minis_bp.route('/panel', methods=['GET'])

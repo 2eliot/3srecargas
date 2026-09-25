@@ -208,11 +208,16 @@ def create_app(config_class=Config):
             'ranking_free_fire_game_id',
             'ranking_blood_strike_game_id',
         ]
+        drawer_bg_keys = [
+            'drawer_bg_recarga', 'drawer_bg_sorteo', 'drawer_bg_adivina',
+            'drawer_bg_canjear', 'drawer_bg_mini',
+        ]
         wanted_keys = (
             ['site_logo', 'site_background_image', 'support_email', 'support_whatsapp', 'support_schedule', 'support_location']
             + ['site_tutorial_video_file', 'site_tutorial_video_title']
             + social_keys
             + ranking_keys
+            + drawer_bg_keys
         )
         values = {
             row.key: row.value
@@ -229,6 +234,7 @@ def create_app(config_class=Config):
         site_tutorial_video_file = values.get('site_tutorial_video_file') or None
         site_tutorial_video_title = values.get('site_tutorial_video_title') or 'Tutorial'
         ranking_settings = {key: values.get(key) or '' for key in ranking_keys}
+        drawer_bg_images = {key: values.get(key) or None for key in drawer_bg_keys}
 
         has_active_ranking = has_visible_public_rankings()
 
@@ -243,6 +249,7 @@ def create_app(config_class=Config):
             'SITE_TUTORIAL_VIDEO_FILE': site_tutorial_video_file,
             'SITE_TUTORIAL_VIDEO_TITLE': site_tutorial_video_title,
             'RANKING_SETTINGS': ranking_settings,
+            'DRAWER_BG_IMAGES': drawer_bg_images,
             'HAS_ACTIVE_RANKING': has_active_ranking,
             'APP_TIMEZONE': 'GMT-4',
             'APP_TIMEZONE_NAME': 'Venezuela',
@@ -281,6 +288,7 @@ def create_app(config_class=Config):
         _ensure_one_per_player_columns()
         _ensure_payment_verification_columns()
         _ensure_ai_reference_columns()
+        _ensure_order_payment_completion_columns()
         _ensure_order_idempotency_column()
         _ensure_ranking_archive_columns()
         _ensure_revendedores_mapping_columns()
@@ -745,6 +753,37 @@ def _ensure_ai_reference_columns():
         existing = {r[1] for r in rows}
         if 'ai_extracted_reference' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN ai_extracted_reference VARCHAR(255)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_payment_completion_columns():
+    try:
+        if _ensure_postgres_columns('orders', [
+            'awaiting_payment_completion BOOLEAN DEFAULT FALSE',
+            'paid_amount_bs NUMERIC(10, 2)',
+            'remainder_reference VARCHAR(255)',
+            'remainder_capture VARCHAR(255)',
+            'remainder_ai_extracted_reference VARCHAR(255)',
+        ]):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'awaiting_payment_completion' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN awaiting_payment_completion BOOLEAN DEFAULT 0'))
+        if 'paid_amount_bs' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN paid_amount_bs NUMERIC(10, 2)'))
+        if 'remainder_reference' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN remainder_reference VARCHAR(255)'))
+        if 'remainder_capture' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN remainder_capture VARCHAR(255)'))
+        if 'remainder_ai_extracted_reference' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN remainder_ai_extracted_reference VARCHAR(255)'))
         db.session.commit()
     except Exception:
         db.session.rollback()

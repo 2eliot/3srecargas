@@ -1039,6 +1039,125 @@
         </div>
         {% endif %}
 
+        {% if order.status == 'pending' and order.awaiting_payment_completion %}
+        <div class="nx-manual-wa" id="completePaymentCard" style="border-color:rgba(245,158,11,.5);background:linear-gradient(135deg, rgba(245,158,11,.12), rgba(5,5,8,.6))">
+            <h3>⚠ Te falta completar el pago</h3>
+            <p id="completePaymentMissing">
+                {% if missing_amount_bs %}Detectamos tu pago pero está incompleto. Te falta <strong>Bs {{ "%.2f"|format(missing_amount_bs) }}</strong> para que tu orden se procese automáticamente.
+                {% else %}Detectamos tu pago pero está incompleto. Completa el monto restante para que tu orden se procese automáticamente.{% endif %}
+            </p>
+
+            <button type="button" class="nx-copyall-btn red-glow-pill" id="showPaymentMethodBtn" style="margin-top:4px">💳 Ver datos del método de pago</button>
+            <div id="paymentMethodDetails" style="display:none;margin-top:10px">
+                {% if payment_method_details %}
+                {% set m = payment_method_details %}
+                {% set pm_currency = (m.account_currency or 'bs')|lower %}
+                {% set copy_all_lines = [] %}
+                {% if pm_currency == 'bs' %}
+                    {% set bank_value = m.bank_name or m.name %}
+                    {% if copy_all_lines.append('Banco: ' + bank_value) %}{% endif %}
+                    <div class="nx-pay-row glass-subpanel">
+                        <span class="nx-pay-val"><span class="nx-pay-ico">🏦</span>{{ bank_value }}</span>
+                        <button type="button" class="nx-copy-btn red-glow-pill" data-copy-value="{{ bank_value }}">Copiar</button>
+                    </div>
+                    {% if m.id_number %}
+                    {% if copy_all_lines.append('Cédula/RIF: ' + m.id_number) %}{% endif %}
+                    <div class="nx-pay-row glass-subpanel">
+                        <span class="nx-pay-val"><span class="nx-pay-ico">👤</span>{{ m.id_number }}</span>
+                        <button type="button" class="nx-copy-btn red-glow-pill" data-copy-value="{{ m.id_number }}">Copiar</button>
+                    </div>
+                    {% endif %}
+                    {% if m.contact_phone %}
+                    {% if copy_all_lines.append('Teléfono: ' + m.contact_phone) %}{% endif %}
+                    <div class="nx-pay-row glass-subpanel">
+                        <span class="nx-pay-val"><span class="nx-pay-ico">📞</span>{{ m.contact_phone }}</span>
+                        <button type="button" class="nx-copy-btn red-glow-pill" data-copy-value="{{ m.contact_phone }}">Copiar</button>
+                    </div>
+                    {% endif %}
+                {% else %}
+                    {% if m.contact_email %}
+                    {% if copy_all_lines.append('Correo: ' + m.contact_email) %}{% endif %}
+                    <div class="nx-pay-row glass-subpanel">
+                        <span class="nx-pay-val"><span class="nx-pay-ico">✉</span>{{ m.contact_email }}</span>
+                        <button type="button" class="nx-copy-btn red-glow-pill" data-copy-value="{{ m.contact_email }}">Copiar</button>
+                    </div>
+                    {% endif %}
+                    {% if m.pay_id %}
+                    {% if copy_all_lines.append('Pay ID: ' + m.pay_id) %}{% endif %}
+                    <div class="nx-pay-row glass-subpanel">
+                        <span class="nx-pay-val"><span class="nx-pay-ico">🆔</span>{{ m.pay_id }}</span>
+                        <button type="button" class="nx-copy-btn red-glow-pill" data-copy-value="{{ m.pay_id }}">Copiar</button>
+                    </div>
+                    {% endif %}
+                    {% if m.contact_phone %}
+                    {% if copy_all_lines.append('Teléfono: ' + m.contact_phone) %}{% endif %}
+                    <div class="nx-pay-row glass-subpanel">
+                        <span class="nx-pay-val"><span class="nx-pay-ico">📞</span>{{ m.contact_phone }}</span>
+                        <button type="button" class="nx-copy-btn red-glow-pill" data-copy-value="{{ m.contact_phone }}">Copiar</button>
+                    </div>
+                    {% endif %}
+                {% endif %}
+                {% if missing_amount_bs %}
+                {% if copy_all_lines.append('Monto a pagar: Bs ' + '%.2f'|format(missing_amount_bs)) %}{% endif %}
+                <div class="nx-pay-amount-row glass-subpanel">
+                    <span class="nx-pay-amount-pill red-glow-border">Bs {{ "%.2f"|format(missing_amount_bs) }}</span>
+                    <button type="button" class="nx-copy-btn red-glow-pill" style="font-size:12px; padding:7px 14px" data-copy-value="{{ '%.2f'|format(missing_amount_bs) }}">Copiar</button>
+                </div>
+                {% endif %}
+                {% if copy_all_lines %}
+                <button type="button" class="nx-copyall-btn red-glow-pill" id="copyAllPaymentBtn" style="margin-top:10px" data-copy-all="{{ copy_all_lines|join('\n') }}">Copiar todos los datos</button>
+                {% endif %}
+                {% else %}
+                <p class="form-hint">No se encontraron los datos de este método de pago. Contacta a soporte.</p>
+                {% endif %}
+            </div>
+
+            <div class="nx-step-card" style="margin-top:14px;padding:14px;text-align:left">
+                <div class="nx-proof-head" style="margin-bottom:10px">
+                    <div class="nx-step-head-left">
+                        <h2 class="nx-step-title" style="font-size:15px">Comprobante de pago</h2>
+                    </div>
+                </div>
+
+                <div class="nx-dropzone" id="remainderDropzone" role="button" tabindex="0">
+                    <input type="file" id="remainderCapture" accept="image/*">
+                    <div class="nx-drop-inner">
+                        <div class="nx-drop-left">
+                            <div class="nx-drop-ico" id="remainderDropIco">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                            </div>
+                            <div class="nx-drop-copy">
+                                <p class="t1" id="remainderDropTitle">Toca aquí para subir foto</p>
+                                <p class="t2" id="remainderDropSub">Adjunta el comprobante</p>
+                            </div>
+                        </div>
+                        <span class="nx-drop-btn red-glow-pill" id="remainderDropBtn">Subir</span>
+                    </div>
+                </div>
+
+                <div class="nx-extract-card glass-subpanel" id="remainderExtractCard" hidden style="margin-top:10px">
+                    <p class="lbl">Referencia extraída del comprobante</p>
+                    <p class="val" id="remainderExtractVal">-</p>
+                    <p class="st" id="remainderExtractStatus"></p>
+                </div>
+
+                <p class="nx-pay-label">Número de Referencia</p>
+                <input type="text" id="remainderReference" maxlength="30" autocomplete="off"
+                       placeholder="Ej: 123456" class="glass-input"
+                       style="width:100%; padding:11px 14px; text-align:center; letter-spacing:.15em; font-size:14px">
+
+                <p class="nx-proof-warning" style="margin:10px 0 0">
+                    ⚠️ Subir comprobantes falsos o manipulados constituye fraude electrónico y será penalizado conforme a la ley.
+                </p>
+
+                <button type="button" class="submit-btn" id="remainderSubmitBtn" style="margin-top:14px;background:linear-gradient(135deg,#f59e0b,#d97706)">
+                    Completar pago
+                </button>
+                <p class="nx-order-hint" id="remainderStatusMsg" style="margin-top:10px"></p>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Botones de acción -->
         <div class="nx-order-actions">
             <a class="wa-btn" href="{{ SUPPORT_WHATSAPP_URL or 'https://whatsapp.com' }}" target="_blank" rel="noopener noreferrer">
@@ -2270,6 +2389,10 @@
                     }
                     return;
                 }
+                if (data.underpaid) {
+                    window.location.reload();
+                    return;
+                }
                 if (data.stop_polling) {
                     return;
                 }
@@ -2291,6 +2414,185 @@
         return;
     }
     window.setTimeout(pollAutoVerify, 6000);
+})();
+</script>
+{% endif %}
+
+{% if order.status == 'pending' and order.awaiting_payment_completion %}
+<script>
+(function () {
+    var orderNumber = '{{ order.order_number }}';
+    var fileInput = document.getElementById('remainderCapture');
+    var dropzone = document.getElementById('remainderDropzone');
+    var dropIco = document.getElementById('remainderDropIco');
+    var dropTitle = document.getElementById('remainderDropTitle');
+    var dropSub = document.getElementById('remainderDropSub');
+    var dropBtn = document.getElementById('remainderDropBtn');
+    var extractedBox = document.getElementById('remainderExtractCard');
+    var extractedValue = document.getElementById('remainderExtractVal');
+    var extractedStatus = document.getElementById('remainderExtractStatus');
+    var referenceInput = document.getElementById('remainderReference');
+    var submitBtn = document.getElementById('remainderSubmitBtn');
+    var statusMsg = document.getElementById('remainderStatusMsg');
+    var missingEl = document.getElementById('completePaymentMissing');
+    var showPaymentMethodBtn = document.getElementById('showPaymentMethodBtn');
+    var paymentMethodDetails = document.getElementById('paymentMethodDetails');
+    if (!fileInput || !submitBtn) return;
+
+    if (showPaymentMethodBtn && paymentMethodDetails) {
+        showPaymentMethodBtn.addEventListener('click', function () {
+            var isHidden = paymentMethodDetails.style.display === 'none';
+            paymentMethodDetails.style.display = isHidden ? 'block' : 'none';
+            showPaymentMethodBtn.textContent = isHidden ? '💳 Ocultar datos del método de pago' : '💳 Ver datos del método de pago';
+        });
+        paymentMethodDetails.addEventListener('click', function (e) {
+            var btn = e.target && e.target.closest ? e.target.closest('[data-copy-value], [data-copy-all]') : null;
+            if (!btn) return;
+            var value = btn.getAttribute('data-copy-value') || btn.getAttribute('data-copy-all') || '';
+            if (!value) return;
+            var doneCopy = function () {
+                var prevText = btn.textContent;
+                btn.textContent = '¡Copiado!';
+                setTimeout(function () { btn.textContent = prevText; }, 1500);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(value).then(doneCopy).catch(doneCopy);
+            } else {
+                var ta = document.createElement('textarea');
+                ta.value = value;
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); } catch (_) {}
+                document.body.removeChild(ta);
+                doneCopy();
+            }
+        });
+    }
+
+    var extractedReference = '';
+    var extractionSeq = 0;
+
+    function setExtracted(reference, message, tone) {
+        if (!extractedBox) return;
+        if (!reference && !message) {
+            extractedBox.hidden = true;
+            return;
+        }
+        extractedBox.hidden = false;
+        extractedValue.textContent = reference || '-';
+        extractedStatus.textContent = message || '';
+        extractedBox.classList.remove('is-loading', 'is-success', 'is-warning', 'is-error');
+        if (tone) extractedBox.classList.add(tone);
+    }
+
+    function runExtraction(file) {
+        var seq = ++extractionSeq;
+        setExtracted('', 'Analizando comprobante...', 'is-loading');
+        var formData = new FormData();
+        formData.append('payment_capture', file);
+        fetch('{{ url_for("checkout_bp.extract_payment_reference") }}', { method: 'POST', body: formData })
+            .then(function (r) { return r.json().catch(function () { return { ok: false, reference: '', message: 'No se pudo leer la respuesta.' }; }); })
+            .then(function (data) {
+                if (seq !== extractionSeq) return;
+                extractedReference = String(data.reference || '').trim();
+                if (extractedReference) {
+                    setExtracted(extractedReference, data.message || 'Se usará si no escribes una referencia manual.', 'is-success');
+                    if (referenceInput && !referenceInput.value.trim()) {
+                        referenceInput.value = extractedReference;
+                    }
+                } else {
+                    setExtracted('-', data.message || 'No se pudo extraer una referencia clara del comprobante.', data.ok ? 'is-warning' : 'is-error');
+                }
+            })
+            .catch(function () {
+                if (seq !== extractionSeq) return;
+                setExtracted('-', 'No se pudo analizar el comprobante en este momento.', 'is-error');
+            });
+    }
+
+    if (dropzone) {
+        dropzone.addEventListener('click', function (e) {
+            if (e.target === fileInput) return;
+            fileInput.click();
+        });
+        dropzone.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+        });
+    }
+
+    fileInput.addEventListener('change', function () {
+        var file = fileInput.files && fileInput.files[0];
+        if (file) {
+            if (dropIco) {
+                dropIco.classList.add('has-img');
+                dropIco.innerHTML = '<img alt="Comprobante" src="' + URL.createObjectURL(file) + '">';
+            }
+            if (dropTitle) { dropTitle.textContent = '¡Cargado con éxito!'; dropTitle.classList.add('ok'); }
+            if (dropSub) dropSub.textContent = file.name || 'Comprobante adjuntado';
+            if (dropBtn) dropBtn.textContent = 'Cambiar';
+        } else {
+            if (dropIco) {
+                dropIco.classList.remove('has-img');
+                dropIco.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>';
+            }
+            if (dropTitle) { dropTitle.textContent = 'Toca aquí para subir foto'; dropTitle.classList.remove('ok'); }
+            if (dropSub) dropSub.textContent = 'Adjunta el comprobante';
+            if (dropBtn) dropBtn.textContent = 'Subir';
+        }
+        runExtraction(file);
+    });
+
+    submitBtn.addEventListener('click', function () {
+        var manualRef = referenceInput ? referenceInput.value.trim() : '';
+        var file = fileInput.files && fileInput.files[0];
+        if (!manualRef && !file) {
+            if (statusMsg) statusMsg.textContent = 'Ingresa la referencia o adjunta el comprobante del pago restante.';
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Verificando...';
+        if (statusMsg) statusMsg.textContent = '';
+
+        var formData = new FormData();
+        if (manualRef) formData.append('payment_reference', manualRef);
+        if (file) formData.append('payment_capture', file);
+
+        fetch('/order/' + orderNumber + '/complete-payment', { method: 'POST', body: formData })
+            .then(function (r) { return r.json().catch(function () { return { ok: false, message: 'No se pudo leer la respuesta del servidor.' }; }); })
+            .then(function (data) {
+                if (data.covered) {
+                    if (statusMsg) statusMsg.textContent = '¡Pago completado! Actualizando tu orden...';
+                    window.setTimeout(function () { window.location.reload(); }, 1200);
+                    return;
+                }
+                if (data.verified && data.missing_amount) {
+                    if (missingEl) {
+                        missingEl.innerHTML = 'Se sumó tu pago, pero todavía falta <strong>Bs ' + data.missing_amount + '</strong> para completar la orden.';
+                    }
+                    if (statusMsg) statusMsg.textContent = 'Sube el comprobante o la referencia del monto que aún falta.';
+                    if (referenceInput) referenceInput.value = '';
+                    if (fileInput) fileInput.value = '';
+                    if (dropIco) {
+                        dropIco.classList.remove('has-img');
+                        dropIco.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>';
+                    }
+                    if (dropTitle) { dropTitle.textContent = 'Toca aquí para subir foto'; dropTitle.classList.remove('ok'); }
+                    if (dropSub) dropSub.textContent = 'Adjunta el comprobante';
+                    if (dropBtn) dropBtn.textContent = 'Subir';
+                    setExtracted('', '');
+                    return;
+                }
+                if (statusMsg) statusMsg.textContent = data.message || 'No se pudo verificar el pago todavía. Espera unos segundos e intenta de nuevo.';
+            })
+            .catch(function () {
+                if (statusMsg) statusMsg.textContent = 'No se pudo contactar al servidor. Intenta de nuevo.';
+            })
+            .finally(function () {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Completar pago';
+            });
+    });
 })();
 </script>
 {% endif %}

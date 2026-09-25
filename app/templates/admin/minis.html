@@ -89,11 +89,12 @@
             <div class="form-row-2">
                 <div class="form-group">
                     <label>Descuento al cliente (%)</label>
-                    <input type="number" name="client_discount_rate" value="2" step="0.5" min="0" max="100">
+                    <input type="number" name="client_discount_rate" value="3" step="0.5" min="0" max="100">
                 </div>
                 <div class="form-group">
                     <label>Comisión del mini (%)</label>
-                    <input type="number" name="commission_rate" value="1" step="0.5" min="0" max="100">
+                    <input type="number" name="commission_rate" value="0" step="0.5" min="0" max="100">
+                    <p class="form-hint">El mini ya no cobra por uso — solo por la escalera de rangos. Déjalo en 0 salvo que quieras darle comisión extra a este en particular.</p>
                 </div>
             </div>
             <div class="modal-actions">
@@ -163,6 +164,8 @@
                                     onclick="openMiniCommissionModal({{ aff.id }}, '{{ aff.name }}', {{ aff.commission_rate }}, {{ aff.client_discount_rate or 0 }}, {{ aff.is_active | lower }}, {{ aff.one_per_player | lower }})">Editar %</button>
                             <button class="btn-sm btn-outline"
                                     onclick="openPasswordModal({{ aff.id }}, '{{ aff.name }}')">Cambiar clave</button>
+                            <button class="btn-sm btn-outline"
+                                    onclick="openNoteModal({{ aff.id }}, '{{ aff.name }}')">📩 Enviar nota</button>
                             <form method="POST" action="{{ url_for('admin_bp.mini_delete', aff_id=aff.id) }}" style="display:inline">
                                 <button class="btn-sm btn-danger" type="submit"
                                         onclick="return confirm('¿Eliminar la cuenta mini de {{ aff.name }}? Esta acción no se puede deshacer.')">Eliminar</button>
@@ -192,6 +195,24 @@
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('passwordMiniModal')" class="btn-secondary">Cancelar</button>
                 <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: enviar nota -->
+<div class="modal-overlay" id="noteMiniModal" style="display:none">
+    <div class="modal-box">
+        <div class="modal-header"><h3 id="noteMiniTitle">Enviar nota</h3><button onclick="closeModal('noteMiniModal')">✕</button></div>
+        <form method="POST" id="noteMiniForm">
+            <div class="form-group">
+                <label>Mensaje</label>
+                <textarea name="message" id="noteMiniMessage" rows="3" maxlength="280" required placeholder="Ej. Tu video de ayer no menciona el código, corrígelo para que cuente."></textarea>
+                <p class="form-hint">Le aparece como notificación en la campanita de su panel.</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal('noteMiniModal')" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Enviar</button>
             </div>
         </form>
     </div>
@@ -250,6 +271,13 @@
     </div>
     <p class="form-hint" style="padding:0 20px;">Lo que el mini ve en su panel al tocar "Ver reglas del programa" y "Únete al grupo de WhatsApp de los minis". Si dejas el link de WhatsApp vacío, ese botón no se muestra.</p>
     <form method="POST" action="{{ url_for('admin_bp.mini_program_config_save') }}" style="padding:0 20px 20px;">
+        <div class="form-group">
+            <label class="check-label">
+                <input type="checkbox" name="mini_registration_enabled" value="1" {{ 'checked' if mini_registration_enabled }}>
+                Aceptar registros nuevos de minis
+            </label>
+            <p class="form-hint">Si lo apagas, la pestaña "Registrarme" desaparece de /minis y solo queda "Entrar" para los que ya tienen cuenta. Los minis ya activos no se ven afectados.</p>
+        </div>
         <div class="form-group">
             <label>Reglas del programa</label>
             <textarea name="mini_rules_text" rows="8" placeholder="Ej. 1. Los videos deben mencionar el código...&#10;2. No se permite contenido...">{{ mini_rules_text }}</textarea>
@@ -729,6 +757,14 @@ function openPasswordModal(id, name) {
     document.getElementById('passwordMiniTitle').textContent = 'Cambiar contraseña — ' + name;
     document.getElementById('passwordMiniForm').reset();
     openModal('passwordMiniModal');
+}
+
+function openNoteModal(id, name) {
+    document.getElementById('noteMiniForm').action = '/admin/minis/' + id + '/nota';
+    document.getElementById('noteMiniTitle').textContent = 'Enviar nota — ' + name;
+    document.getElementById('noteMiniForm').reset();
+    openModal('noteMiniModal');
+    document.getElementById('noteMiniMessage').focus();
 }
 
 function openMiniCommissionModal(id, name, commissionRate, clientDiscountRate, isActive, onePerPlayer) {

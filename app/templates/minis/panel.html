@@ -155,10 +155,15 @@
             {% if view_tiers %}
             <p class="rdm-sub" style="margin-top:14px; text-align:left; max-width:none;">
                 Tabla de referencia (el monto real lo confirmamos al revisar tu video):
-                {% for tier in view_tiers %}
-                <br>· {{ tier.min_views }}{% if tier.max_views %}–{{ tier.max_views }}{% else %}+{% endif %} vistas → hasta ${{ '%.2f'|format(tier.reward_amount) }}
-                {% endfor %}
             </p>
+            <div class="mn-rank-list mn-rank-list-compact" style="margin-top:8px;">
+                {% for tier in view_tiers %}
+                <div class="mn-rank-list-item">
+                    <strong>{{ tier.min_views }}{% if tier.max_views %}–{{ tier.max_views }}{% else %}+{% endif %} vistas</strong>
+                    <span class="is-accent">hasta ${{ '%.2f'|format(tier.reward_amount) }}</span>
+                </div>
+                {% endfor %}
+            </div>
             {% endif %}
 
             <div class="mn-list" id="mnVideoList">

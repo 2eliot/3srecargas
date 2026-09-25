@@ -15,477 +15,549 @@
 
 {% block content %}
 <div class="admin-card settings-card" style="padding:26px 28px;">
-    <h2 style="margin-bottom:16px;">Tasa y Preferencias</h2>
     <form method="POST" action="{{ url_for('admin_bp.settings') }}" enctype="multipart/form-data">
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label for="usd_rate_bs">Tasa USD → Bs (Venezuela)</label>
-                <input type="number" step="0.01" min="0" id="usd_rate_bs" name="usd_rate_bs"
-                       value="{{ usd_rate }}" placeholder="Ej: 40.50">
-                <p class="form-hint">
-                    Se usa para mostrar el monto aproximado en bolívares en el checkout cuando el método de pago lo requiera.
-                </p>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h2>Tasa y Preferencias</h2>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="usd_rate_bs">Tasa USD → Bs (Venezuela)</label>
+                    <input type="number" step="0.01" min="0" id="usd_rate_bs" name="usd_rate_bs"
+                           value="{{ usd_rate }}" placeholder="Ej: 40.50">
+                    <p class="form-hint">
+                        Se usa para mostrar el monto aproximado en bolívares en el checkout cuando el método de pago lo requiera.
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label for="default_auto_package_id">ID del primer paquete automático</label>
+                    <input type="number" min="1" id="default_auto_package_id" name="default_auto_package_id"
+                           value="{{ default_package_id or '' }}" placeholder="Ej: 1">
+                    <p class="form-hint">
+                        Opcional. Si lo estableces y el paquete pertenece al primer juego, se seleccionará automáticamente al entrar a la web.
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label for="site_logo">Logo del encabezado</label>
+                    <input type="file" id="site_logo" name="site_logo" accept="image/png,image/jpeg,image/webp,image/gif">
+                    <p class="form-hint">Sube una imagen (PNG recomendado) para reemplazar el logo estándar del header.</p>
+                    {% if site_logo %}
+                    <div class="logo-preview">
+                        <img src="{{ url_for('static', filename='uploads/' + site_logo) }}" alt="Logo actual">
+                        <label class="remove-logo">
+                            <input type="checkbox" name="remove_logo" value="1">
+                            Quitar logo personalizado
+                        </label>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label for="site_background_image">Fondo de la web</label>
+                    <input type="file" id="site_background_image" name="site_background_image" accept="image/png,image/jpeg,image/webp,image/gif">
+                    <p class="form-hint">Imagen de fondo para toda la tienda (se muestra a pantalla completa, con un velo oscuro detrás para que el texto se siga leyendo).</p>
+                    {% if site_background_image %}
+                    <div class="logo-preview">
+                        <img src="{{ url_for('static', filename='uploads/' + site_background_image) }}" alt="Fondo actual">
+                        <label class="remove-logo">
+                            <input type="checkbox" name="remove_site_background" value="1">
+                            Quitar fondo personalizado
+                        </label>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label for="order_status_image">Imagen para seguimiento de órdenes</label>
+                    <input type="file" id="order_status_image" name="order_status_image" accept="image/png,image/jpeg,image/webp,image/gif">
+                    <p class="form-hint">Se muestra al lado del estado de procesamiento en la página de la orden. Usa una imagen vertical o cuadrada.</p>
+                    {% if order_status_image %}
+                    <div class="logo-preview">
+                        <img src="{{ url_for('static', filename='uploads/' + order_status_image) }}" alt="Imagen actual de seguimiento">
+                        <label class="remove-logo">
+                            <input type="checkbox" name="remove_order_status_image" value="1">
+                            Quitar imagen de seguimiento
+                        </label>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label for="promo_banner_image">Banner promocional (arriba de la tienda)</label>
+                    <input type="file" id="promo_banner_image" name="promo_banner_image" accept="image/png,image/jpeg,image/webp,image/gif">
+                    <p class="form-hint">Banner horizontal pequeño que se muestra arriba de las categorías. Recomendado: proporción ~5:1 (ej. 1000x220).</p>
+                    {% if promo_banner_image %}
+                    <div class="logo-preview">
+                        <img src="{{ url_for('static', filename='uploads/' + promo_banner_image) }}" alt="Banner promocional actual">
+                        <label class="remove-logo">
+                            <input type="checkbox" name="remove_promo_banner_image" value="1">
+                            Quitar banner promocional
+                        </label>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label for="promo_banner_link">Link del banner promocional</label>
+                    <input type="text" id="promo_banner_link" name="promo_banner_link" value="{{ promo_banner_link }}" placeholder="https://... (opcional)">
+                    <p class="form-hint">Al hacer clic en el banner, el cliente será llevado a este link. Déjalo vacío si no quieres que sea clicable.</p>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="default_auto_package_id">ID del primer paquete automático</label>
-                <input type="number" min="1" id="default_auto_package_id" name="default_auto_package_id"
-                       value="{{ default_package_id or '' }}" placeholder="Ej: 1">
-                <p class="form-hint">
-                    Opcional. Si lo estableces y el paquete pertenece al primer juego, se seleccionará automáticamente al entrar a la web.
-                </p>
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h2>Fondos de los accesos del menú</h2>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <p class="form-hint" style="margin-top:-4px;">
+                Coloca una imagen de fondo para cada acceso del menú lateral (☰). Se ven mejor con imágenes horizontales tipo banner,
+                de aproximadamente <strong>800×200 píxeles</strong> (proporción 4:1), en PNG, JPG o WEBP y menos de 1MB. El texto y el ícono
+                quedan siempre visibles encima gracias a un velo oscuro automático.
+            </p>
+            <div class="form-grid-2">
+                {% for key, label, value in drawer_bg_items %}
+                <div class="form-group">
+                    <label for="{{ key }}">Fondo de "{{ label }}"</label>
+                    <input type="file" id="{{ key }}" name="{{ key }}" accept="image/png,image/jpeg,image/webp,image/gif">
+                    {% if value %}
+                    <div class="logo-preview">
+                        <img src="{{ url_for('static', filename='uploads/' + value) }}" alt="Fondo actual de {{ label }}">
+                        <label class="remove-logo">
+                            <input type="checkbox" name="remove_{{ key }}" value="1">
+                            Quitar fondo de "{{ label }}"
+                        </label>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
             </div>
-            <div class="form-group">
-                <label for="site_logo">Logo del encabezado</label>
-                <input type="file" id="site_logo" name="site_logo" accept="image/png,image/jpeg,image/webp,image/gif">
-                <p class="form-hint">Sube una imagen (PNG recomendado) para reemplazar el logo estándar del header.</p>
-                {% if site_logo %}
-                <div class="logo-preview">
-                    <img src="{{ url_for('static', filename='uploads/' + site_logo) }}" alt="Logo actual">
-                    <label class="remove-logo">
-                        <input type="checkbox" name="remove_logo" value="1">
-                        Quitar logo personalizado
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h3>Verificación Automática de Pagos</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="check-label" style="margin-top:30px;">
+                        <input type="checkbox" name="auto_verify_payments" value="1"
+                               {% if payment_verify_settings.auto_verify_payments == 'true' %}checked{% endif %}>
+                        Activar verificación automática con Pabilo
                     </label>
+                    <p class="form-hint">
+                        Si está encendido, las órdenes pendientes intentarán verificarse automáticamente en Pabilo.
+                        Las órdenes automáticas seguirán aprobándose solas cuando corresponda, pero las manuales solo marcarán el pago como verificado y seguirán en revisión manual.
+                    </p>
                 </div>
-                {% endif %}
+                <div class="form-group">
+                    <label for="pabilo_api_key">API Key de Pabilo</label>
+                    <input type="text" id="pabilo_api_key" name="pabilo_api_key" placeholder="pk_..."
+                           value="{{ payment_verify_settings.pabilo_api_key }}">
+                    <p class="form-hint">
+                        Se envía en el header appKey. Asigna también el UserBankId correcto en cada método de pago.
+                    </p>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="site_background_image">Fondo de la web</label>
-                <input type="file" id="site_background_image" name="site_background_image" accept="image/png,image/jpeg,image/webp,image/gif">
-                <p class="form-hint">Imagen de fondo para toda la tienda (se muestra a pantalla completa, con un velo oscuro detrás para que el texto se siga leyendo).</p>
-                {% if site_background_image %}
-                <div class="logo-preview">
-                    <img src="{{ url_for('static', filename='uploads/' + site_background_image) }}" alt="Fondo actual">
-                    <label class="remove-logo">
-                        <input type="checkbox" name="remove_site_background" value="1">
-                        Quitar fondo personalizado
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h3>Binance Pay Automático</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="check-label" style="margin-top:30px;">
+                        <input type="checkbox" name="binance_auto_enabled" value="1"
+                               {% if binance_auto_settings.binance_auto_enabled == '1' %}checked{% endif %}>
+                        Activar verificación automática con Binance Pay
                     </label>
+                    <p class="form-hint">
+                        El sistema escaneará las transacciones de Binance Pay cada 30 segundos.
+                        Las órdenes se aprueban automáticamente cuando se detecta el pago con el código correcto.
+                        Requiere <code>BINANCE_API_KEY</code> y <code>BINANCE_API_SECRET</code> como variables de entorno.
+                    </p>
                 </div>
-                {% endif %}
+                <div class="form-group">
+                    <label for="binance_wallet_address">Dirección / Email de Binance Pay</label>
+                    <input type="text" id="binance_wallet_address" name="binance_wallet_address"
+                           placeholder="usuario@email.com o ID Binance"
+                           value="{{ binance_auto_settings.binance_wallet_address }}">
+                    <p class="form-hint">
+                        Esta dirección se mostrará al cliente para que realice la transferencia USDT.
+                    </p>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="order_status_image">Imagen para seguimiento de órdenes</label>
-                <input type="file" id="order_status_image" name="order_status_image" accept="image/png,image/jpeg,image/webp,image/gif">
-                <p class="form-hint">Se muestra al lado del estado de procesamiento en la página de la orden. Usa una imagen vertical o cuadrada.</p>
-                {% if order_status_image %}
-                <div class="logo-preview">
-                    <img src="{{ url_for('static', filename='uploads/' + order_status_image) }}" alt="Imagen actual de seguimiento">
-                    <label class="remove-logo">
-                        <input type="checkbox" name="remove_order_status_image" value="1">
-                        Quitar imagen de seguimiento
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h3>Horario de las recargas manuales</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="manual_open_hour">Abren a las (hora Venezuela)</label>
+                    <select id="manual_open_hour" name="manual_open_hour">
+                        {% for h in range(24) %}
+                        <option value="{{ h }}" {% if manual_schedule_settings.manual_open_hour == h|string %}selected{% endif %}>
+                            {{ '%02d:00'|format(h) }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="manual_close_hour">Cierran a las (hora Venezuela)</label>
+                    <select id="manual_close_hour" name="manual_close_hour">
+                        {% for h in range(24) %}
+                        <option value="{{ h }}" {% if manual_schedule_settings.manual_close_hour == h|string %}selected{% endif %}>
+                            {{ '%02d:00'|format(h) }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group form-span-2">
+                    <p class="form-hint">
+                        Fuera de este horario, los paquetes que tienes que recargar a mano salen marcados como
+                        <strong>CERRADO</strong> y no se pueden comprar, para que nadie quede reclamando de madrugada.
+                        No afecta a los paquetes con stock de PINs ni a los que entrega Revendedores: esos siguen
+                        vendiéndose las 24 horas. Si pones la misma hora de apertura y cierre, se atiende siempre.
+                    </p>
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h3>Popup "Únete a nuestra comunidad"</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="check-label" style="margin-top:30px;">
+                        <input type="checkbox" name="community_popup_enabled" value="1"
+                               {% if community_popup_settings.community_popup_enabled == '1' %}checked{% endif %}>
+                        Activar popup recurrente de comunidad
                     </label>
+                    <p class="form-hint">
+                        Muestra una invitación al canal de WhatsApp con torneos y sorteos. Reaparece cada tantas
+                        horas mientras el cliente navega, salvo que marque "No mostrar más por hoy".
+                    </p>
                 </div>
-                {% endif %}
+                <div class="form-group">
+                    <label for="community_popup_interval_hours">Reaparece cada (horas)</label>
+                    <input type="number" id="community_popup_interval_hours" name="community_popup_interval_hours"
+                           min="1" step="1" value="{{ community_popup_settings.community_popup_interval_hours }}">
+                </div>
+                <div class="form-group form-span-2">
+                    <label for="community_popup_whatsapp_url">Link del canal de WhatsApp</label>
+                    <input type="text" id="community_popup_whatsapp_url" name="community_popup_whatsapp_url"
+                           placeholder="https://whatsapp.com/channel/..."
+                           value="{{ community_popup_settings.community_popup_whatsapp_url }}">
+                    <p class="form-hint">Si lo dejas vacío, se usa el link de WhatsApp de soporte configurado arriba.</p>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="promo_banner_image">Banner promocional (arriba de la tienda)</label>
-                <input type="file" id="promo_banner_image" name="promo_banner_image" accept="image/png,image/jpeg,image/webp,image/gif">
-                <p class="form-hint">Banner horizontal pequeño que se muestra arriba de las categorías. Recomendado: proporción ~5:1 (ej. 1000x220).</p>
-                {% if promo_banner_image %}
-                <div class="logo-preview">
-                    <img src="{{ url_for('static', filename='uploads/' + promo_banner_image) }}" alt="Banner promocional actual">
-                    <label class="remove-logo">
-                        <input type="checkbox" name="remove_promo_banner_image" value="1">
-                        Quitar banner promocional
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h3>Video Tutorial por Método de Pago</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="checkout_payment_video_method">Método de pago</label>
+                    <select id="checkout_payment_video_method" name="checkout_payment_video_method">
+                        <option value="">No mostrar video tutorial</option>
+                        {% for method in active_payment_methods %}
+                        <option value="{{ method.code }}" {% if checkout_payment_video_method == method.code %}selected{% endif %}>{{ method.name }} ({{ method.code }})</option>
+                        {% endfor %}
+                    </select>
+                    <p class="form-hint">Solo cuando el cliente entre con este método seleccionado verá el bloque con video.</p>
+                </div>
+                <div class="form-group">
+                    <label for="checkout_payment_video_file">Video tutorial</label>
+                    <input type="file" id="checkout_payment_video_file" name="checkout_payment_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
+                    <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
+                    {% if checkout_payment_video_file %}
+                    <div class="logo-preview">
+                        <video controls preload="metadata" style="width:100%;max-width:280px;border-radius:12px;display:block;">
+                            <source src="{{ url_for('static', filename='uploads/' + checkout_payment_video_file) }}">
+                        </video>
+                        <label class="remove-logo">
+                            <input type="checkbox" name="remove_checkout_payment_video_file" value="1">
+                            Quitar video tutorial
+                        </label>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label for="checkout_payment_video_title">Título</label>
+                    <input type="text" id="checkout_payment_video_title" name="checkout_payment_video_title"
+                           value="{{ checkout_payment_video_title }}" placeholder="Ej: ¡Paga fácil con Binance!">
+                </div>
+                <div class="form-group">
+                    <label for="checkout_payment_video_cta">Texto del botón</label>
+                    <input type="text" id="checkout_payment_video_cta" name="checkout_payment_video_cta"
+                           value="{{ checkout_payment_video_cta }}" placeholder="Ej: Entendido, vamos a pagar">
+                </div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label for="checkout_payment_video_message">Mensaje</label>
+                    <textarea id="checkout_payment_video_message" name="checkout_payment_video_message" rows="3" placeholder="Ej: Mira este tutorial rápido para aprender a pagar. Es más fácil de lo que parece.">{{ checkout_payment_video_message }}</textarea>
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h3>Video Tutorial Flotante</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <p class="form-hint" style="margin-bottom:14px;">
+                Sube un video y aparecerá un botón "Tutorial" arriba de la burbuja de soporte, en todas las páginas.
+                Al tocarlo, el cliente lo ve en una ventana emergente. Si no subes ningún video, el botón no aparece.
+            </p>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="site_tutorial_video_file">Video tutorial</label>
+                    <input type="file" id="site_tutorial_video_file" name="site_tutorial_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
+                    <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
+                    {% if site_tutorial_video_file %}
+                    <div class="logo-preview">
+                        <video controls preload="metadata" style="width:100%;max-width:280px;border-radius:12px;display:block;">
+                            <source src="{{ url_for('static', filename='uploads/' + site_tutorial_video_file) }}">
+                        </video>
+                        <label class="remove-logo">
+                            <input type="checkbox" name="remove_site_tutorial_video_file" value="1">
+                            Quitar video tutorial
+                        </label>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label for="site_tutorial_video_title">Título de la ventana</label>
+                    <input type="text" id="site_tutorial_video_title" name="site_tutorial_video_title"
+                           value="{{ site_tutorial_video_title }}" placeholder="Ej: Cómo recargar en 3S Recargas">
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h3>Redes Sociales (Footer)</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="social_facebook">Facebook URL</label>
+                    <input type="url" id="social_facebook" name="social_facebook" placeholder="https://facebook.com/3srecargas"
+                           value="{{ social_settings.social_facebook }}">
+                    <p class="form-hint">Enlace a tu fanpage principal.</p>
+                </div>
+                <div class="form-group">
+                    <label for="social_instagram">Instagram URL/usuario</label>
+                    <input type="text" id="social_instagram" name="social_instagram" placeholder="https://instagram.com/3srecargas"
+                           value="{{ social_settings.social_instagram }}">
+                    <p class="form-hint">Coloca la URL completa o el usuario.</p>
+                </div>
+                <div class="form-group">
+                    <label for="social_tiktok">TikTok URL/usuario</label>
+                    <input type="text" id="social_tiktok" name="social_tiktok" placeholder="https://www.tiktok.com/@3srecargas"
+                           value="{{ social_settings.social_tiktok }}">
+                </div>
+                <div class="form-group">
+                    <label for="social_whatsapp">Link directo de WhatsApp</label>
+                    <input type="url" id="social_whatsapp" name="social_whatsapp" placeholder="https://wa.me/58412XXXXXXX"
+                           value="{{ social_settings.social_whatsapp }}">
+                    <p class="form-hint">Formato recomendado: wa.me con número o enlace a canal.</p>
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h3>Notificaciones por Correo</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="email_brand_name">Nombre de marca (correos)</label>
+                    <input type="text" id="email_brand_name" name="email_brand_name" placeholder="3sRecargas"
+                           value="{{ email_settings.email_brand_name }}">
+                    <p class="form-hint">Aparece como remitente y en el encabezado de los correos.</p>
+                </div>
+                <div class="form-group">
+                    <label for="admin_notify_email">Correo para alertas de nuevas órdenes</label>
+                    <input type="email" id="admin_notify_email" name="admin_notify_email" placeholder="admin@3srecargas.com"
+                           value="{{ email_settings.admin_notify_email }}">
+                    <p class="form-hint">Recibirá un aviso cada vez que se cree una orden.</p>
+                </div>
+                <div class="form-group">
+                    <label for="support_email">Correo de soporte</label>
+                    <input type="email" id="support_email" name="support_email" placeholder="soporte@3srecargas.com"
+                           value="{{ email_settings.support_email }}">
+                </div>
+                <div class="form-group">
+                    <label for="support_whatsapp">WhatsApp de soporte</label>
+                    <input type="url" id="support_whatsapp" name="support_whatsapp" placeholder="https://wa.me/58412XXXXXXX"
+                           value="{{ email_settings.support_whatsapp }}">
+                </div>
+                <div class="form-group">
+                    <label for="support_schedule">Horario visible en footer</label>
+                    <input type="text" id="support_schedule" name="support_schedule" placeholder="Lunes a Domingo: 8:00 AM - 10:00 PM"
+                           value="{{ email_settings.support_schedule }}">
+                </div>
+                <div class="form-group">
+                    <label for="support_location">Ubicación visible en footer</label>
+                    <input type="text" id="support_location" name="support_location" placeholder="Valencia, Carabobo, Venezuela"
+                           value="{{ email_settings.support_location }}">
+                </div>
+                <div class="form-group">
+                    <label for="support_site_url">URL del sitio / centro de ayuda</label>
+                    <input type="url" id="support_site_url" name="support_site_url" placeholder="https://3srecargas.com"
+                           value="{{ email_settings.support_site_url }}">
+                </div>
+                <div class="form-group">
+                    <label for="privacy_url">URL política de privacidad</label>
+                    <input type="url" id="privacy_url" name="privacy_url" placeholder="https://3srecargas.com/privacidad"
+                           value="{{ email_settings.privacy_url }}">
+                </div>
+                <div class="form-group">
+                    <label for="unsubscribe_url">URL para darse de baja</label>
+                    <input type="url" id="unsubscribe_url" name="unsubscribe_url" placeholder="https://3srecargas.com/unsub"
+                           value="{{ email_settings.unsubscribe_url }}">
+                </div>
+            </div>
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h3>Rankings Mensuales</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="check-label" style="margin-top:30px;">
+                        <input type="checkbox" name="ranking_free_fire_enabled" value="1"
+                               {% if ranking_settings.ranking_free_fire_enabled == '1' %}checked{% endif %}>
+                        Mostrar ranking de Free Fire
                     </label>
+                    <p class="form-hint">Visible en el header y en el modal público. Puedes ocultarlo de forma independiente.</p>
                 </div>
-                {% endif %}
-            </div>
-            <div class="form-group">
-                <label for="promo_banner_link">Link del banner promocional</label>
-                <input type="text" id="promo_banner_link" name="promo_banner_link" value="{{ promo_banner_link }}" placeholder="https://... (opcional)">
-                <p class="form-hint">Al hacer clic en el banner, el cliente será llevado a este link. Déjalo vacío si no quieres que sea clicable.</p>
-            </div>
-        </div>
-        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
-        <h3 style="margin-bottom:20px;">Verificación Automática de Pagos</h3>
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label class="check-label" style="margin-top:30px;">
-                    <input type="checkbox" name="auto_verify_payments" value="1"
-                           {% if payment_verify_settings.auto_verify_payments == 'true' %}checked{% endif %}>
-                    Activar verificación automática con Pabilo
-                </label>
-                <p class="form-hint">
-                    Si está encendido, las órdenes pendientes intentarán verificarse automáticamente en Pabilo.
-                    Las órdenes automáticas seguirán aprobándose solas cuando corresponda, pero las manuales solo marcarán el pago como verificado y seguirán en revisión manual.
-                </p>
-            </div>
-            <div class="form-group">
-                <label for="pabilo_api_key">API Key de Pabilo</label>
-                <input type="text" id="pabilo_api_key" name="pabilo_api_key" placeholder="pk_..."
-                       value="{{ payment_verify_settings.pabilo_api_key }}">
-                <p class="form-hint">
-                    Se envía en el header appKey. Asigna también el UserBankId correcto en cada método de pago.
-                </p>
-            </div>
-        </div>
-
-        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
-        <h3 style="margin-bottom:20px;">Binance Pay Automático</h3>
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label class="check-label" style="margin-top:30px;">
-                    <input type="checkbox" name="binance_auto_enabled" value="1"
-                           {% if binance_auto_settings.binance_auto_enabled == '1' %}checked{% endif %}>
-                    Activar verificación automática con Binance Pay
-                </label>
-                <p class="form-hint">
-                    El sistema escaneará las transacciones de Binance Pay cada 30 segundos.
-                    Las órdenes se aprueban automáticamente cuando se detecta el pago con el código correcto.
-                    Requiere <code>BINANCE_API_KEY</code> y <code>BINANCE_API_SECRET</code> como variables de entorno.
-                </p>
-            </div>
-            <div class="form-group">
-                <label for="binance_wallet_address">Dirección / Email de Binance Pay</label>
-                <input type="text" id="binance_wallet_address" name="binance_wallet_address"
-                       placeholder="usuario@email.com o ID Binance"
-                       value="{{ binance_auto_settings.binance_wallet_address }}">
-                <p class="form-hint">
-                    Esta dirección se mostrará al cliente para que realice la transferencia USDT.
-                </p>
-            </div>
-        </div>
-
-        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
-        <h3 style="margin-bottom:20px;">Horario de las recargas manuales</h3>
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label for="manual_open_hour">Abren a las (hora Venezuela)</label>
-                <select id="manual_open_hour" name="manual_open_hour">
-                    {% for h in range(24) %}
-                    <option value="{{ h }}" {% if manual_schedule_settings.manual_open_hour == h|string %}selected{% endif %}>
-                        {{ '%02d:00'|format(h) }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="manual_close_hour">Cierran a las (hora Venezuela)</label>
-                <select id="manual_close_hour" name="manual_close_hour">
-                    {% for h in range(24) %}
-                    <option value="{{ h }}" {% if manual_schedule_settings.manual_close_hour == h|string %}selected{% endif %}>
-                        {{ '%02d:00'|format(h) }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-group form-span-2">
-                <p class="form-hint">
-                    Fuera de este horario, los paquetes que tienes que recargar a mano salen marcados como
-                    <strong>CERRADO</strong> y no se pueden comprar, para que nadie quede reclamando de madrugada.
-                    No afecta a los paquetes con stock de PINs ni a los que entrega Revendedores: esos siguen
-                    vendiéndose las 24 horas. Si pones la misma hora de apertura y cierre, se atiende siempre.
-                </p>
-            </div>
-        </div>
-
-        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
-        <h3 style="margin-bottom:20px;">Popup "Únete a nuestra comunidad"</h3>
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label class="check-label" style="margin-top:30px;">
-                    <input type="checkbox" name="community_popup_enabled" value="1"
-                           {% if community_popup_settings.community_popup_enabled == '1' %}checked{% endif %}>
-                    Activar popup recurrente de comunidad
-                </label>
-                <p class="form-hint">
-                    Muestra una invitación al canal de WhatsApp con torneos y sorteos. Reaparece cada tantas
-                    horas mientras el cliente navega, salvo que marque "No mostrar más por hoy".
-                </p>
-            </div>
-            <div class="form-group">
-                <label for="community_popup_interval_hours">Reaparece cada (horas)</label>
-                <input type="number" id="community_popup_interval_hours" name="community_popup_interval_hours"
-                       min="1" step="1" value="{{ community_popup_settings.community_popup_interval_hours }}">
-            </div>
-            <div class="form-group form-span-2">
-                <label for="community_popup_whatsapp_url">Link del canal de WhatsApp</label>
-                <input type="text" id="community_popup_whatsapp_url" name="community_popup_whatsapp_url"
-                       placeholder="https://whatsapp.com/channel/..."
-                       value="{{ community_popup_settings.community_popup_whatsapp_url }}">
-                <p class="form-hint">Si lo dejas vacío, se usa el link de WhatsApp de soporte configurado arriba.</p>
-            </div>
-        </div>
-
-        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
-        <h3 style="margin-bottom:20px;">Video Tutorial por Método de Pago</h3>
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label for="checkout_payment_video_method">Método de pago</label>
-                <select id="checkout_payment_video_method" name="checkout_payment_video_method">
-                    <option value="">No mostrar video tutorial</option>
-                    {% for method in active_payment_methods %}
-                    <option value="{{ method.code }}" {% if checkout_payment_video_method == method.code %}selected{% endif %}>{{ method.name }} ({{ method.code }})</option>
-                    {% endfor %}
-                </select>
-                <p class="form-hint">Solo cuando el cliente entre con este método seleccionado verá el bloque con video.</p>
-            </div>
-            <div class="form-group">
-                <label for="checkout_payment_video_file">Video tutorial</label>
-                <input type="file" id="checkout_payment_video_file" name="checkout_payment_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
-                <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
-                {% if checkout_payment_video_file %}
-                <div class="logo-preview">
-                    <video controls preload="metadata" style="width:100%;max-width:280px;border-radius:12px;display:block;">
-                        <source src="{{ url_for('static', filename='uploads/' + checkout_payment_video_file) }}">
-                    </video>
-                    <label class="remove-logo">
-                        <input type="checkbox" name="remove_checkout_payment_video_file" value="1">
-                        Quitar video tutorial
+                <div class="form-group">
+                    <label for="ranking_free_fire_game_id">Juego asociado a Free Fire</label>
+                    <select id="ranking_free_fire_game_id" name="ranking_free_fire_game_id">
+                        <option value="">Selecciona un juego</option>
+                        {% for game in ranking_games %}
+                        <option value="{{ game.id }}" {% if ranking_settings.ranking_free_fire_game_id == game.id|string %}selected{% endif %}>{{ game.name }} (#{{ game.id }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="check-label" style="margin-top:30px;">
+                        <input type="checkbox" name="ranking_blood_strike_enabled" value="1"
+                               {% if ranking_settings.ranking_blood_strike_enabled == '1' %}checked{% endif %}>
+                        Mostrar ranking de Blood Strike
                     </label>
+                    <p class="form-hint">Se comporta igual que Free Fire, pero con tabla independiente y activación separada.</p>
                 </div>
-                {% endif %}
-            </div>
-            <div class="form-group">
-                <label for="checkout_payment_video_title">Título</label>
-                <input type="text" id="checkout_payment_video_title" name="checkout_payment_video_title"
-                       value="{{ checkout_payment_video_title }}" placeholder="Ej: ¡Paga fácil con Binance!">
-            </div>
-            <div class="form-group">
-                <label for="checkout_payment_video_cta">Texto del botón</label>
-                <input type="text" id="checkout_payment_video_cta" name="checkout_payment_video_cta"
-                       value="{{ checkout_payment_video_cta }}" placeholder="Ej: Entendido, vamos a pagar">
-            </div>
-            <div class="form-group" style="grid-column:1/-1;">
-                <label for="checkout_payment_video_message">Mensaje</label>
-                <textarea id="checkout_payment_video_message" name="checkout_payment_video_message" rows="3" placeholder="Ej: Mira este tutorial rápido para aprender a pagar. Es más fácil de lo que parece.">{{ checkout_payment_video_message }}</textarea>
-            </div>
-        </div>
-
-        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
-        <h3 style="margin-bottom:20px;">Video Tutorial Flotante</h3>
-        <p class="form-hint" style="margin-bottom:14px;">
-            Sube un video y aparecerá un botón "Tutorial" arriba de la burbuja de soporte, en todas las páginas.
-            Al tocarlo, el cliente lo ve en una ventana emergente. Si no subes ningún video, el botón no aparece.
-        </p>
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label for="site_tutorial_video_file">Video tutorial</label>
-                <input type="file" id="site_tutorial_video_file" name="site_tutorial_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
-                <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
-                {% if site_tutorial_video_file %}
-                <div class="logo-preview">
-                    <video controls preload="metadata" style="width:100%;max-width:280px;border-radius:12px;display:block;">
-                        <source src="{{ url_for('static', filename='uploads/' + site_tutorial_video_file) }}">
-                    </video>
-                    <label class="remove-logo">
-                        <input type="checkbox" name="remove_site_tutorial_video_file" value="1">
-                        Quitar video tutorial
-                    </label>
-                </div>
-                {% endif %}
-            </div>
-            <div class="form-group">
-                <label for="site_tutorial_video_title">Título de la ventana</label>
-                <input type="text" id="site_tutorial_video_title" name="site_tutorial_video_title"
-                       value="{{ site_tutorial_video_title }}" placeholder="Ej: Cómo recargar en 3S Recargas">
-            </div>
-        </div>
-
-        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
-        <h3 style="margin-bottom:20px;">Redes Sociales (Footer)</h3>
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label for="social_facebook">Facebook URL</label>
-                <input type="url" id="social_facebook" name="social_facebook" placeholder="https://facebook.com/3srecargas"
-                       value="{{ social_settings.social_facebook }}">
-                <p class="form-hint">Enlace a tu fanpage principal.</p>
-            </div>
-            <div class="form-group">
-                <label for="social_instagram">Instagram URL/usuario</label>
-                <input type="text" id="social_instagram" name="social_instagram" placeholder="https://instagram.com/3srecargas"
-                       value="{{ social_settings.social_instagram }}">
-                <p class="form-hint">Coloca la URL completa o el usuario.</p>
-            </div>
-            <div class="form-group">
-                <label for="social_tiktok">TikTok URL/usuario</label>
-                <input type="text" id="social_tiktok" name="social_tiktok" placeholder="https://www.tiktok.com/@3srecargas"
-                       value="{{ social_settings.social_tiktok }}">
-            </div>
-            <div class="form-group">
-                <label for="social_whatsapp">Link directo de WhatsApp</label>
-                <input type="url" id="social_whatsapp" name="social_whatsapp" placeholder="https://wa.me/58412XXXXXXX"
-                       value="{{ social_settings.social_whatsapp }}">
-                <p class="form-hint">Formato recomendado: wa.me con número o enlace a canal.</p>
-            </div>
-        </div>
-
-        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
-        <h3 style="margin-bottom:20px;">Notificaciones por Correo</h3>
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label for="email_brand_name">Nombre de marca (correos)</label>
-                <input type="text" id="email_brand_name" name="email_brand_name" placeholder="3sRecargas"
-                       value="{{ email_settings.email_brand_name }}">
-                <p class="form-hint">Aparece como remitente y en el encabezado de los correos.</p>
-            </div>
-            <div class="form-group">
-                <label for="admin_notify_email">Correo para alertas de nuevas órdenes</label>
-                <input type="email" id="admin_notify_email" name="admin_notify_email" placeholder="admin@3srecargas.com"
-                       value="{{ email_settings.admin_notify_email }}">
-                <p class="form-hint">Recibirá un aviso cada vez que se cree una orden.</p>
-            </div>
-            <div class="form-group">
-                <label for="support_email">Correo de soporte</label>
-                <input type="email" id="support_email" name="support_email" placeholder="soporte@3srecargas.com"
-                       value="{{ email_settings.support_email }}">
-            </div>
-            <div class="form-group">
-                <label for="support_whatsapp">WhatsApp de soporte</label>
-                <input type="url" id="support_whatsapp" name="support_whatsapp" placeholder="https://wa.me/58412XXXXXXX"
-                       value="{{ email_settings.support_whatsapp }}">
-            </div>
-            <div class="form-group">
-                <label for="support_schedule">Horario visible en footer</label>
-                <input type="text" id="support_schedule" name="support_schedule" placeholder="Lunes a Domingo: 8:00 AM - 10:00 PM"
-                       value="{{ email_settings.support_schedule }}">
-            </div>
-            <div class="form-group">
-                <label for="support_location">Ubicación visible en footer</label>
-                <input type="text" id="support_location" name="support_location" placeholder="Valencia, Carabobo, Venezuela"
-                       value="{{ email_settings.support_location }}">
-            </div>
-            <div class="form-group">
-                <label for="support_site_url">URL del sitio / centro de ayuda</label>
-                <input type="url" id="support_site_url" name="support_site_url" placeholder="https://3srecargas.com"
-                       value="{{ email_settings.support_site_url }}">
-            </div>
-            <div class="form-group">
-                <label for="privacy_url">URL política de privacidad</label>
-                <input type="url" id="privacy_url" name="privacy_url" placeholder="https://3srecargas.com/privacidad"
-                       value="{{ email_settings.privacy_url }}">
-            </div>
-            <div class="form-group">
-                <label for="unsubscribe_url">URL para darse de baja</label>
-                <input type="url" id="unsubscribe_url" name="unsubscribe_url" placeholder="https://3srecargas.com/unsub"
-                       value="{{ email_settings.unsubscribe_url }}">
-            </div>
-        </div>
-
-        <hr style="margin:44px 0 28px; border-color: rgba(255,255,255,.08);">
-        <h3 style="margin-bottom:20px;">Rankings Mensuales</h3>
-        <div class="form-grid-2">
-            <div class="form-group">
-                <label class="check-label" style="margin-top:30px;">
-                    <input type="checkbox" name="ranking_free_fire_enabled" value="1"
-                           {% if ranking_settings.ranking_free_fire_enabled == '1' %}checked{% endif %}>
-                    Mostrar ranking de Free Fire
-                </label>
-                <p class="form-hint">Visible en el header y en el modal público. Puedes ocultarlo de forma independiente.</p>
-            </div>
-            <div class="form-group">
-                <label for="ranking_free_fire_game_id">Juego asociado a Free Fire</label>
-                <select id="ranking_free_fire_game_id" name="ranking_free_fire_game_id">
-                    <option value="">Selecciona un juego</option>
-                    {% for game in ranking_games %}
-                    <option value="{{ game.id }}" {% if ranking_settings.ranking_free_fire_game_id == game.id|string %}selected{% endif %}>{{ game.name }} (#{{ game.id }})</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-group">
-                <label class="check-label" style="margin-top:30px;">
-                    <input type="checkbox" name="ranking_blood_strike_enabled" value="1"
-                           {% if ranking_settings.ranking_blood_strike_enabled == '1' %}checked{% endif %}>
-                    Mostrar ranking de Blood Strike
-                </label>
-                <p class="form-hint">Se comporta igual que Free Fire, pero con tabla independiente y activación separada.</p>
-            </div>
-            <div class="form-group">
-                <label for="ranking_blood_strike_game_id">Juego asociado a Blood Strike</label>
-                <select id="ranking_blood_strike_game_id" name="ranking_blood_strike_game_id">
-                    <option value="">Selecciona un juego</option>
-                    {% for game in ranking_games %}
-                    <option value="{{ game.id }}" {% if ranking_settings.ranking_blood_strike_game_id == game.id|string %}selected{% endif %}>{{ game.name }} (#{{ game.id }})</option>
-                    {% endfor %}
-                </select>
-            </div>
-        </div>
-
-        <div class="ranking-prize-config-grid">
-            <div class="admin-card ranking-prize-card" data-ranking-key="free_fire">
-                <div class="card-header">
-                    <h3>Premios Automáticos: Top Free Fire</h3>
-                </div>
-                <div class="table-wrap">
-                    <table class="admin-table ranking-prize-table">
-                        <thead>
-                            <tr>
-                                <th>Puesto</th>
-                                <th>Premio visible</th>
-                                <th>Paquete que se entregará</th>
-                                <th>Auto</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for position in ranking_prize_positions %}
-                            {% set row = ranking_prize_settings['free_fire'][position] %}
-                            <tr>
-                                <td>#{{ position }}</td>
-                                <td>{{ row.reward_label }}</td>
-                                <td>
-                                    <select name="ranking_free_fire_prize_package_{{ position }}"
-                                            class="ranking-prize-select"
-                                            data-ranking-key="free_fire"
-                                            data-selected="{{ row.package_id }}">
-                                        <option value="">Selecciona un paquete</option>
-                                    </select>
-                                </td>
-                                <td>
-                                    <label class="check-label">
-                                        <input type="checkbox" name="ranking_free_fire_prize_auto_{{ position }}" value="1"
-                                               {% if row.auto == '1' %}checked{% endif %}>
-                                        Activar
-                                    </label>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <div class="form-group">
+                    <label for="ranking_blood_strike_game_id">Juego asociado a Blood Strike</label>
+                    <select id="ranking_blood_strike_game_id" name="ranking_blood_strike_game_id">
+                        <option value="">Selecciona un juego</option>
+                        {% for game in ranking_games %}
+                        <option value="{{ game.id }}" {% if ranking_settings.ranking_blood_strike_game_id == game.id|string %}selected{% endif %}>{{ game.name }} (#{{ game.id }})</option>
+                        {% endfor %}
+                    </select>
                 </div>
             </div>
 
-            <div class="admin-card ranking-prize-card" data-ranking-key="blood_strike">
-                <div class="card-header">
-                    <h3>Premios Automáticos: Top Blood Strike</h3>
+            <div class="ranking-prize-config-grid">
+                <div class="admin-card ranking-prize-card" data-ranking-key="free_fire">
+                    <div class="card-header">
+                        <h3>Premios Automáticos: Top Free Fire</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="admin-table ranking-prize-table">
+                            <thead>
+                                <tr>
+                                    <th>Puesto</th>
+                                    <th>Premio visible</th>
+                                    <th>Paquete que se entregará</th>
+                                    <th>Auto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for position in ranking_prize_positions %}
+                                {% set row = ranking_prize_settings['free_fire'][position] %}
+                                <tr>
+                                    <td>#{{ position }}</td>
+                                    <td>{{ row.reward_label }}</td>
+                                    <td>
+                                        <select name="ranking_free_fire_prize_package_{{ position }}"
+                                                class="ranking-prize-select"
+                                                data-ranking-key="free_fire"
+                                                data-selected="{{ row.package_id }}">
+                                            <option value="">Selecciona un paquete</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <label class="check-label">
+                                            <input type="checkbox" name="ranking_free_fire_prize_auto_{{ position }}" value="1"
+                                                   {% if row.auto == '1' %}checked{% endif %}>
+                                            Activar
+                                        </label>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <div class="table-wrap">
-                    <table class="admin-table ranking-prize-table">
-                        <thead>
-                            <tr>
-                                <th>Puesto</th>
-                                <th>Premio visible</th>
-                                <th>Paquete que se entregará</th>
-                                <th>Auto</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for position in ranking_prize_positions %}
-                            {% set row = ranking_prize_settings['blood_strike'][position] %}
-                            <tr>
-                                <td>#{{ position }}</td>
-                                <td>{{ row.reward_label }}</td>
-                                <td>
-                                    <select name="ranking_blood_strike_prize_package_{{ position }}"
-                                            class="ranking-prize-select"
-                                            data-ranking-key="blood_strike"
-                                            data-selected="{{ row.package_id }}">
-                                        <option value="">Selecciona un paquete</option>
-                                    </select>
-                                </td>
-                                <td>
-                                    <label class="check-label">
-                                        <input type="checkbox" name="ranking_blood_strike_prize_auto_{{ position }}" value="1"
-                                               {% if row.auto == '1' %}checked{% endif %}>
-                                        Activar
-                                    </label>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+
+                <div class="admin-card ranking-prize-card" data-ranking-key="blood_strike">
+                    <div class="card-header">
+                        <h3>Premios Automáticos: Top Blood Strike</h3>
+                    </div>
+                    <div class="table-wrap">
+                        <table class="admin-table ranking-prize-table">
+                            <thead>
+                                <tr>
+                                    <th>Puesto</th>
+                                    <th>Premio visible</th>
+                                    <th>Paquete que se entregará</th>
+                                    <th>Auto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for position in ranking_prize_positions %}
+                                {% set row = ranking_prize_settings['blood_strike'][position] %}
+                                <tr>
+                                    <td>#{{ position }}</td>
+                                    <td>{{ row.reward_label }}</td>
+                                    <td>
+                                        <select name="ranking_blood_strike_prize_package_{{ position }}"
+                                                class="ranking-prize-select"
+                                                data-ranking-key="blood_strike"
+                                                data-selected="{{ row.package_id }}">
+                                            <option value="">Selecciona un paquete</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <label class="check-label">
+                                            <input type="checkbox" name="ranking_blood_strike_prize_auto_{{ position }}" value="1"
+                                                   {% if row.auto == '1' %}checked{% endif %}>
+                                            Activar
+                                        </label>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-        </div>
+        </details>
 
         <div class="modal-actions" style="margin-top:18px;">
             <button type="submit" class="btn-primary">Guardar configuración</button>
@@ -495,39 +567,44 @@
 
 <!-- Verificación de ID por Scraping -->
 <div class="admin-card settings-card" style="margin-top:24px; padding:26px 28px;">
-    <h2 style="margin-bottom:16px;">Verificación de ID (Scraping)</h2>
-    <p class="form-hint" style="margin-bottom:16px;">
-        Configura qué juegos activan la verificación automática de ID del jugador antes de comprar.
-    </p>
+    <details class="settings-section" style="border-bottom:none; padding-bottom:0; margin-bottom:0;">
+        <summary class="settings-section-summary">
+            <h2>Verificación de ID (Scraping)</h2>
+            <span class="settings-chevron">▾</span>
+        </summary>
+        <p class="form-hint" style="margin-bottom:16px;">
+            Configura qué juegos activan la verificación automática de ID del jugador antes de comprar.
+        </p>
 
-    <div class="form-grid-2">
-        <div class="form-group">
-            <label for="active_login_game_id">ID del juego Free Fire (verificación FFMania)</label>
-            <input type="number" id="active_login_game_id" placeholder="Ej: 1">
-            <p class="form-hint">
-                Coloca el ID del juego de Free Fire en tu tienda. Al ingresar un ID de jugador en ese juego,
-                se validará automáticamente contra FFMania.
-            </p>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="active_login_game_id">ID del juego Free Fire (verificación FFMania)</label>
+                <input type="number" id="active_login_game_id" placeholder="Ej: 1">
+                <p class="form-hint">
+                    Coloca el ID del juego de Free Fire en tu tienda. Al ingresar un ID de jugador en ese juego,
+                    se validará automáticamente contra FFMania.
+                </p>
+            </div>
+            <div class="form-group">
+                <label for="bs_package_id">ID del juego Blood Strike (verificación Smile.One)</label>
+                <input type="number" id="bs_package_id" placeholder="Ej: 2">
+                <p class="form-hint">
+                    Coloca el ID del juego de Blood Strike en tu tienda. Se validará contra Smile.One Brasil.
+                </p>
+            </div>
+            <div class="form-group">
+                <label for="bs_server_id">ID del servidor Blood Strike</label>
+                <input type="number" id="bs_server_id" placeholder="Ej: -1" value="-1">
+                <p class="form-hint">
+                    Usa -1 para juegos que no requieren servidor.
+                </p>
+            </div>
         </div>
-        <div class="form-group">
-            <label for="bs_package_id">ID del juego Blood Strike (verificación Smile.One)</label>
-            <input type="number" id="bs_package_id" placeholder="Ej: 2">
-            <p class="form-hint">
-                Coloca el ID del juego de Blood Strike en tu tienda. Se validará contra Smile.One Brasil.
-            </p>
+        <div class="modal-actions" style="margin-top:18px;">
+            <button type="button" class="btn-primary" id="btnSaveVerifyConfig">Guardar configuración de verificación</button>
         </div>
-        <div class="form-group">
-            <label for="bs_server_id">ID del servidor Blood Strike</label>
-            <input type="number" id="bs_server_id" placeholder="Ej: -1" value="-1">
-            <p class="form-hint">
-                Usa -1 para juegos que no requieren servidor.
-            </p>
-        </div>
-    </div>
-    <div class="modal-actions" style="margin-top:18px;">
-        <button type="button" class="btn-primary" id="btnSaveVerifyConfig">Guardar configuración de verificación</button>
-    </div>
-    <p id="verifyConfigStatus" style="margin-top:8px; color: var(--accent); display:none;"></p>
+        <p id="verifyConfigStatus" style="margin-top:8px; color: var(--accent); display:none;"></p>
+    </details>
 </div>
 
 <script>
@@ -661,4 +738,3 @@
 })();
 </script>
 {% endblock %}
-

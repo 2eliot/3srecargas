@@ -6,7 +6,8 @@ from flask import Blueprint, jsonify, render_template, request
 from ..utils.promos import (
     get_accumulated_enabled_games, get_accumulated_progress_state,
     get_guess_enabled_games, get_guess_public_state, submit_guess,
-    get_raffle_enabled_games, get_raffle_public_state, get_raffle_show_state, register_raffle_entry,
+    get_raffle_enabled_games, get_raffle_public_state, get_raffle_replay_state,
+    get_raffle_show_state, register_raffle_entry,
     run_daily_raffle_draws,
 )
 
@@ -88,6 +89,20 @@ def sorteo_show():
     if not game_id:
         return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
     state = get_raffle_show_state(game_id, player_id)
+    return jsonify({'ok': True, **state})
+
+
+@promos_bp.route('/api/sorteo/replay')
+def sorteo_replay():
+    """Participantes y ganadores de un día ya sorteado, para reproducir de
+    nuevo la animación de la ruleta sobre ese resultado real."""
+    game_id = request.args.get('game_id', type=int)
+    day_key = (request.args.get('day_key') or '').strip()
+    if not game_id or not day_key:
+        return jsonify({'ok': False, 'error': 'Falta el juego o el día.'}), 400
+    state = get_raffle_replay_state(game_id, day_key)
+    if not state.get('enabled'):
+        return jsonify({'ok': False, 'error': state.get('error') or 'No se pudo cargar ese sorteo.'}), 404
     return jsonify({'ok': True, **state})
 
 

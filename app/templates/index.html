@@ -104,13 +104,12 @@
                 </div>
             </div>
 
-            <div class="nx-discount-row" style="margin-bottom:8px">
+            <div class="nx-discount-row" style="margin-bottom:26px">
                 <input type="text" id="affiliate_code" name="affiliate_code" class="glass-input"
                        placeholder="CÓDIGO DESCUENTO (OPCIONAL)" aria-label="Código de descuento" autocomplete="off">
                 <button type="button" class="nx-apply-btn red-glow-pill" id="applyDiscountBtn">APLICAR</button>
             </div>
             <p class="discount-apply-feedback" id="discountApplyFeedback" aria-live="polite"></p>
-            <p class="nx-discount-hint">Solo para códigos de promoción. Tu referencia de pago va más abajo.</p>
 
             <div id="packagesPanelHost">
                 <div class="packages-panel packages-panel-sidebar" id="packagesPanel" style="display:none">
@@ -398,6 +397,9 @@
             <button type="button" class="red-glow-pill" id="nxVideoContinue" style="padding:10px 0; font-size:12px; letter-spacing:.08em; text-transform:uppercase">
                 {{ checkout_payment_video.cta }}
             </button>
+            <button type="button" id="nxVideoDontShow" style="padding:9px 0; font-size:11px; font-weight:700; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.15); border-radius:10px; color:#cbd5e1; cursor:pointer">
+                No volver a mostrar, ya sé usar la página
+            </button>
         </div>
     </div>
 
@@ -423,6 +425,26 @@
             </div>
             <div class="store-popup-actions">
                 <button type="button" class="store-popup-confirm" id="manualInfoCloseBtn">ENTIENDO, CONTINUAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="store-popup-overlay" id="pendingCompletionPopup" style="display:none" aria-hidden="true">
+        <div class="store-popup-card" role="dialog" aria-modal="true" aria-labelledby="pendingCompletionTitle">
+            <div class="store-popup-header">
+                <span id="pendingCompletionTitle">⏳ TIENES UNA ORDEN POR COMPLETAR</span>
+            </div>
+            <div class="store-popup-body">
+                <p class="store-popup-lead pc-lead">🔔 Con este ID tienes un pago incompleto en la orden <strong id="pendingCompletionOrderNumber"></strong>.</p>
+                <ul class="store-popup-list pc-detail-list">
+                    <li><span class="pc-label">🎁 Monto a recibir:</span> <strong class="pc-value-cyan" id="pendingCompletionPackage"></strong></li>
+                    <li><span class="pc-label">🆔 Tu ID:</span> <strong class="pc-value-purple" id="pendingCompletionPlayerId"></strong><span id="pendingCompletionNicknameWrap" hidden> — <strong class="pc-value-gold">👤 <span id="pendingCompletionNickname"></span></strong></span></li>
+                    <li class="pc-urgent-row"><span class="pc-label">💸 Te falta:</span> <strong class="pc-highlight">Bs <span id="pendingCompletionMissing">0</span></strong> <span class="pc-label">para que se procese automáticamente ⚡</span></li>
+                </ul>
+            </div>
+            <div class="store-popup-actions">
+                <button type="button" class="store-popup-confirm" id="pendingCompletionGoBtn">✅ COMPLETAR PAGO</button>
+                <button type="button" class="store-popup-ghost" id="pendingCompletionIgnoreBtn">✖ IGNORAR</button>
             </div>
         </div>
     </div>
@@ -580,7 +602,10 @@
     var videoModal = document.getElementById('nxVideoModal');
     var videoClose = document.getElementById('nxVideoClose');
     var videoContinue = document.getElementById('nxVideoContinue');
+    var videoDontShow = document.getElementById('nxVideoDontShow');
     var videoPlayer = document.getElementById('nxVideoPlayer');
+    var NX_VIDEO_SNOOZE_KEY = 'nx_video_snooze_until';
+    var NX_VIDEO_SNOOZE_MS = 48 * 60 * 60 * 1000; // 48 horas
     var toast = document.getElementById('nxToast');
     var toastMsg = document.getElementById('nxToastMsg');
     var timerEl = document.getElementById('nxTimer');
@@ -982,9 +1007,18 @@
         return '';
     }
 
+    function isVideoSnoozed() {
+        try {
+            var until = Number(localStorage.getItem(NX_VIDEO_SNOOZE_KEY) || 0);
+            return until > Date.now();
+        } catch (_) {
+            return false;
+        }
+    }
+
     function openVideoModal() {
         var url = getMethodVideoUrl();
-        if (!videoModal || !url) return;
+        if (!videoModal || !url || isVideoSnoozed()) return;
         if (videoPlayer && videoPlayer.getAttribute('src') !== url) {
             videoPlayer.setAttribute('src', url);
             try { videoPlayer.load(); } catch (_) {}
@@ -1008,6 +1042,12 @@
     if (warningAck) warningAck.addEventListener('click', closeWarning);
     if (videoClose) videoClose.addEventListener('click', closeVideo);
     if (videoContinue) videoContinue.addEventListener('click', closeVideo);
+    if (videoDontShow) {
+        videoDontShow.addEventListener('click', function () {
+            try { localStorage.setItem(NX_VIDEO_SNOOZE_KEY, String(Date.now() + NX_VIDEO_SNOOZE_MS)); } catch (_) {}
+            closeVideo();
+        });
+    }
     if (tutorialBtn) tutorialBtn.addEventListener('click', openVideoModal);
 
     /* ── Comprobante: preview + extracción por IA ──────────────────── */

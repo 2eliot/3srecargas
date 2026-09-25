@@ -8,15 +8,19 @@
 
     <section class="glass-panel rdm-card">
         <div class="rdm-head">
-            <span class="rdm-kicker">Mini influencers</span>
+            <span class="rdm-kicker">Mini influencers de 3SRecargas</span>
             <h1 class="rdm-title">Tu panel de mini</h1>
-            <p class="rdm-sub">Entra si ya tienes cuenta, o solicita unirte con tu canal o red social.</p>
+            <p class="rdm-sub">Entra si ya tienes cuenta, o regístrate al instante con tu canal o red social.</p>
         </div>
 
+        {% if registration_enabled %}
         <div class="mn-tabs" role="tablist">
             <button type="button" class="mn-tab is-active" id="mnTabLoginBtn" role="tab" aria-selected="true">Entrar</button>
-            <button type="button" class="mn-tab" id="mnTabRegisterBtn" role="tab" aria-selected="false">Solicitar</button>
+            <button type="button" class="mn-tab" id="mnTabRegisterBtn" role="tab" aria-selected="false">Registrarme</button>
         </div>
+        {% else %}
+        <p class="rdm-sub" style="margin:0 0 14px;">El registro de nuevos minis está cerrado por ahora. Si ya tienes cuenta, entra abajo.</p>
+        {% endif %}
 
         <!-- Login -->
         <div class="mn-tab-panel rdm-step" id="mnPanelLogin">
@@ -37,6 +41,7 @@
             </button>
         </div>
 
+        {% if registration_enabled %}
         <!-- Registro -->
         <div class="mn-tab-panel rdm-step" id="mnPanelRegister" hidden>
             <label class="rdm-label" for="mnRegChannel">Nombre de tu canal o cuenta</label>
@@ -59,11 +64,11 @@
             <label class="rdm-label" for="mnRegWhatsapp">Tu WhatsApp</label>
             <input type="text" id="mnRegWhatsapp" class="glass-input" placeholder="04XX-XXXXXXX" maxlength="50">
 
-            <label class="rdm-label" for="mnRegCode">Código que quieres usar (opcional)</label>
+            <label class="rdm-label" for="mnRegCode">Código que vas a usar</label>
             <input type="text" id="mnRegCode" class="glass-input" placeholder="Ej. JUANFF" maxlength="20"
                    style="text-transform:uppercase" autocomplete="off">
             <p class="rdm-sub" style="margin:0 0 4px; text-align:left; max-width:none;">
-                3-20 caracteres: letras, números, guion o guion bajo. Si lo dejas vacío te asignamos uno — el admin puede ajustarlo al aprobar tu solicitud.
+                3-20 caracteres: letras, números, guion o guion bajo. Es el código que vas a compartir, así que elígelo bien.
             </p>
 
             <label class="rdm-label" for="mnRegNote">Cuéntanos de qué trata tu contenido</label>
@@ -72,8 +77,39 @@
             <p class="rdm-feedback" id="mnRegFeedback" aria-live="polite"></p>
 
             <button type="button" class="rdm-btn red-glow-pill" id="mnRegBtn">
-                <span class="rdm-btn-label">Enviar solicitud</span>
+                <span class="rdm-btn-label">Crear mi cuenta y entrar</span>
             </button>
+        </div>
+        {% endif %}
+
+        <div class="mn-promo-banner">
+            <p class="mn-promo-title">Gana <span class="is-accent">recargas gratis</span> haciendo videos</p>
+            <p class="mn-promo-text">
+                Crea tu código, sube videos a TikTok, Instagram, Youtube, Whatsapp o tus redes y compártelo. Cada
+                persona que compre con tu código recibe un <strong>3% de descuento</strong> en la web, y tú
+                acumulas esos usos para subir en la escalera de rangos y cobrar recargas gratis cada mes.
+            </p>
+            <div class="mn-promo-pills">
+                <span class="mn-promo-pill">🎥 TikTok y redes</span>
+                <span class="mn-promo-pill">🔥 3% de descuento</span>
+                <span class="mn-promo-pill">🏆 Premios cada mes</span>
+                <span class="mn-promo-pill">📈 Sube de rango</span>
+            </div>
+
+            {% if all_ranks %}
+            <p class="mn-promo-ranks-title">Escalera de rangos</p>
+            <div class="mn-rank-list mn-rank-list-compact">
+                {% for r in all_ranks %}
+                <div class="mn-rank-list-item">
+                    <div>
+                        <strong>{{ r.name }}</strong>
+                        <small>{{ r.uses_required }} usos con tu código al mes</small>
+                    </div>
+                    <span class="is-accent">${{ '%.2f'|format(r.bonus_amount) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
     </section>
 
@@ -94,15 +130,6 @@
         </div>
     </div>
 
-    <!-- Confirmación de solicitud enviada -->
-    <div class="rdm-modal" id="mnRegDoneModal" aria-hidden="true" hidden>
-        <div class="rdm-modal-card rdm-result" role="dialog" aria-modal="true" aria-labelledby="mnRegDoneTitle">
-            <div class="rdm-done-icon is-ok">✓</div>
-            <h3 class="rdm-done-title" id="mnRegDoneTitle">¡Solicitud enviada!</h3>
-            <p class="rdm-done-text" id="mnRegDoneText"></p>
-            <a href="{{ url_for('main_bp.index') }}" class="rdm-btn red-glow-pill" style="margin-top:6px;">Volver a la tienda</a>
-        </div>
-    </div>
 </div>
 {% endblock %}
 
@@ -152,15 +179,23 @@
 
     function showTab(which) {
         var isLogin = which === 'login';
-        panelLogin.hidden = !isLogin;
-        panelRegister.hidden = isLogin;
-        tabLoginBtn.classList.toggle('is-active', isLogin);
-        tabRegisterBtn.classList.toggle('is-active', !isLogin);
-        tabLoginBtn.setAttribute('aria-selected', String(isLogin));
-        tabRegisterBtn.setAttribute('aria-selected', String(!isLogin));
+        if (panelLogin) panelLogin.hidden = !isLogin;
+        if (panelRegister) panelRegister.hidden = isLogin;
+        if (tabLoginBtn) {
+            tabLoginBtn.classList.toggle('is-active', isLogin);
+            tabLoginBtn.setAttribute('aria-selected', String(isLogin));
+        }
+        if (tabRegisterBtn) {
+            tabRegisterBtn.classList.toggle('is-active', !isLogin);
+            tabRegisterBtn.setAttribute('aria-selected', String(!isLogin));
+        }
     }
-    tabLoginBtn.addEventListener('click', function () { showTab('login'); });
-    tabRegisterBtn.addEventListener('click', function () { showTab('register'); });
+    // El registro se puede apagar desde el admin (mini_registration_enabled):
+    // ahí ni el botón ni el panel de "Registrarme" existen en el HTML.
+    if (tabLoginBtn && tabRegisterBtn) {
+        tabLoginBtn.addEventListener('click', function () { showTab('login'); });
+        tabRegisterBtn.addEventListener('click', function () { showTab('register'); });
+    }
 
     /* Login */
     var loginBtn = document.getElementById('mnLoginBtn');
@@ -233,48 +268,30 @@
         });
     }
 
-    /* Registro */
+    /* Registro: alta inmediata, sin cola de aprobación — al confirmar entra
+       directo a su panel, igual que un login. */
     var regBtn = document.getElementById('mnRegBtn');
     var regFeedback = document.getElementById('mnRegFeedback');
 
-    var regDoneModal = document.getElementById('mnRegDoneModal');
-    var regDoneText = document.getElementById('mnRegDoneText');
-
-    function clearRegisterFields() {
-        ['mnRegChannel', 'mnRegEmail', 'mnRegPassword', 'mnRegChannelUrl',
-         'mnRegWhatsapp', 'mnRegCode', 'mnRegNote'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (el) el.value = '';
+    if (regBtn) {
+        regBtn.addEventListener('click', function () {
+            var payload = {
+                channel_name: document.getElementById('mnRegChannel').value.trim(),
+                email: document.getElementById('mnRegEmail').value.trim(),
+                password: document.getElementById('mnRegPassword').value,
+                channel_url: document.getElementById('mnRegChannelUrl').value.trim(),
+                whatsapp_phone: document.getElementById('mnRegWhatsapp').value.trim(),
+                code: document.getElementById('mnRegCode').value.trim(),
+                application_note: document.getElementById('mnRegNote').value.trim()
+            };
+            setBusy(regBtn, true, 'Creando cuenta...');
+            setFeedback(regFeedback, '');
+            postJson('{{ url_for("minis_bp.mini_register_submit") }}', payload)
+                .then(function (data) { window.location.href = data.redirect || '{{ url_for("minis_bp.panel") }}'; })
+                .catch(function (err) { setFeedback(regFeedback, err.message, 'is-error'); })
+                .finally(function () { setBusy(regBtn, false); });
         });
     }
-
-    function openRegDoneModal(message) {
-        if (!regDoneModal) return;
-        regDoneText.textContent = message || 'Te avisaremos cuando sea aprobada.';
-        regDoneModal.hidden = false;
-        regDoneModal.setAttribute('aria-hidden', 'false');
-    }
-
-    regBtn.addEventListener('click', function () {
-        var payload = {
-            channel_name: document.getElementById('mnRegChannel').value.trim(),
-            email: document.getElementById('mnRegEmail').value.trim(),
-            password: document.getElementById('mnRegPassword').value,
-            channel_url: document.getElementById('mnRegChannelUrl').value.trim(),
-            whatsapp_phone: document.getElementById('mnRegWhatsapp').value.trim(),
-            code: document.getElementById('mnRegCode').value.trim(),
-            application_note: document.getElementById('mnRegNote').value.trim()
-        };
-        setBusy(regBtn, true, 'Enviando...');
-        setFeedback(regFeedback, '');
-        postJson('{{ url_for("minis_bp.mini_register_submit") }}', payload)
-            .then(function (data) {
-                clearRegisterFields();
-                openRegDoneModal(data.message);
-            })
-            .catch(function (err) { setFeedback(regFeedback, err.message, 'is-error'); })
-            .finally(function () { setBusy(regBtn, false); });
-    });
 })();
 </script>
 {% endblock %}

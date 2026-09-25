@@ -460,6 +460,49 @@ html.sidebar-collapsed .nav-subitem { padding-left: 12px; }
 .card-header h2, .card-header h3 { font-size: 15px; font-weight: 700; }
 .btn-link { color: var(--accent); font-size: 13px; background: none; border: none; cursor: pointer; }
 
+/* Secciones plegables (<details>) reusadas en varias páginas del admin
+   (Configuración General, Mini Juegos...) para no tener que scrollear
+   toda la página en busca de un campo puntual. */
+.settings-section-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    list-style: none;
+}
+.settings-section-summary::-webkit-details-marker { display: none; }
+.settings-section-summary::marker { content: ''; }
+.settings-section-summary h2,
+.settings-section-summary h3 { margin: 0; }
+.settings-chevron {
+    flex-shrink: 0;
+    color: var(--accent);
+    font-size: 15px;
+    transition: transform .2s ease;
+}
+details[open] > .settings-section-summary .settings-chevron { transform: rotate(180deg); }
+
+/* Variante para secciones sueltas dentro de un formulario largo (Configuración
+   General): separador entre secciones + margen bajo el summary al abrirse. */
+.settings-section {
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+}
+.settings-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+.settings-section[open] > .settings-section-summary { margin-bottom: 20px; }
+
+/* Variante para tarjetas .admin-card ya con su propio .card-header: el
+   <details> envuelve toda la tarjeta y el .card-header hace de summary. */
+.admin-card > summary.card-header { cursor: pointer; list-style: none; }
+.admin-card > summary.card-header::-webkit-details-marker { display: none; }
+.admin-card > summary.card-header::marker { content: ''; }
+
 .category-chip {
     display: inline-flex;
     align-items: center;

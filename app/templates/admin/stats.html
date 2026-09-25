@@ -6,10 +6,10 @@
 <style>
 .stats-filters {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
+    grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto auto;
+    gap: 10px;
     align-items: end;
-    padding: 0 20px 20px;
+    padding: 0 20px 16px;
 }
 
 .stats-field {
@@ -30,12 +30,13 @@
 .stats-field select,
 .stats-field input {
     width: 100%;
-    min-height: 40px;
-    padding: 10px 12px;
-    border-radius: 12px;
+    min-height: 34px;
+    padding: 7px 10px;
+    border-radius: 10px;
     border: 1px solid rgba(255,255,255,.08);
     background: rgba(255,255,255,.03);
     color: #eef2ff;
+    font-size: 13px;
 }
 
 .stats-actions {
@@ -46,36 +47,36 @@
 
 .stats-summary-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
     margin-bottom: 16px;
 }
 
 .stats-summary-card {
     background: linear-gradient(180deg, rgba(22,24,38,.98), rgba(14,16,26,.94));
     border: 1px solid rgba(255,255,255,.06);
-    border-radius: 16px;
-    padding: 18px;
+    border-radius: 12px;
+    padding: 12px;
 }
 
 .stats-summary-label {
     display: block;
-    margin-bottom: 6px;
-    font-size: 12px;
+    margin-bottom: 4px;
+    font-size: 10.5px;
     color: #8ea0b9;
 }
 
 .stats-summary-value {
     display: block;
-    font-size: 30px;
+    font-size: 20px;
     font-weight: 800;
     line-height: 1;
     color: #ffffff;
 }
 
 .stats-summary-meta {
-    margin-top: 8px;
-    font-size: 12px;
+    margin-top: 5px;
+    font-size: 10.5px;
     color: #8ea0b9;
 }
 
@@ -109,6 +110,9 @@
     box-shadow: 0 0 0 1px rgba(96,165,250,.25) inset;
     background: rgba(59,130,246,.10);
 }
+
+.stats-day-card.stats-day-extra { display: none; }
+.stats-days-grid.is-expanded .stats-day-card.stats-day-extra { display: block; }
 
 .stats-day-top {
     display: flex;
@@ -168,12 +172,13 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 10px;
+    padding: 5px 9px;
     border-radius: 999px;
     background: rgba(255,255,255,.05);
     border: 1px solid rgba(255,255,255,.06);
-    font-size: 12px;
+    font-size: 11px;
     color: #dbe4f3;
+    white-space: nowrap;
 }
 
 .stats-chip strong {
@@ -290,7 +295,6 @@
 }
 
 @media (max-width: 1080px) {
-    .stats-filters,
     .stats-summary-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -300,8 +304,13 @@
     }
 }
 
+@media (max-width: 640px) {
+    .stats-filters {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
 @media (max-width: 760px) {
-    .stats-filters,
     .stats-summary-grid,
     .stats-days-grid {
         grid-template-columns: 1fr;
@@ -354,8 +363,8 @@
             </div>
         </div>
         <div class="stats-actions">
-            <button type="submit" class="btn-primary">Aplicar filtros</button>
-            <a href="{{ url_for('admin_bp.stats') }}" class="btn-secondary">Limpiar</a>
+            <button type="submit" class="btn-primary btn-sm">Aplicar filtros</button>
+            <a href="{{ url_for('admin_bp.stats') }}" class="btn-secondary btn-sm">Limpiar</a>
         </div>
     </form>
 </div>
@@ -396,14 +405,14 @@
         </div>
     </div>
 
-    <div class="stats-days-grid">
+    <div class="stats-days-grid" id="statsDaysGrid">
         {% for day in daily_history %}
             {% if selected_service_id %}
                 {% set day_link = url_for('admin_bp.stats', service=selected_service_id, date=day.date.isoformat()) %}
             {% else %}
                 {% set day_link = url_for('admin_bp.stats', date=day.date.isoformat()) %}
             {% endif %}
-            <a href="{{ day_link }}" class="stats-day-card {% if day.date == selected_date %}is-active{% endif %}">
+            <a href="{{ day_link }}" class="stats-day-card {% if day.date == selected_date %}is-active{% endif %} {% if loop.index > 5 %}stats-day-extra{% endif %}">
                 <div class="stats-day-top">
                     <div>
                         <div class="stats-day-label">{{ 'Hoy' if day.date == today else day.date.strftime('%A')|capitalize }}</div>
@@ -420,6 +429,11 @@
             </a>
         {% endfor %}
     </div>
+    {% if daily_history|length > 5 %}
+    <div style="padding:0 20px 20px; text-align:center;">
+        <button type="button" class="btn-secondary" id="statsDaysToggleBtn">Ver los {{ daily_history|length }} días</button>
+    </div>
+    {% endif %}
 </div>
 
 <div class="admin-card">
@@ -578,6 +592,7 @@
             </tbody>
         </table>
     </div>
+    <div class="row-pager" id="dailyOrdersPager" style="display:none; padding:12px 20px;"></div>
 </div>
 {% endblock %}
 
@@ -589,21 +604,77 @@
     if (!searchInput || !table) return;
 
     var emptyRow = document.getElementById('dailyOrdersSearchEmptyRow');
+    var pager = document.getElementById('dailyOrdersPager');
+    var pageSize = 20;
+    var currentPage = 0;
     var rows = Array.prototype.filter.call(
         table.querySelectorAll('tbody tr'),
         function (row) { return row.hasAttribute('data-order-search'); }
     );
 
+    function renderPage() {
+        var totalPages = Math.ceil(rows.length / pageSize);
+        rows.forEach(function (row, idx) {
+            row.hidden = idx < currentPage * pageSize || idx >= (currentPage + 1) * pageSize;
+        });
+        if (pager) {
+            if (rows.length > pageSize) {
+                pager.style.display = 'flex';
+                pager.style.alignItems = 'center';
+                pager.innerHTML =
+                    '<button type="button" class="btn-sm btn-outline" data-dir="prev"' + (currentPage === 0 ? ' disabled' : '') + '>← Más recientes</button>' +
+                    '<span style="margin:0 10px;color:var(--text-muted);font-size:12px;">Página ' + (currentPage + 1) + ' de ' + totalPages + '</span>' +
+                    '<button type="button" class="btn-sm btn-outline" data-dir="next"' + (currentPage === totalPages - 1 ? ' disabled' : '') + '>Más antiguas →</button>';
+            } else {
+                pager.style.display = 'none';
+                pager.innerHTML = '';
+            }
+        }
+    }
+
+    if (pager) {
+        pager.addEventListener('click', function (evt) {
+            var btn = evt.target.closest('button[data-dir]');
+            if (!btn || btn.disabled) return;
+            currentPage += btn.getAttribute('data-dir') === 'next' ? 1 : -1;
+            renderPage();
+        });
+    }
+
     searchInput.addEventListener('input', function () {
         var term = searchInput.value.trim().toLowerCase();
+        if (!term) {
+            // Sin búsqueda activa: vuelve a la paginación normal.
+            currentPage = 0;
+            renderPage();
+            if (emptyRow) emptyRow.hidden = true;
+            return;
+        }
+        // Con búsqueda activa, la paginación se apaga y se muestran todas
+        // las coincidencias juntas (ya filtradas, no suelen ser muchas).
+        if (pager) { pager.style.display = 'none'; pager.innerHTML = ''; }
         var visibles = 0;
         rows.forEach(function (row) {
-            var coincide = !term || row.getAttribute('data-order-search').indexOf(term) !== -1;
+            var coincide = row.getAttribute('data-order-search').indexOf(term) !== -1;
             row.hidden = !coincide;
             if (coincide) visibles++;
         });
-        if (emptyRow) emptyRow.hidden = !(term && visibles === 0);
+        if (emptyRow) emptyRow.hidden = !(visibles === 0);
     });
+
+    renderPage();
+})();
+
+(function () {
+    var toggleBtn = document.getElementById('statsDaysToggleBtn');
+    var grid = document.getElementById('statsDaysGrid');
+    if (!toggleBtn || !grid) return;
+
+    toggleBtn.addEventListener('click', function () {
+        var expanded = grid.classList.toggle('is-expanded');
+        toggleBtn.textContent = expanded ? 'Ver menos días' : toggleBtn.dataset.moreLabel;
+    });
+    toggleBtn.dataset.moreLabel = toggleBtn.textContent;
 })();
 </script>
 {% endblock %}
