@@ -15,7 +15,11 @@
         <h3>Información de Orden</h3>
         <div class="detail-row">
             <span class="detail-label">Nro. Orden</span>
-            <span class="detail-value order-num">#{{ order.order_number }}</span>
+            <span class="detail-value order-num" style="display:flex;align-items:center;gap:8px;">
+                #{{ order.order_number }}
+                <a href="{{ url_for('checkout_bp.order_status', order_number=order.order_number) }}" target="_blank" rel="noopener"
+                   class="btn-secondary btn-sm" title="Ver la orden como la ve el cliente">🔗 Ver orden</a>
+            </span>
         </div>
         <div class="detail-row">
             <span class="detail-label">Estado</span>
