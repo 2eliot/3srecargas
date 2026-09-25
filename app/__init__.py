@@ -289,6 +289,7 @@ def create_app(config_class=Config):
         _ensure_payment_verification_columns()
         _ensure_ai_reference_columns()
         _ensure_order_payment_completion_columns()
+        _ensure_order_payment_verification_raw_response_column()
         _ensure_order_idempotency_column()
         _ensure_ranking_archive_columns()
         _ensure_revendedores_mapping_columns()
@@ -784,6 +785,25 @@ def _ensure_order_payment_completion_columns():
             db.session.execute(text('ALTER TABLE orders ADD COLUMN remainder_capture VARCHAR(255)'))
         if 'remainder_ai_extracted_reference' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN remainder_ai_extracted_reference VARCHAR(255)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_payment_verification_raw_response_column():
+    try:
+        if _ensure_postgres_columns('orders', [
+            'payment_verification_raw_response TEXT',
+        ]):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'payment_verification_raw_response' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_verification_raw_response TEXT'))
         db.session.commit()
     except Exception:
         db.session.rollback()

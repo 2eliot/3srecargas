@@ -188,6 +188,11 @@ class Order(db.Model):
     remainder_reference = db.Column(db.String(255))
     remainder_capture = db.Column(db.String(255))
     remainder_ai_extracted_reference = db.Column(db.String(255))
+    # Última respuesta cruda (JSON) que mandó Pabilo al verificar el pago de
+    # esta orden. Se pisa cada vez (no es un historial), solo sirve para
+    # diagnosticar un monto o estado raro sin adivinar — antes no se
+    # guardaba nada de esto y no había forma de revisar hacia atrás.
+    payment_verification_raw_response = db.Column(db.Text)
     # ID de la transacción de Binance Pay que saldó esta orden. Es único: una
     # misma transferencia no puede acreditarse a dos órdenes distintas (algo
     # posible antes, cuando el emparejamiento por monto no dejaba rastro).

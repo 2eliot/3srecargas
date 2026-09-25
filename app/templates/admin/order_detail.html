@@ -257,6 +257,12 @@
         {% if order.status != 'rejected' %}
         <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border-color)">
             <h3 style="margin-bottom:12px">Verificación Pabilo</h3>
+            {% if order.payment_verification_raw_response %}
+            <details style="margin-bottom:12px">
+                <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Ver respuesta completa de Pabilo (última verificación)</summary>
+                <pre style="margin-top:8px;padding:10px;background:var(--bg-secondary);border-radius:6px;font-size:11px;overflow-x:auto;white-space:pre-wrap;word-break:break-word">{{ order.payment_verification_raw_response }}</pre>
+            </details>
+            {% endif %}
             {% if payment_method_config and payment_method_config.pabilo_requires_phone_dni %}
             <p style="margin:0 0 12px;color:var(--text-muted)">
                 Esta orden se revalida con el telefono, la cedula del pagador y el monto guardado en la orden.

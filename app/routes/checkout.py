@@ -1,5 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
+import json
 import os
 from uuid import uuid4
 from flask import (
@@ -150,6 +151,19 @@ def order_supports_background_payment_verification(order):
     return bool((payment_method.pabilo_user_bank_id or '').strip())
 
 
+def _store_raw_pabilo_response(order, verification):
+    """Guarda la última respuesta cruda de Pabilo en la orden, para poder
+    diagnosticar un monto o estado raro con datos reales en vez de adivinar
+    (se pisa cada vez, no es un historial)."""
+    response = verification.get('response') if verification else None
+    if response is None:
+        return
+    try:
+        order.payment_verification_raw_response = json.dumps(response, default=str)[:20000]
+    except Exception:
+        pass
+
+
 def auto_verify_and_process_order(order, force=False):
     payment_verify_allowed = order_supports_background_payment_verification(order)
     auto_approve_allowed = order_qualifies_for_auto_verify(order)
@@ -219,6 +233,7 @@ def auto_verify_and_process_order(order, force=False):
         verification = verify_order_payment(order)
         order.payment_verification_attempts = attempts + 1
         order.payment_last_verification_at = datetime.utcnow()
+        _store_raw_pabilo_response(order, verification)
 
         if verification.get('verified'):
             stamp_verified_payment(order, verification)
@@ -258,6 +273,15 @@ def auto_verify_and_process_order(order, force=False):
             reported_amount = Decimal(str(verification.get('reported_amount') or '0'))
             order.awaiting_payment_completion = True
             order.paid_amount_bs = reported_amount
+            # Pabilo SÍ confirmó que esta referencia existe (solo que el monto
+            # no alcanza): se guarda ahora en la orden, no cuando se complete
+            # el pago, para que quede "reservada" de inmediato y nadie pueda
+            # reusar ese mismo comprobante real en una orden distinta mientras
+            # esta sigue esperando el resto.
+            resolved_reference = str(verification.get('resolved_reference') or '').strip()
+            if resolved_reference:
+                order.payment_reference = resolved_reference
+                order.payment_reference_last5 = normalize_reference_last5(resolved_reference)
             underpaid_note = (
                 f"[Pabilo] Pago incompleto: reportó Bs {verification.get('reported_amount')} "
                 f"de Bs {verification.get('expected_amount')} esperados. "
@@ -1417,6 +1441,7 @@ def order_complete_payment(order_number):
     if not verification:
         return jsonify({'ok': False, 'message': 'No se pudo verificar el pago restante.'})
 
+    _store_raw_pabilo_response(order, verification)
     order.remainder_reference = verification.get('resolved_reference') or candidate_references[0]
 
     if not verification.get('verified'):
@@ -1444,9 +1469,13 @@ def order_complete_payment(order_number):
 
     if not covers_total:
         still_missing = (expected_amount - total_paid) if expected_amount is not None else None
-        order.remainder_reference = None
-        order.remainder_capture = None
-        order.remainder_ai_extracted_reference = None
+        # No se borra remainder_reference: Pabilo SÍ confirmó que ese pago
+        # existe (solo que sumado no alcanza), así que debe quedar reservado
+        # en la orden — igual que la referencia original — para que nadie
+        # pueda reusar ese mismo comprobante real en otra orden mientras
+        # esta sigue esperando el resto. Si el cliente manda un tercer pago,
+        # este campo se actualiza a esa nueva referencia (la anterior ya
+        # quedó protegida en el momento en que se verificó).
         db.session.commit()
         return jsonify({
             'ok': True,

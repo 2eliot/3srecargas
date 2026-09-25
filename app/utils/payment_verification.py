@@ -118,6 +118,11 @@ def find_reference_conflict(reference, payment_method_code, exclude_order_id=Non
     raw_reference = str(reference or '').strip()
     if raw_reference:
         filters.append(Order.payment_reference == raw_reference)
+        # También hay que buscarla como referencia del PAGO RESTANTE: un
+        # pago que Pabilo confirmó pero no alcanzó a cubrir una orden queda
+        # "reservado" igual, para que nadie lo reuse en una orden distinta
+        # mientras la primera sigue esperando el resto.
+        filters.append(Order.remainder_reference == raw_reference)
     if reference_last5:
         filters.append(Order.payment_reference_last5 == reference_last5)
     if filters:
@@ -130,6 +135,9 @@ def find_reference_conflict(reference, payment_method_code, exclude_order_id=Non
     for candidate in candidates:
         candidate_key = normalize_reference_key(candidate.payment_reference)
         if reference_key and candidate_key and candidate_key == reference_key:
+            return candidate
+        candidate_remainder_key = normalize_reference_key(candidate.remainder_reference)
+        if reference_key and candidate_remainder_key and candidate_remainder_key == reference_key:
             return candidate
         if not reference_key and reference_last5 and candidate.payment_reference_last5 == reference_last5:
             return candidate
@@ -346,17 +354,26 @@ def _iter_amount_candidates(payload):
 
 
 def _extract_pabilo_reported_amount(payload_data, full_data):
-    for candidate in _iter_amount_candidates(payload_data):
-        amount = _coerce_decimal_amount(candidate)
-        if amount is not None and amount > 0:
-            return amount
-
+    # `user_bank_payment` es el mismo objeto del que ya sacamos el `id` y el
+    # `status` del pago en verify_order_payment — es el registro autoritativo
+    # de ESTE movimiento específico. Se revisa PRIMERO a propósito: antes se
+    # buscaba en todo `payload_data` de forma amplia (cualquier campo con
+    # nombre de "monto" en cualquier nivel) y esa búsqueda genérica podía
+    # toparse con un campo de otro lugar de la respuesta antes de llegar al
+    # monto real — se vio en producción con una "verificación repetida" de
+    # Pabilo (el mismo pago consultado dos veces) donde así se leyó un
+    # número equivocado en vez de los Bs reales del pago.
     payment_data = payload_data.get('user_bank_payment') if isinstance(payload_data, dict) else None
     if payment_data:
         for candidate in _iter_amount_candidates(payment_data):
             amount = _coerce_decimal_amount(candidate)
             if amount is not None and amount > 0:
                 return amount
+
+    for candidate in _iter_amount_candidates(payload_data):
+        amount = _coerce_decimal_amount(candidate)
+        if amount is not None and amount > 0:
+            return amount
 
     for candidate in _iter_amount_candidates(full_data):
         amount = _coerce_decimal_amount(candidate)
@@ -663,6 +680,13 @@ def verify_order_payment(order, force_reference=False):
             amount_validation = _validate_verified_payment_amount(order, payload_data, full_data)
             if not amount_validation.get('verified'):
                 amount_validation['response'] = full_data
+                if amount_validation.get('underpaid'):
+                    # Pabilo SÍ encontró y confirmó esta referencia (solo que el
+                    # monto no alcanza): se informa cuál fue para que el caller
+                    # la "reserve" en la orden y nadie pueda reusar ese mismo
+                    # pago real en una orden distinta mientras se completa.
+                    amount_validation['resolved_reference'] = variant_ref
+                    amount_validation['resolved_reference_source'] = source
                 return amount_validation
 
             date_verdict = _check_payment_min_date(payment_data, is_new)

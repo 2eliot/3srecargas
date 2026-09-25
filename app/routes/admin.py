@@ -1307,6 +1307,12 @@ def _run_admin_pabilo_reverification(order, reference=None, force_reference=Fals
         verification = verify_order_payment(order, force_reference=force_reference)
         order.payment_verification_attempts = int(order.payment_verification_attempts or 0) + 1
         order.payment_last_verification_at = datetime.utcnow()
+        response_raw = verification.get('response')
+        if response_raw is not None:
+            try:
+                order.payment_verification_raw_response = json.dumps(response_raw, default=str)[:20000]
+            except Exception:
+                pass
 
         if verification.get('verified'):
             stamp_verified_payment(order, verification)
