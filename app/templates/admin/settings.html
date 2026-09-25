@@ -39,10 +39,36 @@
                         Opcional. Si lo estableces y el paquete pertenece al primer juego, se seleccionará automáticamente al entrar a la web.
                     </p>
                 </div>
+            </div>
+        </details>
+
+        <details class="settings-section">
+            <summary class="settings-section-summary">
+                <h2>Imágenes y fondos del sitio</h2>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <p class="form-hint" style="margin-bottom:18px; max-width:640px; line-height:1.5;">
+                Todas las imágenes configurables del sitio en un solo lugar: el logo, el banner promocional, la imagen de seguimiento de
+                órdenes, y los fondos de pantalla completa — el de la <strong>página principal</strong> ("Fondo de la web") y el de cada página
+                específica (Recarga Acumulada, Sorteo, etc.). <strong>Todos los fondos de pantalla completa usan la misma configuración</strong>
+                (cubren detrás de todo el contenido, nunca el menú lateral, y siempre con un velo oscuro para que el texto se siga leyendo). Como
+                la web es sobre todo para celulares, se ven mejor con imágenes verticales tipo pantalla de teléfono, de aproximadamente
+                <strong>1080×1920 píxeles</strong>. Para que carguen rápido, lo ideal es que pesen <strong>entre 150 y 300 KB</strong>: usa formato
+                <strong>WEBP</strong> si puedes (misma calidad que JPG pero pesa la mitad), o JPG con calidad 75-85%. Evita subir PNG para fotos,
+                porque puede pesar varios MB y hacer que la página cargue lento. Tope máximo: 1.5MB.
+            </p>
+            <div class="form-grid-2">
                 <div class="form-group">
                     <label for="site_logo">Logo del encabezado</label>
-                    <input type="file" id="site_logo" name="site_logo" accept="image/png,image/jpeg,image/webp,image/gif">
-                    <p class="form-hint">Sube una imagen (PNG recomendado) para reemplazar el logo estándar del header.</p>
+                    <div class="admin-dropzone" data-admin-dropzone>
+                        <input type="file" id="site_logo" name="site_logo" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
+                        <span class="admin-dropzone-icon">🖼️</span>
+                        <span class="admin-dropzone-text">
+                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
+                            <small class="admin-dropzone-sub">Reemplaza el logo estándar del header</small>
+                        </span>
+                        <span class="admin-dropzone-btn">Subir</span>
+                    </div>
                     {% if site_logo %}
                     <div class="logo-preview">
                         <img src="{{ url_for('static', filename='uploads/' + site_logo) }}" alt="Logo actual">
@@ -54,9 +80,16 @@
                     {% endif %}
                 </div>
                 <div class="form-group">
-                    <label for="site_background_image">Fondo de la web</label>
-                    <input type="file" id="site_background_image" name="site_background_image" accept="image/png,image/jpeg,image/webp,image/gif">
-                    <p class="form-hint">Imagen de fondo para toda la tienda (se muestra a pantalla completa, con un velo oscuro detrás para que el texto se siga leyendo).</p>
+                    <label for="site_background_image">Fondo de la web (página principal)</label>
+                    <div class="admin-dropzone" data-admin-dropzone>
+                        <input type="file" id="site_background_image" name="site_background_image" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
+                        <span class="admin-dropzone-icon">🖼️</span>
+                        <span class="admin-dropzone-text">
+                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
+                            <small class="admin-dropzone-sub">Fondo a pantalla completa de la tienda</small>
+                        </span>
+                        <span class="admin-dropzone-btn">Subir</span>
+                    </div>
                     {% if site_background_image %}
                     <div class="logo-preview">
                         <img src="{{ url_for('static', filename='uploads/' + site_background_image) }}" alt="Fondo actual">
@@ -69,8 +102,15 @@
                 </div>
                 <div class="form-group">
                     <label for="order_status_image">Imagen para seguimiento de órdenes</label>
-                    <input type="file" id="order_status_image" name="order_status_image" accept="image/png,image/jpeg,image/webp,image/gif">
-                    <p class="form-hint">Se muestra al lado del estado de procesamiento en la página de la orden. Usa una imagen vertical o cuadrada.</p>
+                    <div class="admin-dropzone" data-admin-dropzone>
+                        <input type="file" id="order_status_image" name="order_status_image" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
+                        <span class="admin-dropzone-icon">🖼️</span>
+                        <span class="admin-dropzone-text">
+                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
+                            <small class="admin-dropzone-sub">Vertical o cuadrada, junto al estado de la orden</small>
+                        </span>
+                        <span class="admin-dropzone-btn">Subir</span>
+                    </div>
                     {% if order_status_image %}
                     <div class="logo-preview">
                         <img src="{{ url_for('static', filename='uploads/' + order_status_image) }}" alt="Imagen actual de seguimiento">
@@ -83,8 +123,15 @@
                 </div>
                 <div class="form-group">
                     <label for="promo_banner_image">Banner promocional (arriba de la tienda)</label>
-                    <input type="file" id="promo_banner_image" name="promo_banner_image" accept="image/png,image/jpeg,image/webp,image/gif">
-                    <p class="form-hint">Banner horizontal pequeño que se muestra arriba de las categorías. Recomendado: proporción ~5:1 (ej. 1000x220).</p>
+                    <div class="admin-dropzone" data-admin-dropzone>
+                        <input type="file" id="promo_banner_image" name="promo_banner_image" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
+                        <span class="admin-dropzone-icon">🖼️</span>
+                        <span class="admin-dropzone-text">
+                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
+                            <small class="admin-dropzone-sub">Horizontal, proporción ~5:1 (ej. 1000x220)</small>
+                        </span>
+                        <span class="admin-dropzone-btn">Subir</span>
+                    </div>
                     {% if promo_banner_image %}
                     <div class="logo-preview">
                         <img src="{{ url_for('static', filename='uploads/' + promo_banner_image) }}" alt="Banner promocional actual">
@@ -100,24 +147,18 @@
                     <input type="text" id="promo_banner_link" name="promo_banner_link" value="{{ promo_banner_link }}" placeholder="https://... (opcional)">
                     <p class="form-hint">Al hacer clic en el banner, el cliente será llevado a este link. Déjalo vacío si no quieres que sea clicable.</p>
                 </div>
-            </div>
-        </details>
-
-        <details class="settings-section">
-            <summary class="settings-section-summary">
-                <h2>Fondos de los accesos del menú</h2>
-                <span class="settings-chevron">▾</span>
-            </summary>
-            <p class="form-hint" style="margin-top:-4px;">
-                Coloca una imagen de fondo para cada acceso del menú lateral (☰). Se ven mejor con imágenes horizontales tipo banner,
-                de aproximadamente <strong>800×200 píxeles</strong> (proporción 4:1), en PNG, JPG o WEBP y menos de 1MB. El texto y el ícono
-                quedan siempre visibles encima gracias a un velo oscuro automático.
-            </p>
-            <div class="form-grid-2">
                 {% for key, label, value in drawer_bg_items %}
                 <div class="form-group">
                     <label for="{{ key }}">Fondo de "{{ label }}"</label>
-                    <input type="file" id="{{ key }}" name="{{ key }}" accept="image/png,image/jpeg,image/webp,image/gif">
+                    <div class="admin-dropzone" data-admin-dropzone>
+                        <input type="file" id="{{ key }}" name="{{ key }}" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
+                        <span class="admin-dropzone-icon">📷</span>
+                        <span class="admin-dropzone-text">
+                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
+                            <small class="admin-dropzone-sub">Adjunta el fondo de "{{ label }}"</small>
+                        </span>
+                        <span class="admin-dropzone-btn">Subir</span>
+                    </div>
                     {% if value %}
                     <div class="logo-preview">
                         <img src="{{ url_for('static', filename='uploads/' + value) }}" alt="Fondo actual de {{ label }}">
@@ -280,8 +321,8 @@
                     <input type="file" id="checkout_payment_video_file" name="checkout_payment_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
                     <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
                     {% if checkout_payment_video_file %}
-                    <div class="logo-preview">
-                        <video controls preload="metadata" style="width:100%;max-width:280px;border-radius:12px;display:block;">
+                    <div class="logo-preview" style="align-items:flex-start;">
+                        <video controls preload="metadata" style="width:120px;height:120px;object-fit:cover;border-radius:8px;display:block;flex-shrink:0;">
                             <source src="{{ url_for('static', filename='uploads/' + checkout_payment_video_file) }}">
                         </video>
                         <label class="remove-logo">
@@ -323,8 +364,8 @@
                     <input type="file" id="site_tutorial_video_file" name="site_tutorial_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
                     <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
                     {% if site_tutorial_video_file %}
-                    <div class="logo-preview">
-                        <video controls preload="metadata" style="width:100%;max-width:280px;border-radius:12px;display:block;">
+                    <div class="logo-preview" style="align-items:flex-start;">
+                        <video controls preload="metadata" style="width:120px;height:120px;object-fit:cover;border-radius:8px;display:block;flex-shrink:0;">
                             <source src="{{ url_for('static', filename='uploads/' + site_tutorial_video_file) }}">
                         </video>
                         <label class="remove-logo">
@@ -567,7 +608,7 @@
 
 <!-- Verificación de ID por Scraping -->
 <div class="admin-card settings-card" style="margin-top:24px; padding:26px 28px;">
-    <details class="settings-section" style="border-bottom:none; padding-bottom:0; margin-bottom:0;">
+    <details class="settings-section" style="border:none; padding:0; margin-bottom:0; background:none;">
         <summary class="settings-section-summary">
             <h2>Verificación de ID (Scraping)</h2>
             <span class="settings-chevron">▾</span>
@@ -735,6 +776,38 @@
     });
 
     loadVerifyConfig();
+})();
+
+(function () {
+    document.querySelectorAll('[data-admin-dropzone]').forEach(function (zone) {
+        var input = zone.querySelector('.admin-dropzone-input');
+        var title = zone.querySelector('.admin-dropzone-title');
+        var sub = zone.querySelector('.admin-dropzone-sub');
+        var btn = zone.querySelector('.admin-dropzone-btn');
+        if (!input) return;
+
+        var defaultTitle = title ? title.textContent : '';
+        var defaultSub = sub ? sub.textContent : '';
+        var defaultBtn = btn ? btn.textContent : '';
+
+        zone.addEventListener('click', function (e) {
+            if (e.target === input) return;
+            input.click();
+        });
+
+        input.addEventListener('change', function () {
+            var file = input.files && input.files[0];
+            if (file) {
+                if (title) { title.textContent = '¡Cargado con éxito!'; title.classList.add('is-ok'); }
+                if (sub) sub.textContent = file.name;
+                if (btn) btn.textContent = 'Cambiar';
+            } else {
+                if (title) { title.textContent = defaultTitle; title.classList.remove('is-ok'); }
+                if (sub) sub.textContent = defaultSub;
+                if (btn) btn.textContent = defaultBtn;
+            }
+        });
+    });
 })();
 </script>
 {% endblock %}

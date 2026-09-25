@@ -5,104 +5,58 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Iniciar Sesión — 3S Recargas</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/neon.css') }}">
     <style>
+        /* El resto de la tarjeta (kicker/título/subtítulo/labels/inputs/botón)
+           reutiliza el mismo kit "rdm-*" + glass-input + red-glow-pill que ya
+           usan /redimir y el panel de minis, para que esta página no se
+           sienta como una pantalla aparte del resto del sitio. */
         .auth-container {
             max-width: 400px;
             margin: 80px auto;
             padding: 0 20px;
         }
-        .auth-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: 32px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        .identifier-verify-row {
+            display: flex;
+            gap: 8px;
         }
-        .auth-header {
-            text-align: center;
-            margin-bottom: 24px;
+        .identifier-verify-row input {
+            flex: 1;
+            min-width: 0;
         }
-        .auth-logo {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--accent);
-            margin-bottom: 8px;
-        }
-        .auth-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 4px;
-        }
-        .auth-subtitle {
-            font-size: 14px;
-            color: var(--text-muted);
-        }
-        .form-group {
-            margin-bottom: 16px;
-        }
-        .form-group label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-primary);
-            margin-bottom: 6px;
-        }
-        .form-group input {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            font-size: 14px;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            transition: border-color var(--transition);
-        }
-        .form-group input:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-        .submit-btn {
-            width: 100%;
-            padding: 12px;
-            background: var(--accent);
-            color: white;
-            border: none;
-            border-radius: var(--radius-sm);
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all var(--transition);
-            margin-top: 8px;
-        }
-        .submit-btn:hover {
-            background: var(--accent-dark);
-            transform: translateY(-1px);
-        }
-        .auth-link {
-            text-align: center;
-            margin-top: 20px;
-        }
-        .auth-link a {
-            color: var(--accent);
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 500;
-        }
-        .auth-link a:hover {
-            text-decoration: underline;
-        }
-        .auth-helper {
-            background: rgba(255,255,255,.03);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 12px 14px;
-            color: var(--text-muted);
+        .verify-id-btn {
+            font-family: var(--nx-font-display);
+            flex: 0 0 auto;
+            padding: 0 14px;
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 10px;
+            background: rgba(255,255,255,.06);
+            color: #fff;
             font-size: 13px;
-            margin-bottom: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all .2s ease;
         }
+        .verify-id-btn:hover:not(:disabled) {
+            border-color: var(--nx-red);
+            color: var(--nx-red);
+        }
+        .verify-id-btn:disabled {
+            opacity: .55;
+            cursor: not-allowed;
+        }
+        .verify-id-result {
+            margin-top: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: var(--nx-font-display);
+        }
+        .verify-id-result.is-ok { color: #34d399; }
+        .verify-id-result.is-error { color: #fb7185; }
+        .verify-id-result.is-loading { color: var(--nx-muted); }
         .flash {
             padding: 12px;
             border-radius: var(--radius-sm);
@@ -141,16 +95,18 @@
         }
         .admin-popup-card {
             width: min(100%, 420px);
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.015) 45%, rgba(20,5,5,.9) 100%);
+            border: 1px solid rgba(255,0,0,.45);
+            border-radius: 20px;
             padding: 24px;
         }
         .admin-popup-card h3 {
+            font-family: var(--nx-font-display);
+            font-weight: 900;
             margin-bottom: 8px;
         }
         .admin-popup-card p {
-            color: var(--text-muted);
+            color: var(--nx-muted);
             font-size: 14px;
             margin-bottom: 16px;
         }
@@ -162,13 +118,14 @@
         .admin-popup-actions button {
             flex: 1;
             min-height: 44px;
-            border-radius: var(--radius-sm);
-            font-weight: 600;
+            border-radius: 10px;
+            font-weight: 700;
         }
         .admin-cancel-btn {
+            font-family: var(--nx-font-display);
             background: rgba(255,255,255,.06);
-            color: var(--text-primary);
-            border: 1px solid var(--border);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,.15);
         }
     </style>
 
@@ -194,19 +151,23 @@
     <header class="site-header">
         <div class="header-inner">
             <a href="{{ url_for('main_bp.index') }}" class="logo-link">
-                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="3S Recargas" class="logo-img"
-                     onerror="this.style.display='none';document.getElementById('logo-text').style.display='flex'">
-                <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
+                {% if SITE_LOGO %}
+                    <img src="{{ url_for('static', filename='uploads/' + SITE_LOGO) }}" alt="Logo" class="logo-img">
+                {% else %}
+                    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="3S Recargas" class="logo-img"
+                         onerror="this.style.display='none';document.getElementById('logo-text').style.display='flex'">
+                    <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
+                {% endif %}
             </a>
         </div>
     </header>
 
-    <main class="auth-container">
-        <div class="auth-card">
-            <div class="auth-header">
-                <div class="auth-logo">3S Recargas</div>
-                <h1 class="auth-title">Iniciar Sesión</h1>
-                <p class="auth-subtitle">Accede con tu ID o correo del servicio. Tu historial se separa por juego o servicio.</p>
+    <main class="auth-container nx-store">
+        <section class="glass-panel rdm-card">
+            <div class="rdm-head">
+                <span class="rdm-kicker">Historial de compras</span>
+                <h1 class="rdm-title">Iniciar Sesión</h1>
+                <p class="rdm-sub">Revisa el historial de tus órdenes. Elige el juego o servicio y escribe el ID o correo que usaste al comprar.</p>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -217,47 +178,52 @@
                 {% endif %}
             {% endwith %}
 
-            <div class="auth-helper">
-                Clientes: selecciona el servicio y escribe tu ID, correo o cuenta asociada. No necesitas contraseña. Si ese historial ya existe, entras directamente.
-            </div>
-
-            <form method="POST" id="customerLoginForm">
+            <form method="POST" id="customerLoginForm" class="rdm-step">
                 <input type="hidden" name="admin_password" id="adminPasswordField">
-                <div class="form-group">
-                    <label for="service_id">Juego o Servicio</label>
-                    <select id="service_id" name="service_id">
+                <div>
+                    <label class="rdm-label" for="service_id">Juego o Servicio</label>
+                    <select id="service_id" name="service_id" class="glass-input" style="margin-top:6px">
                         <option value="">Selecciona dónde hiciste tu compra</option>
                         {% for game in active_games %}
                         <option value="{{ game.id }}">{{ game.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="form-group">
-                    <label for="identifier">ID, Correo o Cuenta</label>
-                    <input type="text" id="identifier" name="identifier" required 
-                           placeholder="Ej: 55678210, correo@ejemplo.com o Pay ID" autocomplete="username">
+                <div>
+                    <label class="rdm-label" for="identifier">ID, Correo o Cuenta</label>
+                    <div class="identifier-verify-row" style="margin-top:6px">
+                        <input type="text" id="identifier" name="identifier" required class="glass-input"
+                               placeholder="Ej: 55678210, correo@ejemplo.com o Pay ID" autocomplete="username">
+                        <button type="button" id="verifyIdBtn" class="verify-id-btn" hidden>Verificar</button>
+                    </div>
+                    <p class="verify-id-result" id="verifyIdResult" hidden></p>
                 </div>
 
-                <button type="submit" class="submit-btn">Continuar</button>
+                <button type="submit" class="rdm-btn red-glow-pill">
+                    <span class="rdm-btn-label">Continuar</span>
+                </button>
             </form>
 
-            <div class="auth-link">
-                <p>No necesitas registro previo. <a href="{{ url_for('main_bp.index') }}">Haz tu compra desde la tienda</a></p>
-            </div>
-        </div>
+            <p class="rdm-sub" style="margin-top:18px">
+                No necesitas registro previo.
+                <a href="{{ url_for('main_bp.index') }}" class="rdm-link-btn">Haz tu compra desde la tienda</a>
+            </p>
+        </section>
     </main>
 
     <div class="admin-popup" id="adminPasswordPopup" aria-hidden="true">
         <div class="admin-popup-card">
             <h3>Acceso de Administrador</h3>
             <p>Ese correo corresponde a la cuenta administrativa. Ingresa la clave para continuar.</p>
-            <div class="form-group" style="margin-bottom:0;">
-                <label for="adminPasswordInput">Clave admin</label>
-                <input type="password" id="adminPasswordInput" placeholder="••••••••" autocomplete="current-password">
+            <div>
+                <label class="rdm-label" for="adminPasswordInput">Clave admin</label>
+                <input type="password" id="adminPasswordInput" class="glass-input" style="width:100%;margin-top:6px" placeholder="••••••••" autocomplete="current-password">
             </div>
             <div class="admin-popup-actions">
                 <button type="button" class="admin-cancel-btn" id="adminPopupCancelBtn">Cancelar</button>
-                <button type="button" class="submit-btn" id="adminPopupConfirmBtn" style="margin-top:0;">Entrar como admin</button>
+                <button type="button" class="rdm-btn red-glow-pill" id="adminPopupConfirmBtn">
+                    <span class="rdm-btn-label">Entrar como admin</span>
+                </button>
             </div>
         </div>
     </div>
@@ -273,6 +239,68 @@
             var adminPopupConfirmBtn = document.getElementById('adminPopupConfirmBtn');
             var adminPopupCancelBtn = document.getElementById('adminPopupCancelBtn');
             var adminEmail = {{ admin_email_hint|tojson }};
+            var verifiableIds = {{ verifiable_ids|tojson }};
+            var verifyBtn = document.getElementById('verifyIdBtn');
+            var verifyResult = document.getElementById('verifyIdResult');
+
+            function selectedGameIsVerifiable() {
+                var gid = serviceInput ? parseInt(serviceInput.value, 10) : NaN;
+                return !isNaN(gid) && verifiableIds.indexOf(gid) !== -1;
+            }
+
+            function setVerifyResult(text, tone) {
+                if (!verifyResult) return;
+                if (!text) { verifyResult.hidden = true; return; }
+                verifyResult.hidden = false;
+                verifyResult.textContent = text;
+                verifyResult.classList.remove('is-ok', 'is-error', 'is-loading');
+                if (tone) verifyResult.classList.add(tone);
+            }
+
+            function updateVerifyBtnVisibility() {
+                if (!verifyBtn) return;
+                var uid = (identifierInput && identifierInput.value || '').trim();
+                var show = selectedGameIsVerifiable() && /^\d+$/.test(uid);
+                verifyBtn.hidden = !show;
+                if (!show) setVerifyResult('', '');
+            }
+
+            if (serviceInput) serviceInput.addEventListener('change', updateVerifyBtnVisibility);
+            if (identifierInput) identifierInput.addEventListener('input', updateVerifyBtnVisibility);
+            updateVerifyBtnVisibility();
+
+            if (verifyBtn) {
+                verifyBtn.addEventListener('click', function () {
+                    var uid = (identifierInput && identifierInput.value || '').trim();
+                    var gid = serviceInput ? serviceInput.value : '';
+                    if (!uid || !gid) return;
+
+                    verifyBtn.disabled = true;
+                    var prevLabel = verifyBtn.textContent;
+                    verifyBtn.textContent = 'Verificando…';
+                    setVerifyResult('Consultando…', 'is-loading');
+
+                    fetch('/store/player/verify/auto?gid=' + encodeURIComponent(gid) + '&uid=' + encodeURIComponent(uid))
+                        .then(function (res) {
+                            return res.json().catch(function () { return { ok: false, error: 'No se pudo leer la respuesta.' }; })
+                                .then(function (data) { return { ok: res.ok, data: data }; });
+                        })
+                        .then(function (result) {
+                            if (result.ok && result.data && result.data.ok) {
+                                setVerifyResult('✓ ' + (result.data.nick || 'ID verificado'), 'is-ok');
+                            } else {
+                                setVerifyResult((result.data && result.data.error) || 'No se pudo verificar el ID.', 'is-error');
+                            }
+                        })
+                        .catch(function () {
+                            setVerifyResult('No se pudo contactar al servidor.', 'is-error');
+                        })
+                        .finally(function () {
+                            verifyBtn.disabled = false;
+                            verifyBtn.textContent = prevLabel;
+                        });
+                });
+            }
 
             function openAdminPopup() {
                 if (!adminPopup) return;

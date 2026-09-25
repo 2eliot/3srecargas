@@ -1,6 +1,22 @@
 {% extends 'base.html' %}
 {% block title %}Mini influencers — 3S Recargas{% endblock %}
 
+{% block extra_css %}
+{% if DRAWER_BG_IMAGES.drawer_bg_mini %}
+<style>
+body::before {
+    background-color: #000;
+    background-image:
+        linear-gradient(rgba(0,0,0,.72), rgba(0,0,0,.72)),
+        url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_mini) }}');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+</style>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="nx-store mn-page">
 
@@ -12,75 +28,6 @@
             <h1 class="rdm-title">Tu panel de mini</h1>
             <p class="rdm-sub">Entra si ya tienes cuenta, o regístrate al instante con tu canal o red social.</p>
         </div>
-
-        {% if registration_enabled %}
-        <div class="mn-tabs" role="tablist">
-            <button type="button" class="mn-tab is-active" id="mnTabLoginBtn" role="tab" aria-selected="true">Entrar</button>
-            <button type="button" class="mn-tab" id="mnTabRegisterBtn" role="tab" aria-selected="false">Registrarme</button>
-        </div>
-        {% else %}
-        <p class="rdm-sub" style="margin:0 0 14px;">El registro de nuevos minis está cerrado por ahora. Si ya tienes cuenta, entra abajo.</p>
-        {% endif %}
-
-        <!-- Login -->
-        <div class="mn-tab-panel rdm-step" id="mnPanelLogin">
-            <label class="rdm-label" for="mnLoginEmail">Correo</label>
-            <input type="email" id="mnLoginEmail" class="glass-input" placeholder="tu@correo.com" autocomplete="username">
-
-            <label class="rdm-label" for="mnLoginPassword">Contraseña</label>
-            <input type="password" id="mnLoginPassword" class="glass-input" placeholder="••••••••" autocomplete="current-password">
-
-            <p class="rdm-history-trigger" style="margin:4px 0 0; padding-top:0; border-top:0;">
-                <button type="button" class="rdm-text-link" id="mnForgotPasswordBtn">¿Olvidaste tu contraseña?</button>
-            </p>
-
-            <p class="rdm-feedback" id="mnLoginFeedback" aria-live="polite"></p>
-
-            <button type="button" class="rdm-btn red-glow-pill" id="mnLoginBtn">
-                <span class="rdm-btn-label">Entrar</span>
-            </button>
-        </div>
-
-        {% if registration_enabled %}
-        <!-- Registro -->
-        <div class="mn-tab-panel rdm-step" id="mnPanelRegister" hidden>
-            <label class="rdm-label" for="mnRegChannel">Nombre de tu canal o cuenta</label>
-            <input type="text" id="mnRegChannel" class="glass-input" placeholder="Ej. Juan Gaming" maxlength="100">
-
-            <div class="mn-field-grid mn-cols-2">
-                <div>
-                    <label class="rdm-label" for="mnRegEmail">Correo</label>
-                    <input type="email" id="mnRegEmail" class="glass-input" placeholder="tu@correo.com" autocomplete="username">
-                </div>
-                <div>
-                    <label class="rdm-label" for="mnRegPassword">Contraseña</label>
-                    <input type="password" id="mnRegPassword" class="glass-input" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
-                </div>
-            </div>
-
-            <label class="rdm-label" for="mnRegChannelUrl">Link de tu canal/red social</label>
-            <input type="url" id="mnRegChannelUrl" class="glass-input" placeholder="https://tiktok.com/@tucuenta" maxlength="255">
-
-            <label class="rdm-label" for="mnRegWhatsapp">Tu WhatsApp</label>
-            <input type="text" id="mnRegWhatsapp" class="glass-input" placeholder="04XX-XXXXXXX" maxlength="50">
-
-            <label class="rdm-label" for="mnRegCode">Código que vas a usar</label>
-            <input type="text" id="mnRegCode" class="glass-input" placeholder="Ej. JUANFF" maxlength="20"
-                   style="text-transform:uppercase" autocomplete="off">
-            <p class="rdm-sub" style="margin:0 0 4px; text-align:left; max-width:none;">
-                3-20 caracteres: letras, números, guion o guion bajo. Es el código que vas a compartir, así que elígelo bien.
-            </p>
-
-            <label class="rdm-label" for="mnRegNote">Cuéntanos de qué trata tu contenido</label>
-            <textarea id="mnRegNote" class="glass-input" rows="3" maxlength="1000" placeholder="Ej. Hago videos de Free Fire con mis códigos de recarga..."></textarea>
-
-            <p class="rdm-feedback" id="mnRegFeedback" aria-live="polite"></p>
-
-            <button type="button" class="rdm-btn red-glow-pill" id="mnRegBtn">
-                <span class="rdm-btn-label">Crear mi cuenta y entrar</span>
-            </button>
-        </div>
-        {% endif %}
 
         <div class="mn-promo-banner">
             <p class="mn-promo-title">Gana <span class="is-accent">recargas gratis</span> haciendo videos</p>
@@ -111,7 +58,93 @@
             </div>
             {% endif %}
         </div>
+
+        <div class="mn-tabs" role="group" style="margin-top:18px">
+            <button type="button" class="mn-tab is-active" id="mnOpenLoginBtn">Entrar</button>
+            {% if registration_enabled %}
+            <button type="button" class="mn-tab" id="mnOpenRegisterBtn">Registrarme</button>
+            {% endif %}
+        </div>
+        {% if not registration_enabled %}
+        <p class="rdm-sub" style="margin-top:10px;">El registro de nuevos minis está cerrado por ahora. Si ya tienes cuenta, entra arriba.</p>
+        {% endif %}
     </section>
+
+    <!-- Popup de inicio de sesión -->
+    <div class="rdm-modal" id="mnLoginModal" aria-hidden="true" hidden>
+        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="mnLoginModalTitle">
+            <div class="rdm-modal-head">
+                <h3 id="mnLoginModalTitle">Entrar a tu panel</h3>
+                <button type="button" class="rdm-modal-close" id="mnLoginModalCloseBtn" aria-label="Cerrar">✕</button>
+            </div>
+            <div class="rdm-step" id="mnPanelLogin">
+                <label class="rdm-label" for="mnLoginEmail">Correo</label>
+                <input type="email" id="mnLoginEmail" class="glass-input" placeholder="tu@correo.com" autocomplete="username">
+
+                <label class="rdm-label" for="mnLoginPassword">Contraseña</label>
+                <input type="password" id="mnLoginPassword" class="glass-input" placeholder="••••••••" autocomplete="current-password">
+
+                <p class="rdm-history-trigger" style="margin:4px 0 0; padding-top:0; border-top:0;">
+                    <button type="button" class="rdm-text-link" id="mnForgotPasswordBtn">¿Olvidaste tu contraseña?</button>
+                </p>
+
+                <p class="rdm-feedback" id="mnLoginFeedback" aria-live="polite"></p>
+
+                <button type="button" class="rdm-btn red-glow-pill" id="mnLoginBtn">
+                    <span class="rdm-btn-label">Entrar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {% if registration_enabled %}
+    <!-- Popup de registro -->
+    <div class="rdm-modal" id="mnRegisterModal" aria-hidden="true" hidden>
+        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="mnRegisterModalTitle">
+            <div class="rdm-modal-head">
+                <h3 id="mnRegisterModalTitle">Crea tu cuenta de mini</h3>
+                <button type="button" class="rdm-modal-close" id="mnRegisterModalCloseBtn" aria-label="Cerrar">✕</button>
+            </div>
+            <div class="rdm-step" id="mnPanelRegister">
+                <label class="rdm-label" for="mnRegChannel">Nombre de tu canal o cuenta</label>
+                <input type="text" id="mnRegChannel" class="glass-input" placeholder="Ej. Juan Gaming" maxlength="100">
+
+                <div class="mn-field-grid mn-cols-2">
+                    <div>
+                        <label class="rdm-label" for="mnRegEmail">Correo</label>
+                        <input type="email" id="mnRegEmail" class="glass-input" placeholder="tu@correo.com" autocomplete="username">
+                    </div>
+                    <div>
+                        <label class="rdm-label" for="mnRegPassword">Contraseña</label>
+                        <input type="password" id="mnRegPassword" class="glass-input" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+                    </div>
+                </div>
+
+                <label class="rdm-label" for="mnRegChannelUrl">Link de tu canal/red social</label>
+                <input type="url" id="mnRegChannelUrl" class="glass-input" placeholder="https://tiktok.com/@tucuenta" maxlength="255">
+
+                <label class="rdm-label" for="mnRegWhatsapp">Tu WhatsApp</label>
+                <input type="text" id="mnRegWhatsapp" class="glass-input" placeholder="04XX-XXXXXXX" maxlength="50">
+
+                <label class="rdm-label" for="mnRegCode">Código que vas a usar</label>
+                <input type="text" id="mnRegCode" class="glass-input" placeholder="Ej. JUANFF" maxlength="20"
+                       style="text-transform:uppercase" autocomplete="off">
+                <p class="rdm-sub" style="margin:0 0 4px; text-align:left; max-width:none;">
+                    3-20 caracteres: letras, números, guion o guion bajo. Es el código que vas a compartir, así que elígelo bien.
+                </p>
+
+                <label class="rdm-label" for="mnRegNote">Cuéntanos de qué trata tu contenido</label>
+                <textarea id="mnRegNote" class="glass-input" rows="3" maxlength="1000" placeholder="Ej. Hago videos de Free Fire con mis códigos de recarga..."></textarea>
+
+                <p class="rdm-feedback" id="mnRegFeedback" aria-live="polite"></p>
+
+                <button type="button" class="rdm-btn red-glow-pill" id="mnRegBtn">
+                    <span class="rdm-btn-label">Crear mi cuenta y entrar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Pide el correo antes de mandar al chat por contraseña olvidada -->
     <div class="rdm-modal" id="mnForgotModal" aria-hidden="true" hidden>
@@ -171,30 +204,50 @@
         });
     }
 
-    /* Tabs */
-    var tabLoginBtn = document.getElementById('mnTabLoginBtn');
-    var tabRegisterBtn = document.getElementById('mnTabRegisterBtn');
-    var panelLogin = document.getElementById('mnPanelLogin');
-    var panelRegister = document.getElementById('mnPanelRegister');
+    /* Popups de Entrar / Registrarme */
+    var openLoginBtn = document.getElementById('mnOpenLoginBtn');
+    var openRegisterBtn = document.getElementById('mnOpenRegisterBtn');
+    var loginModal = document.getElementById('mnLoginModal');
+    var registerModal = document.getElementById('mnRegisterModal');
+    var loginModalCloseBtn = document.getElementById('mnLoginModalCloseBtn');
+    var registerModalCloseBtn = document.getElementById('mnRegisterModalCloseBtn');
 
-    function showTab(which) {
-        var isLogin = which === 'login';
-        if (panelLogin) panelLogin.hidden = !isLogin;
-        if (panelRegister) panelRegister.hidden = isLogin;
-        if (tabLoginBtn) {
-            tabLoginBtn.classList.toggle('is-active', isLogin);
-            tabLoginBtn.setAttribute('aria-selected', String(isLogin));
-        }
-        if (tabRegisterBtn) {
-            tabRegisterBtn.classList.toggle('is-active', !isLogin);
-            tabRegisterBtn.setAttribute('aria-selected', String(!isLogin));
-        }
+    function openModal(modal, focusEl) {
+        if (!modal) return;
+        modal.hidden = false;
+        modal.setAttribute('aria-hidden', 'false');
+        if (focusEl) focusEl.focus();
     }
+    function closeModal(modal) {
+        if (!modal) return;
+        modal.hidden = true;
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    if (openLoginBtn) {
+        openLoginBtn.addEventListener('click', function () {
+            openModal(loginModal, document.getElementById('mnLoginEmail'));
+        });
+    }
+    if (loginModalCloseBtn) loginModalCloseBtn.addEventListener('click', function () { closeModal(loginModal); });
+    if (loginModal) {
+        loginModal.addEventListener('click', function (evt) {
+            if (evt.target === loginModal) closeModal(loginModal);
+        });
+    }
+
     // El registro se puede apagar desde el admin (mini_registration_enabled):
-    // ahí ni el botón ni el panel de "Registrarme" existen en el HTML.
-    if (tabLoginBtn && tabRegisterBtn) {
-        tabLoginBtn.addEventListener('click', function () { showTab('login'); });
-        tabRegisterBtn.addEventListener('click', function () { showTab('register'); });
+    // ahí ni el botón ni el popup de "Registrarme" existen en el HTML.
+    if (openRegisterBtn) {
+        openRegisterBtn.addEventListener('click', function () {
+            openModal(registerModal, document.getElementById('mnRegChannel'));
+        });
+    }
+    if (registerModalCloseBtn) registerModalCloseBtn.addEventListener('click', function () { closeModal(registerModal); });
+    if (registerModal) {
+        registerModal.addEventListener('click', function (evt) {
+            if (evt.target === registerModal) closeModal(registerModal);
+        });
     }
 
     /* Login */

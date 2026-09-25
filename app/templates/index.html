@@ -617,6 +617,7 @@
     var binanceWallet = '';
     var binanceCodeRequestedFor = null;   // id de paquete ya solicitado
     var warningShown = false;
+    var pendingCheckoutStepsReveal = false;
     var timerInterval = null;
     var toastTimeout = null;
     var extractionRequestId = 0;
@@ -918,20 +919,30 @@
     applyMethodSections();
 
     /* ── Mostrar/ocultar el bloque de checkout al elegir paquete ───── */
-    function showCheckoutSteps() {
-        if (!checkoutSteps || checkoutSteps.style.display !== 'none') return;
+    // La primera vez que se elige un paquete, el aviso de método de pago
+    // sale ANTES de que se vea el resto (método de pago, datos de pago...):
+    // se revela recién cuando el cliente confirma el aviso en closeWarning().
+    // Las veces siguientes (mismo aviso ya visto) se salta directo.
+    function revealCheckoutSteps() {
         checkoutSteps.style.display = '';
         renderPaybox();
         syncAmounts();
         applyMethodSections();
         startTimer();
-        if (!warningShown) {
-            warningShown = true;
-            openWarning();
-        }
         setTimeout(function () {
             checkoutSteps.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }, 150);
+    }
+
+    function showCheckoutSteps() {
+        if (!checkoutSteps || checkoutSteps.style.display !== 'none') return;
+        if (!warningShown) {
+            warningShown = true;
+            pendingCheckoutStepsReveal = true;
+            openWarning();
+            return;
+        }
+        revealCheckoutSteps();
     }
 
     function hideCheckoutSteps() {
@@ -992,6 +1003,10 @@
         if (!warningModal) return;
         warningModal.style.display = 'none';
         warningModal.setAttribute('aria-hidden', 'true');
+        if (pendingCheckoutStepsReveal) {
+            pendingCheckoutStepsReveal = false;
+            revealCheckoutSteps();
+        }
         maybeOpenVideo();
     }
 

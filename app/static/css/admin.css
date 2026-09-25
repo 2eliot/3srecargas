@@ -484,17 +484,17 @@ html.sidebar-collapsed .nav-subitem { padding-left: 12px; }
 details[open] > .settings-section-summary .settings-chevron { transform: rotate(180deg); }
 
 /* Variante para secciones sueltas dentro de un formulario largo (Configuración
-   General): separador entre secciones + margen bajo el summary al abrirse. */
+   General): cada una en su propio contenedor redondeado, en vez de una sola
+   lista separada por líneas — así se distingue mejor dónde empieza y
+   termina cada bloque al desplegarse. */
 .settings-section {
-    border-bottom: 1px solid rgba(255,255,255,.08);
-    padding-bottom: 20px;
-    margin-bottom: 20px;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 14px;
+    background: rgba(255,255,255,.015);
+    padding: 16px 18px;
+    margin-bottom: 14px;
 }
-.settings-section:last-of-type {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
-}
+.settings-section:last-of-type { margin-bottom: 0; }
 .settings-section[open] > .settings-section-summary { margin-bottom: 20px; }
 
 /* Variante para tarjetas .admin-card ya con su propio .card-header: el
@@ -1690,3 +1690,102 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
 .gift-nick.is-loading { color: var(--text-muted); font-weight: 500; }
 .gift-verify-btn { white-space: nowrap; }
 .gift-redeemer-date { font-size: 11px; }
+
+/* Vista previa compacta de imágenes subidas (logo, fondos, banners...).
+   Antes el <img> se mostraba a tamaño natural: con una imagen de fondo de
+   1080x1920 eso eran cientos de píxeles de alto solo para confirmar que
+   el archivo se subió. Ahora es una miniatura fija en fila con el botón
+   de quitar al lado, como la vista previa del checkout. */
+.logo-preview {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+}
+.logo-preview img {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+.logo-preview .remove-logo {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+/* Zona de subida de imagen estilo "toca para subir", igual a la del
+   checkout de la tienda pero con los colores del panel admin, en vez del
+   <input type="file"> nativo del navegador. */
+.admin-dropzone {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 2px dashed rgba(139,92,246,.45);
+    border-radius: 12px;
+    background: rgba(139,92,246,.05);
+    cursor: pointer;
+    transition: border-color .2s ease, background .2s ease;
+}
+.admin-dropzone:hover { border-color: var(--accent); background: rgba(139,92,246,.09); }
+.admin-dropzone-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+}
+.admin-dropzone-icon {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(139,92,246,.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+}
+.admin-dropzone-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.admin-dropzone-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+}
+.admin-dropzone-title.is-ok { color: #4ade80; }
+.admin-dropzone-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.admin-dropzone-btn {
+    flex: 0 0 auto;
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+}

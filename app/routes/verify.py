@@ -201,6 +201,18 @@ def store_player_verify_bloodstrike():
     return jsonify(payload), status
 
 
+# ── Verificación genérica (deja que el propio gid decida FF o BS) ────────────
+# La usa la página de login/historial de órdenes: ahí solo se sabe el ID del
+# juego seleccionado, no si es "el juego FF" o "el juego BS" de la config.
+
+@verify_bp.route('/store/player/verify/auto')
+def store_player_verify_auto():
+    payload, status = verify_player_nick(
+        request.args.get("uid"), request.args.get("gid"), mode='auto'
+    )
+    return jsonify(payload), status
+
+
 # ── Admin config endpoints (mirror Inefable's admin config routes) ───────────
 
 @verify_bp.route('/admin/config/active_login_game', methods=['GET'])

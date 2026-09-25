@@ -1,6 +1,25 @@
 {% extends 'base.html' %}
 {% block title %}Canjear código — 3S Recargas{% endblock %}
 
+{% block extra_css %}
+{% if DRAWER_BG_IMAGES.drawer_bg_canjear %}
+<style>
+/* Fondo propio de esta página (no el de toda la web): pisa la capa fija
+   que define base.html/neon.css con la imagen configurada para "Canjear
+   código" en Admin > Configuración > Fondos de los accesos del menú. */
+body::before {
+    background-color: #000;
+    background-image:
+        linear-gradient(rgba(0,0,0,.72), rgba(0,0,0,.72)),
+        url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_canjear) }}');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+</style>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="nx-store rdm-page">
 

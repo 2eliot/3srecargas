@@ -86,6 +86,9 @@
     </style>
 </head>
 <body class="bg-black text-slate-100 flex justify-center">
+{% if DRAWER_BG_IMAGES.drawer_bg_sorteo %}
+<div aria-hidden="true" style="position:fixed;inset:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_sorteo) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
+{% endif %}
 
     <div class="mobile-shell p-4">
 
@@ -97,7 +100,7 @@
             <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] font-extrabold px-3.5 py-1 rounded-full uppercase tracking-wider mb-2 shadow-lg shadow-red-600/30 animate-pulse border border-red-400/30">
                 <span>⚡</span> 3S RECARGAS • Sorteo Automático <span>🔥</span>
             </div>
-            <h1 id="page-title" class="text-2xl font-extrabold tracking-wider text-white bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-300">
+            <h1 id="page-title" class="text-xl font-extrabold tracking-wider text-white bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-300">
                 🎲 SORTEO DIARIO
             </h1>
             <p id="schedule-sub" class="text-slate-400 text-[11px] mt-1 flex items-center justify-center gap-1">

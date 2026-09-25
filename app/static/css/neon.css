@@ -384,43 +384,6 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 }
 .drawer-item:active { transform: scale(.985); }
 
-/* Fondo opcional por ítem del menú (configurable en Admin > Configuración):
-   overlay oscuro en degradé para que el texto siga siendo legible encima
-   de cualquier imagen, ícono/texto por encima del overlay, y un glow que
-   pulsa solo (sin depender de :hover, que en mobile no existe). */
-.drawer-item.has-bg {
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    position: relative;
-    overflow: hidden;
-    border-color: rgba(255,255,255,.14);
-    animation: drawer-bg-glow 3.2s ease-in-out infinite;
-}
-.drawer-item.has-bg::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, rgba(5,5,8,.82) 0%, rgba(5,5,8,.6) 55%, rgba(5,5,8,.25) 100%);
-    transition: background .25s ease;
-}
-.drawer-item.has-bg:hover::before,
-.drawer-item.has-bg:focus-visible::before {
-    background: linear-gradient(90deg, rgba(255,0,0,.4) 0%, rgba(5,5,8,.55) 55%, rgba(5,5,8,.2) 100%);
-}
-.drawer-item.has-bg .drawer-item-icon,
-.drawer-item.has-bg .drawer-item-text,
-.drawer-item.has-bg .drawer-item-chevron {
-    position: relative;
-    z-index: 1;
-}
-.drawer-item.has-bg .drawer-item-text small { color: rgba(255,255,255,.8); }
-
-@keyframes drawer-bg-glow {
-    0%, 100% { box-shadow: 0 0 0 rgba(255,0,0,0); }
-    50% { box-shadow: 0 0 18px rgba(255,0,0,.4); }
-}
-
 .drawer-item-icon {
     width: 34px;
     height: 34px;
@@ -3287,7 +3250,7 @@ body.drawer-open { overflow: hidden; }
 }
 .rdm-back:hover { border-color: var(--nx-red); color: #fff; }
 
-.rdm-card { padding: 22px 18px 18px; }
+.rdm-card { padding: 22px 18px 18px; border-radius: 20px; overflow: hidden; }
 
 .rdm-head { text-align: center; margin-bottom: 22px; }
 .rdm-kicker {
@@ -3309,6 +3272,7 @@ body.drawer-open { overflow: hidden; }
     margin: 0 0 8px;
 }
 .rdm-sub {
+    font-family: var(--nx-font-display);
     font-size: 12.5px;
     color: rgba(255,255,255,.55);
     line-height: 1.5;

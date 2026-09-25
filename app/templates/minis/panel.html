@@ -1,6 +1,22 @@
 {% extends 'base.html' %}
 {% block title %}Mi panel de mini — 3S Recargas{% endblock %}
 
+{% block extra_css %}
+{% if DRAWER_BG_IMAGES.drawer_bg_mini %}
+<style>
+body::before {
+    background-color: #000;
+    background-image:
+        linear-gradient(rgba(0,0,0,.72), rgba(0,0,0,.72)),
+        url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_mini) }}');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+</style>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="nx-store mn-page">
 
