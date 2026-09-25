@@ -3120,6 +3120,28 @@ body.drawer-open { overflow: hidden; }
     box-shadow: 0 0 15px rgba(255,0,0,.5);
 }
 
+/* Tarjeta "completar pago restante": mismo kit visual que el resto del
+   sitio pero un poco más compacto que el tamaño por defecto, ya que aquí
+   va casi toda la información junta (monto, datos de pago, comprobante,
+   referencia) arriba de la orden. */
+#completePaymentCard { padding: 12px; gap: 8px; }
+#completePaymentCard h3 { font-size: 12px; }
+#completePaymentCard p { font-size: 10.5px; }
+#completePaymentCard .nx-copyall-btn { padding: 7px 0; font-size: 11px; }
+#completePaymentCard .nx-step-card { padding: 10px !important; }
+#completePaymentCard .nx-step-title { font-size: 13px !important; }
+#completePaymentCard .nx-dropzone { padding: 8px; }
+#completePaymentCard .nx-drop-ico { width: 32px; height: 32px; }
+#completePaymentCard .nx-drop-ico svg { width: 15px; height: 15px; }
+#completePaymentCard .nx-drop-copy .t1 { font-size: 11px; }
+#completePaymentCard .nx-drop-copy .t2 { font-size: 10px; }
+#completePaymentCard .nx-drop-btn { padding: 6px 11px; font-size: 10.5px; }
+#completePaymentCard .nx-pay-label { font-size: 10px; }
+#completePaymentCard input[type="text"] { padding: 9px 12px !important; font-size: 13px !important; }
+#completePaymentCard .submit-btn { padding: 10px; font-size: 12.5px; }
+#completePaymentCard .nx-pay-row,
+#completePaymentCard .nx-pay-amount-row { padding: 7px 10px; }
+
 /* Botones inferiores */
 .nx-order-actions {
     display: grid;
