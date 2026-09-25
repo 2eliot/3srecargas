@@ -121,6 +121,7 @@ def _load_revendedores_auto_response(order, catalog_items, base_state=None):
             'order_id': current.get('order_id'),
             'error': current.get('error') or '',
             'verified': bool(current.get('verified')),
+            'blocked_cause': current.get('blocked_cause') or '',
         })
 
     if not existing_steps and auto_resp.get('source') == 'revendedores_api' and steps:
@@ -134,6 +135,7 @@ def _load_revendedores_auto_response(order, catalog_items, base_state=None):
             'order_id': auto_resp.get('order_id'),
             'error': auto_resp.get('error') or '',
             'verified': bool(auto_resp.get('verified')),
+            'blocked_cause': auto_resp.get('blocked_cause') or '',
         })
 
     auto_resp['source'] = 'revendedores_api'
@@ -263,6 +265,29 @@ def process_revendedores_queue(order, base_state=None, force=False):
     for step_index, step in enumerate(steps):
         if step.get('success'):
             continue
+
+        # Si este paso ya quedó marcado como rechazo DEFINITIVO (ID
+        # inválido, paquete dado de baja, saldo agotado...), no se vuelve a
+        # llamar a Revendedores aunque se dispare este proceso otra vez
+        # (p.ej. el admin le da "Aprobar" de nuevo esperando que ahora sí
+        # funcione). Antes esto SÍ se reintentaba en cada llamada nueva,
+        # aunque la nota ya dijera "no se reintenta automáticamente" — de
+        # ahí que la misma nota apareciera duplicada varias veces. Se
+        # limpia solo si se corrige el ID del jugador (eso borra
+        # automation_response, ver order_update_player_id).
+        if step.get('blocked_cause'):
+            return {
+                'ok': False,
+                'changed': False,
+                'pending_verification': False,
+                'current_step_index': step_index,
+                'blocked_cause': step.get('blocked_cause'),
+                'message': (
+                    f"Revendedores ya rechazó esta recarga en el paso {step_index + 1}: {step.get('error') or 'rechazo definitivo'}. "
+                    'Corrige el ID del jugador (u otro dato) antes de reintentar.'
+                ),
+                'category': 'danger',
+            }
 
         # Si el paso ya tenía un intento previo (procesando, error de red,
         # error de la API), confirmar con Revendedores antes de generar uno
@@ -461,7 +486,10 @@ def process_revendedores_queue(order, base_state=None, force=False):
                 auto_resp['last_error'] = rev_error
                 auto_resp['blocked_cause'] = non_retryable_cause or 'rejected'
                 order.automation_response = json.dumps(auto_resp)
-                order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Revendedores rechazó la recarga: {rev_error}. No se reintenta automáticamente.' + (f' {hint}' if hint else '')).strip()
+                rejection_note = f'[Revendedores API][Paso {step_index + 1}] Revendedores rechazó la recarga: {rev_error}. No se reintenta automáticamente.' + (f' {hint}' if hint else '')
+                existing_notes = order.notes or ''
+                if rejection_note not in existing_notes:
+                    order.notes = (existing_notes + '\n' + rejection_note).strip()
                 db.session.commit()
                 return {
                     'ok': False,
