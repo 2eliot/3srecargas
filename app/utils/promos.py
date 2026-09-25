@@ -9,7 +9,9 @@ una jugada — así no se le puede regalar un premio a un ID inventado.
 """
 import random
 from datetime import datetime, time, timedelta
+from uuid import uuid4
 
+from .locks import acquire_lock, release_lock
 from .order_units import extract_order_units
 from .timezone import now_ve, today_ve_str, format_ve
 from ..models import (
@@ -579,87 +581,104 @@ def submit_guess(game_id, player_id, guess_value):
     if round_row.winners_count >= config.winners_per_day:
         raise ValueError('Ya se completaron los cupos ganadores de hoy. Espera al reinicio (mira el temporizador arriba).')
 
-    already_won = PromoGuessWinner.query.filter_by(
-        game_id=game_id, day_key=round_row.day_key, player_id=player_id,
-    ).first()
-    if already_won:
-        raise ValueError('Este ID ya ganó un cupo hoy.')
+    # Lock por (juego, día, ID): sin esto, dos intentos casi simultáneos del
+    # mismo ID (doble tap, reintento de red, o alguien mandando el mismo
+    # intento dos veces a propósito) podían pasar AMBOS la validación de
+    # "¿ya ganó hoy?" antes de que el primero terminara de guardarse, y
+    # los dos entregaban el premio — el mismo ID ganaba dos veces con el
+    # mismo número. El lock queda en la base de datos (no en memoria) para
+    # que funcione igual con varios workers de gunicorn.
+    lock_key = f'adivina_guess:{game_id}:{round_row.day_key}:{player_id}'
+    lock_holder = uuid4().hex
+    if not acquire_lock(lock_key, 15, lock_holder):
+        raise ValueError('Tu intento anterior todavía se está procesando. Espera unos segundos e intenta de nuevo.')
 
-    attempt = PromoGuessAttempt.query.filter_by(
-        game_id=game_id, day_key=round_row.day_key, player_id=player_id,
-    ).first()
-    if not attempt:
-        attempt = PromoGuessAttempt(game_id=game_id, day_key=round_row.day_key, player_id=player_id, attempts_used=0)
-        db.session.add(attempt)
-        db.session.flush()
+    try:
+        db.session.refresh(round_row)
 
-    if attempt.attempts_used >= config.max_attempts:
-        raise ValueError('Ya agotaste tus intentos de hoy para este ID.')
-
-    # La verificación corre antes de gastar el intento: un ID inválido no
-    # debe consumirle una oportunidad a nadie.
-    ok, error, verified_nick = _verify_id_if_needed(game_id, player_id, config.require_verification)
-    if not ok:
-        raise ValueError(error)
-
-    attempt.attempts_used += 1
-    attempt.updated_at = datetime.utcnow()
-    remaining_attempts = config.max_attempts - attempt.attempts_used
-
-    if guess_value == round_row.secret_number:
-        from .order_processing import deliver_prize_to_player
-
-        game = Game.query.get(game_id)
-        prize_order = None
-        if config.package:
-            prize_order, _approval = deliver_prize_to_player(
-                game, config.package, player_id,
-                note=f'Premio Adivina el Número — cupo #{round_row.winners_count + 1} ({round_row.day_key}).',
-                reference_prefix='ADIVINA',
-            )
-        round_row.winners_count += 1
-        db.session.add(PromoGuessWinner(
+        already_won = PromoGuessWinner.query.filter_by(
             game_id=game_id, day_key=round_row.day_key, player_id=player_id,
-            slot_index=round_row.winners_count, guessed_number=guess_value,
-            player_nick=verified_nick,
-            prize_order_id=prize_order.id if prize_order else None,
-        ))
+        ).first()
+        if already_won:
+            raise ValueError('Este ID ya ganó un cupo hoy.')
 
-        closed_for_today = round_row.winners_count >= config.winners_per_day
-        if not closed_for_today:
-            # Nuevo número secreto para el siguiente cupo: distinto a TODOS
-            # los que ya ganaron hoy, no solo al inmediatamente anterior
-            # (con eso solo, un número ya premiado hoy podía volver a salir
-            # como secreto en un cupo más adelante).
-            used_today = {
-                row[0] for row in
-                db.session.query(PromoGuessWinner.guessed_number)
-                .filter_by(game_id=game_id, day_key=round_row.day_key)
-                .all()
+        attempt = PromoGuessAttempt.query.filter_by(
+            game_id=game_id, day_key=round_row.day_key, player_id=player_id,
+        ).first()
+        if not attempt:
+            attempt = PromoGuessAttempt(game_id=game_id, day_key=round_row.day_key, player_id=player_id, attempts_used=0)
+            db.session.add(attempt)
+            db.session.flush()
+
+        if attempt.attempts_used >= config.max_attempts:
+            raise ValueError('Ya agotaste tus intentos de hoy para este ID.')
+
+        # La verificación corre antes de gastar el intento: un ID inválido no
+        # debe consumirle una oportunidad a nadie.
+        ok, error, verified_nick = _verify_id_if_needed(game_id, player_id, config.require_verification)
+        if not ok:
+            raise ValueError(error)
+
+        attempt.attempts_used += 1
+        attempt.updated_at = datetime.utcnow()
+        remaining_attempts = config.max_attempts - attempt.attempts_used
+
+        if guess_value == round_row.secret_number:
+            from .order_processing import deliver_prize_to_player
+
+            game = Game.query.get(game_id)
+            prize_order = None
+            if config.package:
+                prize_order, _approval = deliver_prize_to_player(
+                    game, config.package, player_id,
+                    note=f'Premio Adivina el Número — cupo #{round_row.winners_count + 1} ({round_row.day_key}).',
+                    reference_prefix='ADIVINA',
+                )
+            round_row.winners_count += 1
+            db.session.add(PromoGuessWinner(
+                game_id=game_id, day_key=round_row.day_key, player_id=player_id,
+                slot_index=round_row.winners_count, guessed_number=guess_value,
+                player_nick=verified_nick,
+                prize_order_id=prize_order.id if prize_order else None,
+            ))
+
+            closed_for_today = round_row.winners_count >= config.winners_per_day
+            if not closed_for_today:
+                # Nuevo número secreto para el siguiente cupo: distinto a TODOS
+                # los que ya ganaron hoy, no solo al inmediatamente anterior
+                # (con eso solo, un número ya premiado hoy podía volver a salir
+                # como secreto en un cupo más adelante).
+                used_today = {
+                    row[0] for row in
+                    db.session.query(PromoGuessWinner.guessed_number)
+                    .filter_by(game_id=game_id, day_key=round_row.day_key)
+                    .all()
+                }
+                available = [n for n in range(1, config.number_max + 1) if n not in used_today]
+                round_row.secret_number = random.choice(available) if available else random.randint(1, config.number_max)
+            round_row.updated_at = datetime.utcnow()
+            db.session.commit()
+
+            return {
+                'won': True,
+                'slot_index': round_row.winners_count,
+                'reward_label': config.package.name if config.package else '',
+                'closed_for_today': closed_for_today,
             }
-            available = [n for n in range(1, config.number_max + 1) if n not in used_today]
-            round_row.secret_number = random.choice(available) if available else random.randint(1, config.number_max)
-        round_row.updated_at = datetime.utcnow()
+
         db.session.commit()
-
         return {
-            'won': True,
-            'slot_index': round_row.winners_count,
-            'reward_label': config.package.name if config.package else '',
-            'closed_for_today': closed_for_today,
+            'won': False,
+            # Ya no se dice si el número real es mayor o menor: con esa pista,
+            # entre varias personas comparando resultados (o generando IDs falsos
+            # para sacar más intentos) le hacían búsqueda binaria al número
+            # secreto y lo sacaban en un puñado de intentos. Ahora solo se les
+            # da ánimo genérico, sin información real para acorralar el número.
+            'hint': 'cerca',
+            'attempts_remaining': remaining_attempts,
         }
-
-    db.session.commit()
-    return {
-        'won': False,
-        # Ya no se dice si el número real es mayor o menor: con esa pista,
-        # entre varias personas comparando resultados (o generando IDs falsos
-        # para sacar más intentos) le hacían búsqueda binaria al número
-        # secreto y lo sacaban en un puñado de intentos. Ahora solo se les
-        # da ánimo genérico, sin información real para acorralar el número.
-        'hint': 'cerca',
-        'attempts_remaining': remaining_attempts,
-    }
+    finally:
+        release_lock(lock_key, lock_holder)
 
 
 def get_guess_public_state(game_id, player_id):

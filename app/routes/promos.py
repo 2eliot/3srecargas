@@ -3,6 +3,7 @@ Adivina el Número. Cada una tiene una página (elige juego si hay más de
 uno activo) y un mini-API JSON que la página consume con fetch()."""
 from flask import Blueprint, jsonify, render_template, request
 
+from ..utils.locks import check_rate_limit
 from ..utils.promos import (
     get_accumulated_enabled_games, get_accumulated_progress_state,
     get_guess_enabled_games, get_guess_public_state, submit_guess,
@@ -12,6 +13,19 @@ from ..utils.promos import (
 )
 
 promos_bp = Blueprint('promos_bp', __name__, url_prefix='/promos')
+
+# Máximo de intentos de Adivina el Número que se aceptan por IP en 60s. No
+# limita a una persona real (nadie manda 9 intentos por minuto a mano),
+# pero sí frena un script que prueba muchos IDs reales rápido — que es el
+# ataque real posible ahora que cada ID solo tiene 1 intento al día.
+ADIVINA_RATE_LIMIT_PER_MINUTE = 8
+
+
+def _client_ip():
+    """IP real detrás de nginx. `remote_addr` a secas sería siempre
+    127.0.0.1 y el límite por IP no filtraría absolutamente nada."""
+    forwarded = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
+    return forwarded or request.remote_addr or ''
 
 
 def _selected_game(games, game_id):
@@ -160,6 +174,12 @@ def adivina_estado():
 
 @promos_bp.route('/api/adivina/intentar', methods=['POST'])
 def adivina_intentar():
+    if not check_rate_limit(f'adivina_ip:{_client_ip()}', ADIVINA_RATE_LIMIT_PER_MINUTE, 60):
+        return jsonify({
+            'ok': False,
+            'error': 'Demasiados intentos seguidos desde tu conexión. Espera un momento e intenta de nuevo.',
+        }), 429
+
     data = request.get_json(silent=True) or {}
     game_id = data.get('game_id')
     player_id = data.get('player_id')

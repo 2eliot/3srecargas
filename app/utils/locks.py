@@ -7,11 +7,12 @@ procesos separados, cada uno con su propio Lock() — no se coordinan entre
 sí. Usar una fila de `process_locks` con expiración sí funciona igual sin
 importar cuántos workers/procesos estén corriendo.
 """
+import time
 from datetime import datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
 
-from ..models import ProcessLock, db
+from ..models import ApiRateLimitHit, ProcessLock, db
 
 
 def acquire_lock(key, ttl_seconds, holder):
@@ -61,3 +62,47 @@ def release_lock(key, holder):
         db.session.commit()
     except Exception:
         db.session.rollback()
+
+
+def check_rate_limit(bucket_key, limit, window_seconds=60):
+    """Cuenta peticiones por ventana de tiempo fija (respaldado por la BD,
+    igual razón que acquire_lock: un contador en memoria no se comparte
+    entre los workers de Gunicorn). Devuelve True si la petición está
+    permitida, False si ya se pasó del límite en la ventana actual.
+
+    Falla "abierto": si algo sale mal guardando el conteo, deja pasar la
+    petición en vez de bloquear a usuarios normales por un error interno.
+    """
+    epoch = int(time.time())
+    window_epoch = epoch - (epoch % window_seconds)
+    window_start = datetime.utcfromtimestamp(window_epoch)
+
+    try:
+        updated = (
+            db.session.query(ApiRateLimitHit)
+            .filter_by(bucket_key=bucket_key, window_start=window_start)
+            .update({'count': ApiRateLimitHit.count + 1}, synchronize_session=False)
+        )
+        if updated:
+            db.session.commit()
+        else:
+            db.session.add(ApiRateLimitHit(bucket_key=bucket_key, window_start=window_start, count=1))
+            db.session.commit()
+    except IntegrityError:
+        # Otra petición creó la fila de esta ventana en el mismo instante:
+        # ya existe, solo falta sumarle nuestra cuenta.
+        db.session.rollback()
+        try:
+            db.session.query(ApiRateLimitHit).filter_by(
+                bucket_key=bucket_key, window_start=window_start,
+            ).update({'count': ApiRateLimitHit.count + 1}, synchronize_session=False)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return True
+    except Exception:
+        db.session.rollback()
+        return True
+
+    row = ApiRateLimitHit.query.filter_by(bucket_key=bucket_key, window_start=window_start).first()
+    return (row.count if row else 0) <= limit

@@ -686,6 +686,23 @@ class ProcessLock(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False)
 
 
+class ApiRateLimitHit(db.Model):
+    """Contador de peticiones por ventana de tiempo, respaldado por la BD
+    (igual que ProcessLock: un contador en memoria por worker de Gunicorn
+    no serviría, cada proceso vería su propio conteo). Se usa para frenar
+    scripts que mandan peticiones rápido desde la misma IP, por ejemplo
+    contra el endpoint de Adivina el Número."""
+    __tablename__ = 'api_rate_limit_hits'
+    id = db.Column(db.Integer, primary_key=True)
+    bucket_key = db.Column(db.String(150), nullable=False)
+    window_start = db.Column(db.DateTime, nullable=False)
+    count = db.Column(db.Integer, default=0)
+
+    __table_args__ = (
+        db.UniqueConstraint('bucket_key', 'window_start', name='uq_rate_limit_bucket_window'),
+    )
+
+
 class PlayerPoints(db.Model):
     """Saldo de puntos de un ID de jugador en un juego específico. Se gana
     recargando por ID (nunca con códigos ni wallet) y solo sirve para
