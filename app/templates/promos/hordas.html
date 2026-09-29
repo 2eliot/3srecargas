@@ -87,6 +87,15 @@ button, input, select { touch-action: manipulation; }
 
 /* ── Pantalla de juego ── */
 #gameOverlay { position: fixed; inset: 0; z-index: 60; background: #000; touch-action: none; }
+/* Al dejar el dedo presionado, el teléfono intentaba seleccionar texto (todo
+   se ponía azul) o abrir el menú de copiar/guardar imagen: se bloquea en
+   toda la pantalla de juego. */
+#gameOverlay, #gameOverlay * {
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 /* El campo es de tamaño fijo y se centra: las franjas sobrantes quedan negras. */
 #hordeCanvas { position: absolute; touch-action: none; display: block; box-shadow: 0 0 0 1px rgba(239,68,68,.18); }
 .hud { position: absolute; top: 0; left: 0; right: 0; padding: 10px 12px calc(10px); display: flex; align-items: center; gap: 8px; pointer-events: none; }
@@ -2245,6 +2254,15 @@ function applyUpgrade(upgrade) {
 // y el personaje camina hacia donde se arrastra el pulgar. Al soltar, el
 // joystick vuelve al centro de la franja y el personaje se detiene.
 const joy = { active: false, id: null, bx: 0, by: 0, vx: 0, vy: 0 };
+
+// Dejar el dedo presionado no debe seleccionar texto ni abrir el menú del
+// teléfono (copiar, guardar imagen) mientras se juega.
+['selectstart', 'contextmenu', 'dragstart'].forEach((type) => {
+    $('gameOverlay').addEventListener(type, (e) => e.preventDefault());
+});
+function clearSelection() {
+    try { window.getSelection().removeAllRanges(); } catch (e) {}
+}
 const joyZone = $('joyZone'), joyBase = $('joyBase'), joyKnob = $('joyKnob');
 
 function placeJoyBase(x, y) {
@@ -2404,6 +2422,7 @@ async function launchGame(fromOverlay) {
         document.body.classList.add('is-playing');
         resizeCanvas();
         resetJoy();
+        clearSelection();
         game = newGame(Number(data.seed) || 0);
         recStart();
         stepAcc = 0;
