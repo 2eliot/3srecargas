@@ -112,6 +112,7 @@
             </button>
             {% endif %}
 
+            {% if PROMO_AVAILABILITY.recarga_acumulada %}
             <a href="{{ url_for('promos_bp.recarga_acumulada_page') }}" class="drawer-item">
                 <span class="drawer-item-icon drawer-icon-points">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -124,6 +125,7 @@
                     <small>Llena la barra y gana diamantes</small>
                 </span>
             </a>
+            {% endif %}
 
             <a href="{{ url_for('redeem_bp.redeem_page') }}" class="drawer-item">
                 <span class="drawer-item-icon drawer-icon-redeem">
@@ -153,6 +155,7 @@
                 </span>
             </button>
 
+            {% if PROMO_AVAILABILITY.sorteo or PROMO_AVAILABILITY.adivina or PROMO_AVAILABILITY.hordas %}
             <button type="button" class="drawer-item drawer-item-toggle" id="freeDiamondsToggle" aria-expanded="false" aria-controls="freeDiamondsSubmenu">
                 <span class="drawer-item-icon drawer-icon-ranking">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -161,13 +164,14 @@
                 </span>
                 <span class="drawer-item-text">
                     <strong>Dinámicas Gratis</strong>
-                    <small>Sorteo diario y adivina el número</small>
+                    <small>Sorteo, adivina el número y hordas</small>
                 </span>
                 <svg class="drawer-item-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="9 18 15 12 9 6"/>
                 </svg>
             </button>
             <div class="drawer-submenu" id="freeDiamondsSubmenu" hidden>
+                {% if PROMO_AVAILABILITY.sorteo %}
                 <a href="{{ url_for('promos_bp.sorteo_page') }}" class="drawer-item drawer-subitem">
                     <span class="drawer-item-icon drawer-icon-ranking">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -184,7 +188,9 @@
                         <small>Regístrate y gana con tu ticket</small>
                     </span>
                 </a>
+                {% endif %}
 
+                {% if PROMO_AVAILABILITY.adivina %}
                 <a href="{{ url_for('promos_bp.adivina_page') }}" class="drawer-item drawer-subitem">
                     <span class="drawer-item-icon drawer-icon-mini">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -196,7 +202,23 @@
                         <small>Acierta el número y gana</small>
                     </span>
                 </a>
+                {% endif %}
+
+                {% if PROMO_AVAILABILITY.hordas %}
+                <a href="{{ url_for('promos_bp.hordas_page') }}" class="drawer-item drawer-subitem">
+                    <span class="drawer-item-icon drawer-icon-mini">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+                        </svg>
+                    </span>
+                    <span class="drawer-item-text">
+                        <strong>Hordas de Diamantes</strong>
+                        <small>Sobrevive, junta diamantes y gana</small>
+                    </span>
+                </a>
+                {% endif %}
             </div>
+            {% endif %}
 
             <div class="drawer-sep"></div>
 

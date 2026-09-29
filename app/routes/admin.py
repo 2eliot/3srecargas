@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import (
     Blueprint, render_template, request, redirect, Response,
-    url_for, flash, session, current_app, jsonify
+    url_for, flash, session, current_app, jsonify, abort
 )
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import or_, false, func
@@ -24,8 +24,12 @@ from ..models import (
     PromoAccumulatedAward, PromoAccumulatedLevel,
     PromoRaffleConfig, PromoRaffleWinner, PromoRaffleEntry,
     PromoGuessConfig, PromoGuessRound, PromoGuessWinner, PromoGuessAttempt,
+    PromoHordeConfig, PromoHordeWinner, SupportTag,
 )
 from ..utils.availability import format_hour, get_manual_schedule
+from ..utils.support_ai import get_ai_settings, save_ai_settings, test_connection as test_support_ai
+from ..utils.locks import check_rate_limit, client_ip
+from ..utils.promos import HORDE_CHARACTER_MODES, HORDE_CHARACTER_SLOTS, get_horde_characters, horde_character_keys
 from ..utils.gift_codes import create_batch as create_gift_batch, format_code as format_gift_code
 from ..utils.mini_influencers import (
     award_rank_bonus,
@@ -337,6 +341,10 @@ def admin_access_guard():
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
 
+ADMIN_LOGIN_MAX_ATTEMPTS = 10
+ADMIN_LOGIN_WINDOW_SECONDS = 15 * 60
+
+
 @admin_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -353,6 +361,10 @@ def login():
             flash('Acceso admin no disponible: faltan ADMIN_USERNAME/ADMIN_PASSWORD en entorno.', 'danger')
             return render_template('admin/login.html')
 
+        if not check_rate_limit(f'admin_login:{client_ip()}', ADMIN_LOGIN_MAX_ATTEMPTS, ADMIN_LOGIN_WINDOW_SECONDS):
+            flash('Demasiados intentos. Espera 15 minutos antes de volver a intentar.', 'danger')
+            return render_template('admin/login.html'), 429
+
         identifier = request.form.get('identifier', '').strip()
         password = request.form.get('password', '').strip()
 
@@ -360,7 +372,8 @@ def login():
         if env_admin_email:
             valid_identifiers.add(env_admin_email.lower())
 
-        if identifier.lower() not in valid_identifiers or password != env_admin_password:
+        password_ok = hmac.compare_digest(password.encode('utf-8'), env_admin_password.encode('utf-8'))
+        if identifier.lower() not in valid_identifiers or not password_ok:
             flash('Correo/usuario admin o contraseña incorrectos.', 'danger')
             return render_template('admin/login.html')
 
@@ -726,10 +739,13 @@ def package_add():
     name = request.form.get('name', '').strip()
     price = request.form.get('price', '0').strip()
     usd_price_raw = request.form.get('usd_price', '').strip()
+    bs_price_raw = request.form.get('bs_price', '').strip()
+    cost_usd_raw = request.form.get('cost_usd', '').strip()
     description = request.form.get('description', '').strip()
     is_automated = bool(request.form.get('is_automated'))
     sort_order = int(request.form.get('sort_order', 100))
     announcement_type = _normalize_package_announcement_type(request.form.get('announcement_type'))
+    show_support_fallback = bool(request.form.get('show_support_fallback'))
 
     if not game_id or not name or not price:
         flash('Juego, nombre y precio son obligatorios.', 'danger')
@@ -738,20 +754,28 @@ def package_add():
     try:
         base_price = float(price)
         usd_price = float(usd_price_raw) if usd_price_raw else None
+        bs_price = float(bs_price_raw) if bs_price_raw else None
+        cost_usd = float(cost_usd_raw) if cost_usd_raw else None
     except ValueError:
         flash('Los precios deben ser números válidos.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
-    if base_price <= 0 or (usd_price is not None and usd_price <= 0):
+    if base_price <= 0 or (usd_price is not None and usd_price <= 0) or (bs_price is not None and bs_price <= 0):
         flash('Los precios deben ser mayores a 0.', 'danger')
+        return redirect(url_for('admin_bp.packages'))
+
+    if cost_usd is not None and cost_usd < 0:
+        flash('El costo no puede ser negativo.', 'danger')
         return redirect(url_for('admin_bp.packages'))
 
     image = save_image(request.files.get('image'), 'packages')
     pkg = Package(
         game_id=int(game_id), name=name, price=base_price, usd_price=usd_price,
+        bs_price=bs_price, cost_usd=cost_usd,
         description=description, is_automated=is_automated,
         sort_order=sort_order, image=image, announcement_type=announcement_type or None,
         points_reward=_normalize_package_points(request.form.get('points_reward')),
+        show_support_fallback=show_support_fallback,
     )
     db.session.add(pkg)
     db.session.commit()
@@ -767,15 +791,27 @@ def package_edit(pkg_id):
     pkg.name = request.form.get('name', pkg.name).strip()
     price_raw = request.form.get('price', pkg.price)
     usd_price_raw = request.form.get('usd_price', '')
+    bs_price_raw = request.form.get('bs_price', '')
+    cost_usd_raw = request.form.get('cost_usd', '')
     try:
         pkg.price = float(price_raw)
         pkg.usd_price = float(usd_price_raw) if str(usd_price_raw).strip() else None
+        pkg.bs_price = float(bs_price_raw) if str(bs_price_raw).strip() else None
+        pkg.cost_usd = float(cost_usd_raw) if str(cost_usd_raw).strip() else None
     except ValueError:
         flash('Los precios deben ser números válidos.', 'danger')
         return redirect(url_for('admin_bp.packages', game_id=return_game_id))
 
-    if float(pkg.price or 0) <= 0 or (pkg.usd_price is not None and float(pkg.usd_price) <= 0):
+    if (
+        float(pkg.price or 0) <= 0
+        or (pkg.usd_price is not None and float(pkg.usd_price) <= 0)
+        or (pkg.bs_price is not None and float(pkg.bs_price) <= 0)
+    ):
         flash('Los precios deben ser mayores a 0.', 'danger')
+        return redirect(url_for('admin_bp.packages', game_id=return_game_id))
+
+    if pkg.cost_usd is not None and float(pkg.cost_usd) < 0:
+        flash('El costo no puede ser negativo.', 'danger')
         return redirect(url_for('admin_bp.packages', game_id=return_game_id))
 
     pkg.description = request.form.get('description', pkg.description or '').strip()
@@ -784,6 +820,7 @@ def package_edit(pkg_id):
     pkg.is_active = bool(request.form.get('is_active'))
     pkg.announcement_type = _normalize_package_announcement_type(request.form.get('announcement_type')) or None
     pkg.points_reward = _normalize_package_points(request.form.get('points_reward'))
+    pkg.show_support_fallback = bool(request.form.get('show_support_fallback'))
 
     if request.form.get('remove_image'):
         if pkg.image:
@@ -2992,6 +3029,7 @@ def settings():
     manual_schedule_keys = {
         'manual_open_hour': 'Hora (0-23, Venezuela) en que abren los paquetes de recarga manual',
         'manual_close_hour': 'Hora (0-23, Venezuela) en que cierran los paquetes de recarga manual',
+        'manual_service_force_closed': 'Cierra los paquetes de recarga manual ya mismo, sin importar el horario',
     }
     email_settings = {}
     for key in email_keys:
@@ -3027,6 +3065,7 @@ def settings():
     manual_schedule_settings = {
         'manual_open_hour': str(manual_schedule['open_hour']),
         'manual_close_hour': str(manual_schedule['close_hour']),
+        'manual_service_force_closed': '1' if manual_schedule.get('force_closed') else '0',
     }
 
     ranking_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
@@ -3115,6 +3154,7 @@ def settings():
         manual_schedule_payload = {
             'manual_open_hour': _clean_hour('manual_open_hour', manual_schedule['open_hour']),
             'manual_close_hour': _clean_hour('manual_close_hour', manual_schedule['close_hour']),
+            'manual_service_force_closed': '1' if request.form.get('manual_service_force_closed') else '0',
         }
 
         if new_rate:
@@ -3443,6 +3483,8 @@ def settings():
 
     return render_template(
         'admin/settings.html',
+        support_ai=get_ai_settings(),
+        support_tags=SupportTag.query.filter_by(is_active=True).order_by(SupportTag.sort_order, SupportTag.name).all(),
         usd_rate=usd_rate,
         default_package_id=default_auto_package_id,
         site_logo=site_logo_value,
@@ -3627,6 +3669,22 @@ def minigames():
                 else:
                     promos_guess_today_slots.append({'slot': slot, 'status': 'pending', 'number': None, 'player_id': None})
 
+        from ..utils.promos import _horde_week_key, get_horde_week_ranking
+        promos_horde_config = PromoHordeConfig.query.filter_by(game_id=promos_selected_game.id).first()
+        promos_horde_week_key = _horde_week_key()
+        promos_horde_ranking = get_horde_week_ranking(promos_selected_game.id, promos_horde_week_key)
+        promos_recent_horde_winners = (
+            PromoHordeWinner.query
+            .filter_by(game_id=promos_selected_game.id)
+            .order_by(PromoHordeWinner.week_key.desc(), PromoHordeWinner.place.asc())
+            .limit(15).all()
+        )
+        from ..models import PromoHordeBan
+        promos_horde_bans = (
+            PromoHordeBan.query.filter_by(game_id=promos_selected_game.id)
+            .order_by(PromoHordeBan.created_at.desc()).all()
+        )
+
         promos_accumulated_sort_order = next(
             (lvl.sort_order for lvl in promos_levels.values() if lvl.sort_order is not None), 100
         )
@@ -3643,6 +3701,14 @@ def minigames():
             recent_guess_winners=promos_recent_guess_winners,
             guess_today_slots=promos_guess_today_slots,
             today_key=promos_today_key,
+            horde_config=promos_horde_config,
+            horde_week_key=promos_horde_week_key,
+            horde_ranking=promos_horde_ranking,
+            recent_horde_winners=promos_recent_horde_winners,
+            horde_characters=get_horde_characters(),
+            horde_bans=promos_horde_bans,
+            horde_pending_count=PromoHordeWinner.query.filter_by(
+                game_id=promos_selected_game.id, status='pending').count(),
         )
 
     # Participación diaria de Sorteo Diario y Adivina el Número: cuántas
@@ -4007,6 +4073,32 @@ def promos_raffle_save():
     return redirect(url_for('admin_bp.minigames', game_id=game.id))
 
 
+@admin_bp.route('/promos/raffle/reset', methods=['POST'])
+@login_required
+def promos_raffle_reset():
+    """Borra los registros y ganadores de HOY del Sorteo Diario de este
+    juego, para poder probarlo de nuevo sin esperar a que empiece el día
+    siguiente (cuando ya hay ganadores hoy, run_daily_raffle_draws no
+    vuelve a sortear hasta que cambie day_key). No toca los premios que ya
+    se entregaron de verdad — esos quedan repartidos igual; esto solo
+    reabre el sorteo de hoy para que se pueda correr otra vez."""
+    game_id = request.form.get('game_id', type=int)
+    game = Game.query.get_or_404(game_id)
+
+    day_key = today_ve_str()
+    winners_deleted = PromoRaffleWinner.query.filter_by(game_id=game.id, day_key=day_key).delete()
+    entries_deleted = PromoRaffleEntry.query.filter_by(game_id=game.id, day_key=day_key).delete()
+    db.session.commit()
+
+    flash(
+        f'Sorteo Diario de {game.name} reiniciado para hoy: '
+        f'{entries_deleted} registro(s) y {winners_deleted} ganador(es) borrados. '
+        'Los premios ya entregados no se revirtieron.',
+        'success',
+    )
+    return redirect(url_for('admin_bp.minigames', game_id=game.id))
+
+
 @admin_bp.route('/promos/guess', methods=['POST'])
 @login_required
 def promos_guess_save():
@@ -4037,6 +4129,338 @@ def promos_guess_save():
 
     flash(f'Adivina el Número {"activado" if config.is_active else "guardado (inactivo)"} para {game.name}.', 'success')
     return redirect(url_for('admin_bp.minigames', game_id=game.id))
+
+
+@admin_bp.route('/promos/horde', methods=['POST'])
+@login_required
+def promos_horde_save():
+    game_id = request.form.get('game_id', type=int)
+    game = Game.query.get_or_404(game_id)
+
+    is_active = request.form.get('is_active') == 'on'
+    package_id = request.form.get('package_id', type=int)
+    package_id_2 = request.form.get('package_id_2', type=int) or None
+    package_id_3 = request.form.get('package_id_3', type=int) or None
+    runs_per_day = request.form.get('runs_per_day', type=int)
+    require_verification = request.form.get('require_verification') == 'on'
+    sort_order = request.form.get('sort_order', type=int) or 100
+
+    config = PromoHordeConfig.query.filter_by(game_id=game.id).first()
+    if not config:
+        config = PromoHordeConfig(game_id=game.id)
+        db.session.add(config)
+
+    config.is_active = bool(is_active and package_id)
+    config.package_id = package_id
+    config.package_id_2 = package_id_2
+    config.package_id_3 = package_id_3
+    config.winners_per_week = 1 + bool(package_id_2) + bool(package_id_3)
+    config.runs_per_day = runs_per_day if runs_per_day and runs_per_day > 0 else 5
+    extra_cost = request.form.get('points_per_extra_run', type=int)
+    config.points_per_extra_run = extra_cost if extra_cost and extra_cost > 0 else 0
+    config.require_verification = require_verification
+    config.sort_order = sort_order
+    db.session.commit()
+
+    flash(f'Hordas de Diamantes {"activado" if config.is_active else "guardado (inactivo)"} para {game.name}.', 'success')
+    return redirect(url_for('admin_bp.minigames', game_id=game.id))
+
+
+def _upsert_setting(key, value):
+    row = Setting.query.filter_by(key=key).first()
+    if row:
+        row.value = value
+    else:
+        db.session.add(Setting(key=key, value=value))
+
+
+@admin_bp.route('/promos/horde/image', methods=['POST'])
+@login_required
+def promos_horde_image_save():
+    game_id = request.form.get('game_id', type=int)
+    slot = request.form.get('slot', type=int) or 1
+    if not 1 <= slot <= HORDE_CHARACTER_SLOTS:
+        slot = 1
+    keys = horde_character_keys(slot)
+    mode = request.form.get('image_mode', 'flip')
+    if mode not in HORDE_CHARACTER_MODES:
+        mode = 'flip'
+    name = (request.form.get('name') or '').strip()[:24]
+
+    def current_value(key):
+        row = Setting.query.filter_by(key=key).first()
+        return row.value if row else ''
+
+    if request.form.get('remove_image') == 'on':
+        delete_uploaded_file(current_value(keys['image']))
+        _upsert_setting(keys['image'], '')
+        db.session.commit()
+        flash(f'Diseño del personaje {slot} eliminado: ya no aparece para elegir.', 'success')
+        return redirect(url_for('admin_bp.minigames', game_id=game_id))
+
+    # Diseño (el que se ve jugando) y portada (la que se ve al elegir).
+    # Primero se guardan los archivos nuevos; si alguno no es imagen, no se
+    # cambia nada. Los archivos viejos se borran solo después del commit.
+    new_files = {}
+    for field, key in (('player_image', keys['image']), ('cover_image', keys['cover'])):
+        file = request.files.get(field)
+        if file and file.filename:
+            new_path = save_image(file, 'hordas')
+            if not new_path:
+                for path in new_files.values():
+                    delete_uploaded_file(path)
+                flash('La imagen debe ser PNG, JPG, GIF o WEBP (mejor PNG con fondo transparente).', 'danger')
+                return redirect(url_for('admin_bp.minigames', game_id=game_id))
+            new_files[key] = new_path
+
+    old_files = []
+    if request.form.get('remove_cover') == 'on' and keys['cover'] not in new_files:
+        new_files[keys['cover']] = ''
+    for key, new_path in new_files.items():
+        old_files.append(current_value(key))
+        _upsert_setting(key, new_path)
+
+    _upsert_setting(keys['mode'], mode)
+    _upsert_setting(keys['name'], name)
+    db.session.commit()
+    for path in old_files:
+        if path:
+            delete_uploaded_file(path)
+    flash(f'Personaje {slot} de Hordas de Diamantes actualizado.', 'success')
+    return redirect(url_for('admin_bp.minigames', game_id=game_id))
+
+
+# ─── Asistente de IA del soporte ──────────────────────────────────────────────
+
+@admin_bp.route('/settings/support-ai', methods=['POST'])
+@login_required
+def support_ai_settings_save():
+    tag_id = request.form.get('handoff_tag_id', type=int)
+    if tag_id and not SupportTag.query.get(tag_id):
+        tag_id = None
+    api_key = request.form.get('api_key') or ''
+    try:
+        save_ai_settings(
+            enabled=request.form.get('enabled') == '1',
+            api_key=api_key,
+            model=request.form.get('model'),
+            handoff_tag_id=tag_id,
+            max_failed=request.form.get('max_failed', type=int),
+            instructions=request.form.get('instructions'),
+            base_url=request.form.get('base_url'),
+        )
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return redirect(url_for('admin_bp.settings', ai=1) + '#support-ai')
+    if request.form.get('test'):
+        ok, message = test_support_ai(api_key=api_key)
+        flash(('✅ ' if ok else '❌ ') + message, 'success' if ok else 'danger')
+    else:
+        flash('Asistente de IA del soporte guardado.', 'success')
+    return redirect(url_for('admin_bp.settings', ai=1) + '#support-ai')
+
+
+# ─── Bloqueo de IDs en Hordas de Diamantes ────────────────────────────────────
+
+def _horde_back(game_id):
+    """Vuelve a la página desde donde se bloqueó (Mini Juegos o Repeticiones)."""
+    back = request.form.get('back') or ''
+    if back.startswith('/admin/') and not back.startswith('//'):
+        return redirect(back)
+    return redirect(url_for('admin_bp.minigames', game_id=game_id))
+
+
+@admin_bp.route('/promos/horde/ban', methods=['POST'])
+@login_required
+def promos_horde_ban():
+    from ..models import PromoHordeBan
+
+    game_id = request.form.get('game_id', type=int)
+    game = Game.query.get_or_404(game_id)
+    player_id = (request.form.get('player_id') or '').strip()[:100]
+    reason = (request.form.get('reason') or '').strip()[:200] or 'Trampa'
+    if not player_id:
+        flash('Escribe el ID que quieres bloquear.', 'danger')
+        return _horde_back(game.id)
+    if PromoHordeBan.query.filter_by(game_id=game.id, player_id=player_id).first():
+        flash(f'El ID {player_id} ya estaba bloqueado en Hordas de {game.name}.', 'info')
+        return _horde_back(game.id)
+    db.session.add(PromoHordeBan(game_id=game.id, player_id=player_id, reason=reason))
+    db.session.commit()
+    flash(f'ID {player_id} bloqueado en Hordas de {game.name}: ya no puede jugar ni sale en el ranking.', 'success')
+    return _horde_back(game.id)
+
+
+@admin_bp.route('/promos/horde/unban/<int:ban_id>', methods=['POST'])
+@login_required
+def promos_horde_unban(ban_id):
+    from ..models import PromoHordeBan
+
+    ban = PromoHordeBan.query.get_or_404(ban_id)
+    game_id, player_id = ban.game_id, ban.player_id
+    db.session.delete(ban)
+    db.session.commit()
+    flash(f'ID {player_id} desbloqueado: puede volver a jugar y vuelve a salir en el ranking.', 'success')
+    return _horde_back(game_id)
+
+
+# ─── Aprobación de premios de Hordas ──────────────────────────────────────────
+
+@admin_bp.route('/promos/horde/winner/<int:winner_id>/approve', methods=['POST'])
+@login_required
+def promos_horde_winner_approve(winner_id):
+    from ..utils.promos import approve_horde_winner
+
+    winner = PromoHordeWinner.query.get_or_404(winner_id)
+    game_id = winner.game_id
+    try:
+        winner = approve_horde_winner(winner_id)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return _horde_back(game_id)
+    except Exception as exc:
+        flash(f'No se pudo entregar el premio: {exc}. Sigue pendiente, intenta de nuevo.', 'danger')
+        return _horde_back(game_id)
+    if winner.prize_order:
+        flash(f'Premio aprobado: {winner.player_id} (puesto #{winner.place}). Orden #{winner.prize_order.order_number} creada.', 'success')
+    else:
+        flash(f'Ganador aprobado: {winner.player_id} (puesto #{winner.place}). Ese puesto no tenía paquete asignado.', 'success')
+    return _horde_back(game_id)
+
+
+@admin_bp.route('/promos/horde/winner/<int:winner_id>/reject', methods=['POST'])
+@login_required
+def promos_horde_winner_reject(winner_id):
+    from ..utils.promos import reject_horde_winner
+
+    winner = PromoHordeWinner.query.get_or_404(winner_id)
+    game_id, player_id = winner.game_id, winner.player_id
+    reason = (request.form.get('reason') or '').strip()
+    try:
+        reject_horde_winner(winner_id, reason)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return _horde_back(game_id)
+    flash(f'Premio rechazado: el ID {player_id} quedó bloqueado en este juego y los siguientes del ranking subieron de puesto.', 'success')
+    return _horde_back(game_id)
+
+
+# ─── Repeticiones de Hordas de Diamantes ──────────────────────────────────────
+
+HORDE_REPLAY_TOP = 5
+
+
+@admin_bp.route('/promos/horde/replays')
+@login_required
+def promos_horde_replays():
+    """Top 5 de una semana con todas sus partidas y sus repeticiones."""
+    from ..models import PromoHordeReplay, PromoHordeRun
+    from ..utils.promos import _horde_week_key, get_horde_week_ranking
+
+    game_id = request.args.get('game_id', type=int)
+    game = Game.query.get_or_404(game_id)
+    current_week = _horde_week_key()
+    weeks = sorted(
+        {w for (w,) in db.session.query(PromoHordeRun.week_key).filter(PromoHordeRun.game_id == game.id).distinct()},
+        reverse=True,
+    )
+    # Por defecto, la semana con premios por aprobar; si no hay, la última cerrada.
+    pending = (
+        PromoHordeWinner.query.filter_by(game_id=game.id, status='pending')
+        .order_by(PromoHordeWinner.week_key.desc()).first()
+    )
+    default_week = pending.week_key if pending else next((w for w in weeks if w < current_week), current_week)
+    week = request.args.get('week') or default_week
+
+    ranking = get_horde_week_ranking(game.id, week, limit=HORDE_REPLAY_TOP)
+    players = []
+    for place, (pid, nick, total) in enumerate(ranking, start=1):
+        runs = (
+            PromoHordeRun.query
+            .filter(PromoHordeRun.game_id == game.id, PromoHordeRun.week_key == week,
+                    PromoHordeRun.player_id == pid, PromoHordeRun.finished_at.isnot(None),
+                    PromoHordeRun.diamonds > 0)
+            .order_by(PromoHordeRun.diamonds.desc())
+            .all()
+        )
+        with_replay = {
+            run_id for (run_id,) in db.session.query(PromoHordeReplay.run_id)
+            .filter(PromoHordeReplay.run_id.in_([r.id for r in runs] or [0]))
+        }
+        players.append({
+            'place': place, 'player_id': pid, 'nick': nick, 'total': total,
+            'runs': [{'run': r, 'has_replay': r.id in with_replay,
+                      'seconds': int((r.finished_at - r.started_at).total_seconds())} for r in runs],
+            'bad': sum(1 for r in runs if r.replay_check == 'no_coincide' or r.flag),
+            'unchecked': sum(1 for r in runs if r.id in with_replay and not r.replay_check),
+        })
+    week_winners = (
+        PromoHordeWinner.query.filter_by(game_id=game.id, week_key=week)
+        .order_by(PromoHordeWinner.place.asc()).all()
+    )
+    player_info = {pl['player_id']: pl for pl in players}
+    return render_template(
+        'admin/horde_replays.html', game=game, week=week, weeks=weeks,
+        current_week=current_week, players=players,
+        week_winners=week_winners, player_info=player_info,
+    )
+
+
+def _horde_replay_run(run_id):
+    from ..models import PromoHordeReplay, PromoHordeRun
+
+    run = PromoHordeRun.query.get_or_404(run_id)
+    replay = PromoHordeReplay.query.filter_by(run_id=run.id).first()
+    if not replay or run.seed is None:
+        abort(404)
+    return run, replay
+
+
+@admin_bp.route('/promos/horde/replay/<int:run_id>')
+@login_required
+def promos_horde_replay_view(run_id):
+    """Abre el juego en modo repetición (o comprobación rápida con ?check=1)."""
+    run, replay = _horde_replay_run(run_id)
+    characters = [
+        {'slot': c['slot'], 'name': c['name'], 'mode': c['mode'],
+         'url': url_for('static', filename='uploads/' + c['image']),
+         'cover_url': url_for('static', filename='uploads/' + (c['cover'] or c['image']))}
+        for c in get_horde_characters() if c['image']
+    ]
+    seconds = int((run.finished_at - run.started_at).total_seconds()) if run.finished_at else 0
+    replay_data = {
+        'run_id': run.id,
+        'check': request.args.get('check') == '1',
+        'seed': run.seed,
+        'W': replay.width, 'H': replay.height, 'ch': replay.character_slot or 0,
+        'data': replay.data,
+        'reported': {'wave': run.wave or 0, 'claimed': run.claimed_diamonds or 0},
+        'verdict_url': url_for('admin_bp.promos_horde_replay_verdict', run_id=run.id),
+        'player_label': f'{run.player_nick or run.player_id} · {seconds // 60}:{seconds % 60:02d}',
+    }
+    game = Game.query.get(run.game_id)
+    return render_template(
+        'promos/hordas.html', games=[game], game=game,
+        verifiable=False, characters=characters, horde_extra_cost=0, replay=replay_data,
+    )
+
+
+@admin_bp.route('/promos/horde/replay/<int:run_id>/verdict', methods=['POST'])
+@login_required
+def promos_horde_replay_verdict(run_id):
+    run, _replay = _horde_replay_run(run_id)
+    data = request.get_json(silent=True) or {}
+    check = data.get('check')
+    if check not in ('ok', 'dudoso', 'no_coincide'):
+        return jsonify({'ok': False}), 400
+    try:
+        run.replay_wave = int(data.get('wave') or 0)
+        run.replay_diamonds = int(data.get('diamonds') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False}), 400
+    run.replay_check = check
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 # ─── Notificaciones push ──────────────────────────────────────────────────────
@@ -4426,6 +4850,28 @@ def order_verify_recharge(order_id):
 
 # ─── Statistics ──────────────────────────────────────────────────────────────
 
+def _order_revenue_usd(order, current_global_rate):
+    """Ingreso de la orden en USD para Estadísticas.
+
+    Los paquetes con precio fijo en Bs (bs_price) cobran un monto en Bs que
+    no tiene por qué coincidir con order.amount (que sigue el precio base
+    en USD del paquete y no se toca — ver get_package_bs_fixed_price en
+    routes/checkout.py). Para reflejar cuánto vale HOY en dólares lo que se
+    cobró (la tasa cambia todos los días), se reconvierte con la tasa
+    global actual en vez de usar order.amount. En todo lo demás (métodos en
+    USD, Bs por tasa normal) order.amount ya es el valor correcto en USD."""
+    package = order.package
+    bs_price = getattr(package, 'bs_price', None) if package else None
+    if (
+        bs_price is not None
+        and (order.payment_currency or '').lower() == 'bs'
+        and order.payment_amount is not None
+        and current_global_rate > 0
+    ):
+        return float(order.payment_amount) / current_global_rate
+    return float(order.amount or 0)
+
+
 @admin_bp.route('/stats')
 @login_required
 def stats():
@@ -4516,6 +4962,19 @@ def stats():
 
     orders = orders_query.order_by(Order.created_at.desc()).all()
 
+    payment_methods_by_code = {(m.code or '').strip().lower(): m for m in PaymentMethod.query.all()}
+
+    def _format_money_amount(amount, currency):
+        if (currency or '').lower() == 'usd':
+            return '$' + format(float(amount), '.2f')
+        return 'Bs ' + format(int(round(float(amount))), ',').replace(',', '.')
+
+    usd_rate_setting = Setting.query.filter_by(key='usd_rate_bs').first()
+    try:
+        current_global_rate = float(usd_rate_setting.value) if usd_rate_setting and usd_rate_setting.value else 0.0
+    except (TypeError, ValueError):
+        current_global_rate = 0.0
+
     daily_stats = {
         day.isoformat(): {
             'date': day,
@@ -4526,6 +4985,8 @@ def stats():
             'coupon_orders': 0,
             'no_coupon_orders': 0,
             'discount_total': 0.0,
+            'cost_total': 0.0,
+            'sold_without_cost': 0,
         }
         for day in history_days
     }
@@ -4534,6 +4995,7 @@ def stats():
     daily_orders = []
     zero_amount_breakdown = defaultdict(int)
     zero_amount_total = 0
+    method_totals = {}
 
     for order in orders:
         created_at_ve = to_ve(order.created_at)
@@ -4544,11 +5006,13 @@ def stats():
         if day_iso not in history_index:
             continue
 
-        amount_value = float(order.amount or 0)
+        amount_value = _order_revenue_usd(order, current_global_rate)
         discount_value = float(order.discount_amount or 0)
         coupon_code = _coupon_code_for_order(order)
         has_coupon = bool(coupon_code)
         sold_order = order.status in ('approved', 'completed')
+        package_cost = getattr(order.package, 'cost_usd', None) if order.package else None
+        cost_value = float(package_cost) if package_cost is not None else 0.0
 
         day_bucket = daily_stats[day_iso]
         day_bucket['total_orders'] += 1
@@ -4556,6 +5020,9 @@ def stats():
         if sold_order:
             day_bucket['sold_orders'] += 1
             day_bucket['revenue'] += amount_value
+            day_bucket['cost_total'] += cost_value
+            if package_cost is None:
+                day_bucket['sold_without_cost'] += 1
         elif order.status == 'pending':
             day_bucket['pending_orders'] += 1
 
@@ -4571,6 +5038,28 @@ def stats():
             zero_amount_total += 1
             zero_amount_breakdown[_zero_amount_category(order)] += 1
 
+        # Lo que de verdad entró al banco/billetera por cada método, en su
+        # propia moneda y SIN convertir — para que puedas cuadrarlo contra
+        # el banco tal cual, en vez de contra el ingreso ya pasado a USD.
+        if sold_order:
+            method_code = (order.payment_method or '').strip().lower()
+            method_obj = payment_methods_by_code.get(method_code)
+            method_name = method_obj.name if method_obj else (order.payment_method or 'Desconocido').strip().upper()
+            raw_currency = (
+                (order.payment_currency or '').strip().lower()
+                or (method_obj.account_currency if method_obj else '')
+                or 'bs'
+            )
+            raw_amount = float(order.payment_amount) if order.payment_amount is not None else float(order.amount or 0)
+
+            mt_key = (method_code or 'desconocido', raw_currency)
+            mt_row = method_totals.get(mt_key)
+            if mt_row is None:
+                mt_row = {'method_name': method_name, 'currency': raw_currency, 'total': 0.0, 'count': 0}
+                method_totals[mt_key] = mt_row
+            mt_row['total'] += raw_amount
+            mt_row['count'] += 1
+
         pkg_key = order.package_id
         row = package_rows.get(pkg_key)
         if row is None:
@@ -4584,6 +5073,8 @@ def stats():
                 'pending_orders': 0,
                 'revenue': 0.0,
                 'discount_total': 0.0,
+                'cost_total': 0.0,
+                'sold_without_cost': 0,
                 'coupon_breakdown': defaultdict(int),
                 'no_coupon_orders': 0,
             }
@@ -4594,6 +5085,9 @@ def stats():
         if sold_order:
             row['sold_orders'] += 1
             row['revenue'] += amount_value
+            row['cost_total'] += cost_value
+            if package_cost is None:
+                row['sold_without_cost'] += 1
         elif order.status == 'pending':
             row['pending_orders'] += 1
 
@@ -4632,6 +5126,9 @@ def stats():
             'pending_orders': row['pending_orders'],
             'revenue': row['revenue'],
             'discount_total': row['discount_total'],
+            'cost_total': row['cost_total'],
+            'profit': row['revenue'] - row['cost_total'],
+            'sold_without_cost': row['sold_without_cost'],
             'coupon_breakdown': coupons,
             'no_coupon_orders': row['no_coupon_orders'],
         })
@@ -4642,6 +5139,22 @@ def stats():
         row['package_sort_order'],
         _sort_text(row['package_name']),
     ))
+
+    package_stats_totals = {
+        'total_orders': sum(row['total_orders'] for row in package_stats),
+        'sold_orders': sum(row['sold_orders'] for row in package_stats),
+        'pending_orders': sum(row['pending_orders'] for row in package_stats),
+        'revenue': sum(row['revenue'] for row in package_stats),
+        'cost_total': sum(row['cost_total'] for row in package_stats),
+        'discount_total': sum(row['discount_total'] for row in package_stats),
+        'profit': sum(row['profit'] for row in package_stats),
+    }
+
+    payment_method_totals = sorted(
+        method_totals.values(), key=lambda row: (-row['total'], row['method_name'])
+    )
+    for row in payment_method_totals:
+        row['total_label'] = _format_money_amount(row['total'], row['currency'])
 
     coupon_totals = defaultdict(int)
     no_coupon_total = 0
@@ -4654,6 +5167,9 @@ def stats():
         {'code': code, 'count': count}
         for code, count in sorted(coupon_totals.items(), key=lambda item: (-item[1], item[0]))
     ]
+
+    for bucket in daily_stats.values():
+        bucket['profit'] = bucket['revenue'] - bucket['cost_total']
 
     selected_summary = daily_stats[selected_date.isoformat()]
     daily_history = [daily_stats[day.isoformat()] for day in reversed(history_days)]
@@ -4673,6 +5189,8 @@ def stats():
         daily_history=daily_history,
         selected_summary=selected_summary,
         package_stats=package_stats,
+        package_stats_totals=package_stats_totals,
+        payment_method_totals=payment_method_totals,
         coupon_summary=coupon_summary,
         no_coupon_total=no_coupon_total,
         daily_orders=daily_orders,

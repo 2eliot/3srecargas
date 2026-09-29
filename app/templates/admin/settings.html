@@ -236,6 +236,16 @@
                 <h3>Horario de las recargas manuales</h3>
                 <span class="settings-chevron">▾</span>
             </summary>
+            <div class="switch-field" style="margin-bottom:16px; padding:12px; border-radius:10px; background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.25);">
+                <label class="switch-toggle is-danger">
+                    <input type="checkbox" name="manual_service_force_closed" {% if manual_schedule_settings.manual_service_force_closed == '1' %}checked{% endif %}>
+                    <span class="switch-slider"></span>
+                </label>
+                <div>
+                    <span class="switch-field-label">Cerrar recargas manuales ahora mismo</span>
+                    <small class="switch-field-hint">Para emergencias o cuando no hay nadie disponible: apaga la venta de los paquetes manuales de inmediato, sin importar el horario de abajo. Actívalo y desactívalo cuando quieras.</small>
+                </div>
+            </div>
             <div class="form-grid-2">
                 <div class="form-group">
                     <label for="manual_open_hour">Abren a las (hora Venezuela)</label>
@@ -263,6 +273,8 @@
                         <strong>CERRADO</strong> y no se pueden comprar, para que nadie quede reclamando de madrugada.
                         No afecta a los paquetes con stock de PINs ni a los que entrega Revendedores: esos siguen
                         vendiéndose las 24 horas. Si pones la misma hora de apertura y cierre, se atiende siempre.
+                        El interruptor de arriba manda sobre este horario: si está activado, se ve CERRADO aunque
+                        estés dentro del horario de atención.
                     </p>
                 </div>
             </div>
@@ -604,6 +616,82 @@
             <button type="submit" class="btn-primary">Guardar configuración</button>
         </div>
     </form>
+</div>
+
+<!-- Asistente de IA del chat de soporte (DeepSeek) -->
+<div class="admin-card settings-card" style="margin-top:24px; padding:26px 28px;" id="support-ai">
+    <details class="settings-section" style="border:none; padding:0; margin-bottom:0; background:none;" {% if request.args.get('ai') %}open{% endif %}>
+        <summary class="settings-section-summary">
+            <h2>🤖 Asistente de IA del soporte (DeepSeek)</h2>
+            <span class="settings-chevron">▾</span>
+        </summary>
+        <p class="form-hint" style="margin:6px 0 14px;">
+            Atiende primero el chat de soporte: consulta los pedidos en la base de datos (estado, si falta dinero,
+            si la referencia no aparece en el banco, si el ID fue rechazado, qué hacer si salió completada y no
+            llegó) y manda al cliente un botón con el link de su orden. Solo envía el link si el cliente da el
+            número de orden, la referencia o el comprobante (con solo el ID de jugador le dice el estado, sin link).
+            Si no puede resolver, o tras varios intentos sin encontrar el pedido, pasa el chat a una persona
+            con la etiqueta que elijas abajo. Cuando tú respondes en un chat, la IA deja de responder ahí.
+        </p>
+        <form method="POST" action="{{ url_for('admin_bp.support_ai_settings_save') }}">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="check-label" style="margin-top:30px;">
+                        <input type="checkbox" name="enabled" value="1" {% if support_ai.enabled %}checked{% endif %}>
+                        Activar asistente de IA en el chat de soporte
+                    </label>
+                    <p class="form-hint">
+                        {% set ai_is_deepseek = support_ai.base_url.startswith('https://api.deepseek.com') %}
+                        {% if support_ai.enabled and (support_ai.api_key or not ai_is_deepseek) %}✅ Activo: atiende los chats nuevos.
+                        {% elif support_ai.enabled %}⚠️ Activado pero falta la API key: no responderá.
+                        {% else %}Apagado: los chats los atiende solo el equipo.{% endif %}
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label for="support_ai_api_key">API key de DeepSeek</label>
+                    <input type="password" id="support_ai_api_key" name="api_key" autocomplete="off"
+                           placeholder="{{ 'Guardada (••••' ~ support_ai.api_key[-4:] ~ ') — escribe otra para cambiarla' if support_ai.api_key else 'sk-...' }}">
+                    <p class="form-hint">Se obtiene en platform.deepseek.com → API keys. Déjala vacía para conservar la actual.</p>
+                </div>
+                <div class="form-group">
+                    <label for="support_ai_tag">Etiqueta al pasar a un humano</label>
+                    <select id="support_ai_tag" name="handoff_tag_id">
+                        <option value="">— Sin etiqueta —</option>
+                        {% for tag in support_tags %}
+                        <option value="{{ tag.id }}" {{ 'selected' if support_ai.handoff_tag_id == tag.id }}>{{ tag.name }} ({{ tag.kind_label }})</option>
+                        {% endfor %}
+                    </select>
+                    <p class="form-hint">Se le pone al chat cuando la IA lo pasa a una persona, para que lo encuentres rápido en Soporte. Las etiquetas se crean en Soporte → Etiquetas.</p>
+                </div>
+                <div class="form-group">
+                    <label for="support_ai_max_failed">Intentos fallidos antes de pasar a humano</label>
+                    <input type="number" id="support_ai_max_failed" name="max_failed" min="1" max="10" value="{{ support_ai.max_failed }}">
+                    <p class="form-hint">Veces que busca el pedido sin encontrarlo antes de pasar el chat a una persona.</p>
+                </div>
+                <div class="form-group">
+                    <label for="support_ai_model">Modelo</label>
+                    <input type="text" id="support_ai_model" name="model" value="{{ support_ai.model }}">
+                    <p class="form-hint">Con DeepSeek: <code>deepseek-chat</code>. Con Ollama: el nombre del modelo instalado (ej. <code>qwen2.5:7b</code>).</p>
+                </div>
+                <div class="form-group">
+                    <label for="support_ai_base_url">URL de la IA (avanzado)</label>
+                    <input type="text" id="support_ai_base_url" name="base_url" value="{{ support_ai.base_url }}">
+                    <p class="form-hint">Déjala así para usar DeepSeek. Para usar una IA en tu propia PC con Ollama:
+                        <code>http://TU-IP:11434/v1/chat/completions</code> (no necesita API key, pero la PC debe estar prendida y accesible desde el servidor).</p>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="support_ai_instructions">Instrucciones extra (opcional)</label>
+                <textarea id="support_ai_instructions" name="instructions" rows="4" maxlength="3000"
+                          placeholder="Ej: Las recargas manuales se hacen de 8am a 10pm. Si preguntan por precios, que los vean en la página principal.">{{ support_ai.instructions }}</textarea>
+                <p class="form-hint">Datos de la tienda que quieras que el asistente sepa. No pongas claves ni datos privados.</p>
+            </div>
+            <div class="modal-actions" style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+                <button type="submit" class="btn-primary">Guardar asistente</button>
+                <button type="submit" class="btn-secondary" name="test" value="1">🔌 Probar conexión</button>
+            </div>
+        </form>
+    </details>
 </div>
 
 <!-- Verificación de ID por Scraping -->

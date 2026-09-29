@@ -47,7 +47,7 @@
 
 .stats-summary-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 10px;
     margin-bottom: 16px;
 }
@@ -83,12 +83,64 @@
 .stats-summary-value.is-money { color: #22c55e; }
 .stats-summary-value.is-coupon { color: #f97316; }
 .stats-summary-value.is-plain { color: #60a5fa; }
+.stats-summary-value.is-profit { color: #a78bfa; }
 
 .stats-days-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
     padding: 0 20px 20px;
+}
+
+.stats-method-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 0 20px 20px;
+}
+
+.stats-method-card {
+    flex: 1 1 200px;
+    min-width: 180px;
+    background: linear-gradient(180deg, rgba(22,24,38,.98), rgba(14,16,26,.94));
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.stats-method-name {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #eef2ff;
+    margin-bottom: 6px;
+}
+
+.stats-method-currency {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(96,165,250,.15);
+    color: #93c5fd;
+}
+
+.stats-method-total {
+    font-size: 20px;
+    font-weight: 800;
+    color: #22c55e;
+    line-height: 1;
+}
+
+.stats-method-meta {
+    margin-top: 5px;
+    font-size: 11px;
+    color: #8ea0b9;
 }
 
 /* Los admin-card de esta página no siempre pasan por .card-header (que ya
@@ -152,6 +204,13 @@
     margin-bottom: 16px;
 }
 
+.stats-collapsible > summary { cursor: pointer; list-style: none; user-select: none; }
+.stats-collapsible > summary::-webkit-details-marker { display: none; }
+.stats-collapsible:not([open]) > summary { padding-bottom: 20px; margin-bottom: 0; }
+.stats-collapsible-count { color: var(--text-secondary, #94a3b8); font-weight: 600; font-size: .8em; }
+.stats-collapsible-arrow { font-size: 22px; line-height: 1; transition: transform .2s ease; align-self: center; }
+.stats-collapsible[open] .stats-collapsible-arrow { transform: rotate(180deg); }
+
 .stats-section-head h2 {
     margin: 0;
 }
@@ -212,6 +271,12 @@
 
 .stats-table tr:last-child td {
     border-bottom: none;
+}
+
+.stats-totals-row td {
+    border-top: 2px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.03);
+    font-weight: 700;
 }
 
 .stats-table tr:hover td {
@@ -320,6 +385,8 @@
         flex-direction: column;
     }
 
+    .stats-collapsible > summary.stats-section-head { flex-direction: row; }
+
     .stats-actions {
         width: 100%;
     }
@@ -381,6 +448,11 @@
         <div class="stats-summary-meta">Descuento aplicado: ${{ '%.2f'|format(selected_summary.discount_total) }}</div>
     </div>
     <div class="stats-summary-card">
+        <span class="stats-summary-label">Ganancia del día</span>
+        <span class="stats-summary-value is-profit">${{ '%.2f'|format(selected_summary.profit) }}</span>
+        <div class="stats-summary-meta">Gastado: ${{ '%.2f'|format(selected_summary.cost_total) }} · Descuento: ${{ '%.2f'|format(selected_summary.discount_total) }}{% if selected_summary.sold_without_cost %} · {{ selected_summary.sold_without_cost }} venta(s) sin gasto cargado{% endif %}</div>
+    </div>
+    <div class="stats-summary-card">
         <span class="stats-summary-label">Recargas con cupón</span>
         <span class="stats-summary-value is-coupon">{{ selected_summary.coupon_orders }}</span>
         <div class="stats-summary-meta">Con código de descuento o afiliado registrado en la orden</div>
@@ -425,6 +497,7 @@
                     <span>Pendientes: <strong>{{ day.pending_orders }}</strong></span>
                     <span>Con cupón: <strong>{{ day.coupon_orders }}</strong></span>
                     <span class="stats-day-revenue">Ingresos: ${{ '%.2f'|format(day.revenue) }}</span>
+                    <span style="color:#a78bfa;font-weight:700;">Ganancia: ${{ '%.2f'|format(day.profit) }}</span>
                 </div>
             </a>
         {% endfor %}
@@ -434,6 +507,34 @@
         <button type="button" class="btn-secondary" id="statsDaysToggleBtn">Ver los {{ daily_history|length }} días</button>
     </div>
     {% endif %}
+</div>
+
+<div class="admin-card">
+    <div class="stats-section-head">
+        <div>
+            <h2>Total recibido por método de pago</h2>
+            <p class="stats-section-note">
+                Lo que entró de verdad el {{ selected_date.strftime('%d/%m/%Y') }}{% if selected_service %} para {{ selected_service.name }}{% endif %},
+                en la moneda de cada método y sin convertir — para cuadrarlo contra el banco o la billetera tal cual.
+            </p>
+        </div>
+    </div>
+
+    <div class="stats-method-grid">
+        {% for row in payment_method_totals %}
+        <div class="stats-method-card">
+            <div class="stats-method-name">
+                <span>{{ row.method_name }}</span>
+                <span class="stats-method-currency">{{ row.currency }}</span>
+            </div>
+            <div class="stats-method-total">{{ row.total_label }}</div>
+            <div class="stats-method-meta">{{ row.count }} venta(s)</div>
+        </div>
+        {% endfor %}
+        {% if not payment_method_totals %}
+        <div class="empty-state-admin">No hay ventas para ese día con los filtros actuales.</div>
+        {% endif %}
+    </div>
 </div>
 
 <div class="admin-card">
@@ -490,7 +591,9 @@
                     <th>Vendidas</th>
                     <th>Pendientes</th>
                     <th>Ingresos</th>
+                    <th>Gastado</th>
                     <th>Descuento</th>
+                    <th>Ganancia</th>
                     <th>Cupones usados</th>
                 </tr>
             </thead>
@@ -514,8 +617,15 @@
                         <td data-label="Ingresos">
                             <div class="stats-money">${{ '%.2f'|format(row.revenue) }}</div>
                         </td>
+                        <td data-label="Gastado">
+                            <div class="stats-money" style="color:#8896a6">${{ '%.2f'|format(row.cost_total) }}</div>
+                            {% if row.sold_without_cost %}<div class="stats-package">{{ row.sold_without_cost }} sin gasto cargado</div>{% endif %}
+                        </td>
                         <td data-label="Descuento">
                             <div class="stats-money" style="color:#f97316">${{ '%.2f'|format(row.discount_total) }}</div>
+                        </td>
+                        <td data-label="Ganancia">
+                            <div class="stats-money" style="color:#a78bfa">${{ '%.2f'|format(row.profit) }}</div>
                         </td>
                         <td data-label="Cupones usados">
                             <div class="coupon-stack">
@@ -529,21 +639,37 @@
                     {% endfor %}
                 {% else %}
                 <tr>
-                    <td colspan="7" class="empty-state-admin">No hay paquetes con movimiento para ese día y filtro.</td>
+                    <td colspan="9" class="empty-state-admin">No hay paquetes con movimiento para ese día y filtro.</td>
                 </tr>
                 {% endif %}
             </tbody>
+            {% if package_stats %}
+            <tfoot>
+                <tr class="stats-totals-row">
+                    <td data-label="Total"><strong>Total</strong></td>
+                    <td data-label="Órdenes"><div class="stats-number">{{ package_stats_totals.total_orders }}</div></td>
+                    <td data-label="Vendidas"><div class="stats-number">{{ package_stats_totals.sold_orders }}</div></td>
+                    <td data-label="Pendientes"><div class="stats-number">{{ package_stats_totals.pending_orders }}</div></td>
+                    <td data-label="Ingresos"><div class="stats-money">${{ '%.2f'|format(package_stats_totals.revenue) }}</div></td>
+                    <td data-label="Gastado"><div class="stats-money" style="color:#8896a6">${{ '%.2f'|format(package_stats_totals.cost_total) }}</div></td>
+                    <td data-label="Descuento"><div class="stats-money" style="color:#f97316">${{ '%.2f'|format(package_stats_totals.discount_total) }}</div></td>
+                    <td data-label="Ganancia"><div class="stats-money" style="color:#a78bfa">${{ '%.2f'|format(package_stats_totals.profit) }}</div></td>
+                    <td data-label="Cupones usados">—</td>
+                </tr>
+            </tfoot>
+            {% endif %}
         </table>
     </div>
 </div>
 
-<div class="admin-card">
-    <div class="stats-section-head">
+<details class="admin-card stats-collapsible">
+    <summary class="stats-section-head">
         <div>
-            <h2>Órdenes del día</h2>
+            <h2>Órdenes del día <span class="stats-collapsible-count">({{ daily_orders|length if daily_orders else 0 }})</span></h2>
             <p class="stats-section-note">Cada recarga muestra su número de orden y el código usado, si aplicó.</p>
         </div>
-    </div>
+        <span class="stats-collapsible-arrow" aria-hidden="true">▾</span>
+    </summary>
 
     <div class="form-group" style="margin:0 0 14px;padding:0 20px;">
         <input type="text" id="dailyOrdersSearchInput" class="glass-input" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);width:100%;max-width:420px;"
@@ -593,7 +719,7 @@
         </table>
     </div>
     <div class="row-pager" id="dailyOrdersPager" style="display:none; padding:12px 20px;"></div>
-</div>
+</details>
 {% endblock %}
 
 {% block extra_js %}

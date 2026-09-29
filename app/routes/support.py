@@ -16,6 +16,7 @@ from flask_login import current_user
 
 from ..models import Order, SupportMessage
 from ..utils import support as support_service
+from ..utils import support_ai
 from ..utils.support import SupportError
 from ..utils.notifications import notify_support_chat_opened, notify_support_client_message
 
@@ -179,8 +180,13 @@ def start():
     if first_message:
         support_service.add_client_message(chat, first_message)
 
-    if is_new:
+    # Con el asistente activo, él atiende primero; el equipo recibe el aviso
+    # solo si el asistente pasa el chat a una persona.
+    ai_handles = support_ai.should_handle(chat)
+    if is_new and not ai_handles:
         notify_support_chat_opened(chat)
+    if first_message and ai_handles and not data.get('has_attachment'):
+        support_ai.schedule_reply(chat)
 
     support_service.mark_read_by_client(chat)
 
@@ -225,7 +231,8 @@ def send_message():
     data = request.get_json(silent=True) or {}
 
     message = support_service.add_client_message(chat, data.get('body'))
-    notify_support_client_message(chat, message)
+    if not support_ai.schedule_reply(chat):
+        notify_support_client_message(chat, message)
 
     return jsonify({
         'ok': True,
@@ -245,10 +252,13 @@ def send_attachment():
     message = support_service.add_client_message(
         chat, request.form.get('body'), attachment=attachment
     )
-    notify_support_client_message(chat, message)
+    # El asistente lee la referencia del comprobante y busca la orden.
+    if not support_ai.schedule_reply(chat):
+        notify_support_client_message(chat, message)
 
     return jsonify({
         'ok': True,
+        'chat': support_service.serialize_chat_for_client(chat),
         'message': support_service.serialize_message(message),
     })
 

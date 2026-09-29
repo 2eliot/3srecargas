@@ -69,11 +69,15 @@
     <div class="sc-body sc-thread-body" id="scChat" {% if not chat %}hidden{% endif %}>
       <div class="sc-thread" id="scThread" aria-live="polite">
         {% for m in messages %}
-        <div class="sc-msg {{ m.sender }}{% if m.is_deleted %} deleted{% endif %}" data-id="{{ m.id }}">
+        <div class="sc-msg {{ m.sender }}{% if m.is_ai %} ai{% endif %}{% if m.is_deleted %} deleted{% endif %}" data-id="{{ m.id }}">
           {% if m.is_deleted %}
           <span class="sc-msg-body sc-msg-deleted-text">🚫 Mensaje eliminado</span>
           {% else %}
+          {% if m.is_ai %}<span class="sc-ai-label">🤖 Asistente virtual</span>{% endif %}
           {%- if m.body %}<span class="sc-msg-body">{{ m.body }}</span>{% endif -%}
+          {% if m.action_url and m.action_url.startswith('/order/') %}
+          <a class="sc-action-btn" href="{{ m.action_url }}">{{ m.action_label or 'Ver mi orden' }}</a>
+          {% endif %}
           {% if m.attachment %}
           {% if m.is_video %}
           <video class="sc-media" src="{{ url_for('static', filename='uploads/' ~ m.attachment) }}"

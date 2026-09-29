@@ -315,6 +315,28 @@ video.sc-media { object-fit: contain; max-height: 240px; }
     padding: 5px 12px;
     border-radius: 8px;
 }
+/* Asistente de IA: misma burbuja de soporte, con un toque morado. */
+.sc-msg.admin.ai { border-color: rgba(168, 85, 247, .45); background: rgba(168, 85, 247, .1); }
+.sc-ai-label { display: block; font-size: 10.5px; font-weight: 800; color: #c4b5fd; margin-bottom: 2px; }
+.sc-action-btn {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #dc2626, #991b1b);
+    border: 1px solid rgba(255, 255, 255, .3);
+    color: #fff;
+    font-weight: 800;
+    font-size: 13px;
+    text-decoration: none;
+}
+.sc-action-btn:hover { filter: brightness(1.12); }
+.sc-typing { padding-bottom: 10px; }
+.sc-dots { display: inline-flex; gap: 4px; padding-top: 4px; }
+.sc-dots i { width: 7px; height: 7px; border-radius: 50%; background: #c4b5fd; opacity: .35; animation: sc-dot 1.2s infinite; }
+.sc-dots i:nth-child(2) { animation-delay: .2s; }
+.sc-dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes sc-dot { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
 .sc-msg.deleted { opacity: .6; }
 .sc-msg-deleted-text { font-style: italic; color: inherit; opacity: .85; }
 

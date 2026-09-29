@@ -1,0 +1,2483 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hordas de Diamantes • 3SRecargas</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap');
+body { font-family: 'Outfit', sans-serif; background-color: #000; color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+body.is-playing { overflow: hidden; }
+.mobile-shell { width: 100%; max-width: 440px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; position: relative; }
+button, input, select { touch-action: manipulation; }
+[hidden] { display: none !important; }
+
+.glass-game-btn {
+    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 45%, rgba(10,10,15,0.03) 100%);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-top: 1px solid rgba(255,255,255,0.3);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.25), inset 0 1px 2px rgba(255,255,255,0.15);
+}
+.glass-game-btn.is-selected {
+    background: linear-gradient(135deg, rgba(255,0,0,0.35) 0%, rgba(255,0,0,0.12) 45%, rgba(20,0,0,0.05) 100%);
+    border-color: rgba(255,60,60,0.6);
+}
+.glass-card {
+    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 45%, rgba(10,10,15,0.04) 100%);
+    border: 1px solid rgba(255,60,60,0.45);
+    border-top: 1px solid rgba(255,150,150,0.5);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.15);
+}
+/* Igual a la barra "Ingresa tu ID" de la tienda. Al escribir solo se
+   aclara un poco el borde (antes se prendía un brillo rojo fuerte). */
+.glass-input-field {
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-top: 1px solid rgba(255,255,255,0.25);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 1px rgba(255,255,255,0.15);
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: .04em;
+    outline: none;
+}
+.glass-input-field::placeholder { color: #94a3b8; font-weight: 600; }
+.glass-input-field:focus {
+    border-color: rgba(255,255,255,0.35);
+    border-top-color: rgba(255,255,255,0.45);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 1px rgba(255,255,255,0.15);
+}
+
+.rank-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+/* Botones rojos principales con su propio color: no dependen de que el
+   Tailwind del CDN termine de generar el degradado (a veces quedaban negros). */
+#playBtn, #againBtn, #resumeBtn, #lookupBtn {
+    background-color: #dc2626;
+    background-image: linear-gradient(90deg, #dc2626, #e11d48, #b91c1c);
+    color: #fff;
+}
+#playBtn:disabled, #againBtn:disabled { filter: saturate(.6) brightness(.8); }
+/* Contenedor del ID, como el paso "1 Player ID" de la tienda. */
+.id-box {
+    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 60%);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-top: 1px solid rgba(255,255,255,0.22);
+}
+.id-step {
+    width: 22px; height: 22px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 35% 30%, #ff5a5a, #dc2626 60%, #991b1b);
+    border: 1px solid rgba(255,255,255,0.45); color: #fff; font-size: 12px; font-weight: 900;
+    box-shadow: 0 0 10px rgba(255,0,0,0.5);
+}
+.verify-btn {
+    background: linear-gradient(135deg, #ff1a1a, #c80000);
+    border: 1px solid rgba(255,255,255,0.4);
+    box-shadow: 0 4px 16px rgba(255,0,0,0.45), inset 0 1.5px 2px rgba(255,255,255,0.45);
+    color: #fff;
+}
+.verify-btn:disabled { filter: saturate(.6) brightness(.8); }
+.verify-btn.is-ok { background: linear-gradient(135deg, #16a34a, #15803d); box-shadow: 0 4px 16px rgba(22,163,74,0.4), inset 0 1.5px 2px rgba(255,255,255,0.45); }
+.replay-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,.85); border-top: 1px solid rgba(255,255,255,.15); z-index: 3; }
+.replay-result { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); width: min(92%, 520px); padding: 12px 14px; border-radius: 14px; background: rgba(0,0,0,.9); border: 1px solid rgba(250,204,21,.5); font-size: 12px; z-index: 3; }
+.rank-more-btn { width: 100%; text-align: center; padding: 8px; border-radius: 12px; border: 1px dashed rgba(255,255,255,.18); color: #cbd5e1; font-size: 11px; font-weight: 800; }
+.lookup-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.1); overflow: hidden; }
+.lookup-bar > div { height: 100%; background: linear-gradient(90deg, #22d3ee, #a855f7); }
+.rank-row.is-me { border-color: rgba(34,211,238,.7) !important; background: rgba(34,211,238,.08) !important; }
+
+/* ── Pantalla de juego ── */
+#gameOverlay { position: fixed; inset: 0; z-index: 60; background: #07070a; }
+#hordeCanvas { position: absolute; inset: 0; touch-action: none; display: block; }
+.hud { position: absolute; top: 0; left: 0; right: 0; padding: 10px 12px calc(10px); display: flex; align-items: center; gap: 10px; pointer-events: none; }
+.hud-chip { background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 4px 9px; font-weight: 900; font-size: 13px; white-space: nowrap; }
+.hud-hp { flex: 1; height: 12px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; border: 1px solid rgba(255,255,255,.18); }
+.hud-hp > div { height: 100%; background: linear-gradient(90deg, #ef4444, #f87171); transition: width .15s linear; }
+.hud-btn { pointer-events: auto; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.2); border-radius: 10px; width: 36px; height: 30px; font-size: 14px; }
+.game-modal { position: absolute; inset: 0; background: rgba(0,0,0,.78); display: flex; align-items: center; justify-content: center; padding: 18px; }
+.game-modal-card { width: 100%; max-width: 360px; background: linear-gradient(180deg, #0c0c10, #000); border: 2px solid rgba(239,68,68,.6); border-radius: 18px; padding: 18px; text-align: center; box-shadow: 0 0 30px rgba(239,68,68,.2); }
+.upgrade-card { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); }
+.upgrade-card:active { transform: scale(.98); }
+.upgrade-card .u-icon { font-size: 26px; width: 38px; text-align: center; }
+</style>
+</head>
+<body class="bg-black text-slate-100 flex justify-center">
+<div class="mobile-shell p-4" {% if replay %}hidden{% endif %}>
+    <a href="{{ url_for('main_bp.index') }}" class="inline-flex items-center gap-1.5 bg-black border border-red-500/40 hover:border-red-500 text-slate-300 hover:text-white text-[11px] font-bold px-3.5 py-2 rounded-xl mt-1 mb-2 w-fit active:scale-95">
+        <span>←</span> Volver a la tienda
+    </a>
+
+    <header class="w-full flex flex-col items-center text-center pt-2 pb-3">
+        <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] font-extrabold px-3.5 py-1 rounded-full uppercase tracking-wider mb-2 shadow-lg shadow-red-600/30 animate-pulse border border-red-400/30">
+            <span>⚡</span> 3S RECARGAS • Juego Gratis <span>🔥</span>
+        </div>
+        <h1 class="text-2xl font-extrabold tracking-wider text-white">💎 HORDAS DE DIAMANTES</h1>
+        <p class="text-slate-400 text-[11px] mt-1">Sobrevive a las hordas, junta diamantes y sube en el ranking semanal</p>
+    </header>
+
+    <main class="w-full flex flex-col items-center gap-4">
+        {% if not games %}
+        <div class="glass-card w-full p-6 rounded-2xl text-center text-slate-300 text-sm">
+            Este juego no está activo en este momento. Vuelve pronto.
+        </div>
+        {% else %}
+
+        {% if games|length > 1 %}
+        <div class="w-full">
+            <span class="text-xs uppercase tracking-widest text-white font-extrabold block mb-1.5">Selecciona un Juego:</span>
+            <div class="w-full flex flex-wrap gap-2">
+                {% for g in games %}
+                <button type="button" onclick="switchGame({{ g.id }})"
+                        class="glass-game-btn flex-1 min-w-[100px] text-center px-3 py-2.5 rounded-xl text-xs font-bold {% if game and game.id == g.id %}is-selected text-white{% else %}text-slate-300{% endif %}">
+                    {{ g.name }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="glass-card w-full p-3.5 rounded-2xl text-center">
+            <div class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Premio de la semana</div>
+            <div id="prizeLine" class="text-base font-black text-amber-400 mt-1">Cargando...</div>
+            <div id="weekCountdown" class="text-xs font-black text-red-400 mt-1.5"></div>
+        </div>
+
+        <div class="glass-card w-full p-4 rounded-2xl flex flex-col gap-2.5">
+            <div class="id-box rounded-2xl p-3">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="id-step">1</span>
+                    <span class="text-sm font-black text-white">Ingresa tu ID</span>
+                </div>
+                <div class="w-full flex gap-2">
+                    <input type="tel" inputmode="numeric" id="playerIdInput" placeholder="Ingresa tu ID"
+                           class="glass-input-field flex-1 min-w-0 rounded-xl px-4 py-3.5 text-sm focus:outline-none">
+                    <button type="button" id="verifyIdBtn" class="verify-btn flex-shrink-0 font-black text-[11px] px-4 rounded-xl uppercase tracking-wider">Verificar</button>
+                </div>
+                <p id="verifyIdMsg" class="text-[11px] font-bold mt-1.5 min-h-[14px]"></p>
+            </div>
+            {% if characters|length > 1 %}
+            <div>
+                <span class="text-[10px] uppercase tracking-widest text-slate-400 font-bold block mb-1.5">Elige tu personaje</span>
+                <div id="characterPicker" class="grid gap-2" style="grid-template-columns: repeat({{ characters|length }}, minmax(0, 1fr));">
+                    {% for ch in characters %}
+                    <button type="button" class="char-option glass-game-btn rounded-xl p-2 flex flex-col items-center gap-1" data-slot="{{ ch.slot }}">
+                        <img src="{{ ch.cover_url }}" alt="" class="w-full aspect-square object-cover rounded-lg" draggable="false">
+                        <span class="text-[10px] font-extrabold text-slate-200 truncate max-w-full">{{ ch.name }}</span>
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            <button id="playBtn" class="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-black text-sm py-3 rounded-xl shadow-lg shadow-red-600/30 uppercase tracking-wider">▶ Jugar</button>
+            <div class="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                <span id="runsLeftLabel">Partidas de hoy: --</span>
+                <span id="myWeekLabel"></span>
+            </div>
+            <p id="pointsLabel" class="text-[11px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2" hidden></p>
+            <p id="playMsg" class="text-[11px] font-bold min-h-[14px]"></p>
+        </div>
+
+        <div class="glass-card w-full p-3.5 rounded-2xl">
+            <h2 class="text-xs font-extrabold text-white flex items-center justify-between mb-2">
+                <span>🏆 Ranking de la semana</span>
+                <span id="playersCount" class="text-[10px] text-slate-400 font-bold"></span>
+            </h2>
+            <div id="rankingBox" class="flex flex-col gap-1.5"></div>
+            <div id="rankingMoreBox" class="flex flex-col gap-1.5 mt-1.5" hidden></div>
+            <button type="button" id="rankingMoreBtn" class="rank-more-btn mt-1.5" hidden></button>
+
+            <div class="bg-black border border-zinc-800 rounded-xl p-3 mt-3">
+                <div class="text-[11px] font-extrabold text-white mb-2">🔎 Tu posición actual</div>
+                <div class="flex gap-2">
+                    <input type="tel" inputmode="numeric" id="lookupIdInput" placeholder="Busca tu ID de juego..."
+                           class="glass-input-field flex-1 min-w-0 rounded-xl px-4 py-3 text-sm focus:outline-none">
+                    <button type="button" id="lookupBtn" class="flex-shrink-0 bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold text-[11px] px-4 rounded-xl uppercase">Ver</button>
+                </div>
+                <p id="lookupMsg" class="text-[11px] font-bold mt-1.5 min-h-[14px]"></p>
+                <div id="lookupResult" hidden></div>
+            </div>
+        </div>
+
+        <div id="pastWinnersContainer" class="glass-card w-full p-3.5 rounded-2xl" hidden>
+            <h2 class="text-xs font-extrabold text-white mb-2">👑 Ganadores anteriores</h2>
+            <div id="pastWinnersBox" class="flex flex-col gap-1.5"></div>
+        </div>
+
+        <div class="glass-card w-full p-3.5 rounded-2xl text-[11px] text-slate-300 leading-relaxed">
+            <h2 class="text-xs font-extrabold text-white mb-1.5">🎮 Cómo jugar</h2>
+            <p>• Se juega solo en teléfono, en vertical 📱.</p>
+            <p>• Pon el dedo en la pantalla y el personaje va justo ahí; arrástralo para esquivar. Disparas solo al enemigo más cercano.</p>
+            <p>• Los enemigos sueltan 💎: pasa cerca para recogerlos.</p>
+            <p>• Son 10 oleadas. La 10 es la <b class="text-red-400">oleada final</b>: nadie la ha superado y ahí no caen diamantes. Tus diamantes son los que juntes en las oleadas 1 a 9.</p>
+            <p>• Al terminar cada oleada eliges una mejora. Cada 5 oleadas sale un jefe, y desde la oleada 5 algunos enemigos (los azules) te disparan: esquiva sus balas.</p>
+            <p>• Los grandes tienen poderes: cuando brillan, algo viene. Los morados te embisten en línea recta (quítate del camino amarillo) y el jefe dispara en círculo, invoca esbirros o también embiste.</p>
+            <p id="howToPoints" {% if not (games and horde_extra_cost) %}hidden{% endif %}>• ¿Se acabaron tus partidas gratis del día? Sigue jugando canjeando los puntos que ganas con tus recargas en ese ID ({{ horde_extra_cost }} pts por partida) y sube más en el top.</p>
+            <p>• Antes de entregar los premios revisamos las partidas de los ganadores. Si hay trampa, ese ID queda bloqueado y el premio pasa al siguiente.</p>
+            <p>• Todos los diamantes de tus partidas de la semana suman en el ranking. La semana cierra el domingo a las 11:59 PM (Venezuela).</p>
+        </div>
+        {% endif %}
+    </main>
+
+    <footer class="text-[10px] text-slate-500 text-center py-2 mt-2">🛡 3SRecargas • Hordas de Diamantes</footer>
+</div>
+
+<div id="noPointsModal" class="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-5" hidden>
+    <div class="relative w-full max-w-[360px] bg-gradient-to-b from-zinc-950 to-black border-2 border-amber-500/60 rounded-2xl p-5 text-center shadow-[0_0_30px_rgba(245,158,11,0.2)]">
+        <button type="button" id="noPointsClose" class="absolute top-2.5 right-3 w-8 h-8 rounded-full bg-zinc-900 border border-zinc-700 text-slate-300 text-sm font-black" aria-label="Cerrar">✕</button>
+        <div class="text-4xl mb-1">⭐</div>
+        <h3 class="text-lg font-black text-white">Te faltan puntos</h3>
+        <p id="noPointsText" class="text-[12px] text-slate-300 font-bold mt-2 leading-relaxed"></p>
+        <p class="text-[11px] text-amber-300 font-bold mt-2">Cada recarga a tu ID te da puntos para seguir jugando y subir en el top.</p>
+        <a href="{{ url_for('main_bp.index') }}" class="block w-full mt-4 bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black text-sm py-3 rounded-xl uppercase" style="background-image:linear-gradient(90deg,#f59e0b,#f97316);">💎 Recargar ahora</a>
+    </div>
+</div>
+
+<div id="gameOverlay" hidden>
+    <canvas id="hordeCanvas"></canvas>
+    <div class="hud">
+        <div class="hud-chip">💎 <span id="hudDiamonds">0</span></div>
+        <div class="hud-chip" id="hudWave">Oleada 1</div>
+        <div class="hud-hp"><div id="hudHp" style="width:100%"></div></div>
+        <button type="button" class="hud-btn" id="muteBtn" aria-label="Sonido">🔊</button>
+        <button type="button" class="hud-btn" id="pauseBtn" aria-label="Pausa">⏸</button>
+    </div>
+
+    {% if replay %}
+    <div id="replayBar" class="replay-bar" hidden>
+        <button type="button" id="replayPlayBtn" class="hud-btn">⏸</button>
+        <button type="button" id="replaySpeedBtn" class="hud-btn" style="width:44px">x1</button>
+        <div class="flex-1 min-w-0">
+            <div class="hud-hp"><div id="replayProgress" style="width:0%;background:linear-gradient(90deg,#facc15,#f59e0b)"></div></div>
+            <div class="flex justify-between text-[11px] font-bold text-slate-300 mt-1">
+                <span>🎬 {{ replay.player_label }}</span><span id="replayTime">0:00</span>
+            </div>
+        </div>
+    </div>
+    <div id="replayResult" class="replay-result" hidden></div>
+    {% endif %}
+
+    <div class="game-modal" id="upgradeModal" hidden>
+        <div class="game-modal-card">
+            <div class="text-[11px] uppercase tracking-widest text-emerald-400 font-black">¡Oleada superada!</div>
+            <h3 class="text-lg font-black text-white mb-3">Elige una mejora</h3>
+            <div id="upgradeOptions" class="flex flex-col gap-2"></div>
+        </div>
+    </div>
+
+    <div class="game-modal" id="pauseModal" hidden>
+        <div class="game-modal-card">
+            <h3 class="text-lg font-black text-white mb-1">⏸ Pausa</h3>
+            <p class="text-[11px] text-slate-400 mb-4">Si terminas ahora, se guardan los diamantes que ya juntaste.</p>
+            <div class="flex flex-col gap-2">
+                <button type="button" id="resumeBtn" class="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-sm py-3 rounded-xl uppercase">▶ Continuar</button>
+                <button type="button" id="quitBtn" class="w-full bg-zinc-900 border border-zinc-700 text-slate-200 font-bold text-xs py-2.5 rounded-xl uppercase">Terminar partida</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="game-modal" id="rotateModal" hidden style="z-index:5;background:#000;">
+        <div class="game-modal-card">
+            <div class="text-4xl mb-2">📱</div>
+            <h3 class="text-lg font-black text-white mb-1">Gira tu teléfono</h3>
+            <p class="text-[12px] text-slate-400">Este juego se juega con el teléfono en vertical. Tu partida está en pausa.</p>
+        </div>
+    </div>
+
+    <div class="game-modal" id="overModal" hidden>
+        <div class="game-modal-card">
+            <div class="text-3xl mb-1">💀</div>
+            <h3 id="overTitle" class="text-lg font-black text-white">¡Fin de la partida!</h3>
+            <div class="bg-black border border-cyan-500/40 rounded-xl p-3 my-3">
+                <div class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Diamantes de esta partida</div>
+                <div id="overDiamonds" class="text-3xl font-black text-cyan-300">0</div>
+                <div id="overStatus" class="text-[11px] font-bold text-slate-300 mt-1">Guardando...</div>
+            </div>
+            <div class="flex flex-col gap-2">
+                <button type="button" id="againBtn" class="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-sm py-3 rounded-xl uppercase" hidden>▶ Jugar otra vez</button>
+                <button type="button" id="retrySaveBtn" class="w-full bg-amber-600 text-white font-black text-xs py-2.5 rounded-xl uppercase" hidden>Reintentar guardar</button>
+                <button type="button" id="exitBtn" class="w-full bg-zinc-900 border border-zinc-700 text-slate-200 font-bold text-xs py-2.5 rounded-xl uppercase">Salir</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const GAME_ID = {{ (game.id if game else 'null') }};
+const VERIFIABLE = {{ 'true' if verifiable else 'false' }};
+const CHARACTERS = {{ characters|tojson }};
+// Solo en el admin: datos de una partida grabada para verla o comprobarla.
+const REPLAY = {{ (replay or none)|tojson }};
+const REPLAY_MODE = !!REPLAY;
+const REPLAY_BAR_H = REPLAY_MODE && !REPLAY.check ? 64 : 0;
+const $ = (id) => document.getElementById(id);
+
+function switchGame(id) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('game_id', id);
+    window.location.href = url.toString();
+}
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function storageGet(key) { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } }
+function storageSet(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+
+// ─── Estado público (ranking, premio, partidas restantes) ───────────────────
+
+let weekCountdownId = null;
+let runsLeftToday = null;
+
+function startWeekCountdown(iso) {
+    if (weekCountdownId) clearInterval(weekCountdownId);
+    const target = new Date(iso).getTime();
+    const el = $('weekCountdown');
+    function tick() {
+        const diff = target - Date.now();
+        if (diff <= 0) { el.textContent = '⏳ Cerrando la semana...'; return; }
+        const d = Math.floor(diff / 86400000);
+        const h = Math.floor((diff % 86400000) / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        el.textContent = `⏳ La semana cierra en ${d}d ${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+    }
+    tick();
+    weekCountdownId = setInterval(tick, 1000);
+}
+
+function renderPrizes(prizes) {
+    const medals = ['🥇', '🥈', '🥉'];
+    const names = ['1er lugar', '2do lugar', '3er lugar'];
+    if (!prizes || !prizes.length) { $('prizeLine').textContent = '🏆 El #1 gana premio'; return; }
+    $('prizeLine').innerHTML = prizes.map((p) => `
+        <div class="flex items-center justify-center gap-1.5 ${p.place === 1 ? 'text-base' : 'text-sm text-amber-300/90'}">
+            <span>${medals[p.place - 1]}</span>
+            <span class="text-slate-300 font-bold text-[11px]">${names[p.place - 1]}:</span>
+            <span>${escapeHtml(p.label)}</span>
+        </div>`).join('');
+}
+
+function renderRanking(data) {
+    const box = $('rankingBox');
+    $('playersCount').textContent = data.total_players ? `${data.total_players} jugador(es)` : '';
+    if (!data.ranking.length) {
+        box.innerHTML = '<div class="bg-black border border-zinc-900 rounded-xl p-2.5 text-center text-slate-400 text-xs">Nadie ha jugado esta semana. ¡Sé el primero!</div>';
+        return;
+    }
+    const medals = ['🥇', '🥈', '🥉'];
+    const prizePlaces = new Set((data.prizes || []).map((p) => p.place));
+    const rowHtml = (r) => `
+        <div class="rank-row bg-black border ${prizePlaces.has(r.place) ? 'border-amber-500/50' : 'border-zinc-800'} rounded-xl px-2.5 py-2 ${r.is_me ? 'is-me' : ''}">
+            <span class="text-sm font-black text-center">${medals[r.place - 1] || '#' + r.place}</span>
+            <span class="min-w-0">
+                <span class="block text-[12px] font-black text-white truncate">${escapeHtml(r.nick)}${r.is_me ? ' <span class="text-cyan-300">(tú)</span>' : ''}</span>
+                <span class="block text-[10px] font-bold text-slate-500">ID: ${escapeHtml(r.player_id)}</span>
+            </span>
+            <span class="text-sm font-black text-cyan-300">💎 ${r.diamonds}</span>
+        </div>`;
+    // Top 4 a la vista; el resto dentro del desplegable (se queda abierto
+    // o cerrado aunque el ranking se refresque).
+    box.innerHTML = data.ranking.slice(0, RANKING_VISIBLE).map(rowHtml).join('');
+    const rest = data.ranking.slice(RANKING_VISIBLE);
+    $('rankingMoreBox').innerHTML = rest.map(rowHtml).join('');
+    $('rankingMoreBtn').hidden = !rest.length;
+    if (!rest.length) rankingExpanded = false;
+    updateRankingMore();
+}
+
+// El resto del top se abre debajo del #4 y el botón queda siempre al final.
+const RANKING_VISIBLE = 4;
+let rankingExpanded = false;
+
+function updateRankingMore() {
+    const total = RANKING_VISIBLE + $('rankingMoreBox').children.length;
+    $('rankingMoreBox').hidden = !rankingExpanded;
+    $('rankingMoreBtn').textContent = rankingExpanded ? '▲ Ver menos' : `▼ Ver más (hasta el Top ${total})`;
+}
+
+$('rankingMoreBtn').addEventListener('click', () => {
+    rankingExpanded = !rankingExpanded;
+    updateRankingMore();
+});
+
+// Buscador de posición por ID (como el ranking de recargas): se verifica
+// el ID con el juego y se muestra el puesto y cuánto falta para subir.
+async function lookupPosition() {
+    const input = $('lookupIdInput'), btn = $('lookupBtn'), msg = $('lookupMsg'), out = $('lookupResult');
+    const playerId = input.value.trim();
+    out.hidden = true;
+    msg.className = 'text-[11px] font-bold mt-1.5 min-h-[14px] text-red-400';
+    if (!playerId) { msg.textContent = 'Escribe tu ID primero.'; return; }
+    btn.disabled = true; btn.textContent = '...';
+    msg.textContent = '';
+    try {
+        if (VERIFIABLE) {
+            const vr = await fetch(`/promos/api/verify-player?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
+            const vd = await vr.json();
+            if (!vd.ok && vr.status !== 403) throw new Error(vd.error || 'ID no encontrado.');
+        }
+        const res = await fetch(`/promos/api/hordas/posicion?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'No se pudo buscar.');
+        const p = data.position;
+        if (!p) { msg.textContent = 'Ese ID todavía no tiene diamantes esta semana. ¡Juega para entrar al ranking!'; return; }
+        msg.textContent = '';
+        const medal = ['🥇', '🥈', '🥉'][p.place - 1] || '';
+        const hint = p.place === 1
+            ? '¡Vas de primero! Sigue jugando para que nadie te alcance.'
+            : `Te faltan 💎 ${p.missing} para pasar al puesto #${p.place - 1}.`;
+        out.innerHTML = `
+            <div class="flex items-center justify-between gap-2">
+                <span class="min-w-0">
+                    <span class="block text-[12px] font-black text-white truncate">${escapeHtml(p.nick)}</span>
+                    <span class="block text-[10px] font-bold text-slate-500">ID: ${escapeHtml(p.player_id)} · de ${p.total_players} jugador(es)</span>
+                </span>
+                <span class="text-right flex-shrink-0">
+                    <span class="block text-lg font-black text-amber-400">${medal} #${p.place}</span>
+                    <span class="block text-[12px] font-black text-cyan-300">💎 ${p.diamonds}</span>
+                </span>
+            </div>
+            <div class="lookup-bar mt-2"><div style="width:${p.progress_percent}%"></div></div>
+            <div class="text-[11px] font-bold text-slate-300 mt-1.5">${hint}</div>`;
+        out.hidden = false;
+    } catch (e) {
+        msg.textContent = e.message || 'ID no encontrado.';
+    } finally {
+        btn.disabled = false; btn.textContent = 'Ver';
+    }
+}
+$('lookupBtn').addEventListener('click', lookupPosition);
+$('lookupIdInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') lookupPosition(); });
+$('lookupIdInput').value = storageGet('hordas_player_id');
+
+function renderPastWinners(list) {
+    const container = $('pastWinnersContainer');
+    if (!list || !list.length) { container.hidden = true; return; }
+    container.hidden = false;
+    $('pastWinnersBox').innerHTML = list.map((w) => `
+        <div class="bg-black border border-amber-500/30 rounded-xl px-2.5 py-2 flex items-center justify-between gap-2 text-[11px]">
+            <span class="min-w-0 truncate"><span class="text-amber-400 font-black">#${w.place}</span> <span class="font-black text-white">${escapeHtml(w.nick)}</span> <span class="text-slate-500">· ${escapeHtml(w.player_id)}</span></span>
+            <span class="flex-shrink-0 text-slate-400 font-bold">Sem. ${escapeHtml(w.week_key)} · 💎 ${w.diamonds}</span>
+        </div>`).join('');
+}
+
+// Partidas extra con puntos: al acabarse las gratis del día, el botón pasa a
+// "Jugar por X pts" y el servidor descuenta los puntos al abrir la partida.
+let extraRunCost = 0;
+let pointsBalance = null;
+
+function needsPoints() {
+    return runsLeftToday === 0 && extraRunCost > 0;
+}
+
+function updatePlayButton() {
+    const label = $('pointsLabel');
+    if (extraRunCost > 0) {
+        label.hidden = false;
+        label.innerHTML = pointsBalance === null
+            ? `⭐ ¿Se te acabaron las partidas? Sigue jugando con <b>${extraRunCost} puntos</b> por partida y sube en el top.`
+            : `⭐ Tus puntos: <b>${pointsBalance}</b> · Partida extra: <b>${extraRunCost} pts</b>`;
+    } else {
+        label.hidden = true;
+    }
+    if (!IS_MOBILE) return;
+    $('playBtn').disabled = idBanned;
+    $('playBtn').classList.toggle('opacity-50', idBanned);
+    $('playBtn').textContent = idBanned ? '⛔ ID bloqueado'
+        : (needsPoints() ? `▶ Jugar por ${extraRunCost} pts` : '▶ Jugar');
+}
+
+// ID bloqueado por el admin en este juego (por trampa).
+let idBanned = false;
+const BANNED_TEXT = '⛔ Este ID está bloqueado en Hordas de Diamantes para este juego.';
+
+function showBanned(banned) {
+    const was = idBanned;
+    idBanned = !!banned;
+    const msg = $('verifyIdMsg');
+    if (idBanned) {
+        msg.className = 'text-[11px] font-bold mt-1.5 min-h-[14px] text-red-400';
+        msg.textContent = BANNED_TEXT;
+    } else if (was && msg.textContent === BANNED_TEXT) {
+        msg.textContent = '';
+    }
+}
+
+function showNoPoints(balance) {
+    $('noPointsText').textContent =
+        `La partida extra cuesta ${extraRunCost} pts y este ID tiene ${balance ?? 0}. Ya usaste tus partidas gratis de hoy.`;
+    $('noPointsModal').hidden = false;
+}
+$('noPointsClose').addEventListener('click', () => { $('noPointsModal').hidden = true; });
+$('noPointsModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.hidden = true; // tocar fuera también cierra
+});
+
+async function refreshState() {
+    if (!GAME_ID) return;
+    const playerId = $('playerIdInput').value.trim();
+    try {
+        const res = await fetch(`/promos/api/hordas/estado?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
+        const data = await res.json();
+        if (!data.ok || !data.enabled) return;
+        renderPrizes(data.prizes);
+        startWeekCountdown(data.week_ends_at);
+        runsLeftToday = playerId ? data.runs_left_today : null;
+        extraRunCost = data.extra_run_cost || 0;
+        pointsBalance = playerId ? data.points_balance : null;
+        showBanned(playerId && data.banned);
+        $('runsLeftLabel').textContent = playerId
+            ? `Partidas gratis hoy: ${data.runs_left_today} de ${data.runs_per_day}`
+            : `${data.runs_per_day} partidas gratis por día`;
+        updatePlayButton();
+        $('myWeekLabel').textContent = playerId && data.my_total
+            ? `Tu semana: 💎 ${data.my_total}${data.my_rank ? ` (#${data.my_rank})` : ''}`
+            : '';
+        renderRanking(data);
+        renderPastWinners(data.past_winners);
+    } catch (e) {}
+}
+
+// ─── ID y verificación ──────────────────────────────────────────────────────
+
+const playerIdInput = $('playerIdInput');
+const verifyIdBtn = $('verifyIdBtn');
+const VERIFY_MSG = 'text-[11px] font-bold mt-1.5 min-h-[14px]';
+let verifiedPlayerId = null;
+
+playerIdInput.value = storageGet('hordas_player_id');
+if (playerIdInput.value && storageGet('hordas_verified_id') === playerIdInput.value) {
+    verifiedPlayerId = playerIdInput.value;
+    const nick = storageGet('hordas_verified_nick');
+    if (nick) {
+        $('verifyIdMsg').className = VERIFY_MSG + ' text-emerald-400';
+        $('verifyIdMsg').textContent = `✅ ${nick}`;
+    }
+    setVerifyBtnOk(true);
+}
+
+function setVerifyBtnOk(ok) {
+    verifyIdBtn.classList.toggle('is-ok', ok);
+    verifyIdBtn.textContent = ok ? '✓ Listo' : 'Verificar';
+}
+
+let refreshTimer = null;
+playerIdInput.addEventListener('input', () => {
+    if (verifiedPlayerId !== null && playerIdInput.value.trim() !== verifiedPlayerId) {
+        verifiedPlayerId = null;
+        $('verifyIdMsg').textContent = '';
+        setVerifyBtnOk(false);
+    }
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refreshState, 500);
+});
+
+if (verifyIdBtn) {
+    verifyIdBtn.addEventListener('click', async () => {
+        const playerId = playerIdInput.value.trim();
+        const msg = $('verifyIdMsg');
+        if (!playerId) {
+            msg.className = VERIFY_MSG + ' text-red-400';
+            msg.textContent = 'Escribe tu ID primero.';
+            return;
+        }
+        verifyIdBtn.disabled = true;
+        verifyIdBtn.textContent = '⏳...';
+        msg.className = VERIFY_MSG + ' text-slate-400';
+        msg.textContent = 'Consultando tu ID...';
+        let ok = false;
+        try {
+            const res = await fetch(`/promos/api/verify-player?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
+            const data = await res.json();
+            if (res.status === 403) {
+                // Este juego no tiene la verificación configurada: se puede
+                // jugar igual con el ID escrito.
+                storageSet('hordas_player_id', playerId);
+                msg.className = VERIFY_MSG + ' text-amber-300';
+                msg.textContent = 'La verificación no está disponible ahora. Puedes jugar igual con este ID.';
+                refreshState();
+            } else if (!data.ok) {
+                verifiedPlayerId = null;
+                msg.className = VERIFY_MSG + ' text-red-400';
+                msg.textContent = data.error || 'No se pudo verificar tu ID.';
+            } else {
+                ok = true;
+                verifiedPlayerId = playerId;
+                storageSet('hordas_player_id', playerId);
+                storageSet('hordas_verified_id', playerId);
+                storageSet('hordas_verified_nick', data.nick || '');
+                msg.className = VERIFY_MSG + ' text-emerald-400';
+                msg.textContent = `✅ ${data.nick}`;
+                refreshState();
+            }
+        } catch (e) {
+            msg.className = VERIFY_MSG + ' text-red-400';
+            msg.textContent = 'Error de conexión, intenta de nuevo.';
+        } finally {
+            verifyIdBtn.disabled = false;
+            setVerifyBtnOk(ok);
+        }
+    });
+    playerIdInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') verifyIdBtn.click(); });
+}
+
+// ─── Motor del juego ────────────────────────────────────────────────────────
+
+const canvas = $('hordeCanvas');
+const ctx = canvas.getContext('2d');
+const IS_MOBILE = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
+    && (navigator.maxTouchPoints > 0 || 'ontouchstart' in window);
+const isPortrait = () => window.innerHeight >= window.innerWidth;
+const LOW_END = (navigator.hardwareConcurrency || 4) <= 4;
+const MAX_ENEMIES = LOW_END ? 60 : 90;
+const MAX_GEMS = 180;
+const MAX_PARTICLES = LOW_END ? 60 : 160;
+const FOLLOW_SPEED_MULT = 5;
+
+let W = 0, H = 0;
+let gridCanvas = null;
+
+let viewScale = 1;
+
+function resizeCanvas() {
+    const dpr = LOW_END ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+    if (REPLAY_MODE) {
+        // El tamaño de la partida es el del teléfono del jugador (grabado);
+        // aquí solo se escala para que quepa en la pantalla del admin.
+        viewScale = Math.min(window.innerWidth / W, (window.innerHeight - REPLAY_BAR_H) / H);
+    } else {
+        viewScale = 1;
+        W = window.innerWidth;
+        H = window.innerHeight;
+    }
+    canvas.width = Math.round(W * viewScale * dpr);
+    canvas.height = Math.round(H * viewScale * dpr);
+    canvas.style.width = W * viewScale + 'px';
+    canvas.style.height = H * viewScale + 'px';
+    if (REPLAY_MODE) {
+        canvas.style.left = Math.max(0, (window.innerWidth - W * viewScale) / 2) + 'px';
+        canvas.style.top = '0px';
+        canvas.style.right = 'auto';
+        canvas.style.bottom = 'auto';
+    }
+    ctx.setTransform(dpr * viewScale, 0, 0, dpr * viewScale, 0, 0);
+
+    gridCanvas = document.createElement('canvas');
+    gridCanvas.width = canvas.width;
+    gridCanvas.height = canvas.height;
+    const g = gridCanvas.getContext('2d');
+    g.setTransform(dpr * viewScale, 0, 0, dpr * viewScale, 0, 0);
+    g.fillStyle = '#07070a';
+    g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(239,68,68,0.07)';
+    g.lineWidth = 1;
+    g.beginPath();
+    for (let x = 0; x <= W; x += 40) { g.moveTo(x + .5, 0); g.lineTo(x + .5, H); }
+    for (let y = 0; y <= H; y += 40) { g.moveTo(0, y + .5); g.lineTo(W, y + .5); }
+    g.stroke();
+    if (!REPLAY_MODE && game && game.player && game.state !== 'over') {
+        if (rec && (rec.lastW !== W || rec.lastH !== H)) {
+            clampPlayerToScreen();
+            recPush(2, W, H);
+            rec.lastW = W; rec.lastH = H;
+        }
+    }
+}
+
+// Afecta la partida (mueve al personaje si quedó fuera): en la repetición se
+// aplica en el mismo paso en que pasó.
+function clampPlayerToScreen() {
+    game.player.x = Math.min(Math.max(game.player.x, 14), W - 14);
+    game.player.y = Math.min(Math.max(game.player.y, 50), H - 14);
+}
+
+// Multiplicador general de dificultad: vida, daño, velocidad y ritmo de
+// aparición de los enemigos (1.25 = 25% más difícil en todas las oleadas).
+const DIFFICULTY = 1.25;
+
+const ENEMY_TYPES = {
+    grunt:  { r: 12, hp: 2,  speed: 62,  color: '#22c55e', edge: '#14532d', dmg: 14, drop: 1 },
+    runner: { r: 9,  hp: 1,  speed: 112, color: '#ec4899', edge: '#831843', dmg: 10, drop: 1 },
+    tank:   { r: 19, hp: 9,  speed: 38,  color: '#a855f7', edge: '#4c1d95', dmg: 24, drop: 3 },
+    boss:   { r: 36, hp: 90, speed: 44,  color: '#475569', edge: '#0f172a', dmg: 40, drop: 10 },
+    shooter:{ r: 13, hp: 3,  speed: 58,  color: '#0ea5e9', edge: '#0c4a6e', dmg: 12, drop: 2, shooter: true },
+};
+
+const UPGRADES = [
+    { id: 'dmg',    icon: '💥', name: 'Más daño',        desc: '+30% de daño',                     apply: (p) => { p.damage *= 1.3; } },
+    { id: 'rate',   icon: '⚡', name: 'Disparo rápido',  desc: '+20% de cadencia',                 apply: (p) => { p.fireDelay *= 0.8; }, max: 8 },
+    { id: 'multi',  icon: '🔱', name: 'Bala extra',      desc: '+1 bala por disparo',              apply: (p) => { p.multishot += 1; }, max: 5 },
+    { id: 'heal',   icon: '❤️', name: 'Curación',        desc: 'Recupera 40 de vida',              apply: (p) => { p.hp = Math.min(p.maxHp, p.hp + 40); } },
+    { id: 'maxhp',  icon: '🛡️', name: 'Más vida',        desc: '+25 de vida máxima',               apply: (p) => { p.maxHp += 25; p.hp += 25; } },
+    { id: 'magnet', icon: '🧲', name: 'Imán',            desc: 'Atrae diamantes desde más lejos',  apply: (p) => { p.magnet *= 1.5; }, max: 4 },
+    { id: 'pierce', icon: '🗡️', name: 'Perforación',     desc: 'Las balas atraviesan 1 enemigo más', apply: (p) => { p.pierce += 1; }, max: 3 },
+    // Poderes estilo Archero
+    { id: 'diagonal', icon: '↗️', name: 'Disparo diagonal', desc: '+2 disparos en diagonal',          apply: (p) => { p.diagonal += 1; }, max: 2 },
+    { id: 'rear',     icon: '↩️', name: 'Disparo trasero',  desc: 'Dispara también hacia atrás',      apply: (p) => { p.rear += 1; }, max: 2 },
+    { id: 'side',     icon: '↔️', name: 'Disparo lateral',  desc: 'Dispara a los dos costados',       apply: (p) => { p.side = 1; }, max: 1 },
+    { id: 'double',   icon: '⏩', name: 'Ráfaga doble',     desc: 'Cada disparo se repite al instante', apply: (p) => { p.doubleShot += 1; }, max: 2 },
+    { id: 'bounce',   icon: '🔀', name: 'Rebote',           desc: 'La bala salta a otro enemigo',     apply: (p) => { p.bounce += 1; }, max: 3 },
+    { id: 'wall',     icon: '🧱', name: 'Rebote en paredes', desc: 'Las balas rebotan en los bordes',  apply: (p) => { p.wallBounce = 2; }, max: 1 },
+    { id: 'orbs',     icon: '🔥', name: 'Orbes de fuego',   desc: 'Bolas de fuego giran a tu alrededor', apply: (p) => { p.orbs += p.orbs ? 1 : 2; }, max: 3 },
+    { id: 'burn',     icon: '♨️', name: 'Quemadura',        desc: 'Los enemigos se queman al recibir disparos', apply: (p) => { p.burn += 1; }, max: 2 },
+    { id: 'freeze',   icon: '❄️', name: 'Hielo',            desc: 'Los enemigos alcanzados van más lentos', apply: (p) => { p.freeze = 1; }, max: 1 },
+    { id: 'crit',     icon: '🎯', name: 'Golpe crítico',    desc: '+20% de probabilidad de daño doble', apply: (p) => { p.crit += 0.2; }, max: 3 },
+    { id: 'lifesteal', icon: '🩸', name: 'Robo de vida',    desc: 'Recuperas vida con cada enemigo eliminado', apply: (p) => { p.lifesteal += 1; }, max: 3 },
+];
+
+const MAX_PLAYER_BULLETS = 260;
+
+let game = null;
+let rafId = null;
+let lastFrame = 0;
+let currentToken = null;
+let runSubmitted = false;
+const touch = { active: false, id: null, x: 0, y: 0 };
+
+function newGame(seed) {
+    const g = {
+        state: 'play',
+        tick: 0,
+        // Lo que la partida "ve" del dedo. Se actualiza cada INPUT_EVERY pasos
+        // (en vivo desde la pantalla, en repetición desde la grabación).
+        input: { active: false, x: 0, y: 0 },
+        wave: 0,
+        waveQuota: 0,
+        waveSpawned: 0,
+        spawnTimer: 0,
+        bossPending: false,
+        clearTimer: 0,
+        bannerTimer: 0,
+        diamonds: 0,
+        kills: 0,
+        nextId: 1,
+        upgradeCounts: {},
+        player: {
+            x: W / 2, y: H / 2, r: 13, speed: 175, hp: 100, maxHp: 100,
+            damage: 1, fireDelay: 0.42, fireTimer: 0, multishot: 1, pierce: 0,
+            magnet: 75, aim: -Math.PI / 2, hurt: 0,
+            diagonal: 0, rear: 0, side: 0, doubleShot: 0, bounce: 0, wallBounce: 0,
+            orbs: 0, orbAngle: 0, burn: 0, freeze: 0, crit: 0, lifesteal: 0,
+        },
+        enemies: [], bullets: [], enemyBullets: [], gems: [], particles: [], volleyQueue: [],
+    };
+    seedGame(g, seed === undefined ? Math.floor(Math.random() * 2 ** 31) : seed);
+    return g;
+}
+
+// ─── 10 oleadas; la 10 es la OLEADA FINAL ───────────────────────────────────
+// La final es imposible: el jefe es prácticamente inmortal, los enemigos no
+// paran de salir, pegan el doble y no sueltan diamantes (así nadie puede
+// quedarse ahí juntando). Si alguien la gana es porque hizo trampa: el
+// servidor deja esa partida en 0.
+// OJO: qué enemigos salen, cuántos y a qué ritmo está copiado en el servidor
+// (app/utils/promos.py) para calcular los diamantes máximos posibles. Si se
+// cambia aquí, hay que cambiarlo allá también.
+const MAX_WAVE = 10;
+const FINAL_QUOTA = 400;
+const FINAL_BOSS_HP_MULT = 300;
+const FINAL_DMG_MULT = 2;
+const BOSS_MAX_SUMMONS = 4;
+
+// Generador con semilla (mulberry32): con la semilla que da el servidor al
+// empezar, el servidor sabe exactamente qué enemigos salieron.
+function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+        a = (a + 0x6D2B79F5) >>> 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+// Todo lo que al azar cambia la partida (dónde aparece un enemigo, un golpe
+// crítico, qué mejoras te ofrecen...) sale de aquí, nunca de Math.random:
+// así la repetición da exactamente la misma partida. Lo puramente visual
+// (chispas, polvo, sonido) sí usa Math.random.
+function R() {
+    return game.rng();
+}
+
+function seedGame(g, seed) {
+    g.seed = seed >>> 0;
+    g.typeRng = mulberry32(g.seed);
+    g.rng = mulberry32((g.seed ^ 0x9E3779B9) >>> 0);
+}
+
+function isFinalWave() {
+    return game.wave >= MAX_WAVE;
+}
+
+function startWave() {
+    game.wave += 1;
+    game.waveQuota = isFinalWave() ? FINAL_QUOTA : 10 + game.wave * 5;
+    game.waveSpawned = 0;
+    game.spawnTimer = 0.6;
+    game.bossPending = game.wave % 5 === 0;
+    game.enemyBullets.length = 0;
+    game.bannerTimer = isFinalWave() ? 2.6 : 1.6;
+    game.clearTimer = 0;
+    game.state = 'play';
+    $('hudWave').textContent = isFinalWave() ? '☠ FINAL' : `Oleada ${game.wave}/${MAX_WAVE}`;
+}
+
+function pickEnemyType() {
+    const w = game.wave;
+    // Secuencia propia solo para los tipos: es la que replica el servidor
+    // para saber cuántos diamantes existen en la partida.
+    const rng = game.typeRng;
+    // Desde la oleada 5 algunos enemigos disparan: ~18% al inicio, hasta 30%.
+    if (w >= 5 && rng() < Math.min(0.3, 0.18 + (w - 5) * 0.03)) return 'shooter';
+    const roll = rng();
+    if (w >= 3 && roll < Math.min(0.25, 0.05 * w)) return 'tank';
+    if (w >= 2 && roll < 0.5) return 'runner';
+    return 'grunt';
+}
+
+function spawnEnemy(typeKey) {
+    const t = ENEMY_TYPES[typeKey];
+    const side = Math.floor(R() * 4);
+    const pad = t.r + 20;
+    let x, y;
+    if (side === 0) { x = R() * W; y = -pad; }
+    else if (side === 1) { x = W + pad; y = R() * H; }
+    else if (side === 2) { x = R() * W; y = H + pad; }
+    else { x = -pad; y = R() * H; }
+    const hpScale = 1 + (game.wave - 1) * 0.18;
+    const speedScale = Math.min(1.5, 1 + (game.wave - 1) * 0.03);
+    const final = isFinalWave();
+    const hp = t.hp * hpScale * (typeKey === 'boss' ? 1 + game.wave * 0.1 : 1) * DIFFICULTY
+        * (final && typeKey === 'boss' ? FINAL_BOSS_HP_MULT : 1);
+    game.enemies.push({
+        id: game.nextId++, type: typeKey, x, y, r: t.r, hp, maxHp: hp,
+        speed: t.speed * speedScale * DIFFICULTY * (0.9 + R() * 0.2),
+        color: t.color, edge: t.edge, dmg: t.dmg * DIFFICULTY * (final ? FINAL_DMG_MULT : 1),
+        drop: final ? 0 : t.drop, flash: 0, summons: 0,
+        shooter: !!t.shooter, fireTimer: 1.2 + R() * 1.2,
+        keepDist: 150 + R() * 60,
+        phase: 'walk', phaseTime: 0, dashAngle: 0, power: null, powerIndex: 0,
+        powerTimer: typeKey === 'boss' ? 2 : 2 + R() * 2,
+    });
+}
+
+// ─── Poderes de los enemigos grandes ────────────────────────────────────────
+// Morado (tank): embestida. Jefe: alterna ráfaga de balas en círculo,
+// invocar esbirros y embestida. Antes de cada poder se queda quieto
+// brillando un momento (aviso) para que se pueda esquivar.
+const BOSS_POWERS = ['burst', 'summon', 'charge'];
+
+function updateBigPower(e, dx, dy, d, dt, minions) {
+    const isBoss = e.type === 'boss';
+    if (e.phase === 'windup') {
+        e.phaseTime -= dt;
+        if (e.phaseTime <= 0) {
+            if (e.power === 'charge') {
+                e.phase = 'dash';
+                e.phaseTime = isBoss ? 0.7 : 0.55;
+            } else {
+                releasePower(e, minions);
+                e.phase = 'walk';
+                e.powerTimer = isBoss ? 3 + R() : 3.5 + R() * 1.5;
+            }
+        }
+        return true;
+    }
+    if (e.phase === 'dash') {
+        e.phaseTime -= dt;
+        const speed = isBoss ? 470 : 430;
+        e.x = Math.min(Math.max(e.x + Math.cos(e.dashAngle) * speed * dt, -e.r), W + e.r);
+        e.y = Math.min(Math.max(e.y + Math.sin(e.dashAngle) * speed * dt, -e.r), H + e.r);
+        if (e.phaseTime <= 0) {
+            e.phase = 'walk';
+            e.powerTimer = isBoss ? 3 + R() : 3.5 + R() * 1.5;
+        }
+        return true;
+    }
+
+    e.powerTimer -= dt;
+    const onScreen = e.x > 0 && e.x < W && e.y > 40 && e.y < H;
+    if (onScreen && e.powerTimer <= 0 && (isBoss || d < 320)) {
+        e.power = isBoss ? BOSS_POWERS[e.powerIndex++ % BOSS_POWERS.length] : 'charge';
+        if (e.power === 'summon' && e.summons >= BOSS_MAX_SUMMONS) e.power = BOSS_POWERS[e.powerIndex++ % BOSS_POWERS.length];
+        e.phase = 'windup';
+        e.phaseTime = isBoss ? 0.9 : 0.7;
+        e.dashAngle = Math.atan2(dy, dx);
+        return true;
+    }
+    return false;
+}
+
+function releasePower(e, minions) {
+    if (e.power === 'burst') {
+        const count = 14;
+        const offset = R() * Math.PI;
+        for (let i = 0; i < count; i++) {
+            const a = offset + (i / count) * Math.PI * 2;
+            game.enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * 170 * DIFFICULTY, vy: Math.sin(a) * 170 * DIFFICULTY, life: 4 });
+        }
+    } else if (e.power === 'summon') {
+        // Máximo 4 invocaciones por jefe: si no, alguien podría dejarlo vivo
+        // para siempre y juntar diamantes infinitos de sus esbirros.
+        if (e.summons >= BOSS_MAX_SUMMONS) return;
+        e.summons += 1;
+        const t = ENEMY_TYPES.runner;
+        const final = isFinalWave();
+        for (let i = 0; i < 3 && game.enemies.length + minions.length < MAX_ENEMIES; i++) {
+            const a = (i / 3) * Math.PI * 2;
+            const hp = t.hp * (1 + (game.wave - 1) * 0.18) * DIFFICULTY;
+            minions.push({
+                id: game.nextId++, type: 'runner', x: e.x + Math.cos(a) * (e.r + 14), y: e.y + Math.sin(a) * (e.r + 14),
+                r: t.r, hp, maxHp: hp, speed: t.speed * DIFFICULTY, color: t.color, edge: t.edge,
+                dmg: t.dmg * DIFFICULTY * (final ? FINAL_DMG_MULT : 1), drop: final ? 0 : t.drop, summons: 0,
+                flash: 0, shooter: false, fireTimer: 0, keepDist: 0,
+                phase: 'walk', phaseTime: 0, dashAngle: 0, power: null, powerIndex: 0, powerTimer: 99,
+            });
+        }
+    }
+}
+
+function addParticles(x, y, color, count) {
+    for (let i = 0; i < count && game.particles.length < MAX_PARTICLES; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const s = 60 + Math.random() * 140;
+        game.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.45, max: 0.45, color });
+    }
+}
+
+function dropGems(x, y, count) {
+    for (let i = 0; i < count; i++) {
+        if (game.gems.length >= MAX_GEMS) {
+            game.gems.shift();
+            game.diamonds += 1;
+        }
+        const a = R() * Math.PI * 2;
+        const s = count > 1 ? 40 + R() * 90 : 0;
+        game.gems.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, pulled: false });
+    }
+}
+
+function killEnemy(index) {
+    const e = game.enemies[index];
+    game.kills += 1;
+    const p = game.player;
+    if (p.lifesteal) p.hp = Math.min(p.maxHp, p.hp + 1.5 * p.lifesteal);
+    addParticles(e.x, e.y, e.color, LOW_END ? 3 : (e.type === 'boss' ? 16 : 6));
+    dropGems(e.x, e.y, e.drop);
+    game.enemies.splice(index, 1);
+}
+
+function nearestEnemy(p) {
+    let best = null, bestD = Infinity;
+    for (const e of game.enemies) {
+        if (e.x < -e.r || e.x > W + e.r || e.y < -e.r || e.y > H + e.r) continue;
+        const d = (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
+        if (d < bestD) { bestD = d; best = e; }
+    }
+    return best;
+}
+
+// ─── Poderes del personaje (estilo Archero) ─────────────────────────────────
+
+function shootBullet(p, angle, fromMuzzle) {
+    if (game.bullets.length >= MAX_PLAYER_BULLETS) return;
+    const muzzle = fromMuzzle && playerSprite && PLAYER_IMAGE_MODE !== 'flip' ? PLAYER_SPRITE_SIZE * 0.45 : 0;
+    game.bullets.push({
+        x: p.x + Math.cos(angle) * muzzle, y: p.y + Math.sin(angle) * muzzle,
+        vx: Math.cos(angle) * 540, vy: Math.sin(angle) * 540, life: 1.3,
+        pierce: p.pierce, bounces: p.bounce, walls: p.wallBounce, hits: [],
+    });
+}
+
+// ─── Sonido de disparo ──────────────────────────────────────────────────────
+// Se genera con el navegador (Web Audio), sin archivos: un estallido de ruido
+// filtrado + un golpe grave que cae rápido, como un arma de fuego. El ruido
+// se crea una sola vez y se reutiliza. Con cadencia alta se limita a un
+// sonido cada 70ms para no saturar ni gastar batería.
+const sfx = {
+    ctx: null, noise: null, lastShot: 0,
+    muted: storageGet('hordas_muted') === '1',
+};
+
+function initSfx() {
+    try {
+        if (!sfx.ctx) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return;
+            sfx.ctx = new AC();
+            const len = Math.floor(sfx.ctx.sampleRate * 0.25);
+            sfx.noise = sfx.ctx.createBuffer(1, len, sfx.ctx.sampleRate);
+            const data = sfx.noise.getChannelData(0);
+            for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+        }
+        // Los teléfonos solo dejan sonar audio después de que la persona toca
+        // la pantalla: se reanuda al tocar "Jugar".
+        if (sfx.ctx.state === 'suspended') sfx.ctx.resume();
+    } catch (e) {}
+}
+
+function playGunshot() {
+    if (sfx.muted || !sfx.ctx || sfx.ctx.state !== 'running') return;
+    const nowMs = performance.now();
+    if (nowMs - sfx.lastShot < 70) return;
+    sfx.lastShot = nowMs;
+    const ac = sfx.ctx, t = ac.currentTime;
+    const pitch = 0.9 + Math.random() * 0.2; // cada tiro suena un poco distinto
+
+    // Estallido: ruido que pasa por un filtro y se apaga en ~0.15s.
+    const src = ac.createBufferSource();
+    src.buffer = sfx.noise;
+    src.playbackRate.value = pitch;
+    const filter = ac.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(5000 * pitch, t);
+    filter.frequency.exponentialRampToValueAtTime(400, t + 0.15);
+    const nGain = ac.createGain();
+    nGain.gain.setValueAtTime(0.35, t);
+    nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    src.connect(filter).connect(nGain).connect(ac.destination);
+    src.start(t);
+    src.stop(t + 0.18);
+
+    // Golpe grave (el "bum" del disparo).
+    const osc = ac.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(160 * pitch, t);
+    osc.frequency.exponentialRampToValueAtTime(45, t + 0.09);
+    const oGain = ac.createGain();
+    oGain.gain.setValueAtTime(0.4, t);
+    oGain.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+    osc.connect(oGain).connect(ac.destination);
+    osc.start(t);
+    osc.stop(t + 0.12);
+}
+
+function updateMuteBtn() {
+    $('muteBtn').textContent = sfx.muted ? '🔇' : '🔊';
+}
+
+function fireVolley(p) {
+    playGunshot();
+    const spread = 0.14;
+    for (let i = 0; i < p.multishot; i++) {
+        shootBullet(p, p.aim + (i - (p.multishot - 1) / 2) * spread, true);
+    }
+    for (let k = 1; k <= p.diagonal; k++) {
+        const off = k === 1 ? Math.PI / 4 : Math.PI / 8;
+        shootBullet(p, p.aim + off); shootBullet(p, p.aim - off);
+    }
+    if (p.rear === 1) shootBullet(p, p.aim + Math.PI);
+    if (p.rear >= 2) { shootBullet(p, p.aim + Math.PI - 0.15); shootBullet(p, p.aim + Math.PI + 0.15); }
+    if (p.side) { shootBullet(p, p.aim + Math.PI / 2); shootBullet(p, p.aim - Math.PI / 2); }
+}
+
+function hitEnemy(p, e, damageMult) {
+    const crit = p.crit > 0 && R() < p.crit;
+    e.hp -= p.damage * (damageMult || 1) * (crit ? 2 : 1);
+    e.flash = 0.08;
+    e.crit = crit ? 0.15 : 0;
+    if (p.burn) { e.burnTime = 2; e.burnDps = 0.45 * p.damage * p.burn; }
+    if (p.freeze) e.slowTime = 1.5;
+}
+
+function redirectToNextEnemy(b) {
+    let best = null, bestD = 220 * 220;
+    for (const e of game.enemies) {
+        if (e.hp <= 0 || b.hits.includes(e.id)) continue;
+        const d = (e.x - b.x) ** 2 + (e.y - b.y) ** 2;
+        if (d < bestD) { bestD = d; best = e; }
+    }
+    if (!best) return false;
+    const a = Math.atan2(best.y - b.y, best.x - b.x);
+    b.vx = Math.cos(a) * 540; b.vy = Math.sin(a) * 540;
+    b.life = Math.max(b.life, 0.6);
+    return true;
+}
+
+// Cerca del cuerpo: los enemigos que se pegan al personaje quedan a ~25px,
+// con un radio mayor los orbes giraban por fuera sin tocarlos nunca.
+const ORB_RADIUS = 40;
+function updateOrbs(p, dt) {
+    if (!p.orbs) return;
+    p.orbAngle += dt * 3.2;
+    for (let k = 0; k < p.orbs; k++) {
+        const a = p.orbAngle + (k / p.orbs) * Math.PI * 2;
+        const ox = p.x + Math.cos(a) * ORB_RADIUS, oy = p.y + Math.sin(a) * ORB_RADIUS;
+        for (const e of game.enemies) {
+            if (e.hp <= 0 || (e.orbCd || 0) > 0) continue;
+            const rr = e.r + 13;
+            if ((e.x - ox) ** 2 + (e.y - oy) ** 2 <= rr * rr) {
+                hitEnemy(p, e, 1.2);
+                e.orbCd = 0.4;
+            }
+        }
+    }
+    for (const e of game.enemies) if (e.orbCd > 0) e.orbCd -= dt;
+}
+
+function update(dt) {
+    const p = game.player;
+
+    const prevX = p.x, prevY = p.y;
+    // El personaje va directo a donde está el dedo, muy rápido.
+    const input = game.input;
+    if (input.active) {
+        const tx = Math.min(Math.max(input.x, p.r), W - p.r);
+        const ty = Math.min(Math.max(input.y, 48 + p.r), H - p.r);
+        const dx = tx - p.x, dy = ty - p.y;
+        const dist = Math.hypot(dx, dy);
+        const step = p.speed * FOLLOW_SPEED_MULT * dt;
+        if (dist <= step) { p.x = tx; p.y = ty; }
+        else { p.x += (dx / dist) * step; p.y += (dy / dist) * step; }
+    }
+    if (p.hurt > 0) p.hurt -= dt;
+    updateWalk(p, Math.hypot(p.x - prevX, p.y - prevY) / Math.max(dt, 1e-6), dt);
+    emitAuraSparks(p, dt);
+
+    // Aparición de enemigos de la oleada.
+    if (game.waveSpawned < game.waveQuota) {
+        game.spawnTimer -= dt;
+        const interval = Math.max(0.16, 0.9 - game.wave * 0.06) / DIFFICULTY / (isFinalWave() ? 1.6 : 1);
+        while (game.spawnTimer <= 0 && game.waveSpawned < game.waveQuota && game.enemies.length < MAX_ENEMIES) {
+            if (game.bossPending && game.waveSpawned >= Math.floor(game.waveQuota / 2)) {
+                spawnEnemy('boss');
+                game.bossPending = false;
+            } else {
+                spawnEnemy(pickEnemyType());
+            }
+            game.waveSpawned += 1;
+            game.spawnTimer += interval;
+        }
+        if (game.spawnTimer < 0) game.spawnTimer = 0;
+    }
+
+    // Disparo automático al enemigo más cercano.
+    p.fireTimer -= dt;
+    const target = nearestEnemy(p);
+    if (target) p.aim = Math.atan2(target.y - p.y, target.x - p.x);
+    if (target && p.fireTimer <= 0) {
+        fireVolley(p);
+        // Ráfaga doble: el mismo disparo se repite 0.1s después (x2 o x3).
+        for (let k = 1; k <= p.doubleShot; k++) game.volleyQueue.push(0.1 * k);
+        p.fireTimer = p.fireDelay;
+    }
+    for (let k = game.volleyQueue.length - 1; k >= 0; k--) {
+        game.volleyQueue[k] -= dt;
+        if (game.volleyQueue[k] <= 0) {
+            game.volleyQueue.splice(k, 1);
+            if (target) fireVolley(p);
+        }
+    }
+
+    updateOrbs(p, dt);
+
+    // Balas y colisiones con enemigos.
+    for (let i = game.bullets.length - 1; i >= 0; i--) {
+        const b = game.bullets[i];
+        b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+        if (b.walls > 0) {
+            if (b.x < 0 || b.x > W) { b.vx = -b.vx; b.x = Math.min(Math.max(b.x, 0), W); b.walls -= 1; b.life = Math.max(b.life, 0.8); }
+            if (b.y < 44 || b.y > H) { b.vy = -b.vy; b.y = Math.min(Math.max(b.y, 44), H); b.walls -= 1; b.life = Math.max(b.life, 0.8); }
+        }
+        let remove = b.life <= 0 || b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20;
+        if (!remove) {
+            for (let j = game.enemies.length - 1; j >= 0; j--) {
+                const e = game.enemies[j];
+                if (b.hits.includes(e.id)) continue;
+                const rr = e.r + 4;
+                if ((e.x - b.x) ** 2 + (e.y - b.y) ** 2 <= rr * rr) {
+                    hitEnemy(p, e);
+                    b.hits.push(e.id);
+                    if (e.hp <= 0) killEnemy(j);
+                    if (b.bounces > 0 && redirectToNextEnemy(b)) { b.bounces -= 1; break; }
+                    if (b.pierce > 0) { b.pierce -= 1; } else { remove = true; break; }
+                }
+            }
+        }
+        if (remove) game.bullets.splice(i, 1);
+    }
+
+    // Enemigos persiguen al jugador; al tocarlo le quitan vida.
+    const pendingMinions = [];
+    for (const e of game.enemies) {
+        const dx = p.x - e.x, dy = p.y - e.y;
+        const d = Math.hypot(dx, dy) || 1;
+        let dir = 1;
+        if ((e.type === 'tank' || e.type === 'boss') && updateBigPower(e, dx, dy, d, dt, pendingMinions)) {
+            dir = 0;
+        }
+        if (e.shooter) {
+            // Se queda a distancia para dispararte; si te acercas, retrocede.
+            const onScreen = e.x > 10 && e.x < W - 10 && e.y > 50 && e.y < H - 10;
+            if (onScreen && d < e.keepDist - 25) dir = -0.7;
+            else if (onScreen && d < e.keepDist + 25) dir = 0;
+            e.fireTimer -= dt;
+            if (onScreen && e.fireTimer <= 0) {
+                game.enemyBullets.push({ x: e.x, y: e.y, vx: (dx / d) * 210 * DIFFICULTY, vy: (dy / d) * 210 * DIFFICULTY, life: 4 });
+                e.fireTimer = (1.8 + R() * 0.8) / DIFFICULTY;
+            }
+        }
+        // Al tocar el borde del personaje se detienen (siguen haciendo daño):
+        // antes se apilaban en su centro exacto.
+        if (dir > 0 && d <= e.r + p.r) dir = 0;
+        if (e.burnTime > 0) { e.burnTime -= dt; e.hp -= e.burnDps * dt; }
+        if (e.slowTime > 0) e.slowTime -= dt;
+        const slowMult = e.slowTime > 0 ? 0.55 : 1;
+        e.x += (dx / d) * e.speed * dir * slowMult * dt;
+        e.y += (dy / d) * e.speed * dir * slowMult * dt;
+        if (e.flash > 0) e.flash -= dt;
+        if (d < e.r + p.r) {
+            p.hp -= e.dmg * dt;
+            p.hurt = 0.15;
+        }
+    }
+    for (let i = game.enemies.length - 1; i >= 0; i--) {
+        if (game.enemies[i].hp <= 0) killEnemy(i);
+    }
+    for (const m of pendingMinions) game.enemies.push(m);
+
+    for (let i = game.enemyBullets.length - 1; i >= 0; i--) {
+        const b = game.enemyBullets[i];
+        b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
+        const hit = (b.x - p.x) ** 2 + (b.y - p.y) ** 2 <= (p.r + 5) ** 2;
+        if (hit) { p.hp -= 12 * DIFFICULTY; p.hurt = 0.2; }
+        if (hit || b.life <= 0 || b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) {
+            game.enemyBullets.splice(i, 1);
+        }
+    }
+
+    // Diamantes: imán y recolección.
+    const waveCleared = game.waveSpawned >= game.waveQuota && game.enemies.length === 0;
+    for (let i = game.gems.length - 1; i >= 0; i--) {
+        const g = game.gems[i];
+        g.vx *= 0.9; g.vy *= 0.9;
+        g.x += g.vx * dt; g.y += g.vy * dt;
+        const dx = p.x - g.x, dy = p.y - g.y;
+        const d = Math.hypot(dx, dy) || 1;
+        if (waveCleared || d < p.magnet) g.pulled = true;
+        if (g.pulled) {
+            const pull = 420 + (waveCleared ? 300 : 0);
+            g.x += (dx / d) * pull * dt;
+            g.y += (dy / d) * pull * dt;
+        }
+        if (d < p.r + 8) {
+            game.gems.splice(i, 1);
+            game.diamonds += 1;
+        }
+    }
+
+    for (let i = game.particles.length - 1; i >= 0; i--) {
+        const pt = game.particles[i];
+        pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.life -= dt;
+        if (pt.life <= 0) game.particles.splice(i, 1);
+    }
+
+    if (game.bannerTimer > 0) game.bannerTimer -= dt;
+
+    if (p.hp <= 0) {
+        p.hp = 0;
+        endRun('dead');
+        return;
+    }
+
+    if (waveCleared) {
+        game.clearTimer += dt;
+        if (game.gems.length === 0 || game.clearTimer > 1.5) {
+            game.diamonds += game.gems.length;
+            game.gems.length = 0;
+            if (isFinalWave()) {
+                // Imposible jugando limpio: se avisa al servidor y esa
+                // partida queda en 0.
+                game.finalCleared = true;
+                endRun('cleared');
+                return;
+            }
+            showUpgrades();
+        }
+    }
+}
+
+// El emoji 💎 se dibuja una sola vez en una imagen aparte y luego se copia:
+// escribir texto emoji en cada diamante, cada cuadro, sería muy pesado.
+// Personajes subidos en el admin. Se cargan todos al abrir la página y cada
+// uno se reduce una sola vez a 128px (manteniendo proporción) para no
+// escalar una foto grande en cada cuadro. Cambiar de personaje es instantáneo.
+const PLAYER_SPRITE_SIZE = 62;
+const characterSprites = {};
+let selectedSlot = null;
+let playerSprite = null;
+let PLAYER_IMAGE_MODE = 'flip';
+
+function applySelectedCharacter() {
+    const ch = CHARACTERS.find((c) => c.slot === selectedSlot) || CHARACTERS[0];
+    playerSprite = ch ? characterSprites[ch.slot] || null : null;
+    PLAYER_IMAGE_MODE = ch ? ch.mode : 'flip';
+}
+
+for (const ch of CHARACTERS) {
+    const img = new Image();
+    img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = 128; c.height = 128;
+        const g = c.getContext('2d');
+        const scale = Math.min(128 / img.width, 128 / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        g.drawImage(img, (128 - w) / 2, (128 - h) / 2, w, h);
+        characterSprites[ch.slot] = c;
+        applySelectedCharacter();
+    };
+    img.src = ch.url;
+}
+
+function selectCharacter(slot) {
+    selectedSlot = CHARACTERS.some((c) => c.slot === slot) ? slot : (CHARACTERS[0] ? CHARACTERS[0].slot : null);
+    storageSet('hordas_character', String(selectedSlot || ''));
+    document.querySelectorAll('.char-option').forEach((btn) => {
+        btn.classList.toggle('is-selected', Number(btn.dataset.slot) === selectedSlot);
+    });
+    applySelectedCharacter();
+}
+
+document.querySelectorAll('.char-option').forEach((btn) => {
+    btn.addEventListener('click', () => selectCharacter(Number(btn.dataset.slot)));
+});
+selectCharacter(Number(storageGet('hordas_character')));
+
+// Aura del personaje: brillo rojo de fondo + rayos rojos en zigzag que se
+// regeneran cada pocos cuadros. Cantidad, largo, grosor y brillo crecen
+// con la oleada (tope en la 13).
+function makeAuraSprite(inner, outer) {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(64, 64, 8, 64, 64, 64);
+    grad.addColorStop(0, inner);
+    grad.addColorStop(0.45, outer);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    return c;
+}
+const AURA_GLOW = makeAuraSprite('rgba(255,60,60,0.55)', 'rgba(200,0,0,0.25)');
+let auraBolts = [];
+let auraBoltsAt = 0;
+
+function buildAuraBolts(level) {
+    const count = 2 + Math.round(level * 5);
+    const reach = 26 + level * 26;
+    const bolts = [];
+    for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const start = 10 + Math.random() * 6;
+        const end = reach * (0.7 + Math.random() * 0.45);
+        const segments = 4 + Math.floor(Math.random() * 3);
+        const pts = [];
+        for (let s = 0; s <= segments; s++) {
+            const dist = start + (end - start) * (s / segments);
+            const jitter = s === 0 ? 0 : (Math.random() - 0.5) * (6 + level * 8);
+            const a = angle + jitter / Math.max(dist, 1);
+            pts.push([Math.cos(a) * dist, Math.sin(a) * dist]);
+        }
+        bolts.push(pts);
+    }
+    return bolts;
+}
+
+function strokeBolts(bolts, x, y) {
+    ctx.beginPath();
+    for (const pts of bolts) {
+        ctx.moveTo(x + pts[0][0], y + pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(x + pts[i][0], y + pts[i][1]);
+    }
+    ctx.stroke();
+}
+
+function drawPlayerAura(p) {
+    const wave = game.wave || 1;
+    const level = Math.min(1, (wave - 1) / 12);
+    const now = performance.now();
+    const t = now / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * (2 + level * 4));
+
+    // Los rayos cambian de forma cada 60-110ms: se ven chisporrotear.
+    if (now - auraBoltsAt > 110 - level * 50) {
+        auraBolts = buildAuraBolts(level);
+        auraBoltsAt = now;
+    }
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const size = 50 + level * 45 + pulse * (4 + level * 10);
+    ctx.globalAlpha = 0.25 + level * 0.35 + pulse * 0.08;
+    ctx.drawImage(AURA_GLOW, p.x - size / 2, p.y - size / 2, size, size);
+
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.35 + level * 0.35;
+    ctx.strokeStyle = '#ff1a1a';
+    ctx.lineWidth = 3 + level * 3;
+    strokeBolts(auraBolts, p.x, p.y);
+    ctx.globalAlpha = 0.6 + level * 0.4;
+    ctx.strokeStyle = '#ffd4d4';
+    ctx.lineWidth = 1 + level * 0.8;
+    strokeBolts(auraBolts, p.x, p.y);
+    ctx.restore();
+}
+
+function emitAuraSparks(p, dt) {
+    const wave = game.wave || 1;
+    if (wave < 5 || LOW_END) return;
+    game.sparkTimer = (game.sparkTimer || 0) - dt;
+    if (game.sparkTimer > 0 || game.particles.length >= MAX_PARTICLES) return;
+    game.sparkTimer = Math.max(0.03, 0.14 - (wave - 5) * 0.01);
+    const color = wave >= 10 ? '#ff4d4d' : '#f87171';
+    game.particles.push({
+        x: p.x + (Math.random() - 0.5) * 30, y: p.y + (Math.random() - 0.3) * 20,
+        vx: (Math.random() - 0.5) * 20, vy: -50 - Math.random() * 50,
+        life: 0.7, max: 0.7, color,
+    });
+}
+
+// Caminar simulado con una sola imagen: mientras se mueve sube y baja con
+// cada paso, se balancea de lado a lado y deja polvito en los pies; quieto,
+// solo "respira". La fuerza del paso depende de qué tan rápido va.
+function updateWalk(p, speed, dt) {
+    const target = Math.min(1, speed / 150);
+    p.walkAmount = (p.walkAmount || 0) + (target - (p.walkAmount || 0)) * Math.min(1, dt * 12);
+    p.walkPhase = (p.walkPhase || 0) + dt * (4 + p.walkAmount * 10);
+    p.dustTimer = (p.dustTimer || 0) - dt;
+    if (p.walkAmount > 0.25 && p.dustTimer <= 0 && game.particles.length < MAX_PARTICLES) {
+        p.dustTimer = 0.09;
+        game.particles.push({
+            x: p.x + (Math.random() - 0.5) * 12, y: p.y + PLAYER_SPRITE_SIZE * 0.34,
+            vx: (Math.random() - 0.5) * 30, vy: -8 - Math.random() * 12,
+            life: 0.45, max: 0.45, color: 'rgba(180,180,190,0.7)',
+        });
+    }
+}
+
+function walkPose(p) {
+    const w = p.walkAmount || 0;
+    const phase = p.walkPhase || 0;
+    const idle = 1 - w;
+    return {
+        bob: -Math.abs(Math.sin(phase)) * 4 * w,
+        tilt: Math.sin(phase) * 0.1 * w,
+        scale: 1 + Math.sin(performance.now() / 450) * 0.025 * idle,
+    };
+}
+
+function drawPlayerSprite(p) {
+    const s = PLAYER_SPRITE_SIZE;
+    const pose = walkPose(p);
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    const shadow = 1 + pose.bob / 20;
+    ctx.ellipse(p.x, p.y + s * 0.42, s * 0.34 * shadow, s * 0.12 * shadow, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = p.hurt > 0 && Math.floor(performance.now() / 60) % 2 === 0 ? 0.45 : 1;
+    ctx.translate(p.x, p.y + pose.bob);
+    ctx.rotate(pose.tilt);
+    ctx.scale(pose.scale, pose.scale);
+    if (PLAYER_IMAGE_MODE === 'rotate') {
+        ctx.rotate(p.aim + Math.PI / 2);
+    } else if (PLAYER_IMAGE_MODE === 'rotate_right') {
+        ctx.rotate(p.aim);
+    } else if (Math.cos(p.aim) < 0) {
+        ctx.scale(-1, 1);
+    }
+    ctx.drawImage(playerSprite, -s / 2, -s / 2, s, s);
+    ctx.restore();
+}
+
+// ─── Monstruos ──────────────────────────────────────────────────────────────
+// Cada tipo se dibuja una sola vez (y en sus variantes de golpe/crítico/
+// embestida) en una imagen aparte; en el juego solo se copia girada hacia
+// el jugador, con un leve "respirar". Dibujados mirando a la derecha (+x).
+const MONSTER_RES = 2;      // píxeles de la imagen por unidad del juego
+const MONSTER_EXTENT = 1.7; // cuernos/patas sobresalen del radio
+
+function blobPath(g, R, bumps, amount, seed) {
+    g.beginPath();
+    const steps = 36;
+    for (let i = 0; i <= steps; i++) {
+        const a = (i / steps) * Math.PI * 2;
+        const rr = R * (1 + amount * Math.sin(a * bumps + seed));
+        const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+        if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.closePath();
+}
+
+function spike(g, R, angle, len, width, color, edge) {
+    const bx = Math.cos(angle) * R * 0.85, by = Math.sin(angle) * R * 0.85;
+    const nx = -Math.sin(angle) * width, ny = Math.cos(angle) * width;
+    g.beginPath();
+    g.moveTo(bx + nx, by + ny);
+    g.lineTo(Math.cos(angle) * (R + len), Math.sin(angle) * (R + len));
+    g.lineTo(bx - nx, by - ny);
+    g.closePath();
+    g.fillStyle = color; g.fill();
+    g.lineWidth = 1; g.strokeStyle = edge; g.stroke();
+}
+
+function horn(g, R, side, len, color) {
+    // Cuerno de toro: sale del costado de la cabeza y apunta hacia adelante.
+    g.beginPath();
+    g.moveTo(-R * 0.4, side * R * 0.75);
+    g.quadraticCurveTo(-R * 0.35, side * (R + len), R * 0.45, side * (R + len));
+    g.quadraticCurveTo(-R * 0.02, side * (R + len * 0.3), R * 0.15, side * R * 0.8);
+    g.closePath();
+    g.fillStyle = color; g.fill();
+    g.lineWidth = 1.2; g.strokeStyle = '#1c1206'; g.stroke();
+}
+
+// Ojo brillante con la pupila clavada en el jugador y ceja enojada. La cara mira a +x:
+// la ceja va detrás del ojo y baja hacia el centro (forma de V).
+function angryEye(g, x, y, r, iris) {
+    g.fillStyle = '#000';
+    g.beginPath(); g.arc(x, y, r * 1.2, 0, Math.PI * 2); g.fill();
+    const glow = g.createRadialGradient(x, y, 0, x, y, r);
+    glow.addColorStop(0, '#fffbe0'); glow.addColorStop(0.45, iris); glow.addColorStop(1, iris);
+    g.fillStyle = glow;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#000';
+    g.beginPath(); g.arc(x + r * 0.3, y, r * 0.38, 0, Math.PI * 2); g.fill();
+    const s = Math.sign(y);
+    if (!s) return;
+    g.strokeStyle = '#000'; g.lineWidth = Math.max(1.6, r * 0.55); g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(x - r * 1.7, y + s * r * 1.0);
+    g.lineTo(x - r * 0.7, y - s * r * 0.9);
+    g.stroke();
+    g.lineCap = 'butt';
+}
+
+function fangMouth(g, R, x, width, teeth) {
+    g.fillStyle = '#1a0000';
+    g.beginPath();
+    g.ellipse(x, 0, R * 0.16, width, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#fff';
+    for (let i = 0; i < teeth; i++) {
+        const y = -width + (2 * width * (i + 0.5)) / teeth;
+        const tw = width / teeth;
+        g.beginPath(); g.moveTo(x - R * 0.14, y - tw); g.lineTo(x + R * 0.02, y); g.lineTo(x - R * 0.14, y + tw); g.fill();
+        g.beginPath(); g.moveTo(x + R * 0.14, y - tw); g.lineTo(x - R * 0.02, y); g.lineTo(x + R * 0.14, y + tw); g.fill();
+    }
+}
+
+function bodyFill(g, R, body, edge, bumps, amount, seed) {
+    blobPath(g, R, bumps, amount, seed);
+    const grad = g.createRadialGradient(R * 0.25, -R * 0.3, R * 0.1, 0, 0, R * 1.1);
+    grad.addColorStop(0, body);
+    grad.addColorStop(1, edge);
+    g.fillStyle = grad; g.fill();
+    g.lineWidth = 2; g.strokeStyle = '#000'; g.stroke();
+}
+
+const MONSTER_DRAW = {
+    // Diablillo verde: cuernos, ojos amarillos enojados y colmillos.
+    grunt(g, R, body, edge) {
+        horn(g, R, -1, R * 0.55, '#e7d3a8');
+        horn(g, R, 1, R * 0.55, '#e7d3a8');
+        bodyFill(g, R, body, edge, 5, 0.06, 0.4);
+        angryEye(g, R * 0.3, -R * 0.33, R * 0.2, '#facc15');
+        angryEye(g, R * 0.3, R * 0.33, R * 0.2, '#facc15');
+        fangMouth(g, R, R * 0.72, R * 0.3, 3);
+    },
+    // Araña rosada: patas, púas en la espalda y muchos ojos amarillos.
+    runner(g, R, body, edge) {
+        g.lineCap = 'round'; g.lineJoin = 'round';
+        for (const [color, width] of [['#000', 4], [body, 2.2]]) {
+            g.strokeStyle = color; g.lineWidth = width;
+            for (const side of [-1, 1]) {
+                for (const base of [0.7, 1.55, 2.35]) {
+                    const a = side * base;
+                    const kx = Math.cos(a) * R * 1.35, ky = Math.sin(a) * R * 1.35;
+                    g.beginPath();
+                    g.moveTo(Math.cos(a) * R * 0.6, Math.sin(a) * R * 0.6);
+                    g.lineTo(kx, ky);
+                    g.lineTo(kx + Math.cos(a) * R * 0.1 - R * 0.3, ky + side * R * 0.3);
+                    g.stroke();
+                }
+            }
+        }
+        g.lineCap = 'butt'; g.lineJoin = 'miter';
+        for (const a of [2.6, 3.1, 3.6]) spike(g, R, a, R * 0.45, R * 0.18, edge, '#000');
+        bodyFill(g, R, body, edge, 7, 0.08, 1.1);
+        for (const [x, y, r] of [[0.45, -0.3, 0.16], [0.45, 0.3, 0.16], [0.2, -0.5, 0.1], [0.2, 0.5, 0.1]]) {
+            angryEye(g, R * x, R * y, R * r, '#facc15');
+        }
+        fangMouth(g, R, R * 0.8, R * 0.18, 2);
+    },
+    // Bruto morado acorazado: púas en toda la espalda y cuernos al frente.
+    tank(g, R, body, edge) {
+        for (let i = 0; i < 9; i++) {
+            const a = Math.PI * 0.55 + (i / 8) * Math.PI * 0.9;
+            spike(g, R, a, R * 0.38, R * 0.14, '#d8b4fe', '#2e1065');
+        }
+        horn(g, R, -1, R * 0.4, '#f5f5f4');
+        horn(g, R, 1, R * 0.4, '#f5f5f4');
+        bodyFill(g, R, body, edge, 6, 0.05, 2.0);
+        // Placas de armadura.
+        g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 2;
+        for (const k of [-0.35, -0.05, 0.25]) {
+            g.beginPath(); g.arc(R * k - R * 0.4, 0, R * 0.55, -1.1, 1.1); g.stroke();
+        }
+        angryEye(g, R * 0.42, -R * 0.26, R * 0.15, '#facc15');
+        angryEye(g, R * 0.42, R * 0.26, R * 0.15, '#facc15');
+        fangMouth(g, R, R * 0.76, R * 0.32, 3);
+    },
+    // Jefe demonio: corona de cuernos, tres ojos y una boca enorme.
+    boss(g, R, body, edge) {
+        for (let i = 0; i < 7; i++) {
+            const a = Math.PI * 0.45 + (i / 6) * Math.PI * 1.1;
+            spike(g, R, a, R * (i % 2 ? 0.35 : 0.5), R * 0.12, '#94a3b8', '#000');
+        }
+        horn(g, R, -1, R * 0.6, '#fafaf9');
+        horn(g, R, 1, R * 0.6, '#fafaf9');
+        bodyFill(g, R, body, edge, 8, 0.05, 0.7);
+        // Grietas brillantes de energía verde.
+        g.strokeStyle = '#a3e635'; g.lineWidth = 1.5;
+        for (const [x1, y1, x2, y2, x3, y3] of [[-0.6, -0.1, -0.35, -0.35, -0.1, -0.55], [-0.55, 0.2, -0.3, 0.4, -0.05, 0.6], [-0.8, 0, -0.5, 0.02, -0.3, -0.1]]) {
+            g.beginPath(); g.moveTo(R * x1, R * y1); g.lineTo(R * x2, R * y2); g.lineTo(R * x3, R * y3); g.stroke();
+        }
+        angryEye(g, R * 0.28, -R * 0.36, R * 0.17, '#a3e635');
+        angryEye(g, R * 0.28, R * 0.36, R * 0.17, '#a3e635');
+        angryEye(g, R * 0.05, 0, R * 0.13, '#a3e635');
+        fangMouth(g, R, R * 0.68, R * 0.45, 5);
+    },
+    // Ojo azul flotante con tentáculos: el que dispara.
+    shooter(g, R, body, edge) {
+        g.strokeStyle = edge; g.lineWidth = 3; g.lineCap = 'round';
+        for (let i = 0; i < 5; i++) {
+            const a = Math.PI * 0.65 + (i / 4) * Math.PI * 0.7;
+            const bx = Math.cos(a) * R * 0.8, by = Math.sin(a) * R * 0.8;
+            const tx = Math.cos(a) * R * 1.6, ty = Math.sin(a) * R * 1.6;
+            g.beginPath();
+            g.moveTo(bx, by);
+            g.quadraticCurveTo((bx + tx) / 2 - Math.sin(a) * R * 0.4, (by + ty) / 2 + Math.cos(a) * R * 0.4, tx, ty);
+            g.stroke();
+        }
+        g.lineCap = 'butt';
+        bodyFill(g, R, body, edge, 4, 0.04, 0);
+        // Un solo ojo gigante.
+        g.fillStyle = '#f8fafc';
+        g.beginPath(); g.arc(R * 0.2, 0, R * 0.55, 0, Math.PI * 2); g.fill();
+        g.lineWidth = 1.5; g.strokeStyle = '#000'; g.stroke();
+        g.strokeStyle = 'rgba(220,38,38,0.8)'; g.lineWidth = 0.8;
+        for (const a of [-2.2, -1.2, 1.3, 2.3]) {
+            g.beginPath(); g.moveTo(R * 0.2 + Math.cos(a) * R * 0.5, Math.sin(a) * R * 0.5); g.lineTo(R * 0.2 + Math.cos(a) * R * 0.25, Math.sin(a) * R * 0.3); g.stroke();
+        }
+        angryEye(g, R * 0.32, 0, R * 0.28, '#22d3ee');
+    },
+};
+
+const monsterSprites = {};
+function getMonsterSprite(type, r, state) {
+    const key = `${type}:${state}`;
+    if (monsterSprites[key]) return monsterSprites[key];
+    const t = ENEMY_TYPES[type];
+    const body = state === 'flash' ? '#ffffff' : state === 'crit' ? '#fde047' : state === 'dash' ? '#fbbf24' : t.color;
+    const ext = r * MONSTER_EXTENT;
+    const c = document.createElement('canvas');
+    c.width = c.height = Math.ceil(ext * 2 * MONSTER_RES);
+    const g = c.getContext('2d');
+    g.translate(c.width / 2, c.height / 2);
+    g.scale(MONSTER_RES, MONSTER_RES);
+    MONSTER_DRAW[type](g, r, body, t.edge);
+    return (monsterSprites[key] = c);
+}
+
+function drawMonster(e, angle, now) {
+    const state = e.flash > 0 ? (e.crit > 0 ? 'crit' : 'flash') : (e.phase === 'dash' ? 'dash' : 'normal');
+    const sprite = getMonsterSprite(e.type, e.r, state);
+    const ext = e.r * MONSTER_EXTENT;
+    // Respira/se aplasta un poco; las arañas corren "temblando".
+    const speed = e.type === 'runner' ? 22 : 7;
+    const wob = Math.sin(now / 1000 * speed + e.id) * (e.type === 'runner' ? 0.12 : 0.06);
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(angle + (e.type === 'runner' ? wob : 0));
+    if (e.type !== 'runner') ctx.scale(1 + wob, 1 - wob);
+    ctx.drawImage(sprite, -ext, -ext, ext * 2, ext * 2);
+    ctx.restore();
+}
+
+const FIRE_SIZE = 16;
+const fireSprite = (() => {
+    const c = document.createElement('canvas');
+    c.width = 32; c.height = 32;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, '#fffbe6');
+    grad.addColorStop(0.25, '#fde047');
+    grad.addColorStop(0.55, '#f97316');
+    grad.addColorStop(0.8, 'rgba(220,38,38,0.55)');
+    grad.addColorStop(1, 'rgba(220,38,38,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 32, 32);
+    return c;
+})();
+
+const GEM_SIZE = 20;
+const gemSprite = (() => {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const g = c.getContext('2d');
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = '52px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+    g.fillText('💎', 32, 35);
+    return c;
+})();
+
+function draw() {
+    if (gridCanvas) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(gridCanvas, 0, 0);
+        ctx.restore();
+    }
+    if (!game) return;
+    const p = game.player;
+
+    for (const g of game.gems) ctx.drawImage(gemSprite, g.x - GEM_SIZE / 2, g.y - GEM_SIZE / 2, GEM_SIZE, GEM_SIZE);
+
+    for (const pt of game.particles) {
+        ctx.globalAlpha = Math.max(0, pt.life / pt.max);
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(pt.x - 2, pt.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    const now = performance.now();
+    for (const e of game.enemies) {
+        if (e.phase === 'windup') {
+            const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 60);
+            if (e.power === 'charge') {
+                ctx.globalAlpha = 0.25 + 0.2 * pulse;
+                ctx.strokeStyle = '#fbbf24';
+                ctx.lineWidth = e.r * 1.6;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(e.x, e.y);
+                ctx.lineTo(e.x + Math.cos(e.dashAngle) * 300, e.y + Math.sin(e.dashAngle) * 300);
+                ctx.stroke();
+                ctx.lineCap = 'butt';
+            }
+            ctx.globalAlpha = 0.6 + 0.4 * pulse;
+            ctx.strokeStyle = e.power === 'burst' ? '#38bdf8' : (e.power === 'summon' ? '#ec4899' : '#fbbf24');
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.r + 6 + pulse * 6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+        drawMonster(e, Math.atan2(p.y - e.y, p.x - e.x), now);
+        if (e.crit > 0) e.crit -= 1 / 60;
+        if (e.slowTime > 0) {
+            ctx.strokeStyle = 'rgba(125,211,252,0.9)';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 3, 0, Math.PI * 2); ctx.stroke();
+        }
+        if (e.burnTime > 0) {
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = 0.5 + 0.3 * Math.sin(performance.now() / 50 + e.id);
+            const fs = e.r * 1.6;
+            ctx.drawImage(fireSprite, e.x - fs / 2, e.y - e.r - fs * 0.35, fs, fs);
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+        }
+        if (e.type === 'tank' || e.type === 'boss') {
+            const w = e.r * 2;
+            ctx.fillStyle = 'rgba(0,0,0,.6)';
+            ctx.fillRect(e.x - e.r, e.y - e.r - 9, w, 4);
+            ctx.fillStyle = '#22c55e';
+            ctx.fillRect(e.x - e.r, e.y - e.r - 9, w * Math.max(0, e.hp / e.maxHp), 4);
+        }
+    }
+
+    // Bolas de fuego: núcleo brillante + estela que se desvanece hacia atrás.
+    ctx.globalCompositeOperation = 'lighter';
+    const flicker = performance.now() / 45;
+    for (const b of game.bullets) {
+        const speed = Math.hypot(b.vx, b.vy) || 1;
+        const ux = b.vx / speed, uy = b.vy / speed;
+        for (let k = 3; k >= 1; k--) {
+            const s = FIRE_SIZE * (1 - k * 0.2) * (0.9 + 0.1 * Math.sin(flicker + k + b.x * 0.05));
+            ctx.globalAlpha = 0.55 - k * 0.13;
+            ctx.drawImage(fireSprite, b.x - ux * k * 5 - s / 2, b.y - uy * k * 5 - s / 2, s, s);
+        }
+        ctx.globalAlpha = 1;
+        ctx.drawImage(fireSprite, b.x - FIRE_SIZE / 2, b.y - FIRE_SIZE / 2, FIRE_SIZE, FIRE_SIZE);
+    }
+    if (p.orbs) {
+        for (let k = 0; k < p.orbs; k++) {
+            const a = p.orbAngle + (k / p.orbs) * Math.PI * 2;
+            const ox = p.x + Math.cos(a) * ORB_RADIUS, oy = p.y + Math.sin(a) * ORB_RADIUS;
+            ctx.globalAlpha = 0.45;
+            ctx.drawImage(fireSprite, ox - 18, oy - 18, 36, 36);
+            ctx.globalAlpha = 1;
+            ctx.drawImage(fireSprite, ox - 11, oy - 11, 22, 22);
+        }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+
+    for (const b of game.enemyBullets) {
+        ctx.beginPath(); ctx.arc(b.x, b.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(56,189,248,.3)'; ctx.fill();
+        ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#e0f2fe'; ctx.fill();
+    }
+
+    drawPlayerAura(p);
+    if (playerSprite) {
+        drawPlayerSprite(p);
+    } else {
+        const cy = p.y + walkPose(p).bob;
+        ctx.strokeStyle = '#fca5a5';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(p.x, cy);
+        ctx.lineTo(p.x + Math.cos(p.aim) * (p.r + 9), cy + Math.sin(p.aim) * (p.r + 9));
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(p.x, cy, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.hurt > 0 ? '#fecaca' : '#f8fafc';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#ef4444';
+        ctx.stroke();
+    }
+
+
+    if (REPLAY_MODE && game.input.active) {
+        // Dónde tenía el dedo el jugador.
+        ctx.strokeStyle = 'rgba(250,204,21,0.85)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(game.input.x, game.input.y, 16, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(250,204,21,0.25)';
+        ctx.beginPath(); ctx.arc(game.input.x, game.input.y, 16, 0, Math.PI * 2); ctx.fill();
+    }
+
+    if (game.bannerTimer > 0) {
+        ctx.globalAlpha = Math.min(1, game.bannerTimer);
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.font = '900 30px Outfit, sans-serif';
+        const warnings = [];
+        if (isFinalWave()) {
+            ctx.fillStyle = '#ef4444';
+            ctx.fillText('☠ OLEADA FINAL ☠', W / 2, H * 0.32);
+            warnings.push('Nadie la ha superado jamás.');
+            warnings.push('Resiste todo lo que puedas…');
+        } else {
+            ctx.fillText(`OLEADA ${game.wave}/${MAX_WAVE}`, W / 2, H * 0.32);
+            if (game.wave % 5 === 0) warnings.push('⚠ ¡Viene un jefe!');
+            if (game.wave === 5) warnings.push('⚠ ¡Ahora algunos enemigos disparan!');
+            if (game.wave === MAX_WAVE - 1) warnings.push('⚠ ¡La próxima es la oleada final!');
+        }
+        ctx.fillStyle = '#f87171';
+        ctx.font = '800 15px Outfit, sans-serif';
+        warnings.forEach((text, i) => ctx.fillText(text, W / 2, H * 0.32 + 26 + i * 20));
+        ctx.globalAlpha = 1;
+    }
+}
+
+let hudCache = { d: -1, hp: -1 };
+function updateHud() {
+    if (!game) return;
+    if (hudCache.d !== game.diamonds) { hudCache.d = game.diamonds; $('hudDiamonds').textContent = game.diamonds; }
+    const hpPct = Math.round((game.player.hp / game.player.maxHp) * 100);
+    if (hudCache.hp !== hpPct) { hudCache.hp = hpPct; $('hudHp').style.width = hpPct + '%'; }
+}
+
+// ─── Pasos fijos y grabación de la partida ─────────────────────────────────
+// La partida avanza siempre en pasos de 1/60 s (no según los cuadros por
+// segundo del teléfono): con la misma semilla y los mismos movimientos del
+// dedo da exactamente el mismo resultado. Así el admin puede ver la
+// repetición y comprobar que la partida fue real.
+//
+// Se graba (en números enteros, muy compacto):
+//   [pasos desde el evento anterior, tipo, datos...]
+//   tipo 0: soltó el dedo · 1: dedo en (dx, dy) respecto al anterior
+//   tipo 2: la pantalla cambió de tamaño (W, H) · 3: eligió la mejora n
+//   tipo 4: fin de la partida (0 terminó, 1 murió, 2 ganó la final, 3 salió)
+const STEP = 1 / 60;
+const INPUT_EVERY = 3; // el dedo se lee 20 veces por segundo
+const MAX_STEPS_PER_FRAME = 8;
+let stepAcc = 0;
+let rec = null;
+
+function recStart() {
+    rec = { ints: [], lastTick: 0, px: 0, py: 0, W, H, lastW: W, lastH: H };
+}
+
+function recPush(kind, ...values) {
+    if (!rec || !game) return;
+    rec.ints.push(game.tick - rec.lastTick, kind, ...values);
+    rec.lastTick = game.tick;
+}
+
+function sampleInput() {
+    const inp = game.input;
+    if (touch.active) {
+        const x = Math.round(touch.x), y = Math.round(touch.y);
+        if (!inp.active || x !== inp.x || y !== inp.y) {
+            recPush(1, x - rec.px, y - rec.py);
+            rec.px = x; rec.py = y;
+            inp.active = true; inp.x = x; inp.y = y;
+        }
+    } else if (inp.active) {
+        recPush(0);
+        inp.active = false;
+    }
+}
+
+function stepGame() {
+    if (game.tick % INPUT_EVERY === 0) sampleInput();
+    game.tick += 1;
+    update(STEP);
+}
+
+// Enteros → texto corto (zigzag + varint + base64): unos pocos KB.
+function encodeInts(ints) {
+    const bytes = [];
+    for (const n of ints) {
+        let z = n >= 0 ? n * 2 : -n * 2 - 1;
+        while (z >= 128) { bytes.push((z % 128) + 128); z = Math.floor(z / 128); }
+        bytes.push(z);
+    }
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.slice(i, i + 8192));
+    return btoa(bin);
+}
+
+function decodeInts(text) {
+    const bin = atob(text || '');
+    const out = [];
+    let z = 0, mul = 1;
+    for (let i = 0; i < bin.length; i++) {
+        const b = bin.charCodeAt(i);
+        z += (b % 128) * mul;
+        if (b >= 128) { mul *= 128; continue; }
+        out.push(z % 2 === 0 ? z / 2 : -(z + 1) / 2);
+        z = 0; mul = 1;
+    }
+    return out;
+}
+
+function replayPayload() {
+    if (!rec) return null;
+    return { v: 1, W: rec.W, H: rec.H, ch: selectedSlot || 0, data: encodeInts(rec.ints) };
+}
+
+function frame(t) {
+    const dt = Math.min(0.1, Math.max(0, (t - lastFrame) / 1000 || 0));
+    lastFrame = t;
+    if (REPLAY_MODE) {
+        replayAdvance(dt);
+    } else if (game && game.state === 'play') {
+        stepAcc += dt;
+        let n = 0;
+        while (stepAcc >= STEP && game.state === 'play' && n < MAX_STEPS_PER_FRAME) {
+            stepGame();
+            stepAcc -= STEP;
+            n += 1;
+        }
+        if (n === MAX_STEPS_PER_FRAME) stepAcc = 0; // teléfono muy lento: el juego va más lento, no se salta pasos
+    }
+    draw();
+    updateHud();
+    rafId = requestAnimationFrame(frame);
+}
+
+function showUpgrades() {
+    game.state = 'upgrade';
+    const pool = UPGRADES.filter((u) => !u.max || (game.upgradeCounts[u.id] || 0) < u.max);
+    const options = [];
+    while (options.length < 3 && pool.length) {
+        options.push(pool.splice(Math.floor(R() * pool.length), 1)[0]);
+    }
+    game.upgradeOptions = options.map((u) => u.id);
+    if (REPLAY_MODE) return; // en la repetición la elige la grabación
+    $('upgradeOptions').innerHTML = options.map((u) => {
+        const lvl = game.upgradeCounts[u.id] || 0;
+        const tag = u.max && u.max > 1 ? `<span class="text-[10px] font-bold text-amber-400"> Nv. ${lvl + 1}/${u.max}</span>` : '';
+        return `
+        <button type="button" class="upgrade-card" data-upgrade="${u.id}">
+            <span class="u-icon">${u.icon}</span>
+            <span><span class="block font-black text-white text-sm">${u.name}${tag}</span><span class="block text-[11px] text-slate-400">${u.desc}</span></span>
+        </button>`;
+    }).join('');
+    $('upgradeModal').hidden = false;
+}
+
+$('upgradeOptions').addEventListener('click', (evt) => {
+    const btn = evt.target.closest('[data-upgrade]');
+    if (!btn || !game || game.state !== 'upgrade') return;
+    const upgrade = UPGRADES.find((u) => u.id === btn.dataset.upgrade);
+    recPush(3, UPGRADES.indexOf(upgrade));
+    applyUpgrade(upgrade);
+    $('upgradeModal').hidden = true;
+});
+
+function applyUpgrade(upgrade) {
+    upgrade.apply(game.player);
+    game.upgradeCounts[upgrade.id] = (game.upgradeCounts[upgrade.id] || 0) + 1;
+    startWave();
+}
+
+// ─── Controles ──────────────────────────────────────────────────────────────
+
+canvas.addEventListener('pointerdown', (e) => {
+    if (touch.active) return;
+    touch.active = true; touch.id = e.pointerId;
+    touch.x = e.clientX; touch.y = e.clientY;
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+});
+canvas.addEventListener('pointermove', (e) => {
+    if (!touch.active || e.pointerId !== touch.id) return;
+    touch.x = e.clientX; touch.y = e.clientY;
+});
+function releaseTouch(e) {
+    if (e.pointerId !== touch.id) return;
+    touch.active = false; touch.id = null;
+}
+canvas.addEventListener('pointerup', releaseTouch);
+canvas.addEventListener('pointercancel', releaseTouch);
+
+function checkOrientation() {
+    if (REPLAY_MODE || $('gameOverlay').hidden) return;
+    const portrait = isPortrait();
+    $('rotateModal').hidden = portrait;
+    if (!portrait) pauseGame();
+    else resizeCanvas();
+}
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 250));
+
+function pauseGame() {
+    if (REPLAY_MODE || !game || game.state !== 'play') return;
+    game.state = 'paused';
+    touch.active = false;
+    $('pauseModal').hidden = false;
+}
+
+$('pauseBtn').addEventListener('click', pauseGame);
+$('muteBtn').addEventListener('click', () => {
+    sfx.muted = !sfx.muted;
+    storageSet('hordas_muted', sfx.muted ? '1' : '0');
+    updateMuteBtn();
+    if (!sfx.muted) initSfx();
+});
+updateMuteBtn();
+$('resumeBtn').addEventListener('click', () => {
+    if (!isPortrait()) { $('rotateModal').hidden = false; return; }
+    $('pauseModal').hidden = true;
+    if (game && game.state === 'paused') { game.state = 'play'; lastFrame = performance.now(); stepAcc = 0; }
+});
+$('quitBtn').addEventListener('click', () => {
+    $('pauseModal').hidden = true;
+    endRun('quit');
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+
+// ─── Inicio / fin de partida contra el servidor ─────────────────────────────
+
+function setPlayMsg(text, tone) {
+    const el = $('playMsg');
+    el.className = 'text-[11px] font-bold min-h-[14px] ' + (tone === 'error' ? 'text-red-400' : 'text-slate-300');
+    el.textContent = text;
+}
+
+async function requestRun() {
+    if (!IS_MOBILE) { setPlayMsg('📱 Este juego solo se puede jugar desde un teléfono.', 'error'); return null; }
+    if (!isPortrait()) { setPlayMsg('📱 Pon tu teléfono en vertical para jugar.', 'error'); return null; }
+    const playerId = playerIdInput.value.trim();
+    if (!playerId) { setPlayMsg('Escribe tu ID de juego primero.', 'error'); return null; }
+    if (VERIFIABLE && playerId !== verifiedPlayerId) {
+        setPlayMsg('⚠️ Verifica tu ID primero (botón "Verificar").', 'error');
+        return null;
+    }
+    storageSet('hordas_player_id', playerId);
+    if (idBanned) { setPlayMsg(BANNED_TEXT, 'error'); return null; }
+    if (needsPoints() && pointsBalance !== null && pointsBalance < extraRunCost) {
+        showNoPoints(pointsBalance);
+        return null;
+    }
+    const res = await fetch('/promos/api/hordas/iniciar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game_id: GAME_ID, player_id: playerId, use_points: needsPoints() }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+        if (data.code === 'no_points') {
+            setPlayMsg('', 'info');
+            showNoPoints(data.points_balance);
+        } else {
+            setPlayMsg(data.error || 'No se pudo iniciar la partida.', 'error');
+        }
+        refreshState();
+        return null;
+    }
+    if (data.points_balance !== null && data.points_balance !== undefined) pointsBalance = data.points_balance;
+    return data;
+}
+
+async function launchGame(fromOverlay) {
+    initSfx(); // dentro del toque en "Jugar": así el teléfono permite el sonido
+    const playBtn = $('playBtn');
+    const againBtn = $('againBtn');
+    playBtn.disabled = true; againBtn.disabled = true;
+    setPlayMsg('Preparando partida...', 'info');
+    try {
+        const data = await requestRun();
+        if (!data) {
+            if (fromOverlay) closeOverlay();
+            return;
+        }
+        setPlayMsg('', 'info');
+        currentToken = data.token;
+        runSubmitted = false;
+        runsLeftToday = data.runs_left_today;
+        updatePlayButton();
+        $('overModal').hidden = true;
+        $('gameOverlay').hidden = false;
+        document.body.classList.add('is-playing');
+        resizeCanvas();
+        game = newGame(Number(data.seed) || 0);
+        recStart();
+        stepAcc = 0;
+        hudCache = { d: -1, hp: -1 };
+        startWave();
+        lastFrame = performance.now();
+        if (!rafId) rafId = requestAnimationFrame(frame);
+    } catch (e) {
+        setPlayMsg('Error de conexión, intenta de nuevo.', 'error');
+        if (fromOverlay) closeOverlay();
+    } finally {
+        playBtn.disabled = false; againBtn.disabled = false;
+    }
+}
+
+function runPayload(maxBytes) {
+    const base = {
+        token: currentToken,
+        diamonds: game ? game.diamonds : 0,
+        kills: game ? game.kills : 0,
+        wave: game ? game.wave : 0,
+        final_cleared: !!(game && game.finalCleared),
+    };
+    const withReplay = JSON.stringify({ ...base, replay: replayPayload() });
+    // Al cerrar la pestaña el navegador solo deja enviar ~64 KB: si la
+    // grabación no cabe, se manda sin ella (el admin verá "sin repetición").
+    if (maxBytes && withReplay.length > maxBytes) return JSON.stringify(base);
+    return withReplay;
+}
+
+async function submitRun() {
+    const status = $('overStatus');
+    $('retrySaveBtn').hidden = true;
+    status.className = 'text-[11px] font-bold text-slate-300 mt-1';
+    status.textContent = 'Guardando en el ranking...';
+    try {
+        const res = await fetch('/promos/api/hordas/terminar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: runPayload(),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            if (res.status === 400) { runSubmitted = true; }
+            status.className = 'text-[11px] font-bold text-red-400 mt-1';
+            status.textContent = data.error || 'No se pudo guardar la partida.';
+            if (res.status !== 400) $('retrySaveBtn').hidden = false;
+            return;
+        }
+        runSubmitted = true;
+        $('overDiamonds').textContent = data.diamonds;
+        status.className = 'text-[11px] font-bold text-emerald-400 mt-1';
+        status.textContent = `✅ Guardado. Tu semana: 💎 ${data.week_total}${data.week_rank ? ` · Puesto #${data.week_rank}` : ''}`;
+        if (data.flagged) {
+            status.className = 'text-[11px] font-bold text-red-400 mt-1';
+            status.textContent = '⚠ Detectamos algo raro en esta partida y no sumó diamantes.';
+        } else if (data.capped) {
+            status.textContent += ' (se ajustó el puntaje a lo posible para el tiempo jugado)';
+        }
+        if (data.week_rank === 1 && typeof confetti === 'function') {
+            confetti({ particleCount: 90, spread: 80, origin: { y: 0.6 }, colors: ['#22d3ee', '#ffffff', '#fbbf24'] });
+        }
+    } catch (e) {
+        status.className = 'text-[11px] font-bold text-red-400 mt-1';
+        status.textContent = 'Error de conexión al guardar.';
+        $('retrySaveBtn').hidden = false;
+    }
+}
+
+const END_CODES = { quit: 0, dead: 1, cleared: 2, left: 3 };
+
+function endRun(reason) {
+    if (!game || game.state === 'over') return;
+    game.state = 'over';
+    game.endReason = reason;
+    if (REPLAY_MODE) { replayFinished(); return; }
+    recPush(4, END_CODES[reason] ?? 0);
+    touch.active = false;
+    $('upgradeModal').hidden = true;
+    if (reason === 'cleared') {
+        $('overTitle').textContent = '⚠ Partida no válida';
+    } else if (reason === 'dead' && isFinalWave()) {
+        $('overTitle').textContent = '☠ ¡La oleada final te venció!';
+    } else {
+        $('overTitle').textContent = reason === 'dead'
+            ? `¡Caíste en la oleada ${game.wave}!`
+            : `Partida terminada en la oleada ${game.wave}`;
+    }
+    $('overDiamonds').textContent = game.diamonds;
+    const again = $('againBtn');
+    if (runsLeftToday > 0) {
+        again.hidden = false;
+        again.textContent = `▶ Jugar otra vez (${runsLeftToday} gratis restante${runsLeftToday === 1 ? '' : 's'} hoy)`;
+    } else if (extraRunCost > 0 && pointsBalance !== null && pointsBalance >= extraRunCost) {
+        again.hidden = false;
+        again.textContent = `▶ Otra partida por ${extraRunCost} pts (tienes ${pointsBalance})`;
+    } else {
+        again.hidden = true;
+    }
+    $('overModal').hidden = false;
+    submitRun();
+}
+
+function closeOverlay() {
+    $('gameOverlay').hidden = true;
+    $('overModal').hidden = true;
+    $('pauseModal').hidden = true;
+    $('upgradeModal').hidden = true;
+    document.body.classList.remove('is-playing');
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    game = null;
+    refreshState();
+}
+
+$('playBtn').addEventListener('click', () => launchGame(false));
+$('againBtn').addEventListener('click', () => launchGame(true));
+$('retrySaveBtn').addEventListener('click', submitRun);
+$('exitBtn').addEventListener('click', closeOverlay);
+
+// Si cierra la pestaña a mitad de partida, igual se guardan los diamantes
+// que ya llevaba.
+window.addEventListener('pagehide', () => {
+    if (currentToken && !runSubmitted && game && navigator.sendBeacon) {
+        runSubmitted = true;
+        if (game.state !== 'over') recPush(4, END_CODES.left);
+        navigator.sendBeacon('/promos/api/hordas/terminar', new Blob([runPayload(60000)], { type: 'application/json' }));
+    }
+});
+
+// ─── Repetición (solo admin) ────────────────────────────────────────────────
+// Vuelve a jugar la partida con la misma semilla y los movimientos grabados.
+// Como todo lo que decide la partida sale de ahí, el resultado debe ser el
+// mismo que reportó el teléfono. Si en la repetición muere antes, o elige una
+// mejora que no le ofrecieron, la partida real no fue limpia.
+const EVENT_SIZES = { 0: 0, 1: 2, 2: 2, 3: 1, 4: 1 };
+const REPLAY_MAX_TICKS = 31 * 60 * 60;
+const REPLAY_SPEEDS = [1, 2, 4, 8];
+let rp = null;
+
+function replayNextEvent() {
+    const ints = rp.ints;
+    if (rp.i >= ints.length) { rp.pending = null; return; }
+    const dt = ints[rp.i], kind = ints[rp.i + 1];
+    const size = EVENT_SIZES[kind];
+    if (size === undefined || rp.i + 2 + size > ints.length) { rp.pending = null; rp.problem = 'grabacion_danada'; return; }
+    rp.evTick += dt;
+    rp.pending = { tick: rp.evTick, kind, vals: ints.slice(rp.i + 2, rp.i + 2 + size) };
+    rp.i += 2 + size;
+}
+
+function replayApplyEvents() {
+    while (rp.pending && rp.pending.tick === game.tick && game.state !== 'over') {
+        const { kind, vals } = rp.pending;
+        const inp = game.input;
+        if (kind === 0) {
+            inp.active = false;
+        } else if (kind === 1) {
+            rp.px += vals[0]; rp.py += vals[1];
+            inp.active = true; inp.x = rp.px; inp.y = rp.py;
+        } else if (kind === 2) {
+            W = vals[0]; H = vals[1];
+            clampPlayerToScreen();
+            resizeCanvas();
+        } else if (kind === 3) {
+            const upgrade = UPGRADES[vals[0]];
+            if (!upgrade || game.state !== 'upgrade' || !(game.upgradeOptions || []).includes(upgrade.id)) {
+                rp.problem = 'mejora_no_ofrecida';
+                endRun('quit');
+                return;
+            }
+            applyUpgrade(upgrade);
+        } else if (kind === 4) {
+            rp.recordedEnd = vals[0];
+            endRun('quit');
+            return;
+        }
+        replayNextEvent();
+    }
+}
+
+function replayStep() {
+    replayApplyEvents();
+    if (game.state === 'over') return false;
+    if (game.state !== 'play') {
+        // Esperaba que eligiera una mejora y la grabación no la tiene.
+        rp.problem = rp.problem || 'grabacion_incompleta';
+        endRun('quit');
+        return false;
+    }
+    if (!rp.pending && rp.problem) { endRun('quit'); return false; }
+    if (game.tick >= REPLAY_MAX_TICKS) { endRun('quit'); return false; }
+    game.tick += 1;
+    update(STEP);
+    return true;
+}
+
+function replayAdvance(dt) {
+    if (!rp || rp.done || rp.paused) return;
+    rp.acc += dt * rp.speed;
+    let n = 0;
+    while (rp.acc >= STEP && n < 8 * rp.speed) {
+        if (!replayStep()) break;
+        rp.acc -= STEP;
+        n += 1;
+    }
+    if (n >= 8 * rp.speed) rp.acc = 0;
+    replayUpdateBar();
+}
+
+function replayVerdict() {
+    const rep = REPLAY.reported;
+    const res = { wave: game.wave, diamonds: game.diamonds };
+    if (rp.problem) return { check: 'no_coincide', ...res };
+    const dWave = Math.abs(rep.wave - res.wave);
+    const dDia = Math.abs(rep.claimed - res.diamonds);
+    let check = 'no_coincide';
+    if (dWave === 0 && dDia <= Math.max(5, rep.claimed * 0.05)) check = 'ok';
+    else if (dWave <= 1 && dDia <= Math.max(15, rep.claimed * 0.15)) check = 'dudoso';
+    return { check, ...res };
+}
+
+const VERDICT_TEXT = {
+    ok: '✅ Coincide: la partida es real.',
+    dudoso: '⚠️ Casi coincide: revísala a ojo.',
+    no_coincide: '❌ No coincide: el resultado no se puede lograr jugando limpio.',
+};
+const PROBLEM_TEXT = {
+    mejora_no_ofrecida: 'Eligió una mejora que el juego no le ofreció.',
+    grabacion_incompleta: 'La grabación se corta antes de terminar.',
+    grabacion_danada: 'La grabación está dañada.',
+};
+
+function replayFinished() {
+    if (!rp || rp.done) return;
+    rp.done = true;
+    const verdict = replayVerdict();
+    const rep = REPLAY.reported;
+    fetch(REPLAY.verdict_url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(verdict),
+    }).catch(() => {});
+    if (window.parent !== window) {
+        window.parent.postMessage({ hordaReplayChecked: REPLAY.run_id, ...verdict }, window.location.origin);
+    }
+    if (REPLAY.check) return;
+    const died = game.endReason === 'dead';
+    $('replayResult').innerHTML = `
+        <div class="font-black">${VERDICT_TEXT[verdict.check]}</div>
+        <div class="text-slate-300">Repetición: oleada ${verdict.wave}, 💎 ${verdict.diamonds}${died ? ' (murió)' : ''} · Reportó: oleada ${rep.wave}, 💎 ${rep.claimed}</div>
+        ${rp.problem ? `<div class="text-red-400">${PROBLEM_TEXT[rp.problem] || rp.problem}</div>` : ''}`;
+    $('replayResult').hidden = false;
+    replayUpdateBar();
+}
+
+function replayUpdateBar() {
+    if (!rp || REPLAY.check) return;
+    const pct = rp.totalTicks ? Math.min(100, (game.tick / rp.totalTicks) * 100) : 0;
+    $('replayProgress').style.width = pct + '%';
+    const secs = Math.floor(game.tick / 60);
+    $('replayTime').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    $('replayPlayBtn').textContent = rp.done ? '↺' : (rp.paused ? '▶' : '⏸');
+}
+
+function replayStart() {
+    W = REPLAY.W; H = REPLAY.H;
+    if (CHARACTERS.some((c) => c.slot === REPLAY.ch)) selectCharacter(REPLAY.ch);
+    sfx.muted = true;
+    game = newGame(REPLAY.seed);
+    rp = { ints: decodeInts(REPLAY.data), i: 0, evTick: 0, px: 0, py: 0, pending: null,
+           acc: 0, speed: rp ? rp.speed : 1, paused: false, done: false, problem: null, totalTicks: 0 };
+    for (let i = 0; i + 1 < rp.ints.length; ) {
+        rp.totalTicks += rp.ints[i];
+        i += 2 + (EVENT_SIZES[rp.ints[i + 1]] || 0);
+    }
+    replayNextEvent();
+    hudCache = { d: -1, hp: -1 };
+    startWave();
+    resizeCanvas();
+    $('replayResult').hidden = true;
+}
+
+function replayCheckFast() {
+    // Comprobación sin dibujar: corre la partida lo más rápido posible, en
+    // tandas para no congelar la página.
+    const slice = () => {
+        const until = performance.now() + 40;
+        while (performance.now() < until) {
+            if (!replayStep()) return;
+        }
+        setTimeout(slice, 0);
+    };
+    slice();
+}
+
+if (REPLAY_MODE) {
+    document.body.classList.add('is-playing');
+    $('gameOverlay').hidden = false;
+    $('pauseBtn').hidden = true;
+    $('muteBtn').hidden = true;
+    replayStart();
+    if (REPLAY.check) {
+        replayCheckFast();
+    } else {
+        $('replayBar').hidden = false;
+        $('replayPlayBtn').addEventListener('click', () => {
+            if (rp.done) { replayStart(); return; }
+            rp.paused = !rp.paused;
+            replayUpdateBar();
+        });
+        $('replaySpeedBtn').addEventListener('click', () => {
+            rp.speed = REPLAY_SPEEDS[(REPLAY_SPEEDS.indexOf(rp.speed) + 1) % REPLAY_SPEEDS.length];
+            $('replaySpeedBtn').textContent = `x${rp.speed}`;
+        });
+        window.addEventListener('resize', resizeCanvas);
+        lastFrame = performance.now();
+        rafId = requestAnimationFrame(frame);
+    }
+} else {
+    if (!IS_MOBILE) {
+        $('playBtn').disabled = true;
+        $('playBtn').classList.add('opacity-50');
+        $('playBtn').textContent = '📱 Solo disponible en teléfono';
+        setPlayMsg('Abre esta página desde tu teléfono (en vertical) para jugar. Aquí puedes ver el ranking.', 'info');
+    }
+    refreshState();
+    setInterval(() => { if ($('gameOverlay').hidden) refreshState(); }, 30000);
+}
+</script>
+</body>
+</html>

@@ -39,6 +39,7 @@ CATALOG_SETTING_KEYS = frozenset({
     'checkout_payment_video_cta',
     'manual_open_hour',
     'manual_close_hour',
+    'manual_service_force_closed',
 })
 
 # Discount queda fuera a propósito: cada compra con código sube su

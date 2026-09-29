@@ -1,4 +1,5 @@
 import os
+import secrets
 import sqlite3
 from flask import Flask, url_for
 from flask_login import current_user
@@ -8,6 +9,10 @@ from sqlalchemy.engine import Engine
 from .models import db, AdminUser, User, Category, Discount, Setting, Affiliate
 from .utils.timezone import VENEZUELA_TIMEZONE, format_ve, today_ve_str
 from .utils.catalog_version import register_catalog_version_hook, site_version
+from .utils.promos import (
+    get_accumulated_enabled_games, get_raffle_enabled_games, get_guess_enabled_games,
+    get_horde_enabled_games,
+)
 from config import Config
 
 login_manager = LoginManager()
@@ -59,9 +64,49 @@ def _configure_sqlite_concurrency(app):
             cursor.close()
 
 
+def _secret_key_is_weak(key):
+    key = (key or '').strip()
+    lowered = key.lower()
+    return (
+        len(key) < 32
+        or lowered.startswith('dev-')
+        or 'change' in lowered
+        or 'secret-key' in lowered
+    )
+
+
+def _ensure_secure_secret_key(app):
+    """Con una llave de ejemplo o corta (la de ejemplo es pública en el
+    repo) cualquiera puede firmar una cookie de sesión de admin. En ese
+    caso se usa una llave aleatoria guardada en DATA_DIR, creada una sola
+    vez y compartida por todos los workers."""
+    if not _secret_key_is_weak(app.config.get('SECRET_KEY')):
+        return
+
+    data_dir = app.config.get('DATA_DIR') or os.path.join(app.root_path, '..', 'data')
+    os.makedirs(data_dir, exist_ok=True)
+    key_path = os.path.join(data_dir, 'secret_key')
+    try:
+        fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'w') as handle:
+            handle.write(secrets.token_hex(32))
+    except FileExistsError:
+        pass
+    with open(key_path) as handle:
+        app.config['SECRET_KEY'] = handle.read().strip()
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+    _ensure_secure_secret_key(app)
+    # SameSite=Lax: el navegador no manda la sesión en formularios POST que
+    # vengan de otra página, así una web ajena no puede aprobar órdenes ni
+    # tocar el panel a nombre del admin (CSRF).
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
+    app.config['REMEMBER_COOKIE_HTTPONLY'] = True
 
     _configure_sqlite_concurrency(app)
 
@@ -238,6 +283,17 @@ def create_app(config_class=Config):
 
         has_active_ranking = has_visible_public_rankings()
 
+        # El menú lateral (base.html) solo muestra el link de cada promo si
+        # todavía queda al menos un juego con esa promo activa — si el admin
+        # apaga el Sorteo Diario en el último juego que lo tenía, el link
+        # desaparece solo, sin dejar una página vacía enlazada.
+        promo_availability = {
+            'recarga_acumulada': bool(get_accumulated_enabled_games()),
+            'sorteo': bool(get_raffle_enabled_games()),
+            'adivina': bool(get_guess_enabled_games()),
+            'hordas': bool(get_horde_enabled_games()),
+        }
+
         return {
             'SITE_LOGO': site_logo,
             'SITE_BACKGROUND_IMAGE': site_background_image,
@@ -251,6 +307,7 @@ def create_app(config_class=Config):
             'RANKING_SETTINGS': ranking_settings,
             'DRAWER_BG_IMAGES': drawer_bg_images,
             'HAS_ACTIVE_RANKING': has_active_ranking,
+            'PROMO_AVAILABILITY': promo_availability,
             'APP_TIMEZONE': 'GMT-4',
             'APP_TIMEZONE_NAME': 'Venezuela',
             'APP_TIMEZONE_OFFSET': VENEZUELA_TIMEZONE.utcoffset(None),
@@ -280,6 +337,10 @@ def create_app(config_class=Config):
         _ensure_package_pricing_columns()
         _ensure_package_announcement_column()
         _ensure_package_points_column()
+        _ensure_package_support_fallback_column()
+        _ensure_package_bs_price_column()
+        _ensure_package_cost_column()
+        _ensure_horde_columns()
         _ensure_minigame_opportunity_columns()
         _ensure_points_columns()
         _ensure_affiliate_columns()
@@ -513,6 +574,92 @@ def _ensure_package_points_column():
             db.session.commit()
     except Exception:
         db.session.rollback()
+
+
+def _ensure_package_support_fallback_column():
+    try:
+        if _ensure_postgres_columns('packages', ['show_support_fallback BOOLEAN DEFAULT TRUE']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(packages)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'show_support_fallback' not in existing:
+            db.session.execute(text('ALTER TABLE packages ADD COLUMN show_support_fallback BOOLEAN DEFAULT 1'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_package_bs_price_column():
+    try:
+        if _ensure_postgres_columns('packages', ['bs_price NUMERIC(10, 2)']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(packages)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'bs_price' not in existing:
+            db.session.execute(text('ALTER TABLE packages ADD COLUMN bs_price NUMERIC(10, 2)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_package_cost_column():
+    try:
+        if _ensure_postgres_columns('packages', ['cost_usd NUMERIC(10, 2)']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(packages)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'cost_usd' not in existing:
+            db.session.execute(text('ALTER TABLE packages ADD COLUMN cost_usd NUMERIC(10, 2)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_horde_columns():
+    """Hordas de Diamantes: premios del 2do y 3er lugar y partidas extra
+    canjeadas con puntos."""
+    tables = {
+        'promo_horde_configs': ['package_id_2 INTEGER', 'package_id_3 INTEGER', 'points_per_extra_run INTEGER DEFAULT 0'],
+        'promo_horde_runs': ['points_spent INTEGER NOT NULL DEFAULT 0', 'seed BIGINT', 'wave INTEGER', 'flag VARCHAR(40)',
+                             'replay_check VARCHAR(20)', 'replay_wave INTEGER', 'replay_diamonds INTEGER'],
+        # Asistente de IA del chat de soporte. Los chats que ya existían
+        # quedan con la IA apagada (quizás ya los atiende una persona); los
+        # nuevos la traen encendida por el default del modelo.
+        'support_chats': ['ai_active BOOLEAN DEFAULT FALSE', 'ai_failed INTEGER DEFAULT 0', 'ai_handoff_at TIMESTAMP',
+                          'ai_typing_at TIMESTAMP', 'ai_verified_orders TEXT'],
+        'support_messages': ['is_ai BOOLEAN DEFAULT FALSE', 'action_url VARCHAR(255)', 'action_label VARCHAR(60)',
+                             'ai_note TEXT'],
+        # Ganadores ya existentes = ya entregados → 'approved'.
+        'promo_horde_winners': ["status VARCHAR(20) NOT NULL DEFAULT 'approved'", 'package_id INTEGER', 'reviewed_at TIMESTAMP'],
+    }
+    for table_name, columns in tables.items():
+        try:
+            if _ensure_postgres_columns(table_name, columns):
+                continue
+
+            if db.engine.dialect.name != 'sqlite':
+                continue
+
+            rows = db.session.execute(text(f'PRAGMA table_info({table_name})')).fetchall()
+            existing = {r[1] for r in rows}
+            for column_def in columns:
+                if column_def.split()[0] not in existing:
+                    db.session.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {column_def}'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
 
 def _ensure_minigame_opportunity_columns():

@@ -4,7 +4,7 @@
 
 {% block content %}
 <!-- Stats Grid -->
-<div class="stats-grid">
+<div class="stats-grid stats-grid--compact">
     <div class="stat-card stat-pending">
         <div class="stat-icon">⏳</div>
         <div class="stat-info">
@@ -48,7 +48,7 @@
         <h2>Órdenes Recientes</h2>
         <a href="{{ url_for('admin_bp.orders') }}" class="btn-link">Ver todas →</a>
     </div>
-    <div class="admin-order-feed">
+    <div class="admin-order-feed admin-order-feed--compact">
         {% for order in recent_orders %}
         <article class="admin-order-card">
             <div class="admin-order-card__top">
@@ -60,7 +60,7 @@
                     <div class="admin-order-card__package">{{ order.package.name }}</div>
                     <div class="admin-order-card__meta">
                         <span class="order-num">#{{ order.order_number }}</span>
-                        <span>{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
+                        <span class="admin-order-card__date">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
                     </div>
                 </div>
                 <div class="admin-order-card__amount-wrap">
@@ -73,7 +73,7 @@
                 <div class="admin-order-card__item admin-order-card__item--wide">
                     <span class="admin-order-card__label">Jugador</span>
                     <div class="cell-stack">
-                        <span>{{ order.player_id or 'Sin player ID' }}</span>
+                        <span class="admin-order-card__player-id">{{ order.player_id or 'Sin player ID' }}</span>
                         {% if order.player_nickname %}<small style="color:#22c55e;font-weight:600">{{ order.player_nickname }}</small>{% endif %}
                         {% if order.zone_id %}<small>Zona: {{ order.zone_id }}</small>{% endif %}
                         {% if order.email %}<small>{{ order.email }}</small>{% endif %}

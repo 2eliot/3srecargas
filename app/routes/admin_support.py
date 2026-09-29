@@ -19,6 +19,7 @@ from ..utils import support as support_service
 from ..utils.support import SupportError
 from ..utils.notifications import notify_support_admin_reply
 from ..utils.timezone import format_ve
+from .admin import delete_uploaded_file
 
 admin_support_bp = Blueprint('admin_support_bp', __name__, url_prefix='/admin/soporte')
 
@@ -333,6 +334,17 @@ def set_status(chat_id):
     elif action == 'desbloquear':
         chat.is_blocked = False
         db.session.commit()
+    elif action == 'ia_encender':
+        # Devolverle el chat al asistente: vuelve a contar de cero los
+        # intentos fallidos.
+        chat.ai_active = True
+        chat.ai_failed = 0
+        support_service.add_system_message(chat, 'El equipo devolvió este chat al asistente virtual.')
+        db.session.commit()
+    elif action == 'ia_apagar':
+        chat.ai_active = False
+        support_service.add_system_message(chat, 'Un agente del equipo tomó este chat.')
+        db.session.commit()
     else:
         return jsonify({'ok': False, 'error': 'Acción desconocida.'}), 400
 
@@ -484,6 +496,40 @@ def quick_reply_create():
     ))
     db.session.commit()
     flash('Respuesta rápida guardada.', 'success')
+    return redirect(redirect_target)
+
+
+@admin_support_bp.route('/respuestas-rapidas/<int:reply_id>/editar', methods=['POST'])
+@login_required
+def quick_reply_edit(reply_id):
+    reply = SupportQuickReply.query.get_or_404(reply_id)
+    title = (request.form.get('title') or '').strip()
+    body = (request.form.get('body') or '').strip()
+    remove_file = bool(request.form.get('remove_file'))
+    redirect_target = request.referrer or url_for('admin_support_bp.inbox')
+
+    keeps_attachment = reply.attachment and not remove_file
+    if not title or not (body or request.files.get('file') or keeps_attachment):
+        flash('La respuesta rápida necesita un título y un texto o un adjunto.', 'danger')
+        return redirect(redirect_target)
+
+    try:
+        new_attachment = support_service.save_attachment(request.files.get('file'))
+    except SupportError as exc:
+        flash(exc.message, 'danger')
+        return redirect(redirect_target)
+
+    if new_attachment:
+        delete_uploaded_file(reply.attachment)
+        reply.attachment = new_attachment
+    elif remove_file:
+        delete_uploaded_file(reply.attachment)
+        reply.attachment = None
+
+    reply.title = title[:60]
+    reply.body = body[:2000]
+    db.session.commit()
+    flash('Respuesta rápida actualizada.', 'success')
     return redirect(redirect_target)
 
 

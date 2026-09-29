@@ -1,6 +1,6 @@
 {% extends 'admin/base.html' %}
 {% block title %}Chat {{ chat.display_code }}{% endblock %}
-{% block page_title %}{{ chat.client_name }} <span style="font-family:monospace;font-size:.8rem;color:#94a3b8">{{ chat.display_code }}</span>{% endblock %}
+{% block page_title %}{{ chat.client_name }} <span style="font-size:.8rem;color:#94a3b8">{{ chat.display_code }}</span>{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -87,6 +87,11 @@
 /* pre-wrap solo en el texto: en la burbuja conservaba la sangria de la
    plantilla y estiraba cada mensaje corto a media pantalla. */
 .sup-msg-body{display:block;white-space:pre-wrap}
+.sup-msg.ai{border:1px solid rgba(168,85,247,.45)!important;background:rgba(168,85,247,.12)!important}
+.sup-ai-label{display:block;font-size:.68rem;font-weight:800;color:#c4b5fd;margin-bottom:2px}
+.sup-ai-action{display:inline-block;margin-top:6px;font-size:.78rem;font-weight:700;color:#fca5a5}
+.sup-ai-chip{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:99px;font-size:.68rem;font-weight:800;background:rgba(148,163,184,.15);color:#cbd5e1}
+.sup-ai-chip.on{background:rgba(168,85,247,.2);color:#d8b4fe}
 .sup-msg.client{align-self:flex-start;background:rgba(255,255,255,.08);
     border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:3px}
 .sup-msg.admin{align-self:flex-end;background:linear-gradient(135deg,#6366f1,#8b5cf6);
@@ -172,10 +177,11 @@ video.sup-media{object-fit:contain;max-height:240px}
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:.15s;
 }
 .sup-qr-insert:hover{border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.1)}
-.sup-qr-del{
+.sup-qr-edit,.sup-qr-del{
     flex:none;width:30px;border-radius:9px;cursor:pointer;font-size:.78rem;
     border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#94a3b8;
 }
+.sup-qr-edit:hover{color:#93c5fd;border-color:rgba(99,102,241,.4);background:rgba(99,102,241,.1)}
 .sup-qr-del:hover{color:#fca5a5;border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.1)}
 </style>
 {% endblock %}
@@ -192,6 +198,7 @@ video.sup-media{object-fit:contain;max-height:240px}
       <div class="sup-bar-who">
         <strong>{{ chat.client_name }}</strong>
         <span id="supBarStatus">{{ chat.status_label }}{% if chat.client_email %} · {{ chat.client_email }}{% endif %}</span>
+        <span class="sup-ai-chip {{ 'on' if chat.ai_active else '' }}">{{ '🤖 Lo atiende la IA' if chat.ai_active else '👤 Atención humana' }}</span>
       </div>
       <div class="sup-bar-tags">
         <button type="button" class="sup-tag-picker-btn" id="supTagPickerBtn">
@@ -230,6 +237,10 @@ video.sup-media{object-fit:contain;max-height:240px}
         </button>
         <div class="sup-actions-panel" id="supActionsPanel" hidden>
           <button type="button" class="btn-secondary" id="supSignatureBtn">Cambiar firma</button>
+          <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
+            <input type="hidden" name="action" value="{{ 'ia_apagar' if chat.ai_active else 'ia_encender' }}">
+            <button type="submit" class="btn-secondary">{{ '👤 Tomar el chat (apagar IA)' if chat.ai_active else '🤖 Devolver a la IA' }}</button>
+          </form>
           {% if chat.status == 'closed' %}
           <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
             <input type="hidden" name="action" value="reabrir">
@@ -252,11 +263,13 @@ video.sup-media{object-fit:contain;max-height:240px}
 
     <div class="sup-thread" id="supThread">
       {% for m in messages %}
-      <div class="sup-msg {{ m.sender }}{% if m.is_deleted %} deleted{% endif %}" data-id="{{ m.id }}">
+      <div class="sup-msg {{ m.sender }}{% if m.is_ai %} ai{% endif %}{% if m.is_deleted %} deleted{% endif %}" data-id="{{ m.id }}">
         {% if m.is_deleted %}
         <span class="sup-msg-body sup-msg-deleted-text">🚫 Mensaje eliminado</span>
         {% else %}
+        {% if m.is_ai %}<span class="sup-ai-label">🤖 Asistente IA</span>{% endif %}
         {%- if m.body %}<span class="sup-msg-body">{{ m.body }}</span>{% endif -%}
+        {% if m.action_url %}<a class="sup-ai-action" href="{{ m.action_url }}" target="_blank">🔗 {{ m.action_label or m.action_url }}</a>{% endif %}
         {% if m.attachment %}
           {% if m.attachment.rsplit('.', 1)[-1]|lower in ['mp4','webm','mov','m4v'] %}
           <video class="sup-media" controls preload="metadata"
@@ -330,6 +343,8 @@ video.sup-media{object-fit:contain;max-height:240px}
             <button type="button" class="sup-qr-insert" data-reply-id="{{ qr.id }}" title="{{ qr.body }}">
               {{ qr.title }}{% if qr.attachment %} <span class="sup-qr-attach-icon" title="Incluye adjunto">📎</span>{% endif %}
             </button>
+            <button type="button" class="sup-qr-edit" title="Editar"
+                    onclick="openEditQr({{ qr.id }}, '{{ qr.title|e }}', '{{ qr.body|e }}', {{ 1 if qr.attachment else 0 }})">✎</button>
             <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_delete', reply_id=qr.id) }}" style="display:inline" class="sup-qr-del-form">
               <button type="button" class="sup-qr-del" title="Borrar">✕</button>
             </form>
@@ -433,6 +448,33 @@ video.sup-media{object-fit:contain;max-height:240px}
   </div>
 </div>
 
+<div class="modal-overlay" id="supEditQrModal" style="display:none">
+  <div class="modal-box">
+    <h3>Editar respuesta rápida</h3>
+    <form method="POST" id="supEditQrForm" enctype="multipart/form-data">
+      <div class="form-group">
+        <label>Título del botón</label>
+        <input type="text" name="title" id="supEditQrTitle" maxlength="60" required>
+      </div>
+      <div class="form-group">
+        <label>Texto a enviar</label>
+        <textarea name="body" id="supEditQrBody" rows="3" maxlength="2000"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Nueva imagen o video (opcional)</label>
+        <input type="file" name="file" accept="image/*,video/*">
+        <label class="check-label" id="supEditQrRemoveWrap" style="display:none; margin-top:6px;">
+          <input type="checkbox" name="remove_file" id="supEditQrRemove"> Quitar el adjunto actual
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="supEditQrCancel">Cancelar</button>
+        <button type="submit" class="btn-primary">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="modal-overlay" id="supDeleteMsgModal" style="display:none">
   <div class="modal-box">
     <h3>¿Eliminar este mensaje?</h3>
@@ -491,11 +533,28 @@ video.sup-media{object-fit:contain;max-height:240px}
             return;
         }
 
+        if (m.is_ai) {
+            el.classList.add('ai');
+            var who = document.createElement('span');
+            who.className = 'sup-ai-label';
+            who.textContent = '🤖 Asistente IA';
+            el.appendChild(who);
+        }
+
         if (m.body) {
             var body = document.createElement('span');
             body.className = 'sup-msg-body';
             body.textContent = m.body;
             el.appendChild(body);
+        }
+
+        if (m.action_url && /^\/order\/\d+$/.test(m.action_url)) {
+            var action = document.createElement('a');
+            action.className = 'sup-ai-action';
+            action.href = m.action_url;
+            action.target = '_blank';
+            action.textContent = '🔗 ' + (m.action_label || m.action_url);
+            el.appendChild(action);
         }
 
         if (m.attachment) {
@@ -603,6 +662,28 @@ video.sup-media{object-fit:contain;max-height:240px}
     if (deleteQrConfirmBtn) {
         deleteQrConfirmBtn.addEventListener('click', function () {
             if (pendingDeleteQrForm) pendingDeleteQrForm.submit();
+        });
+    }
+
+    // ── Editar respuesta rápida ─────────────────────────────────────────────
+    var editQrModal = document.getElementById('supEditQrModal');
+    var editQrForm = document.getElementById('supEditQrForm');
+    var editQrCancelBtn = document.getElementById('supEditQrCancel');
+
+    window.openEditQr = function (id, title, body, hasAttachment) {
+        if (!editQrModal || !editQrForm) return;
+        editQrForm.action = '/admin/soporte/respuestas-rapidas/' + id + '/editar';
+        document.getElementById('supEditQrTitle').value = title || '';
+        document.getElementById('supEditQrBody').value = body || '';
+        var removeCheckbox = document.getElementById('supEditQrRemove');
+        var removeWrap = document.getElementById('supEditQrRemoveWrap');
+        if (removeCheckbox) removeCheckbox.checked = false;
+        if (removeWrap) removeWrap.style.display = hasAttachment ? 'inline-flex' : 'none';
+        editQrModal.style.display = 'flex';
+    };
+    if (editQrCancelBtn && editQrModal) {
+        editQrCancelBtn.addEventListener('click', function () {
+            editQrModal.style.display = 'none';
         });
     }
 

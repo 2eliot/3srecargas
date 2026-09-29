@@ -1,5 +1,4 @@
 from datetime import datetime
-import random
 import secrets
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
@@ -9,14 +8,11 @@ db = SQLAlchemy()
 
 
 def generate_order_number():
-    """Número de orden solo con dígitos (antes era hexadecimal, con letras
-    A-F mezcladas con números, lo cual confundía al leerlo o dictarlo por
-    teléfono). Se arma con la cola del timestamp en milisegundos (siempre
-    creciente, prácticamente nunca se repite) más 3 dígitos aleatorios
-    extra como margen adicional contra colisiones."""
-    millis_tail = str(int(datetime.utcnow().timestamp() * 1000))[-9:]
-    random_suffix = ''.join(random.choices('0123456789', k=3))
-    return millis_tail + random_suffix
+    """12 dígitos totalmente aleatorios (generador criptográfico). El número
+    de orden funciona como la llave de la página de la orden, que muestra
+    correo y PIN: basado en la hora se podía adivinar probando alrededor de
+    cuándo se hizo una compra."""
+    return str(secrets.randbelow(9 * 10**11) + 10**11)
 
 
 class Category(db.Model):
@@ -88,6 +84,13 @@ class Package(db.Model):
     description = db.Column(db.Text)
     price = db.Column(db.Numeric(10, 2), nullable=False)
     usd_price = db.Column(db.Numeric(10, 2))
+    # Precio exclusivo en Bs: si está puesto, se cobra este monto fijo tal
+    # cual (sin multiplicar por la tasa USD/Bs) cuando el método de pago
+    # cobra en Bs. order.payment_amount/payment_currency guardan este mismo
+    # valor en la orden, que es lo que _get_bs_amount() (payment_verification.py)
+    # usa con prioridad para comparar contra lo que reporta Pabilo — por eso
+    # no hace falta tocar nada ahí para que la verificación siga funcionando.
+    bs_price = db.Column(db.Numeric(10, 2))
     image = db.Column(db.String(255))
     is_automated = db.Column(db.Boolean, default=False)
     sort_order = db.Column(db.Integer, default=100)
@@ -101,6 +104,15 @@ class Package(db.Model):
     # número lo deja clavado sin importar el monto, el método de pago ni el
     # descuento, que es justo lo que la tarjeta le prometió al cliente.
     points_reward = db.Column(db.Integer)
+    # Tarjeta "Finaliza tu pedido manual con soporte" que se muestra en
+    # /order/<numero> cuando la orden queda pendiente de revisión manual.
+    # Activada por defecto; algunos paquetes no quieren mostrarla.
+    show_support_fallback = db.Column(db.Boolean, default=True)
+    # Lo que le cuesta a la tienda conseguir este paquete (en USD), para
+    # calcular ganancia en Estadísticas. No tiene nada que ver con lo que se
+    # le cobra al cliente (price/usd_price/bs_price) y nunca se expone en la
+    # tienda ni en las APIs públicas — solo se usa en el admin.
+    cost_usd = db.Column(db.Numeric(10, 2))
     pins = db.relationship('Pin', backref='package', lazy='dynamic')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -116,6 +128,7 @@ class Package(db.Model):
             'description': self.description,
             'price': str(self.price),
             'usd_price': str(self.usd_price) if self.usd_price is not None else None,
+            'bs_price': str(self.bs_price) if self.bs_price is not None else None,
             'image': self.image,
             'is_automated': self.is_automated,
             'pin_count': self.pin_count if self.is_automated else None,
@@ -928,6 +941,17 @@ class SupportChat(db.Model):
     # un SupportMessage bastaría un fallo en el filtro del serializador
     # para que el cliente leyera lo que el admin anotó sobre él. Siendo un
     # campo aparte, no existe ningún camino por el que pueda salir.
+    # Asistente de IA: atiende mientras ai_active; se apaga al pasar el chat
+    # a un humano o cuando el equipo responde. ai_failed cuenta las
+    # búsquedas sin resultado (al llegar al máximo, pasa a humano).
+    # ai_verified_orders: órdenes que el cliente demostró que son suyas
+    # (dio número de orden o referencia): solo de esas se le manda el link.
+    ai_active = db.Column(db.Boolean, default=True)
+    ai_failed = db.Column(db.Integer, default=0)
+    ai_handoff_at = db.Column(db.DateTime)
+    ai_typing_at = db.Column(db.DateTime)
+    ai_verified_orders = db.Column(db.Text)
+
     admin_note = db.Column(db.Text)
     admin_note_at = db.Column(db.DateTime)
     admin_note_admin_id = db.Column(db.Integer, db.ForeignKey('admin_users.id'), nullable=True)
@@ -994,6 +1018,14 @@ class SupportMessage(db.Model):
 
     body = db.Column(db.Text)
     attachment = db.Column(db.String(255))
+    # Mensajes del asistente de IA: sender='admin' con is_ai=True. Pueden
+    # traer un botón (p. ej. el link de la orden).
+    is_ai = db.Column(db.Boolean, default=False)
+    action_url = db.Column(db.String(255))
+    action_label = db.Column(db.String(60))
+    # Nota interna para la IA (p. ej. referencia leída del comprobante).
+    # Nunca se envía al cliente.
+    ai_note = db.Column(db.Text)
 
     # "Eliminar para todos": el mensaje se queda en la base (por si hace
     # falta auditar qué se borró y quién lo mandó) pero deja de mostrarse
@@ -1247,3 +1279,122 @@ class PromoGuessWinner(db.Model):
 
     game = db.relationship('Game')
     prize_order = db.relationship('Order')
+
+
+class PromoHordeConfig(db.Model):
+    """Configuración del juego Hordas de Diamantes (ranking semanal) por juego."""
+    __tablename__ = 'promo_horde_configs'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, unique=True)
+    is_active = db.Column(db.Boolean, default=False)
+    # Premio del 1er lugar; 2do y 3ro son opcionales (vacío = sin premio).
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'))
+    package_id_2 = db.Column(db.Integer, db.ForeignKey('packages.id'))
+    package_id_3 = db.Column(db.Integer, db.ForeignKey('packages.id'))
+    winners_per_week = db.Column(db.Integer, default=1)
+    runs_per_day = db.Column(db.Integer, default=5)
+    # Puntos que cuesta cada partida extra al acabarse las gratis (0 = no se venden).
+    points_per_extra_run = db.Column(db.Integer, default=0)
+    require_verification = db.Column(db.Boolean, default=True)
+    sort_order = db.Column(db.Integer, default=100, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    package = db.relationship('Package', foreign_keys=[package_id])
+    package_2 = db.relationship('Package', foreign_keys=[package_id_2])
+    package_3 = db.relationship('Package', foreign_keys=[package_id_3])
+
+    def place_packages(self):
+        """[(puesto, paquete), ...] de los puestos que tienen premio."""
+        places = [(1, self.package), (2, self.package_2), (3, self.package_3)]
+        return [(place, pkg) for place, pkg in places if pkg is not None]
+
+
+class PromoHordeRun(db.Model):
+    """Una partida. Nace al empezar (con la hora del servidor) y se cierra
+    una sola vez al terminar; los diamantes aceptados se topan según el
+    tiempo real que duró, medido por el servidor."""
+    __tablename__ = 'promo_horde_runs'
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(32), nullable=False, unique=True, index=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    player_id = db.Column(db.String(100), nullable=False, index=True)
+    player_nick = db.Column(db.String(150))
+    week_key = db.Column(db.String(10), nullable=False, index=True)  # lunes 'AAAA-MM-DD' hora Venezuela
+    day_key = db.Column(db.String(10), nullable=False, index=True)
+    ip = db.Column(db.String(64))
+    diamonds = db.Column(db.Integer, default=0, nullable=False)
+    claimed_diamonds = db.Column(db.Integer, default=0, nullable=False)
+    kills = db.Column(db.Integer, default=0, nullable=False)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = db.Column(db.DateTime)
+    # Puntos canjeados para abrir esta partida (0 = partida gratis del día).
+    points_spent = db.Column(db.Integer, default=0, nullable=False)
+    # Semilla que decide qué enemigos salen (el servidor calcula con ella
+    # cuántos diamantes existen de verdad en la partida).
+    seed = db.Column(db.Integer)
+    wave = db.Column(db.Integer)
+    # Motivo si la partida parece trampa (p. ej. 'gano_oleada_final').
+    flag = db.Column(db.String(40))
+    # Resultado de volver a jugar la grabación en el admin:
+    # 'ok' / 'dudoso' / 'no_coincide', con la oleada y diamantes de la repetición.
+    replay_check = db.Column(db.String(20))
+    replay_wave = db.Column(db.Integer)
+    replay_diamonds = db.Column(db.Integer)
+
+
+class PromoHordeBan(db.Model):
+    """ID bloqueado en Hordas de Diamantes de un juego (por trampa): no puede
+    jugar, no sale en el ranking y no recibe premio."""
+    __tablename__ = 'promo_horde_bans'
+    __table_args__ = (db.UniqueConstraint('game_id', 'player_id', name='uq_horde_ban_game_player'),)
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    player_id = db.Column(db.String(100), nullable=False, index=True)
+    reason = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class PromoHordeReplay(db.Model):
+    """Grabación de una partida (semilla + movimientos del dedo + mejoras),
+    en una tabla aparte para que el ranking nunca la lea. Al cerrar la
+    semana solo se conservan las del top 5."""
+    __tablename__ = 'promo_horde_replays'
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.Integer, db.ForeignKey('promo_horde_runs.id'), nullable=False, unique=True, index=True)
+    game_id = db.Column(db.Integer, nullable=False, index=True)
+    week_key = db.Column(db.String(10), nullable=False, index=True)
+    player_id = db.Column(db.String(100), nullable=False, index=True)
+    width = db.Column(db.Integer, nullable=False)
+    height = db.Column(db.Integer, nullable=False)
+    character_slot = db.Column(db.Integer, default=0)
+    data = db.Column(db.Text, nullable=False)
+    size = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class PromoHordeWinner(db.Model):
+    """Ganador de una semana de Hordas de Diamantes."""
+    __tablename__ = 'promo_horde_winners'
+    __table_args__ = (
+        db.UniqueConstraint('game_id', 'week_key', 'player_id', name='uq_promo_horde_winner'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    week_key = db.Column(db.String(10), nullable=False, index=True)
+    place = db.Column(db.Integer, nullable=False)
+    player_id = db.Column(db.String(100), nullable=False)
+    player_nick = db.Column(db.String(150))
+    diamonds = db.Column(db.Integer, default=0)
+    prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # El premio no sale solo: queda 'pending' hasta que el admin revisa las
+    # repeticiones y aprueba ('approved', se entrega en ese momento).
+    # Los ganadores de antes de este cambio ya estaban entregados: 'approved'.
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'))
+    reviewed_at = db.Column(db.DateTime)
+
+    game = db.relationship('Game')
+    prize_order = db.relationship('Order')
+    package = db.relationship('Package')

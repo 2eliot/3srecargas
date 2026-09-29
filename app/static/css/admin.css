@@ -24,12 +24,12 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-body { font-family: 'Poppins', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+body { font-family: 'Outfit', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
 button { cursor: pointer; font-family: inherit; }
-code { font-family: 'Courier New', monospace; }
+code { font-family: inherit; }
 
 input, select, textarea {
     font-family: inherit;
@@ -432,6 +432,13 @@ html.sidebar-collapsed .nav-subitem { padding-left: 12px; }
 .stat-to-deliver .stat-value { color: #38bdf8; }
 .stat-to-deliver:hover { border-color: #38bdf8; }
 
+.stats-grid--compact { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.stats-grid--compact .stat-card { padding: 6px 10px; gap: 8px; }
+.stats-grid--compact .stat-icon { font-size: 15px; }
+.stats-grid--compact .stat-value { font-size: 14px; }
+.stats-grid--compact .stat-label { font-size: 10px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stats-grid--compact .stat-card > div { min-width: 0; }
+
 .alert-section { margin-bottom: 16px; }
 .alert {
     padding: 12px 16px;
@@ -635,6 +642,45 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
     display: inline-flex;
 }
 
+.orders-list-card { border: 1.5px solid var(--accent); box-shadow: 0 0 18px rgba(124,58,237,.18); }
+.admin-order-feed--compact { gap: 6px; padding: 8px; }
+.admin-order-feed--compact .admin-order-card { padding: 7px 10px; gap: 6px; border-radius: 10px; }
+.admin-order-feed--compact .admin-order-card__top { gap: 8px; }
+.admin-order-feed--compact .admin-order-card__identity { gap: 1px; }
+.admin-order-feed--compact .admin-order-card__title-row { gap: 6px; }
+.admin-order-feed--compact .admin-order-card__game { font-size: 13px; }
+.admin-order-feed--compact .admin-order-card__package { font-size: 11px; }
+.admin-order-feed--compact .admin-order-card__meta { font-size: 10px; gap: 6px; font-weight: 700; align-items: center; }
+.admin-order-feed--compact .admin-order-card__date {
+    padding: 1px 7px;
+    border-radius: 6px;
+    border: 1px solid rgba(250,204,21,.35);
+    background: rgba(250,204,21,.08);
+    color: #facc15;
+    font-weight: 700;
+}
+.admin-order-feed--compact .admin-order-card__amount-wrap { min-width: 70px; gap: 1px; }
+.admin-order-feed--compact .admin-order-card__label { font-size: 8px; }
+.admin-order-feed--compact .admin-order-card__amount { font-size: 14px; }
+.admin-order-feed--compact .admin-order-card__grid { gap: 6px; }
+.admin-order-feed--compact .admin-order-card__item { padding: 4px 8px; gap: 1px; font-size: 11px; border-radius: 8px; }
+.admin-order-feed--compact .admin-order-card__player-id { font-size: 13px; font-weight: 800; }
+.admin-order-feed--compact .admin-order-card__item .ref-code { font-size: 10px; padding: 1px 4px; }
+.admin-order-feed--compact .admin-order-card__actions { gap: 4px; padding-top: 0; }
+.admin-order-feed--compact .admin-order-card__actions .btn-sm,
+.admin-order-feed--compact .admin-order-card__actions button,
+.admin-order-feed--compact .admin-order-card__actions a,
+.admin-order-feed--compact .admin-order-card__actions label { font-size: 10px; padding: 3px 8px; }
+.admin-order-feed--compact .status-badge { font-size: 9px; padding: 1px 6px; }
+@media (min-width: 1100px) {
+    .admin-order-feed--compact .admin-order-card { grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; }
+    .admin-order-feed--compact .admin-order-card__top { grid-column: 1 / -1; }
+    .admin-order-feed--compact .admin-order-card__grid { grid-template-columns: 2fr 1fr 1.3fr 1fr; }
+    .admin-order-feed--compact .admin-order-card__item--wide { grid-column: auto; }
+    .admin-order-feed--compact .admin-order-card__actions,
+    .admin-order-feed--compact .admin-order-card__actions .action-btns { align-self: center; flex-wrap: nowrap; gap: 4px; }
+}
+
 .table-wrap { overflow-x: auto; }
 .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .admin-table th {
@@ -708,7 +754,7 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
 .empty-row { text-align: center; padding: 32px !important; color: var(--text-muted); }
 .no-action { color: var(--text-muted); }
 
-.order-num { font-family: monospace; font-weight: 700; color: var(--accent); font-size: 13px; white-space: nowrap; }
+.order-num { font-weight: 700; color: var(--accent); font-size: 13px; white-space: nowrap; }
 .ref-code  { background: rgba(255,255,255,.05); padding: 2px 6px; border-radius: 4px; font-size: 12px; white-space: nowrap; }
 .aff-badge {
     display: inline-block;
@@ -1193,6 +1239,31 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
 .maint-toggle-switch.is-on .maint-toggle-knob { transform: translateX(22px); }
 .maint-toggle-label { font-size: 13.5px; font-weight: 600; color: var(--text-primary); }
 
+/* ── Interruptor (checkbox) dentro de formularios ───────── */
+.switch-field { display: flex; align-items: center; gap: 10px; }
+.switch-toggle { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+.switch-toggle input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch-toggle .switch-slider {
+    position: absolute; inset: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    transition: background var(--transition), border-color var(--transition);
+}
+.switch-toggle .switch-slider::before {
+    content: ''; position: absolute;
+    top: 2px; left: 2px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform var(--transition);
+}
+.switch-toggle input:checked + .switch-slider { background: var(--success); border-color: var(--success); }
+.switch-toggle input:checked + .switch-slider::before { transform: translateX(18px); }
+.switch-toggle.is-danger input:checked + .switch-slider { background: var(--danger); border-color: var(--danger); }
+.switch-field-label { font-size: 13.5px; font-weight: 500; color: var(--text-primary); }
+.switch-field-hint { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
 /* ── Forms inside modals ────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .form-group:last-child { margin-bottom: 0; }
@@ -1267,7 +1338,7 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
 .detail-row:last-child { border-bottom: none; }
 .detail-label { color: var(--text-muted); }
 .detail-value { font-weight: 600; text-align: right; }
-.pin-code-display { font-size: 20px; font-weight: 800; font-family: monospace; letter-spacing: 2px; color: var(--accent); background: var(--bg-secondary); padding: 14px; border-radius: var(--radius-sm); text-align: center; }
+.pin-code-display { font-size: 20px; font-weight: 800; letter-spacing: 2px; color: var(--accent); background: var(--bg-secondary); padding: 14px; border-radius: var(--radius-sm); text-align: center; }
 .link-sm { color: var(--accent); font-size: 12px; }
 .text-success { color: var(--success); }
 
@@ -1299,6 +1370,7 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
     html.sidebar-collapsed .sidebar-header { padding: 16px 20px; justify-content: space-between; }
     html.sidebar-collapsed .nav-item { justify-content: flex-start; padding: 9px 12px; }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .stats-grid--compact { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     .admin-order-card__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .orders-filter-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1659,9 +1731,7 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
     line-height: 1.6;
 }
 
-/* Códigos de regalo: el código se lee y se copia, así que monoespaciado. */
 .gift-code-cell {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 13px;
     font-weight: 700;
     letter-spacing: .08em;

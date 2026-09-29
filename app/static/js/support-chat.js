@@ -107,11 +107,29 @@
             return;
         }
 
+        if (message.is_ai) {
+            el.classList.add('ai');
+            var who = document.createElement('span');
+            who.className = 'sc-ai-label';
+            who.textContent = '🤖 Asistente virtual';
+            el.appendChild(who);
+        }
+
         if (message.body) {
             var body = document.createElement('span');
             body.className = 'sc-msg-body';
             body.textContent = message.body;
             el.appendChild(body);
+        }
+
+        // Botón del asistente (link de la orden). Solo rutas internas de
+        // órdenes: nunca un link a otro sitio.
+        if (message.action_url && /^\/order\/\d+$/.test(message.action_url)) {
+            var action = document.createElement('a');
+            action.className = 'sc-action-btn';
+            action.href = message.action_url;
+            action.textContent = message.action_label || 'Ver mi orden';
+            el.appendChild(action);
         }
 
         if (message.attachment) {
@@ -163,8 +181,29 @@
         scrollDown();
     }
 
+    // "Escribiendo..." del asistente: mientras dura, se pregunta más seguido
+    // para que la respuesta aparezca apenas esté lista.
+    function applyTyping(isTyping) {
+        var el = document.getElementById('scTyping');
+        if (isTyping) {
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'scTyping';
+                el.className = 'sc-msg admin ai sc-typing';
+                el.innerHTML = '<span class="sc-ai-label">🤖 Asistente virtual</span><span class="sc-dots"><i></i><i></i><i></i></span>';
+            }
+            thread.appendChild(el);  // siempre al final
+            scrollDown();
+            clearTimeout(state.typingTimer);
+            state.typingTimer = setTimeout(poll, 1500);
+        } else if (el) {
+            el.remove();
+        }
+    }
+
     function applyChat(chat) {
         if (!chat) return;
+        applyTyping(!!chat.ai_typing);
         if (codeEl) codeEl.textContent = chat.code || '';
         var isClosed = chat.status === 'closed';
         if (closedEl) closedEl.hidden = !isClosed;
@@ -200,8 +239,8 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (!data || !data.ok) return;
-                applyChat(data.chat);
                 (data.messages || []).forEach(render);
+                applyChat(data.chat);
                 (data.deleted_ids || []).forEach(applyDeleted);
             })
             .catch(function () {});
@@ -251,7 +290,7 @@
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (data && data.ok) render(data.message);
+                if (data && data.ok) { render(data.message); applyChat(data.chat); }
             })
             .catch(function () {});
     }
@@ -280,7 +319,10 @@
                 message: firstMessage ? firstMessage.value : '',
                 email: emailInput ? emailInput.value : '',
                 website: trap ? trap.value : '',
-                context: collectContext()
+                context: collectContext(),
+                // Si trae comprobante, el asistente espera a que suba para
+                // leerlo en vez de responder dos veces.
+                has_attachment: !!(startFileInput && startFileInput.files && startFileInput.files[0])
             })
         })
             .then(function (r) { return r.json(); })
@@ -417,6 +459,7 @@
                     if (data && data.ok) {
                         if (input) input.value = '';
                         render(data.message);
+                        applyChat(data.chat);
                     } else {
                         alert((data && data.error) || 'No se pudo enviar la imagen.');
                     }

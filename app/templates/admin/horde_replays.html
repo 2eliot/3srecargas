@@ -1,0 +1,202 @@
+{% extends 'admin/base.html' %}
+{% block title %}Repeticiones — Hordas{% endblock %}
+{% block page_title %}🎬 Premios y repeticiones — {{ game.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.rp-head { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; padding: 0 20px 14px; }
+.rp-head .form-group { margin: 0; }
+.rp-player { border: 1px solid var(--border); border-radius: 14px; margin: 0 20px 16px; overflow: hidden; }
+.rp-player.is-bad { border-color: #ef4444; box-shadow: 0 0 0 1px rgba(239,68,68,.35); }
+.rp-player-head { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: rgba(255,255,255,.03); flex-wrap: wrap; }
+.rp-place { font-size: 22px; width: 34px; text-align: center; }
+.rp-total { margin-left: auto; font-weight: 800; font-size: 16px; }
+.rp-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.rp-ok { background: rgba(34,197,94,.15); color: #4ade80; }
+.rp-dudoso { background: rgba(250,204,21,.15); color: #facc15; }
+.rp-no_coincide, .rp-flag { background: rgba(239,68,68,.15); color: #f87171; }
+.rp-none, .rp-pending { background: rgba(148,163,184,.12); color: #94a3b8; }
+.rp-table td, .rp-table th { white-space: nowrap; }
+.rp-prizes { margin: 0 20px 18px; padding: 14px; border-radius: 14px; border: 1px solid rgba(250,204,21,.45); background: rgba(250,204,21,.05); }
+.rp-prize-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.rp-prize-row:first-of-type { border-top: 0; }
+.rp-note { padding: 0 20px 14px; color: var(--text-muted, #94a3b8); font-size: 13px; line-height: 1.5; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <form method="get" class="rp-head">
+        <input type="hidden" name="game_id" value="{{ game.id }}">
+        <div class="form-group">
+            <label>Semana (desde el lunes)</label>
+            <select name="week" onchange="this.form.submit()">
+                {% for w in weeks %}
+                <option value="{{ w }}" {{ 'selected' if w == week }}>{{ w }}{% if w == current_week %} (en curso){% endif %}</option>
+                {% endfor %}
+                {% if not weeks %}<option>{{ week }}</option>{% endif %}
+            </select>
+        </div>
+        <button type="button" class="btn-primary" id="checkAllBtn" style="padding:10px 16px;">🔍 Comprobar todas</button>
+        <a href="{{ url_for('admin_bp.minigames', game_id=game.id) }}" style="margin-left:auto;">← Volver a Mini Juegos</a>
+    </form>
+    <p class="rp-note">
+        Cada repetición vuelve a jugar la partida con los mismos movimientos del jugador y las reglas reales del juego.
+        <b>✅ Coincide</b>: la partida es real. <b>❌ No coincide</b>: el resultado no se puede lograr jugando limpio (trampa).
+        <b>⚠️ Casi</b>: diferencia pequeña, mírala a ojo. "Comprobar todas" las revisa solas, no hace falta verlas una por una.
+        Al cerrar cada semana solo se guardan las repeticiones del top 5.
+        Si bloqueas a alguien por trampa, sale del ranking y los de abajo suben un puesto.
+        <span id="checkProgress"></span>
+    </p>
+
+    {% if week_winners %}
+    <div class="rp-prizes">
+        <h3 style="margin:0 0 4px;">🏆 Premios de esta semana</h3>
+        <p class="rp-note" style="padding:0; margin:0 0 10px;">
+            El premio <b>no se entrega hasta que lo apruebes</b>. Revisa sus partidas abajo (o dale a "Comprobar todas").
+            <b>Rechazar</b> bloquea ese ID en este juego por trampa y los siguientes del ranking suben de puesto.
+        </p>
+        {% for w in week_winners %}
+        {% set info = player_info.get(w.player_id) %}
+        <div class="rp-prize-row">
+            <span class="rp-place">{{ ['🥇','🥈','🥉'][w.place - 1] if w.place <= 3 else '#' ~ w.place }}</span>
+            <span style="min-width:0;">
+                <strong>{{ w.player_nick or 'Jugador' }}</strong> · ID {{ w.player_id }} · 💎 {{ w.diamonds }}<br>
+                <small>Premio: {{ w.package.name if w.package else 'sin paquete asignado' }}
+                {% if info and info.bad %} · <span style="color:#f87171;">⚠ {{ info.bad }} partida(s) sospechosa(s)</span>{% endif %}
+                {% if info and info.unchecked %} · {{ info.unchecked }} sin comprobar{% endif %}</small>
+            </span>
+            <span style="margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            {% if w.status == 'pending' %}
+                <span class="rp-badge rp-dudoso">⏳ Pendiente</span>
+                <form method="POST" action="{{ url_for('admin_bp.promos_horde_winner_approve', winner_id=w.id) }}" style="margin:0;"
+                      onsubmit="return confirm('¿Aprobar y ENTREGAR ahora el premio ({{ w.package.name if w.package else 'sin paquete' }}) a {{ w.player_id }}?');">
+                    <input type="hidden" name="back" value="{{ request.full_path }}">
+                    <button type="submit" class="btn-sm btn-success">✅ Aprobar y entregar</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin_bp.promos_horde_winner_reject', winner_id=w.id) }}" style="margin:0;"
+                      onsubmit="const r = prompt('¿Rechazar a {{ w.player_id }} por trampa? Se bloqueará en este juego y los siguientes suben de puesto.\n\nMotivo (opcional):', 'Repetición no coincide'); if (r === null) return false; this.reason.value = r; return true;">
+                    <input type="hidden" name="reason" value="">
+                    <input type="hidden" name="back" value="{{ request.full_path }}">
+                    <button type="submit" class="btn-sm btn-danger">❌ Rechazar</button>
+                </form>
+            {% elif w.status == 'approved' %}
+                <span class="rp-badge rp-ok">✅ Entregado</span>
+                {% if w.prize_order %}<a href="{{ url_for('admin_bp.order_detail', order_id=w.prize_order.id) }}">Orden #{{ w.prize_order.order_number }}</a>{% endif %}
+            {% else %}
+                <span class="rp-badge rp-pending">Procesando…</span>
+            {% endif %}
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+    {% elif week < current_week %}
+    <p class="rp-note">Esta semana no tiene ganadores (nadie jugó o todavía se está cerrando).</p>
+    {% else %}
+    <p class="rp-note">📅 Semana en curso: los ganadores se definen el domingo a las 11:59 PM y quedarán aquí pendientes de tu aprobación.</p>
+    {% endif %}
+
+    {% if not players %}
+    <p class="rp-note">Nadie jugó esa semana.</p>
+    {% endif %}
+
+    {% for pl in players %}
+    <div class="rp-player {{ 'is-bad' if pl.bad }}">
+        <div class="rp-player-head">
+            <span class="rp-place">{{ ['🥇','🥈','🥉'][pl.place - 1] if pl.place <= 3 else '#' ~ pl.place }}</span>
+            <span>
+                <strong>{{ pl.nick or 'Jugador' }}</strong><br>
+                <small>ID: {{ pl.player_id }} · {{ pl.runs|length }} partida(s)</small>
+            </span>
+            {% if pl.bad %}<span class="rp-badge rp-no_coincide">⚠ {{ pl.bad }} partida(s) sospechosa(s)</span>{% endif %}
+            <span class="rp-total">💎 {{ pl.total }}</span>
+            <form method="POST" action="{{ url_for('admin_bp.promos_horde_ban') }}" style="margin:0;"
+                  onsubmit="return confirm('¿Bloquear el ID {{ pl.player_id }} en Hordas de {{ game.name }}? No podrá jugar y saldrá del ranking.');">
+                <input type="hidden" name="game_id" value="{{ game.id }}">
+                <input type="hidden" name="player_id" value="{{ pl.player_id }}">
+                <input type="hidden" name="reason" value="Trampa (repetición semana {{ week }})">
+                <input type="hidden" name="back" value="{{ request.full_path }}">
+                <button type="submit" class="btn-sm btn-danger">🚫 Bloquear ID</button>
+            </form>
+        </div>
+        <div class="table-wrap">
+            <table class="admin-table rp-table">
+                <thead><tr><th>Fecha</th><th>Duración</th><th>Oleada</th><th>Diamantes</th><th>Tipo</th><th>Comprobación</th><th></th></tr></thead>
+                <tbody>
+                {% for item in pl.runs %}
+                {% set r = item.run %}
+                <tr>
+                    <td>{{ r.started_at|datetime_ve }}</td>
+                    <td>{{ item.seconds // 60 }}:{{ '%02d' % (item.seconds % 60) }}</td>
+                    <td>{{ r.wave or '—' }}</td>
+                    <td><strong>{{ r.diamonds }}</strong>{% if r.claimed_diamonds and r.claimed_diamonds != r.diamonds %} <small title="Lo que dijo el teléfono">(dijo {{ r.claimed_diamonds }})</small>{% endif %}</td>
+                    <td>{{ 'Con ' ~ r.points_spent ~ ' pts' if r.points_spent else 'Gratis' }}</td>
+                    <td id="check-{{ r.id }}">
+                        {% if r.flag %}<span class="rp-badge rp-flag" title="Marcada por el servidor">⚠ {{ r.flag|replace('_', ' ') }}</span> {% endif %}
+                        {% if not item.has_replay %}<span class="rp-badge rp-none">Sin repetición</span>
+                        {% elif r.replay_check == 'ok' %}<span class="rp-badge rp-ok">✅ Coincide</span>
+                        {% elif r.replay_check == 'dudoso' %}<span class="rp-badge rp-dudoso">⚠️ Casi ({{ r.replay_wave }} / 💎{{ r.replay_diamonds }})</span>
+                        {% elif r.replay_check == 'no_coincide' %}<span class="rp-badge rp-no_coincide">❌ No coincide (repetición: oleada {{ r.replay_wave }}, 💎{{ r.replay_diamonds }})</span>
+                        {% else %}<span class="rp-badge rp-pending" data-pending="{{ r.id }}">Sin comprobar</span>{% endif %}
+                    </td>
+                    <td>{% if item.has_replay %}<a href="{{ url_for('admin_bp.promos_horde_replay_view', run_id=r.id) }}" target="_blank">▶ Ver</a>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<iframe id="checkFrame" style="display:none" title="Comprobación"></iframe>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Comprueba una por una (en un marco oculto) las partidas sin comprobar.
+(function () {
+    const btn = document.getElementById('checkAllBtn');
+    const frame = document.getElementById('checkFrame');
+    const progress = document.getElementById('checkProgress');
+    const base = {{ url_for('admin_bp.promos_horde_replay_view', run_id=0)|tojson }}.replace(/\/0$/, '/');
+    const labels = {
+        ok: '<span class="rp-badge rp-ok">✅ Coincide</span>',
+        dudoso: (v) => `<span class="rp-badge rp-dudoso">⚠️ Casi (${v.wave} / 💎${v.diamonds})</span>`,
+        no_coincide: (v) => `<span class="rp-badge rp-no_coincide">❌ No coincide (repetición: oleada ${v.wave}, 💎${v.diamonds})</span>`,
+    };
+    let queue = [], total = 0, timer = null;
+
+    function next() {
+        clearTimeout(timer);
+        if (!queue.length) {
+            progress.textContent = total ? ' ✔ Listo.' : ' No hay partidas pendientes de comprobar.';
+            btn.disabled = false;
+            return;
+        }
+        const id = queue.shift();
+        progress.textContent = ` Comprobando ${total - queue.length} de ${total}...`;
+        frame.src = base + id + '?check=1';
+        timer = setTimeout(next, 60000); // por si una se queda trabada
+    }
+
+    window.addEventListener('message', (e) => {
+        if (e.origin !== window.location.origin || !e.data || !e.data.hordaReplayChecked) return;
+        const cell = document.getElementById('check-' + e.data.hordaReplayChecked);
+        if (cell) {
+            const pending = cell.querySelector('[data-pending]');
+            const l = labels[e.data.check];
+            const html = typeof l === 'function' ? l(e.data) : l;
+            if (pending) pending.outerHTML = html; else cell.insertAdjacentHTML('beforeend', html);
+        }
+        next();
+    });
+
+    btn.addEventListener('click', () => {
+        queue = [...document.querySelectorAll('[data-pending]')].map((el) => el.dataset.pending);
+        total = queue.length;
+        btn.disabled = true;
+        next();
+    });
+})();
+</script>
+{% endblock %}

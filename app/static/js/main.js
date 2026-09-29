@@ -1515,6 +1515,7 @@
             if (!fresh) return true;
             if (String(fresh.price) !== String(selectedPackage.price)) return true;
             if (String(fresh.usd_price || '') !== String(selectedPackage.usd_price || '')) return true;
+            if (String(fresh.bs_price || '') !== String(selectedPackage.bs_price || '')) return true;
             if (!!fresh.out_of_stock !== !!selectedPackage.out_of_stock || !!fresh.closed_now !== !!selectedPackage.closed_now) return true;
         }
         return false;
@@ -1714,6 +1715,9 @@
     /* Texto del aviso de fuera de horario, con las horas que configuró el
        admin (y un respaldo por si el servidor no las mandó). */
     function getClosedNoticeText() {
+        if (manualSchedule && manualSchedule.force_closed) {
+            return 'Estas recargas se hacen a mano y ahora mismo no hay nadie disponible para procesarlas. Vuelve a intentarlo más tarde.';
+        }
         var openLabel = (manualSchedule && manualSchedule.open_label) || '5:00 a. m.';
         var closeLabel = (manualSchedule && manualSchedule.close_label) || '10:00 p. m.';
         return 'Estas recargas se hacen a mano y ahora estamos cerrados. ' +
@@ -1755,6 +1759,8 @@
 
             var priceUsd = getPackageUsdPrice(pkg);
             item.dataset.priceUsd = String(priceUsd);
+            var exclusiveBs = parseFloat(pkg.bs_price);
+            item.dataset.priceBs = isNaN(exclusiveBs) ? '' : String(exclusiveBs);
             item.dataset.priceBase = String(parseFloat(pkg.price));
 
             // Los puntos que deja la compra. El backend ya manda 0 en lo que
@@ -2344,8 +2350,9 @@
         if (currency === 'usd') {
             submitLabel.textContent = 'Comprar — $' + (isNaN(priceNum) ? '0.00' : priceNum.toFixed(2));
         } else {
-            var bs = NaN;
-            if (!isNaN(priceNum)) {
+            var bsFixed = getPackageBsFixedAmount(pkg, getSelectedPackageBasePrice(pkg));
+            var bs = bsFixed !== null ? bsFixed : NaN;
+            if (bsFixed === null && !isNaN(priceNum)) {
                 bs = getSelectedPaymentMethodUsesRate() ? (priceNum * getGameBsRate()) : priceNum;
             }
             submitLabel.textContent = 'Comprar — Bs ' + (isNaN(bs) ? '0' : Math.round(bs).toLocaleString('es-VE'));
@@ -2359,6 +2366,25 @@
             return parseFloat(pkg.usd_price);
         }
         return parseFloat(pkg.price);
+    }
+
+    // Precio exclusivo en Bs del paquete (bypasea la tasa), con el mismo %
+    // de descuento aplicado que se calculó sobre el precio base en dólares.
+    // Devuelve null si no aplica (no hay bs_price, o el método no cobra en Bs).
+    function getPackageBsFixedAmount(pkg, usdBaseNum) {
+        if (!pkg || getSelectedPaymentCurrency() !== 'bs') return null;
+        var bsPrice = parseFloat(pkg.bs_price);
+        if (isNaN(bsPrice) || bsPrice <= 0) return null;
+
+        var baseNum = parseFloat(usdBaseNum);
+        var ratio = 0;
+        if (!isNaN(baseNum) && baseNum > 0) {
+            var discountMeta = getValidDiscountMeta(getActiveDiscountCode(), baseNum);
+            if (discountMeta) {
+                ratio = Math.max(Math.min(discountMeta.amount / baseNum, 1), 0);
+            }
+        }
+        return Math.max(bsPrice - (bsPrice * ratio), 0);
     }
 
     function getGameBsRate() {
@@ -2441,7 +2467,8 @@
             lastShownTotal = { currency: 'usd', amount: Number(finalPrice.toFixed(2)), usd: finalPrice };
             if (totalBsEl) totalBsEl.classList.add('d-none');
         } else {
-            var bs = getSelectedPaymentMethodUsesRate() ? (finalPrice * getGameBsRate()) : finalPrice;
+            var bsFixed = getPackageBsFixedAmount(selectedPackage, priceNum);
+            var bs = bsFixed !== null ? bsFixed : (getSelectedPaymentMethodUsesRate() ? (finalPrice * getGameBsRate()) : finalPrice);
 
             if (!isNaN(bs)) {
                 totalEl.textContent = 'Bs ' + Math.round(bs).toLocaleString('es-VE');
@@ -2580,11 +2607,24 @@
             var discountMeta = getValidDiscountMeta(activeCode, usd);
             var finalUsd = discountMeta ? Math.max(usd - discountMeta.amount, 0) : usd;
 
-            priceSpan.textContent = formatPackageAmount(finalUsd, currency, getGameBsRate());
+            var bsPriceNum = parseFloat(item.dataset.priceBs);
+            var hasBsFixed = currency === 'bs' && !isNaN(bsPriceNum) && bsPriceNum > 0;
+            var bsRatio = 0;
+            if (hasBsFixed && discountMeta && usd > 0) {
+                bsRatio = Math.max(Math.min(discountMeta.amount / usd, 1), 0);
+            }
+
+            if (hasBsFixed) {
+                priceSpan.textContent = 'Bs ' + Math.round(Math.max(bsPriceNum - (bsPriceNum * bsRatio), 0)).toLocaleString('es-VE');
+            } else {
+                priceSpan.textContent = formatPackageAmount(finalUsd, currency, getGameBsRate());
+            }
 
             if (priceUsdSpan) {
                 if (discountMeta) {
-                    priceUsdSpan.textContent = formatPackageAmount(usd, currency, getGameBsRate());
+                    priceUsdSpan.textContent = hasBsFixed
+                        ? 'Bs ' + Math.round(bsPriceNum).toLocaleString('es-VE')
+                        : formatPackageAmount(usd, currency, getGameBsRate());
                     priceUsdSpan.style.display = 'block';
                     item.classList.add('has-discount');
                 } else {

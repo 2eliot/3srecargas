@@ -631,6 +631,7 @@ def _expired_page_payload(game, usd_rate):
             'description': '',
             'price': '0',
             'usd_price': None,
+            'bs_price': None,
             'image': None,
             'is_auto': True,
             'out_of_stock': True,
@@ -741,6 +742,7 @@ def api_packages(game_id):
         'open_label': format_hour(manual_schedule['open_hour']),
         'close_label': format_hour(manual_schedule['close_hour']),
         'is_open_now': manual_open_now,
+        'force_closed': bool(manual_schedule.get('force_closed')),
     }
 
     # La tasa viaja con los paquetes para que una pestaña vieja pueda

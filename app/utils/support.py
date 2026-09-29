@@ -425,6 +425,9 @@ def add_admin_message(chat, body, admin_id=None, attachment=None):
                              admin_id=admin_id, attachment=attachment)
     db.session.add(message)
 
+    # Una persona del equipo tomó el chat: el asistente deja de responder
+    # aquí (se puede volver a encender desde el hilo en el admin).
+    chat.ai_active = False
     chat.status = 'waiting_client'
     chat.unread_client = (chat.unread_client or 0) + 1
     chat.unread_admin = 0
@@ -655,6 +658,9 @@ def serialize_message(message):
         'attachment': message.attachment or '',
         'is_video': is_video_attachment(message.attachment),
         'is_deleted': bool(message.is_deleted),
+        'is_ai': bool(message.is_ai),
+        'action_url': message.action_url or '',
+        'action_label': message.action_label or '',
         'created_at': created.isoformat() + 'Z',
         # Hora ya lista para pintar, en horario de Venezuela. El ISO se
         # queda por si algun cliente quiere formatear a su manera, pero
@@ -668,11 +674,14 @@ def serialize_chat_for_client(chat):
     datos de la orden, ni notas internas. Las etiquetas son el cuaderno de
     trabajo del admin y no tienen por qué ser públicas — algunas ("Reincidente")
     serían una grosería si el cliente las viera."""
+    from .support_ai import is_typing
     return {
         'code': chat.display_code,
         'name': chat.client_name,
         'status': chat.status,
         'status_label': chat.status_label,
+        # "Escribiendo..." mientras el asistente prepara la respuesta.
+        'ai_typing': is_typing(chat),
     }
 
 

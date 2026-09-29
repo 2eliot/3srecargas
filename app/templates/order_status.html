@@ -1150,7 +1150,7 @@
         </div>
         {% endif %}
 
-        {% if is_manual_order and order.status in ['pending', 'approved'] %}
+        {% if is_manual_order and order.status in ['pending', 'approved'] and (not order.package or order.package.show_support_fallback) %}
         <div class="nx-manual-wa">
             <h3>Finaliza tu pedido manual con soporte</h3>
             <p>Te llevamos al chat con los datos de tu pedido ya escritos.</p>

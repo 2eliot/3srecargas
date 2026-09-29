@@ -8,18 +8,23 @@ misma verificación real que usa la tienda antes de aceptar un registro o
 una jugada — así no se le puede regalar un premio a un ID inventado.
 """
 import random
+import secrets
 from datetime import datetime, time, timedelta
 from uuid import uuid4
 
+from sqlalchemy import update
+
 from .locks import acquire_lock, release_lock
 from .order_units import extract_order_units
+from .points import get_player_points_balance
 from .timezone import now_ve, today_ve_str, format_ve
 from ..models import (
-    Game, Order, Package,
+    Game, Order, Package, PlayerPoints,
     PromoAccumulatedAward, PromoAccumulatedLevel, PromoAccumulatedOrderLog, PromoAccumulatedProgress,
     PromoGuessAttempt, PromoGuessConfig, PromoGuessRound, PromoGuessWinner,
+    PromoHordeBan, PromoHordeConfig, PromoHordeReplay, PromoHordeRun, PromoHordeWinner,
     PromoRaffleConfig, PromoRaffleEntry, PromoRaffleWinner,
-    db,
+    Setting, db,
 )
 
 
@@ -239,18 +244,41 @@ def get_raffle_enabled_games():
     return games
 
 
-def _raffle_open_day_key(game_id):
+# Cuánto antes de la hora del sorteo se cierra el registro: así la lista de
+# participantes queda fija un momento antes de sortear, en vez de perseguir
+# a quien se registra justo cuando el contador llega a 0.
+RAFFLE_REGISTRATION_CUTOFF_SECONDS = 30
+
+
+def _raffle_registration_closed_for_today(config):
+    """True si faltan menos de RAFFLE_REGISTRATION_CUTOFF_SECONDS para la
+    hora configurada del sorteo de hoy (o ya se pasó)."""
+    now = now_ve()
+    draw_at_today = now.replace(
+        hour=config.draw_hour or 21, minute=config.draw_minute or 0,
+        second=0, microsecond=0,
+    )
+    cutoff = draw_at_today - timedelta(seconds=RAFFLE_REGISTRATION_CUTOFF_SECONDS)
+    return now >= cutoff
+
+
+def _raffle_open_day_key(game_id, config=None):
     """A qué día se apunta un registro nuevo en este momento.
 
     Mientras el sorteo de hoy no se haya corrido, el registro entra al
-    pool de hoy. En cuanto ya hay ganadores de hoy, un registro nuevo NO
-    puede colarse en un sorteo que ya se resolvió — pasa a contar para el
-    sorteo de mañana, tal como se pidió ("Asegura tu Ticket Gratis para el
-    Siguiente Sorteo"). Sin esto, cualquiera que se registrara después de
-    la hora del sorteo se quedaba con un ticket que nunca se iba a sortear."""
+    pool de hoy. En cuanto ya hay ganadores de hoy, o faltan menos de
+    RAFFLE_REGISTRATION_CUTOFF_SECONDS para la hora del sorteo, un registro
+    nuevo NO puede colarse en un sorteo que ya está por resolverse — pasa a
+    contar para el sorteo de mañana, tal como se pidió ("Asegura tu Ticket
+    Gratis para el Siguiente Sorteo"). Sin esto, cualquiera que se
+    registrara justo antes/después de la hora del sorteo se quedaba con un
+    ticket que nunca se iba a sortear (o forzaba a esperar el último
+    registro para poder arrancar)."""
     day_key = today_ve_str()
     already_drawn = PromoRaffleWinner.query.filter_by(game_id=game_id, day_key=day_key).first()
     if already_drawn:
+        return _tomorrow_ve_str()
+    if config and _raffle_registration_closed_for_today(config):
         return _tomorrow_ve_str()
     return day_key
 
@@ -268,7 +296,7 @@ def register_raffle_entry(game_id, player_id):
     if not player_id:
         raise ValueError('Ingresa tu ID de juego.')
 
-    day_key = _raffle_open_day_key(game_id)
+    day_key = _raffle_open_day_key(game_id, config=config)
     is_next_day = day_key != today_ve_str()
 
     existing = PromoRaffleEntry.query.filter_by(game_id=game_id, player_id=player_id, day_key=day_key).first()
@@ -308,8 +336,14 @@ def get_raffle_entry(game_id, player_id, day_key=None):
 
 def run_daily_raffle_draws():
     """Corre el sorteo del día para cada juego que ya llegó a su hora de
-    sorteo y todavía no tiene ganadores hoy. Pensado para llamarse desde el
-    scheduler en segundo plano (igual que la recuperación de órdenes)."""
+    sorteo y todavía no tiene ganadores hoy. La llaman tanto el scheduler en
+    segundo plano (cada ~20s) como cada consulta en vivo de la página del
+    sorteo (para que arranque al instante sin esperar al scheduler) — dos
+    llamadas pueden caer casi al mismo tiempo, así que cada juego se sortea
+    bajo un lock exclusivo: sin él, ambas podían leer "todavía no hay
+    ganadores" antes de que ninguna confirmara los suyos, y el sorteo
+    terminaba con el doble (o más) de ganadores y premios entregados de los
+    configurados."""
     configs = PromoRaffleConfig.query.filter_by(is_active=True).all()
     current_time = now_ve().time().replace(second=0, microsecond=0)
     day_key = today_ve_str()
@@ -320,41 +354,53 @@ def run_daily_raffle_draws():
         draw_time = time(config.draw_hour or 21, config.draw_minute or 0)
         if current_time < draw_time:
             continue
-        already_drawn = PromoRaffleWinner.query.filter_by(game_id=config.game_id, day_key=day_key).first()
-        if already_drawn:
+
+        lock_key = f'raffle_draw:{config.game_id}:{day_key}'
+        lock_holder = uuid4().hex
+        if not acquire_lock(lock_key, 60, lock_holder):
+            # Otra llamada ya está sorteando este mismo juego/día ahora
+            # mismo — no hay nada que hacer aquí, la que tiene el lock lo
+            # resuelve.
             continue
 
-        entries = PromoRaffleEntry.query.filter_by(game_id=config.game_id, day_key=day_key).all()
-        if not entries:
-            continue
+        try:
+            already_drawn = PromoRaffleWinner.query.filter_by(game_id=config.game_id, day_key=day_key).first()
+            if already_drawn:
+                continue
 
-        # El registro ya garantiza un ID por día (constraint único en
-        # PromoRaffleEntry), pero se deduplica igual antes de sortear: así
-        # un mismo ID nunca puede quedar elegido dos veces en el mismo
-        # sorteo pase lo que pase con los datos.
-        entries_by_player = {}
-        for entry in entries:
-            entries_by_player.setdefault(entry.player_id, entry)
-        unique_entries = list(entries_by_player.values())
+            entries = PromoRaffleEntry.query.filter_by(game_id=config.game_id, day_key=day_key).all()
+            if not entries:
+                continue
 
-        game = Game.query.get(config.game_id)
-        winners_needed = min(config.winners_per_draw or 5, len(unique_entries))
-        chosen = random.sample(unique_entries, winners_needed)
+            # El registro ya garantiza un ID por día (constraint único en
+            # PromoRaffleEntry), pero se deduplica igual antes de sortear: así
+            # un mismo ID nunca puede quedar elegido dos veces en el mismo
+            # sorteo pase lo que pase con los datos.
+            entries_by_player = {}
+            for entry in entries:
+                entries_by_player.setdefault(entry.player_id, entry)
+            unique_entries = list(entries_by_player.values())
 
-        for entry in chosen:
-            prize_order = None
-            if config.package:
-                prize_order, _approval = deliver_prize_to_player(
-                    game, config.package, entry.player_id,
-                    note=f'Premio Sorteo Diario — ticket #{entry.ticket_number} ({day_key}).',
-                    reference_prefix='SORTEO',
-                )
-            db.session.add(PromoRaffleWinner(
-                game_id=config.game_id, day_key=day_key, player_id=entry.player_id,
-                player_nick=entry.player_nick, ticket_number=entry.ticket_number,
-                prize_order_id=prize_order.id if prize_order else None,
-            ))
-        db.session.commit()
+            game = Game.query.get(config.game_id)
+            winners_needed = min(config.winners_per_draw or 5, len(unique_entries))
+            chosen = random.sample(unique_entries, winners_needed)
+
+            for entry in chosen:
+                prize_order = None
+                if config.package:
+                    prize_order, _approval = deliver_prize_to_player(
+                        game, config.package, entry.player_id,
+                        note=f'Premio Sorteo Diario — ticket #{entry.ticket_number} ({day_key}).',
+                        reference_prefix='SORTEO',
+                    )
+                db.session.add(PromoRaffleWinner(
+                    game_id=config.game_id, day_key=day_key, player_id=entry.player_id,
+                    player_nick=entry.player_nick, ticket_number=entry.ticket_number,
+                    prize_order_id=prize_order.id if prize_order else None,
+                ))
+            db.session.commit()
+        finally:
+            release_lock(lock_key, lock_holder)
 
 
 def get_raffle_public_state(game_id, player_id):
@@ -747,3 +793,692 @@ def get_guess_public_state(game_id, player_id):
         } for w in winners_today],
         'history': [{'day_key': day, 'winners': items} for day, items in history_by_day.items()],
     }
+
+
+# ─── Hordas de Diamantes (ranking semanal) ───────────────────────────────────
+
+# Tope de diamantes aceptados por segundo real de partida (medido por el
+# servidor, no por el teléfono). Simulando partidas, un jugador normal
+# promedia ~1 por segundo y ~1.1 por enemigo; con todos los poderes al
+# máximo llega a ~5.3/s (con la dificultad +25% salen más enemigos) y ~1.6
+# por enemigo. El margen solo corta puntajes inventados a mano.
+HORDE_MAX_DIAMONDS_PER_SECOND = 7
+HORDE_MAX_DIAMONDS_PER_KILL = 4
+HORDE_MAX_RUN_SECONDS = 30 * 60
+HORDE_RANKING_SIZE = 10
+
+# ─── Oleadas: copia exacta de las reglas del juego (hordas.html) ────────────
+# El juego tiene 10 oleadas. La 10 es la "oleada final": imposible de ganar
+# y sin diamantes. Si alguien dice haberla ganado, hizo trampa.
+# Qué enemigos salen en cada oleada lo decide una semilla que da el servidor
+# (mismo generador que el juego), así el servidor sabe cuántos diamantes
+# existen de verdad en cada partida y no acepta ni uno más.
+# Si se cambian estas reglas en el juego hay que cambiarlas aquí también.
+HORDE_MAX_WAVE = 10
+HORDE_DIFFICULTY = 1.25
+HORDE_DROPS = {'grunt': 1, 'runner': 1, 'tank': 3, 'boss': 10, 'shooter': 2}
+HORDE_BOSS_MAX_SUMMONS = 4      # cada invocación son 3 esbirros de 1 💎
+HORDE_MINION_DROPS = HORDE_BOSS_MAX_SUMMONS * 3
+
+
+def _mulberry32(seed):
+    """Generador idéntico al del juego (aritmética de 32 bits)."""
+    a = seed & 0xFFFFFFFF
+
+    def imul(x, y):
+        return (x * y) & 0xFFFFFFFF
+
+    def rng():
+        nonlocal a
+        a = (a + 0x6D2B79F5) & 0xFFFFFFFF
+        t = imul(a ^ (a >> 15), 1 | a)
+        t = ((t + imul(t ^ (t >> 7), 61 | t)) & 0xFFFFFFFF) ^ t
+        return ((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296
+    return rng
+
+
+def _horde_wave_quota(wave):
+    return 10 + wave * 5
+
+
+def _horde_pick_type(wave, rng):
+    if wave >= 5 and rng() < min(0.3, 0.18 + (wave - 5) * 0.03):
+        return 'shooter'
+    roll = rng()
+    if wave >= 3 and roll < min(0.25, 0.05 * wave):
+        return 'tank'
+    if wave >= 2 and roll < 0.5:
+        return 'runner'
+    return 'grunt'
+
+
+def horde_max_diamonds_by_wave(seed):
+    """Lista acumulada: [0, máx. hasta la oleada 1, ..., hasta la 9]. La
+    oleada final no suelta diamantes."""
+    rng = _mulberry32(seed)
+    totals = [0]
+    for wave in range(1, HORDE_MAX_WAVE):
+        quota = _horde_wave_quota(wave)
+        boss_pending = wave % 5 == 0
+        wave_total = 0
+        for spawned in range(quota):
+            if boss_pending and spawned >= quota // 2:
+                wave_total += HORDE_DROPS['boss'] + HORDE_MINION_DROPS
+                boss_pending = False
+            else:
+                wave_total += HORDE_DROPS[_horde_pick_type(wave, rng)]
+        totals.append(totals[-1] + wave_total)
+    return totals
+
+
+def horde_min_seconds_by_wave():
+    """Segundos mínimos para que TERMINEN de salir los enemigos de las
+    oleadas 1..n (sin contar el tiempo de matarlos ni de elegir mejoras)."""
+    totals = [0.0]
+    for wave in range(1, HORDE_MAX_WAVE):
+        interval = max(0.16, 0.9 - wave * 0.06) / HORDE_DIFFICULTY
+        totals.append(totals[-1] + 0.6 + (_horde_wave_quota(wave) - 1) * interval)
+    return totals
+
+
+def _horde_week_start(now=None):
+    """Lunes (fecha, hora Venezuela) de la semana en curso."""
+    today = (now or now_ve()).date()
+    return today - timedelta(days=today.weekday())
+
+
+def _horde_week_key(now=None):
+    return _horde_week_start(now).strftime('%Y-%m-%d')
+
+
+def mask_player_id(player_id):
+    value = str(player_id or '')
+    if len(value) <= 4:
+        return value[:1] + '*' * max(0, len(value) - 1)
+    if len(value) <= 7:
+        return value[:2] + '*' * (len(value) - 4) + value[-2:]
+    return value[:3] + '***' + value[-3:]
+
+
+HORDE_CHARACTER_SLOTS = 3
+HORDE_CHARACTER_MODES = ('rotate', 'rotate_right', 'flip')
+
+
+def horde_character_keys(slot):
+    """Claves de Setting de un personaje. El 1 usa las claves de cuando solo
+    había un personaje, así la imagen que ya estaba subida no se pierde."""
+    suffix = '' if slot == 1 else f'_{slot}'
+    return {
+        'image': f'hordas_player_image{suffix}',
+        'mode': f'hordas_player_image_mode{suffix}',
+        'name': f'hordas_player_name_{slot}',
+        'cover': f'hordas_player_cover_{slot}',
+    }
+
+
+def get_horde_characters():
+    """Los 3 puestos de personaje, tengan o no imagen cargada."""
+    keys = [horde_character_keys(s) for s in range(1, HORDE_CHARACTER_SLOTS + 1)]
+    wanted = [k for slot_keys in keys for k in slot_keys.values()]
+    values = {row.key: row.value or '' for row in Setting.query.filter(Setting.key.in_(wanted)).all()}
+    characters = []
+    for slot, slot_keys in enumerate(keys, start=1):
+        mode = values.get(slot_keys['mode'])
+        characters.append({
+            'slot': slot,
+            'image': values.get(slot_keys['image'], ''),
+            'mode': mode if mode in HORDE_CHARACTER_MODES else 'flip',
+            'name': values.get(slot_keys['name'], '').strip() or f'Personaje {slot}',
+            # Portada: la que se ve al elegir. Si no hay, se muestra el diseño.
+            'cover': values.get(slot_keys['cover'], ''),
+        })
+    return characters
+
+
+def get_horde_config(game_id):
+    return PromoHordeConfig.query.filter_by(game_id=game_id, is_active=True).first()
+
+
+def get_horde_enabled_games():
+    configs = PromoHordeConfig.query.filter_by(is_active=True).all()
+    order_by_game = {c.game_id: (c.sort_order or 100) for c in configs}
+    if not order_by_game:
+        return []
+    games = (
+        Game.query
+        .filter(Game.id.in_(order_by_game.keys()), Game.is_active.is_(True))
+        .all()
+    )
+    games.sort(key=lambda g: (order_by_game.get(g.id, 100), g.name.lower()))
+    return games
+
+
+HORDE_BANNED_MESSAGE = 'Este ID está bloqueado en Hordas de Diamantes para este juego.'
+
+
+def is_horde_banned(game_id, player_id):
+    player_id = str(player_id or '').strip()
+    if not player_id:
+        return False
+    return PromoHordeBan.query.filter_by(game_id=game_id, player_id=player_id).first() is not None
+
+
+def get_horde_week_ranking(game_id, week_key, limit=HORDE_RANKING_SIZE):
+    """[(player_id, nick, total_diamonds)] de la semana, de mayor a menor.
+    Empate: gana quien llegó primero a ese total (su última partida
+    terminó antes). Los ID bloqueados no aparecen (ni ganan premio)."""
+    total = db.func.sum(PromoHordeRun.diamonds)
+    last_finish = db.func.max(PromoHordeRun.finished_at)
+    banned = db.session.query(PromoHordeBan.player_id).filter(PromoHordeBan.game_id == game_id)
+    query = (
+        db.session.query(PromoHordeRun.player_id, db.func.max(PromoHordeRun.player_nick), total)
+        .filter(
+            PromoHordeRun.game_id == game_id,
+            PromoHordeRun.week_key == week_key,
+            PromoHordeRun.finished_at.isnot(None),
+            ~PromoHordeRun.player_id.in_(banned),
+        )
+        .group_by(PromoHordeRun.player_id)
+        .having(total > 0)
+        .order_by(total.desc(), last_finish.asc())
+    )
+    if limit:
+        query = query.limit(limit)
+    return [(pid, nick, int(t or 0)) for pid, nick, t in query.all()]
+
+
+class HordeNotEnoughPoints(ValueError):
+    """Faltan puntos para la partida extra (la página muestra un popup)."""
+
+    def __init__(self, message, balance):
+        super().__init__(message)
+        self.balance = balance
+
+
+def _horde_free_runs_today(game_id, player_id, day_key):
+    return PromoHordeRun.query.filter_by(
+        game_id=game_id, player_id=player_id, day_key=day_key, points_spent=0,
+    ).count()
+
+
+def start_horde_run(game_id, player_id, ip='', use_points=False):
+    """Abre una partida y devuelve su token. Lanza ValueError con un
+    mensaje listo para mostrar si no se puede jugar.
+
+    Al acabarse las partidas gratis del día se puede abrir una extra
+    canjeando puntos del saldo de ese ID (si el juego lo tiene activo). El
+    descuento de puntos y la partida se guardan en la misma transacción:
+    nunca se cobran puntos sin que se abra la partida."""
+    config = get_horde_config(game_id)
+    if not config:
+        raise ValueError('Este juego no está activo en este momento.')
+
+    player_id = str(player_id or '').strip()
+    if not player_id:
+        raise ValueError('Ingresa tu ID de juego.')
+    if len(player_id) > 40:
+        raise ValueError('Ese ID no es válido.')
+    if is_horde_banned(game_id, player_id):
+        raise ValueError(HORDE_BANNED_MESSAGE)
+
+    day_key = today_ve_str()
+    week_key = _horde_week_key()
+    runs_per_day = config.runs_per_day or 5
+
+    lock_key = f'horde_start:{game_id}:{player_id}'
+    lock_holder = uuid4().hex
+    if not acquire_lock(lock_key, 15, lock_holder):
+        raise ValueError('Tu partida anterior todavía se está abriendo. Espera unos segundos.')
+
+    try:
+        runs_today = _horde_free_runs_today(game_id, player_id, day_key)
+        points_cost = 0
+        if runs_today >= runs_per_day:
+            extra_cost = int(config.points_per_extra_run or 0)
+            if extra_cost <= 0:
+                raise ValueError(f'Ya usaste tus {runs_per_day} partidas de hoy con este ID. Vuelve mañana.')
+            if not use_points:
+                raise ValueError(f'Ya usaste tus {runs_per_day} partidas gratis de hoy. Puedes jugar otra canjeando {extra_cost} puntos.')
+            points_cost = extra_cost
+
+        # La verificación real cuesta una consulta externa: basta con hacerla
+        # una vez por semana por ID, después se reutiliza el nombre ya
+        # verificado de sus partidas anteriores.
+        known = (
+            PromoHordeRun.query
+            .filter(
+                PromoHordeRun.game_id == game_id,
+                PromoHordeRun.player_id == player_id,
+                PromoHordeRun.week_key == week_key,
+                PromoHordeRun.player_nick.isnot(None),
+            )
+            .first()
+        )
+        nick = known.player_nick if known else None
+        if not known:
+            ok, error, nick = _verify_id_if_needed(game_id, player_id, config.require_verification)
+            if not ok:
+                raise ValueError(error)
+
+        points_balance = None
+        if points_cost:
+            # Descuento atómico: solo pasa si el saldo alcanza en ese instante,
+            # aunque el mismo ID esté gastando puntos en otra parte a la vez.
+            spent = db.session.execute(
+                update(PlayerPoints)
+                .where(
+                    PlayerPoints.game_id == game_id,
+                    PlayerPoints.player_id == player_id,
+                    PlayerPoints.points_balance >= points_cost,
+                )
+                .values(points_balance=PlayerPoints.points_balance - points_cost, updated_at=datetime.utcnow())
+            ).rowcount
+            if spent != 1:
+                db.session.rollback()
+                balance = get_player_points_balance(game_id, player_id)
+                raise HordeNotEnoughPoints(
+                    f'No tienes puntos suficientes: cada partida extra cuesta {points_cost} puntos y este ID tiene {balance}.',
+                    balance,
+                )
+            points_balance = get_player_points_balance(game_id, player_id)
+
+        run = PromoHordeRun(
+            token=uuid4().hex, game_id=game_id, player_id=player_id, player_nick=nick,
+            week_key=week_key, day_key=day_key, ip=(ip or '')[:64],
+            started_at=datetime.utcnow(), points_spent=points_cost,
+            seed=secrets.randbelow(2 ** 31),
+        )
+        db.session.add(run)
+        db.session.commit()
+        return {
+            'token': run.token,
+            'seed': run.seed,
+            'player_nick': nick,
+            'runs_left_today': max(0, runs_per_day - runs_today - (0 if points_cost else 1)),
+            'points_spent': points_cost,
+            'points_balance': points_balance,
+        }
+    finally:
+        release_lock(lock_key, lock_holder)
+
+
+HORDE_REPLAY_MAX_BYTES = 400 * 1024          # una partida de 30 min cabe de sobra
+HORDE_REPLAY_WEEK_MAX_BYTES = 300 * 1024 * 1024
+HORDE_REPLAY_KEEP_TOP = 5
+HORDE_REPLAY_SAFETY_TOP = 20
+
+
+def _store_horde_replay(run, replay):
+    """Guarda la grabación de la partida si viene bien formada. Nunca hace
+    fallar el cierre de la partida: si algo no cuadra, simplemente no se
+    guarda (en el admin se verá 'sin repetición')."""
+    if not isinstance(replay, dict) or replay.get('v') != 1:
+        return
+    data = replay.get('data')
+    try:
+        width, height = int(replay.get('W')), int(replay.get('H'))
+        slot = int(replay.get('ch') or 0)
+    except (TypeError, ValueError):
+        return
+    if not isinstance(data, str) or not data or len(data) > HORDE_REPLAY_MAX_BYTES:
+        return
+    if not (100 <= width <= 5000 and 100 <= height <= 5000):
+        return
+
+    # Freno de espacio: si esta semana ya se guardó demasiado, solo se
+    # guardan las de quienes están cerca del top (los demás no pueden ganar).
+    week_bytes = (
+        db.session.query(db.func.coalesce(db.func.sum(PromoHordeReplay.size), 0))
+        .filter(PromoHordeReplay.game_id == run.game_id, PromoHordeReplay.week_key == run.week_key)
+        .scalar()
+    )
+    if week_bytes + len(data) > HORDE_REPLAY_WEEK_MAX_BYTES:
+        top = get_horde_week_ranking(run.game_id, run.week_key, limit=HORDE_REPLAY_SAFETY_TOP)
+        if run.player_id not in {pid for pid, _nick, _total in top}:
+            return
+
+    db.session.add(PromoHordeReplay(
+        run_id=run.id, game_id=run.game_id, week_key=run.week_key, player_id=run.player_id,
+        width=width, height=height, character_slot=slot, data=data, size=len(data),
+    ))
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def cleanup_horde_replays():
+    """Al cerrar cada semana deja solo las grabaciones del top 5 (por si
+    alguno del top 3 hizo trampa y hay que correr los puestos) y borra el
+    resto. Se marca cada semana ya limpia para no repetir el trabajo."""
+    current_week = _horde_week_key()
+    pending = (
+        db.session.query(PromoHordeReplay.game_id, PromoHordeReplay.week_key)
+        .filter(PromoHordeReplay.week_key < current_week)
+        .distinct()
+        .all()
+    )
+    for game_id, week_key in pending:
+        marker = f'hordas_replays_clean:{game_id}:{week_key}'
+        if Setting.query.filter_by(key=marker).first():
+            continue
+        keep = {pid for pid, _nick, _total in get_horde_week_ranking(game_id, week_key, limit=HORDE_REPLAY_KEEP_TOP)}
+        query = PromoHordeReplay.query.filter(
+            PromoHordeReplay.game_id == game_id, PromoHordeReplay.week_key == week_key,
+        )
+        if keep:
+            query = query.filter(~PromoHordeReplay.player_id.in_(keep))
+        query.delete(synchronize_session=False)
+        db.session.add(Setting(key=marker, value=datetime.utcnow().isoformat()))
+        db.session.commit()
+
+
+def finish_horde_run(token, diamonds, kills, wave=None, final_cleared=False, replay=None):
+    """Cierra una partida una sola vez y guarda los diamantes aceptados.
+
+    Topes, del más fácil de pasar al más estricto:
+    - por tiempo (7/s) y por enemigo (4 c/u), como antes;
+    - por oleada: nunca más diamantes de los que existen en las oleadas
+      que alcanzó (según la semilla de la partida);
+    - por velocidad: si dice ir en una oleada a la que no se puede llegar
+      en el tiempo que duró, se toma la que sí era posible y se marca;
+    - ganar la oleada final (imposible) o pasar de la 10 = trampa: 0 💎."""
+    token = str(token or '').strip()
+    run = PromoHordeRun.query.filter_by(token=token).first() if token else None
+    if not run:
+        raise ValueError('Partida no encontrada.')
+    if run.finished_at:
+        raise ValueError('Esta partida ya fue registrada.')
+
+    try:
+        diamonds = max(0, int(diamonds))
+        kills = max(0, int(kills))
+        wave = int(wave) if wave is not None else HORDE_MAX_WAVE - 1
+    except (TypeError, ValueError):
+        raise ValueError('Datos de la partida inválidos.')
+
+    now = datetime.utcnow()
+    elapsed = min((now - run.started_at).total_seconds(), HORDE_MAX_RUN_SECONDS)
+    cap = min(
+        int(max(0.0, elapsed) * HORDE_MAX_DIAMONDS_PER_SECOND),
+        kills * HORDE_MAX_DIAMONDS_PER_KILL,
+    )
+
+    flag = None
+    if final_cleared or wave > HORDE_MAX_WAVE:
+        flag = 'gano_oleada_final'
+        cap = 0
+    elif run.seed is not None:
+        # Oleada a la que de verdad se puede llegar en el tiempo que duró:
+        # la que está en curso cuenta completa (hasta la 9; la 10 no da 💎).
+        min_seconds = horde_min_seconds_by_wave()
+        reachable = 1
+        while reachable < HORDE_MAX_WAVE and min_seconds[reachable] <= elapsed:
+            reachable += 1
+        claimed_wave = max(1, wave)
+        if claimed_wave > reachable:
+            flag = 'demasiado_rapido'
+        counted_wave = min(claimed_wave, reachable, HORDE_MAX_WAVE - 1)
+        max_by_wave = horde_max_diamonds_by_wave(run.seed)
+        cap = min(cap, max_by_wave[counted_wave])
+        if not flag and diamonds > max_by_wave[HORDE_MAX_WAVE - 1]:
+            flag = 'mas_diamantes_que_los_posibles'
+    accepted = min(diamonds, cap)
+
+    # UPDATE condicional: si llegan dos cierres a la vez (doble envío,
+    # sendBeacon al salir + el normal), solo uno cuenta.
+    updated = (
+        PromoHordeRun.query
+        .filter(PromoHordeRun.id == run.id, PromoHordeRun.finished_at.is_(None))
+        .update({
+            'finished_at': now, 'diamonds': accepted,
+            'claimed_diamonds': diamonds, 'kills': kills,
+            'wave': min(max(0, wave), 99), 'flag': flag,
+        }, synchronize_session=False)
+    )
+    db.session.commit()
+    if not updated:
+        raise ValueError('Esta partida ya fue registrada.')
+    _store_horde_replay(run, replay)
+
+    ranking = get_horde_week_ranking(run.game_id, run.week_key, limit=None)
+    my_total = 0
+    my_rank = None
+    for index, (pid, _nick, total) in enumerate(ranking, start=1):
+        if pid == run.player_id:
+            my_total, my_rank = total, index
+            break
+    return {
+        'diamonds': accepted,
+        'capped': accepted < diamonds,
+        'flagged': bool(flag),
+        'week_total': my_total,
+        'week_rank': my_rank,
+    }
+
+
+def get_horde_player_position(game_id, player_id):
+    """Puesto de un ID en el ranking de esta semana, con cuántos diamantes
+    le faltan para pasar al de arriba (como el ranking de recargas)."""
+    player_id = str(player_id or '').strip()
+    if not player_id or not get_horde_config(game_id):
+        return None
+    full_ranking = get_horde_week_ranking(game_id, _horde_week_key(), limit=None)
+    for index, (pid, nick, total) in enumerate(full_ranking, start=1):
+        if pid != player_id:
+            continue
+        above_total = full_ranking[index - 2][2] if index > 1 else None
+        # En empate gana quien llegó primero, así que hay que superarlo por 1.
+        missing = (above_total - total + 1) if above_total is not None else 0
+        progress = 100 if above_total is None else int(min(100, total * 100 / max(1, above_total + 1)))
+        return {
+            'place': index,
+            'nick': nick or 'Jugador',
+            'player_id': mask_player_id(pid),
+            'diamonds': total,
+            'missing': missing,
+            'progress_percent': progress,
+            'total_players': len(full_ranking),
+        }
+    return None
+
+
+def get_horde_public_state(game_id, player_id):
+    config = get_horde_config(game_id)
+    if not config:
+        return {'enabled': False}
+
+    player_id = str(player_id or '').strip()
+    week_key = _horde_week_key()
+    week_start = _horde_week_start()
+    now = now_ve()
+    week_ends_at = now.replace(
+        year=week_start.year, month=week_start.month, day=week_start.day,
+        hour=0, minute=0, second=0, microsecond=0,
+    ) + timedelta(days=7)
+
+    full_ranking = get_horde_week_ranking(game_id, week_key, limit=None)
+    ranking = [{
+        'place': index,
+        'nick': nick or 'Jugador',
+        'player_id': mask_player_id(pid),
+        'diamonds': total,
+        'is_me': bool(player_id) and pid == player_id,
+    } for index, (pid, nick, total) in enumerate(full_ranking[:HORDE_RANKING_SIZE], start=1)]
+
+    my_total = 0
+    my_rank = None
+    runs_left_today = config.runs_per_day or 5
+    points_balance = None
+    if player_id:
+        for index, (pid, _nick, total) in enumerate(full_ranking, start=1):
+            if pid == player_id:
+                my_total, my_rank = total, index
+                break
+        runs_today = _horde_free_runs_today(game_id, player_id, today_ve_str())
+        runs_left_today = max(0, (config.runs_per_day or 5) - runs_today)
+        points_balance = get_player_points_balance(game_id, player_id)
+
+    past_winners = (
+        PromoHordeWinner.query
+        .filter_by(game_id=game_id, status='approved')
+        .order_by(PromoHordeWinner.week_key.desc(), PromoHordeWinner.place.asc())
+        .limit(9)
+        .all()
+    )
+
+    return {
+        'enabled': True,
+        'reward_label': config.package.name if config.package else '',
+        'prizes': [{'place': place, 'label': pkg.name} for place, pkg in config.place_packages()],
+        'runs_per_day': config.runs_per_day or 5,
+        'runs_left_today': runs_left_today,
+        'banned': bool(player_id) and is_horde_banned(game_id, player_id),
+        'extra_run_cost': int(config.points_per_extra_run or 0),
+        'points_balance': points_balance,
+        'week_key': week_key,
+        'week_ends_at': week_ends_at.isoformat(),
+        'ranking': ranking,
+        'total_players': len(full_ranking),
+        'my_total': my_total,
+        'my_rank': my_rank,
+        'past_winners': [{
+            'week_key': w.week_key,
+            'place': w.place,
+            'nick': w.player_nick or 'Jugador',
+            'player_id': mask_player_id(w.player_id),
+            'diamonds': w.diamonds,
+        } for w in past_winners],
+    }
+
+
+def _fill_pending_horde_winners(config, week_key):
+    """Arma (o rearma) los ganadores PENDIENTES de una semana según el
+    ranking, que ya excluye a los bloqueados. Los ya aprobados se respetan
+    tal cual; los demás puestos con premio se llenan con los siguientes del
+    ranking. Así, si se rechaza al 1ro, el 2do pasa a 1ro, el 4to entra
+    como 3ro, etc. No entrega nada: el premio sale al aprobar."""
+    prizes = dict(config.place_packages()) or {1: None}
+    winners = PromoHordeWinner.query.filter_by(game_id=config.game_id, week_key=week_key).all()
+    approved = [w for w in winners if w.status == 'approved']
+    for w in winners:
+        if w.status != 'approved':
+            db.session.delete(w)
+    db.session.flush()
+
+    # Cada jugador ocupa su puesto real del ranking (aunque ese puesto no
+    # tenga premio): si el 2do no tiene premio, el premio del 3ro es para el
+    # 3ro, no para el 2do. Los puestos ya aprobados quedan fijos.
+    taken_places = {w.place for w in approved}
+    taken_players = {w.player_id for w in approved}
+    last_place = max(prizes)
+    place = 1
+    for pid, nick, total in get_horde_week_ranking(config.game_id, week_key, limit=last_place + len(approved)):
+        if pid in taken_players:
+            continue
+        while place in taken_places:
+            place += 1
+        if place > last_place:
+            break
+        if place in prizes:
+            package = prizes[place]
+            db.session.add(PromoHordeWinner(
+                game_id=config.game_id, week_key=week_key, place=place,
+                player_id=pid, player_nick=nick, diamonds=total,
+                status='pending', package_id=package.id if package else None,
+            ))
+        place += 1
+
+
+def run_weekly_horde_awards():
+    """Cierra la semana que acaba de terminar (lunes a domingo, hora
+    Venezuela) en cada juego activo: deja a los ganadores PENDIENTES DE
+    APROBACIÓN. El premio no se entrega hasta que el admin revise las
+    repeticiones y apruebe. Idempotente: si esa semana ya tiene ganadores,
+    no hace nada; el lock evita dos cierres simultáneos."""
+    previous_week_key = (_horde_week_start() - timedelta(days=7)).strftime('%Y-%m-%d')
+    for config in PromoHordeConfig.query.filter_by(is_active=True).all():
+        lock_key = f'horde_award:{config.game_id}:{previous_week_key}'
+        lock_holder = uuid4().hex
+        if not acquire_lock(lock_key, 120, lock_holder):
+            continue
+        try:
+            if PromoHordeWinner.query.filter_by(game_id=config.game_id, week_key=previous_week_key).first():
+                continue
+            _fill_pending_horde_winners(config, previous_week_key)
+            db.session.commit()
+        finally:
+            release_lock(lock_key, lock_holder)
+
+
+def approve_horde_winner(winner_id):
+    """Aprueba un ganador pendiente y le entrega el premio en ese momento.
+    El cambio de estado es condicional: aunque se toque 'Aprobar' dos veces
+    seguidas, el premio sale una sola vez."""
+    from .order_processing import deliver_prize_to_player
+
+    winner = PromoHordeWinner.query.get(winner_id)
+    if not winner:
+        raise ValueError('Ganador no encontrado.')
+    claimed = (
+        PromoHordeWinner.query
+        .filter(PromoHordeWinner.id == winner.id, PromoHordeWinner.status == 'pending')
+        .update({'status': 'approving'}, synchronize_session=False)
+    )
+    db.session.commit()
+    if not claimed:
+        raise ValueError('Este premio ya fue revisado.')
+    try:
+        prize_order = None
+        package = Package.query.get(winner.package_id) if winner.package_id else None
+        if package:
+            prize_order, _approval = deliver_prize_to_player(
+                Game.query.get(winner.game_id), package, winner.player_id,
+                note=f'Premio Hordas de Diamantes — puesto #{winner.place} semana del {winner.week_key} ({winner.diamonds} diamantes). Aprobado tras revisar repeticiones.',
+                reference_prefix='HORDAS',
+            )
+        winner = PromoHordeWinner.query.get(winner_id)
+        winner.status = 'approved'
+        winner.reviewed_at = datetime.utcnow()
+        winner.prize_order_id = prize_order.id if prize_order else None
+        db.session.commit()
+        return winner
+    except Exception:
+        db.session.rollback()
+        PromoHordeWinner.query.filter_by(id=winner_id).update({'status': 'pending'}, synchronize_session=False)
+        db.session.commit()
+        raise
+
+
+def reject_horde_winner(winner_id, reason=''):
+    """Rechaza un ganador pendiente por trampa: se bloquea su ID en este
+    juego (sale del ranking) y los siguientes suben de puesto."""
+    winner = PromoHordeWinner.query.get(winner_id)
+    if not winner or winner.status != 'pending':
+        raise ValueError('Este premio ya fue revisado.')
+    config = PromoHordeConfig.query.filter_by(game_id=winner.game_id).first()
+    lock_key = f'horde_award:{winner.game_id}:{winner.week_key}'
+    lock_holder = uuid4().hex
+    if not acquire_lock(lock_key, 60, lock_holder):
+        raise ValueError('Se está revisando este premio en otra pestaña. Intenta de nuevo.')
+    try:
+        if not is_horde_banned(winner.game_id, winner.player_id):
+            db.session.add(PromoHordeBan(
+                game_id=winner.game_id, player_id=winner.player_id,
+                reason=(reason or f'Premio rechazado (semana {winner.week_key})')[:200],
+            ))
+            db.session.flush()
+        if config:
+            _fill_pending_horde_winners(config, winner.week_key)
+        else:
+            db.session.delete(winner)
+        db.session.commit()
+    finally:
+        release_lock(lock_key, lock_holder)
+
+
+def get_pending_horde_winners(game_id=None):
+    query = PromoHordeWinner.query.filter(PromoHordeWinner.status == 'pending')
+    if game_id:
+        query = query.filter(PromoHordeWinner.game_id == game_id)
+    return query.order_by(PromoHordeWinner.week_key.desc(), PromoHordeWinner.place.asc()).all()

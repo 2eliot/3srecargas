@@ -158,6 +158,16 @@ def _get_bs_amount(order):
         if amt > 0:
             return amt
 
+    package = getattr(order, 'package', None)
+    bs_fixed_price = getattr(package, 'bs_price', None) if package is not None else None
+    if bs_fixed_price is not None:
+        try:
+            bs_fixed_price = float(bs_fixed_price)
+        except (TypeError, ValueError):
+            bs_fixed_price = None
+        if bs_fixed_price is not None and bs_fixed_price > 0:
+            return bs_fixed_price
+
     method_code = (getattr(order, 'payment_method', '') or '').strip().lower()
     method = PaymentMethod.query.filter_by(code=method_code).first() if method_code else None
     if method and not bool(method.uses_rate) and order.amount is not None:
@@ -202,6 +212,19 @@ def recompute_order_payment_amount(order):
         return
 
     if currency != 'bs':
+        return
+
+    package = getattr(order, 'package', None)
+    bs_fixed_price = getattr(package, 'bs_price', None) if package is not None else None
+    if bs_fixed_price is not None:
+        try:
+            bs_fixed_price = float(bs_fixed_price)
+        except (TypeError, ValueError):
+            bs_fixed_price = None
+        if bs_fixed_price is not None and bs_fixed_price <= 0:
+            bs_fixed_price = None
+    if bs_fixed_price is not None:
+        order.payment_amount = normalize_bs_integer_amount(bs_fixed_price)
         return
 
     method_code = (getattr(order, 'payment_method', '') or '').strip().lower()

@@ -109,11 +109,26 @@ def _get_hour_setting(key, fallback):
     return value if 0 <= value <= 23 else fallback
 
 
+MANUAL_FORCE_CLOSED_SETTING_KEY = 'manual_service_force_closed'
+
+
+def manual_service_is_force_closed():
+    """Interruptor manual aparte del horario: para cerrar ya mismo las
+    recargas manuales (sin personal, emergencia) sin tener que tocar las
+    horas de apertura/cierre configuradas."""
+    try:
+        setting = Setting.query.filter_by(key=MANUAL_FORCE_CLOSED_SETTING_KEY).first()
+        return bool(setting and (setting.value or '').strip() == '1')
+    except Exception:
+        return False
+
+
 def get_manual_schedule():
     """Horario de atención para las recargas manuales, en hora de Venezuela."""
     return {
         'open_hour': _get_hour_setting('manual_open_hour', DEFAULT_MANUAL_OPEN_HOUR),
         'close_hour': _get_hour_setting('manual_close_hour', DEFAULT_MANUAL_CLOSE_HOUR),
+        'force_closed': manual_service_is_force_closed(),
     }
 
 
@@ -134,6 +149,9 @@ def manual_service_is_open(schedule=None, now=None):
     por si alguna vez se configura al revés.
     """
     schedule = schedule or get_manual_schedule()
+    if schedule.get('force_closed'):
+        return False  # cerrado a mano, sin importar el horario configurado
+
     open_hour = schedule['open_hour']
     close_hour = schedule['close_hour']
 
@@ -183,6 +201,11 @@ def get_purchase_block_reason(package, auto_mapped_ids=None, is_tarjetas=None, s
         package, auto_mapped_ids=auto_mapped_ids, is_tarjetas=is_tarjetas, schedule=schedule
     ):
         schedule = schedule or get_manual_schedule()
+        if schedule.get('force_closed'):
+            return (
+                'Este paquete se recarga a mano y ahora mismo no hay nadie '
+                'disponible para procesarlo. Vuelve a intentarlo más tarde.'
+            )
         return (
             'Este paquete se recarga a mano y ahora estamos cerrados. '
             f'Atendemos de {format_hour(schedule["open_hour"])} a '

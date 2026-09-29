@@ -163,13 +163,32 @@ def _run_promos_tick():
     sorteo. Aparte del tick normal de órdenes porque no depende de que
     haya órdenes pendientes: puede no correr nunca si nadie más dispara
     esta revisión."""
-    from .promos import run_daily_raffle_draws
+    from .promos import cleanup_horde_replays, run_daily_raffle_draws, run_weekly_horde_awards
     from ..models import db
 
     try:
         run_daily_raffle_draws()
     except Exception as exc:
         print(f'[OrderScheduler] Error en sorteo diario: {exc}')
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+    try:
+        run_weekly_horde_awards()
+    except Exception as exc:
+        print(f'[OrderScheduler] Error en premio semanal de Hordas: {exc}')
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+    # Semana cerrada: solo quedan las repeticiones del top 5.
+    try:
+        cleanup_horde_replays()
+    except Exception as exc:
+        print(f'[OrderScheduler] Error limpiando repeticiones de Hordas: {exc}')
         try:
             db.session.rollback()
         except Exception:

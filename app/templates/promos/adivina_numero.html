@@ -180,6 +180,12 @@ function switchGame(id) {
     window.location.href = url.toString();
 }
 
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function renderWinners(winners) {
     const box = document.getElementById('winnersBox');
     if (!winners || !winners.length) {
@@ -190,11 +196,11 @@ function renderWinners(winners) {
         <div class="bg-black border border-amber-500/40 rounded-xl p-2.5 text-slate-400 text-xs shadow-inner">
             <div class="flex items-center justify-between">
                 <span class="text-[9px] text-amber-400 font-extrabold uppercase">👑 Cupo #${i + 1}</span>
-                <span class="text-[10px] font-bold text-white">Número #${w.guessed_number}</span>
+                <span class="text-[10px] font-bold text-white">Número #${escapeHtml(w.guessed_number)}</span>
             </div>
             <div class="flex items-center justify-between mt-1">
-                <span class="text-[11px] font-black text-amber-300 truncate max-w-[55%]">${w.player_nick || 'Jugador'} • ID: ${w.player_id}</span>
-                <span class="text-[9px] font-mono text-slate-500">${w.won_at || ''}</span>
+                <span class="text-[11px] font-black text-amber-300 truncate max-w-[55%]">${escapeHtml(w.player_nick || 'Jugador')} • ID: ${escapeHtml(w.player_id)}</span>
+                <span class="text-[9px] font-mono text-slate-500">${escapeHtml(w.won_at || '')}</span>
             </div>
         </div>`).join('');
 }
@@ -206,17 +212,17 @@ function renderHistory(history) {
     container.hidden = false;
     list.innerHTML = history.map(day => `
         <div class="bg-black border border-zinc-900 p-2.5 rounded-xl shadow">
-            <div class="text-white font-bold text-[11px] mb-1.5">📅 ${day.day_key}</div>
+            <div class="text-white font-bold text-[11px] mb-1.5">📅 ${escapeHtml(day.day_key)}</div>
             <div class="grid grid-cols-1 gap-1.5">
                 ${day.winners.map((w, i) => `
                     <div class="bg-[#080808] border border-zinc-800/80 rounded-lg p-2 text-[10px]">
                         <div class="flex items-center justify-between">
                             <span class="text-amber-400 font-extrabold">👑 #${i + 1}</span>
-                            <span class="text-slate-400">Número #${w.guessed_number}</span>
+                            <span class="text-slate-400">Número #${escapeHtml(w.guessed_number)}</span>
                         </div>
                         <div class="flex items-center justify-between mt-1">
-                            <span class="font-mono text-slate-300 truncate max-w-[55%]">${w.player_nick || 'Jugador'} • ID: ${w.player_id}</span>
-                            <span class="text-slate-500">${w.won_at || ''}</span>
+                            <span class="font-mono text-slate-300 truncate max-w-[55%]">${escapeHtml(w.player_nick || 'Jugador')} • ID: ${escapeHtml(w.player_id)}</span>
+                            <span class="text-slate-500">${escapeHtml(w.won_at || '')}</span>
                         </div>
                     </div>`).join('')}
             </div>

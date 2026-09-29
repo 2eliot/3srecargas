@@ -106,3 +106,11 @@ def check_rate_limit(bucket_key, limit, window_seconds=60):
 
     row = ApiRateLimitHit.query.filter_by(bucket_key=bucket_key, window_start=window_start).first()
     return (row.count if row else 0) <= limit
+
+
+def client_ip():
+    """IP real detrás de nginx (remote_addr a secas sería 127.0.0.1)."""
+    from flask import request
+
+    forwarded = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
+    return forwarded or request.remote_addr or ''

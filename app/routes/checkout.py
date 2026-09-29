@@ -48,7 +48,7 @@ from ..utils.binance_pay import (
 )
 from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
-from ..utils.locks import acquire_lock, release_lock
+from ..utils.locks import acquire_lock, check_rate_limit, client_ip, release_lock
 
 
 def _digits_only(value):
@@ -499,6 +499,39 @@ def get_package_checkout_price(package, payment_method_config):
     return float(package.price or 0)
 
 
+def get_package_bs_fixed_price(package):
+    """Precio exclusivo en Bs del paquete (bypasea la tasa USD/Bs), o None
+    si el paquete no tiene uno configurado."""
+    if not package:
+        return None
+    bs_price = getattr(package, 'bs_price', None)
+    if bs_price is None:
+        return None
+    try:
+        value = float(bs_price)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def apply_package_bs_fixed_price(bs_fixed_price, original_amount, discount_amount):
+    """Aplica al precio fijo en Bs del paquete el mismo % de descuento que
+    ya se calculó en el dominio USD (original_amount/discount_amount), y
+    redondea al entero de Bs que espera Pabilo. Devuelve (bs_original,
+    bs_discount, bs_final), los tres ya normalizados."""
+    discount_ratio = 0.0
+    if original_amount and original_amount > 0:
+        discount_ratio = max(min(discount_amount / original_amount, 1.0), 0.0)
+
+    bs_discount = round(bs_fixed_price * discount_ratio, 2)
+    bs_final = max(bs_fixed_price - bs_discount, 0.0)
+    return (
+        _normalize_bs_checkout_amount(bs_fixed_price),
+        _normalize_bs_checkout_amount(bs_discount),
+        _normalize_bs_checkout_amount(bs_final),
+    )
+
+
 def get_game_bs_rate(game, fallback_rate=0.0):
     if not game:
         return float(fallback_rate or 0.0)
@@ -531,10 +564,18 @@ def compute_checkout_quote(package, game, method, usd_rate, discount_code, playe
     discount_amount = discount_result['discount_amount']
     final_amount = max(original_amount - discount_amount, 0.0)
 
+    bs_fixed_price = get_package_bs_fixed_price(package) if display_currency == 'bs' else None
+
     if display_currency == 'usd':
         display_amount = final_amount
         original_display = original_amount
         discount_display = discount_amount
+    elif bs_fixed_price is not None:
+        # El paquete tiene precio exclusivo en Bs: no se multiplica por la
+        # tasa, se cobra ese monto fijo (con el mismo % de descuento).
+        original_display, discount_display, display_amount = apply_package_bs_fixed_price(
+            bs_fixed_price, original_amount, discount_amount,
+        )
     elif method and not bool(method.uses_rate):
         display_amount = _normalize_bs_checkout_amount(final_amount)
         original_display = _normalize_bs_checkout_amount(original_amount)
@@ -999,7 +1040,12 @@ def checkout(package_id):
         # Binance auto siempre se maneja en USD/USDT.
         if not _binance_auto and method_config and (method_config.account_currency or '').lower() == 'bs':
             payment_currency = 'bs'
-            if bool(method_config.uses_rate):
+            bs_fixed_price = get_package_bs_fixed_price(package)
+            if bs_fixed_price is not None:
+                _, _, payment_amount = apply_package_bs_fixed_price(
+                    bs_fixed_price, original_amount, discount_amount,
+                )
+            elif bool(method_config.uses_rate):
                 payment_amount = _normalize_bs_checkout_amount(final_amount * package_bs_rate)
             else:
                 payment_amount = _normalize_bs_checkout_amount(final_amount)
@@ -1285,8 +1331,11 @@ def order_status(order_number):
     display_currency = 'bs'
     if method and (method.account_currency or '').lower() == 'usd':
         display_currency = 'usd'
+    order_bs_fixed_price = get_package_bs_fixed_price(order.package) if display_currency == 'bs' else None
     if order.payment_amount is not None and (order.payment_currency or '').lower() == display_currency:
         display_amount = float(order.payment_amount)
+    elif order_bs_fixed_price is not None:
+        display_amount = order_bs_fixed_price
     else:
         base_amount = float(order.amount)
         if display_currency == 'usd':
@@ -1659,8 +1708,13 @@ def points_balance():
     })
 
 
+POINTS_ACTIONS_PER_MINUTE = 12
+
+
 @checkout_bp.route('/api/points/spin', methods=['POST'])
 def points_spin():
+    if not check_rate_limit(f'points_action:{client_ip()}', POINTS_ACTIONS_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'message': 'Demasiados intentos seguidos. Espera un momento.'}), 429
     payload = request.get_json(silent=True) or {}
     try:
         game_id = int(payload.get('game_id'))
@@ -1705,6 +1759,8 @@ def points_redeem_options():
 
 @checkout_bp.route('/api/points/redeem', methods=['POST'])
 def points_redeem():
+    if not check_rate_limit(f'points_action:{client_ip()}', POINTS_ACTIONS_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'message': 'Demasiados intentos seguidos. Espera un momento.'}), 429
     payload = request.get_json(silent=True) or {}
     try:
         game_id = int(payload.get('game_id'))

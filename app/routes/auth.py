@@ -1,11 +1,25 @@
+import hmac
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
 from ..models import db, User, Order, Game
 from ..utils.auth_accounts import find_scoped_customer, get_game_account_meta, hydrate_scoped_customer_from_orders, sync_env_admin_user
+from ..utils.locks import check_rate_limit, client_ip
 from .verify import verifiable_game_ids
 
 auth_bp = Blueprint('auth_bp', __name__)
+
+LOGIN_MAX_ATTEMPTS = 20
+LOGIN_WINDOW_SECONDS = 10 * 60
+
+
+def _safe_next_url(value):
+    """Solo rutas internas: un `next` externo (o `//otro.com`) convertía el
+    login en un redirector hacia páginas falsas."""
+    value = (value or '').strip()
+    if not value.startswith('/') or value.startswith('//') or '\\' in value:
+        return None
+    return value
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
@@ -27,6 +41,10 @@ def login():
     verifiable_ids = list(verifiable_game_ids())
 
     if request.method == 'POST':
+        if not check_rate_limit(f'customer_login:{client_ip()}', LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS):
+            flash('Demasiados intentos seguidos. Espera unos minutos e intenta de nuevo.', 'danger')
+            return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email, verifiable_ids=verifiable_ids), 429
+
         identifier = request.form.get('identifier', '').strip()
         service_id_raw = request.form.get('service_id', '').strip()
         admin_password = request.form.get('admin_password', '').strip()
@@ -39,7 +57,7 @@ def login():
             if not admin_password:
                 flash('Ingresa la clave del administrador para continuar.', 'danger')
                 return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email, verifiable_ids=verifiable_ids)
-            if admin_password != env_admin_password:
+            if not env_admin_password or not hmac.compare_digest(admin_password.encode('utf-8'), env_admin_password.encode('utf-8')):
                 flash('Clave de administrador incorrecta.', 'danger')
                 return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email, verifiable_ids=verifiable_ids)
 
@@ -73,8 +91,7 @@ def login():
 
         login_user(user)
         flash('Sesión iniciada con tu identificador actual.', 'success')
-        next_page = request.args.get('next')
-        return redirect(next_page or url_for('auth_bp.profile'))
+        return redirect(_safe_next_url(request.args.get('next')) or url_for('auth_bp.profile'))
 
     return render_template('auth/login.html', active_games=active_games, admin_email_hint=env_admin_email, verifiable_ids=verifiable_ids)
 

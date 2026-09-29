@@ -87,7 +87,7 @@
     </form>
 </div>
 
-<div class="admin-card">
+<div class="admin-card orders-list-card">
     <div class="card-header-inline orders-card-header-inline">
         <div>
             <h3>Listado de órdenes</h3>
@@ -103,67 +103,60 @@
         <div class="orders-page-chip">Página {{ current_page }} de {{ total_pages }}</div>
         {% endif %}
     </div>
-    <div class="table-wrap">
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th>#Orden</th>
-                    <th>Juego / Paquete</th>
-                    <th>Jugador</th>
-                    <th>Pago</th>
-                    <th>Referencia</th>
-                    <th>Monto</th>
-                    <th>Afiliado</th>
-                    <th>Estado</th>
-                    <th>Fecha</th>
-                    <th>Acciones</th>
-                </tr>
-            </thead>
-            <tbody id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}" data-date-from="{{ date_from or '' }}" data-date-to="{{ date_to or '' }}" data-package-id="{{ package_id or '' }}" data-service-id="{{ service_id or '' }}" data-game-id="{{ game_id or '' }}" data-current-page="{{ current_page }}" data-page-size="{{ page_size }}">
+    <div class="admin-order-feed admin-order-feed--compact" id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}" data-date-from="{{ date_from or '' }}" data-date-to="{{ date_to or '' }}" data-package-id="{{ package_id or '' }}" data-service-id="{{ service_id or '' }}" data-game-id="{{ game_id or '' }}" data-current-page="{{ current_page }}" data-page-size="{{ page_size }}">
                 {% for order in orders %}
-                <tr data-order-id="{{ order.id }}">
-                    <td data-label="#Orden">
-                        <div class="cell-stack">
-                            <span class="order-num">#{{ order.order_number }}</span>
-                            <small>ID {{ order.id }}</small>
-                        </div>
-                    </td>
-                    <td data-label="Juego / Paquete">
-                        <div class="cell-stack">
-                            <span>{{ order.game.name }}</span>
-                            <small>{{ order.package.name }}</small>
-                        </div>
-                    </td>
-                    <td data-label="Jugador">
-                        <div class="cell-stack">
-                            {% if order.player_id %}<span>{{ order.player_id }}</span>{% endif %}
-                            {% if order.player_nickname %}<small style="color:#22c55e;font-weight:600">{{ order.player_nickname }}</small>{% endif %}
-                            {% if order.zone_id %}<small>Zone: {{ order.zone_id }}</small>{% endif %}
-                            {% if order.email %}<span>{{ order.email }}</span>{% endif %}
-                            {% if order.phone %}
-                            <div class="customer-phone-row">
-                                <span class="customer-phone-value">{{ order.phone }}</span>
-                                <button type="button" class="btn-sm btn-whatsapp-admin" onclick="openAdminWhatsAppContact('{{ order.phone|e }}')">WhatsApp</button>
+                <article class="admin-order-card" data-order-id="{{ order.id }}">
+                    <div class="admin-order-card__top">
+                        <div class="admin-order-card__identity">
+                            <div class="admin-order-card__title-row">
+                                <span class="admin-order-card__game">{{ order.game.name }}</span>
+                                <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
+                                {% if order.status == 'pending' and order.payment_verified_at %}
+                                <span class="status-badge status-paid-pending" title="El pago ya se verificó: falta hacer la recarga">Pagada · falta entregar</span>
+                                {% endif %}
                             </div>
-                            {% endif %}
+                            <div class="admin-order-card__package">{{ order.package.name }}</div>
+                            <div class="admin-order-card__meta">
+                                <span class="order-num">#{{ order.order_number }}</span>
+                                <span>ID {{ order.id }}</span>
+                                <span class="admin-order-card__date">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
+                            </div>
                         </div>
-                    </td>
-                    <td data-label="Pago">{{ order.payment_method | title }}</td>
-                    <td data-label="Referencia"><code class="ref-code">{{ order.payment_reference }}</code></td>
-                    <td data-label="Monto"><strong>${{ "%.2f"|format(order.amount) }}</strong></td>
-                    <td data-label="Afiliado">
-                        {% if order.affiliate %}
-                        <span class="aff-badge">{{ order.affiliate.code }}</span>
-                        {% else %}—{% endif %}
-                    </td>
-                    <td data-label="Estado">
-                        <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
-                        {% if order.status == 'pending' and order.payment_verified_at %}
-                        <span class="status-badge status-paid-pending" title="El pago ya se verificó: falta hacer la recarga">Pagada · falta entregar</span>
-                        {% endif %}
-                    </td>
-                    <td data-label="Fecha">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
-                    <td data-label="Acciones">
+                        <div class="admin-order-card__amount-wrap">
+                            <span class="admin-order-card__label">Monto</span>
+                            <strong class="admin-order-card__amount">${{ "%.2f"|format(order.amount) }}</strong>
+                        </div>
+                    </div>
+                    <div class="admin-order-card__grid">
+                        <div class="admin-order-card__item admin-order-card__item--wide">
+                            <span class="admin-order-card__label">Jugador</span>
+                            <div class="cell-stack">
+                                {% if order.player_id %}<span class="admin-order-card__player-id">{{ order.player_id }}</span>{% endif %}
+                                {% if order.player_nickname %}<small style="color:#22c55e;font-weight:600">{{ order.player_nickname }}</small>{% endif %}
+                                {% if order.zone_id %}<small>Zone: {{ order.zone_id }}</small>{% endif %}
+                                {% if order.email %}<span>{{ order.email }}</span>{% endif %}
+                                {% if order.phone %}
+                                <div class="customer-phone-row">
+                                    <span class="customer-phone-value">{{ order.phone }}</span>
+                                    <button type="button" class="btn-sm btn-whatsapp-admin" onclick="openAdminWhatsAppContact('{{ order.phone|e }}')">WhatsApp</button>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="admin-order-card__item">
+                            <span class="admin-order-card__label">Pago</span>
+                            <strong>{{ order.payment_method | title }}</strong>
+                        </div>
+                        <div class="admin-order-card__item">
+                            <span class="admin-order-card__label">Referencia</span>
+                            <code class="ref-code">{{ order.payment_reference }}</code>
+                        </div>
+                        <div class="admin-order-card__item admin-order-card__item--wide">
+                            <span class="admin-order-card__label">Afiliado</span>
+                            {% if order.affiliate %}<span class="aff-badge">{{ order.affiliate.code }}</span>{% else %}<span>—</span>{% endif %}
+                        </div>
+                    </div>
+                    <div class="admin-order-card__actions">
                         {% if order.status == 'pending' %}
                         {% set can_send_delivery_proof = not order.package.is_automated and (order.game.category.slug|lower != 'tarjetas') %}
                         <div class="action-btns" id="actions-{{ order.id }}"
@@ -187,13 +180,11 @@
                         {% else %}
                         <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Ver detalle</a>
                         {% endif %}
-                    </td>
-                </tr>
+                    </div>
+                </article>
                 {% else %}
-                <tr><td colspan="10" class="empty-row">{% if search_query or date_from or date_to or package_id or service_id or game_id %}No hay órdenes que coincidan con los filtros aplicados.{% else %}No hay órdenes.{% endif %}</td></tr>
+                <div class="empty-row">{% if search_query or date_from or date_to or package_id or service_id or game_id %}No hay órdenes que coincidan con los filtros aplicados.{% else %}No hay órdenes.{% endif %}</div>
                 {% endfor %}
-            </tbody>
-        </table>
     </div>
 
     {% if total_pages > 1 %}
@@ -372,7 +363,7 @@ document.getElementById('whatsAppComposeForm').addEventListener('submit', functi
 
 function _renderOrderRow(o) {
     var playerBits = '';
-    if (o.player_id) playerBits += '<span>' + _escapeHtml(o.player_id) + '</span>';
+    if (o.player_id) playerBits += '<span class="admin-order-card__player-id">' + _escapeHtml(o.player_id) + '</span>';
     if (o.player_nickname) playerBits += '<small style="color:#22c55e;font-weight:600">' + _escapeHtml(o.player_nickname) + '</small>';
     if (o.zone_id) playerBits += '<small>Zone: ' + _escapeHtml(o.zone_id) + '</small>';
     if (o.email) playerBits += '<span>' + _escapeHtml(o.email) + '</span>';
@@ -403,23 +394,26 @@ function _renderOrderRow(o) {
         actions = '<a href="/admin/orders/' + o.id + '" class="btn-sm btn-outline">Ver detalle</a>';
     }
 
-    var html = '';
-    html += '<tr data-order-id="' + o.id + '">';
-    html += '<td><div class="cell-stack"><span class="order-num">#' + _escapeHtml(o.order_number) + '</span><small>ID ' + _escapeHtml(o.id) + '</small></div></td>';
-    html += '<td><div class="cell-stack"><span>' + _escapeHtml(o.game) + '</span><small>' + _escapeHtml(o.package) + '</small></div></td>';
-    html += '<td><div class="cell-stack">' + playerBits + '</div></td>';
-    html += '<td>' + _escapeHtml(o.payment_method) + '</td>';
-    html += '<td><code class="ref-code">' + _escapeHtml(o.payment_reference) + '</code></td>';
-    html += '<td><strong>$' + (Number(o.amount || 0).toFixed(2)) + '</strong></td>';
-    html += '<td>' + aff + '</td>';
     var statusHtml = '<span class="status-badge ' + _escapeHtml(o.status_class) + '">' + _escapeHtml(o.status_label) + '</span>';
     if (o.status === 'pending' && o.payment_verified) {
         statusHtml += ' <span class="status-badge status-paid-pending" title="El pago ya se verificó: falta hacer la recarga">Pagada · falta entregar</span>';
     }
-    html += '<td>' + statusHtml + '</td>';
-    html += '<td>' + _escapeHtml(o.created_at) + '</td>';
-    html += '<td>' + actions + '</td>';
-    html += '</tr>';
+
+    var html = '';
+    html += '<article class="admin-order-card" data-order-id="' + o.id + '">';
+    html += '<div class="admin-order-card__top"><div class="admin-order-card__identity">';
+    html += '<div class="admin-order-card__title-row"><span class="admin-order-card__game">' + _escapeHtml(o.game) + '</span>' + statusHtml + '</div>';
+    html += '<div class="admin-order-card__package">' + _escapeHtml(o.package) + '</div>';
+    html += '<div class="admin-order-card__meta"><span class="order-num">#' + _escapeHtml(o.order_number) + '</span><span>ID ' + _escapeHtml(o.id) + '</span><span class="admin-order-card__date">' + _escapeHtml(o.created_at) + '</span></div>';
+    html += '</div><div class="admin-order-card__amount-wrap"><span class="admin-order-card__label">Monto</span><strong class="admin-order-card__amount">$' + (Number(o.amount || 0).toFixed(2)) + '</strong></div></div>';
+    html += '<div class="admin-order-card__grid">';
+    html += '<div class="admin-order-card__item admin-order-card__item--wide"><span class="admin-order-card__label">Jugador</span><div class="cell-stack">' + playerBits + '</div></div>';
+    html += '<div class="admin-order-card__item"><span class="admin-order-card__label">Pago</span><strong>' + _escapeHtml(o.payment_method) + '</strong></div>';
+    html += '<div class="admin-order-card__item"><span class="admin-order-card__label">Referencia</span><code class="ref-code">' + _escapeHtml(o.payment_reference) + '</code></div>';
+    html += '<div class="admin-order-card__item admin-order-card__item--wide"><span class="admin-order-card__label">Afiliado</span>' + (o.affiliate_code ? aff : '<span>—</span>') + '</div>';
+    html += '</div>';
+    html += '<div class="admin-order-card__actions">' + actions + '</div>';
+    html += '</article>';
     return html;
 }
 
@@ -521,7 +515,7 @@ function _kickAutoVerification(scopeEl) {
 
     function getMaxId() {
         var max = 0;
-        tbody.querySelectorAll('tr[data-order-id]').forEach(function(tr) {
+        tbody.querySelectorAll('article[data-order-id]').forEach(function(tr) {
             var v = parseInt(tr.getAttribute('data-order-id') || '0', 10);
             if (v > max) max = v;
         });
@@ -534,7 +528,7 @@ function _kickAutoVerification(scopeEl) {
        con lo que el filtro "Pendientes" consulta en la DB. */
     function refreshPendingRows() {
         var ids = [];
-        tbody.querySelectorAll('tr[data-order-id]').forEach(function(tr) {
+        tbody.querySelectorAll('article[data-order-id]').forEach(function(tr) {
             var badge = tr.querySelector('.status-badge');
             if (badge && badge.classList.contains('status-pending')) {
                 ids.push(tr.getAttribute('data-order-id'));
@@ -546,7 +540,7 @@ function _kickAutoVerification(scopeEl) {
             .then(function(data) {
                 if (!data || !data.ok || !Array.isArray(data.orders)) return;
                 data.orders.forEach(function(o) {
-                    var tr = tbody.querySelector('tr[data-order-id="' + o.id + '"]');
+                    var tr = tbody.querySelector('article[data-order-id="' + o.id + '"]');
                     if (!tr) return;
                     if (o.status === 'pending') {
                         // Sigue pendiente: solo reflejar el pago verificado si apareció
@@ -588,20 +582,17 @@ function _kickAutoVerification(scopeEl) {
                 if (!data || !data.ok || !Array.isArray(data.orders) || data.orders.length === 0) return;
 
                 var emptyRow = tbody.querySelector('.empty-row');
-                if (emptyRow) {
-                    var emptyParent = emptyRow.closest('tr');
-                    if (emptyParent) emptyParent.remove();
-                }
+                if (emptyRow) emptyRow.remove();
 
                 var html = '';
                 data.orders.forEach(function(o) {
-                    if (tbody.querySelector('tr[data-order-id="' + o.id + '"]')) return;
+                    if (tbody.querySelector('article[data-order-id="' + o.id + '"]')) return;
                     html += _renderOrderRow(o);
                 });
                 if (!html) return;
 
                 tbody.insertAdjacentHTML('afterbegin', html);
-                var rows = tbody.querySelectorAll('tr[data-order-id]');
+                var rows = tbody.querySelectorAll('article[data-order-id]');
                 for (var index = rows.length - 1; index >= pageSize; index -= 1) {
                     rows[index].remove();
                 }

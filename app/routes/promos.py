@@ -1,12 +1,13 @@
 """Rutas públicas de las 3 promociones: Recarga Acumulada, Sorteo Diario y
 Adivina el Número. Cada una tiene una página (elige juego si hay más de
 uno activo) y un mini-API JSON que la página consume con fetch()."""
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, url_for
 
 from ..utils.locks import check_rate_limit
 from ..utils.promos import (
     get_accumulated_enabled_games, get_accumulated_progress_state,
     get_guess_enabled_games, get_guess_public_state, submit_guess,
+    HORDE_BANNED_MESSAGE, HordeNotEnoughPoints, get_horde_config, get_horde_enabled_games, is_horde_banned, get_horde_public_state, start_horde_run, finish_horde_run,
     get_raffle_enabled_games, get_raffle_public_state, get_raffle_replay_state,
     get_raffle_show_state, register_raffle_entry,
     run_daily_raffle_draws,
@@ -102,6 +103,17 @@ def sorteo_show():
     player_id = (request.args.get('player_id') or '').strip()
     if not game_id:
         return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
+
+    # Quien está viendo la página en vivo consulta este endpoint cada 20s
+    # (ver cargarEstado() en sorteo.html) — si ya se cumplió la hora del
+    # sorteo pero nadie se registró justo en ese momento (que es lo único
+    # que hasta ahora disparaba run_daily_raffle_draws al instante, ver
+    # sorteo_registrar), el sorteo se quedaba esperando al próximo tick del
+    # scheduler en segundo plano (hasta 20s más) antes de correr. Disparar
+    # el chequeo también aquí hace que corra apenas alguien esté mirando,
+    # en vez de depender solo de esa otra coincidencia.
+    run_daily_raffle_draws()
+
     state = get_raffle_show_state(game_id, player_id)
     return jsonify({'ok': True, **state})
 
@@ -194,4 +206,96 @@ def adivina_intentar():
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
 
+    return jsonify({'ok': True, **result})
+
+
+# ─── Hordas de Diamantes ─────────────────────────────────────────────────────
+
+HORDAS_START_RATE_LIMIT_PER_MINUTE = 10
+HORDAS_FINISH_RATE_LIMIT_PER_MINUTE = 20
+
+
+@promos_bp.route('/hordas')
+def hordas_page():
+    from ..routes.verify import verifiable_game_ids
+
+    from ..utils.promos import get_horde_characters
+
+    games = get_horde_enabled_games()
+    game = _selected_game(games, request.args.get('game_id', type=int))
+    verifiable = bool(game) and game.id in verifiable_game_ids()
+    config = get_horde_config(game.id) if game else None
+    # Solo los personajes que tienen imagen cargada se pueden elegir.
+    characters = [
+        {'slot': c['slot'], 'name': c['name'], 'mode': c['mode'],
+         'url': url_for('static', filename='uploads/' + c['image']),
+         'cover_url': url_for('static', filename='uploads/' + (c['cover'] or c['image']))}
+        for c in get_horde_characters() if c['image']
+    ]
+    return render_template(
+        'promos/hordas.html', games=games, game=game, verifiable=verifiable,
+        characters=characters,
+        horde_extra_cost=int(config.points_per_extra_run or 0) if config else 0,
+    )
+
+
+@promos_bp.route('/api/hordas/estado')
+def hordas_estado():
+    game_id = request.args.get('game_id', type=int)
+    player_id = (request.args.get('player_id') or '').strip()
+    if not game_id:
+        return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
+    return jsonify({'ok': True, **get_horde_public_state(game_id, player_id)})
+
+
+@promos_bp.route('/api/hordas/posicion')
+def hordas_posicion():
+    from ..utils.promos import get_horde_player_position
+
+    if not check_rate_limit(f'hordas_lookup_ip:{_client_ip()}', 30, 60):
+        return jsonify({'ok': False, 'error': 'Demasiadas búsquedas seguidas. Espera un momento.'}), 429
+    game_id = request.args.get('game_id', type=int)
+    player_id = (request.args.get('player_id') or '').strip()
+    if not game_id or not player_id:
+        return jsonify({'ok': False, 'error': 'Escribe tu ID primero.'}), 400
+    if is_horde_banned(game_id, player_id):
+        return jsonify({'ok': False, 'banned': True, 'error': HORDE_BANNED_MESSAGE}), 403
+    return jsonify({'ok': True, 'position': get_horde_player_position(game_id, player_id)})
+
+
+@promos_bp.route('/api/hordas/iniciar', methods=['POST'])
+def hordas_iniciar():
+    ip = _client_ip()
+    if not check_rate_limit(f'hordas_start_ip:{ip}', HORDAS_START_RATE_LIMIT_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'error': 'Demasiados intentos seguidos. Espera un momento.'}), 429
+
+    data = request.get_json(silent=True) or {}
+    try:
+        game_id = int(data.get('game_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
+
+    try:
+        result = start_horde_run(game_id, data.get('player_id'), ip=ip, use_points=bool(data.get('use_points')))
+    except HordeNotEnoughPoints as exc:
+        return jsonify({'ok': False, 'code': 'no_points', 'error': str(exc), 'points_balance': exc.balance}), 400
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    return jsonify({'ok': True, **result})
+
+
+@promos_bp.route('/api/hordas/terminar', methods=['POST'])
+def hordas_terminar():
+    if not check_rate_limit(f'hordas_finish_ip:{_client_ip()}', HORDAS_FINISH_RATE_LIMIT_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'error': 'Demasiados intentos seguidos. Espera un momento.'}), 429
+
+    data = request.get_json(silent=True, force=True) or {}
+    try:
+        result = finish_horde_run(
+            data.get('token'), data.get('diamonds'), data.get('kills'),
+            wave=data.get('wave'), final_cleared=bool(data.get('final_cleared')),
+            replay=data.get('replay'),
+        )
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
     return jsonify({'ok': True, **result})

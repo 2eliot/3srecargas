@@ -53,6 +53,8 @@
                         <div class="cell-stack">
                             <strong>Base Bs/tasa: ${{ "%.2f"|format(pkg.price) }}</strong>
                             {% if pkg.usd_price is not none %}<small>USD exclusivo: ${{ "%.2f"|format(pkg.usd_price) }}</small>{% endif %}
+                            {% if pkg.bs_price is not none %}<small>Bs exclusivo: Bs {{ "%.0f"|format(pkg.bs_price) }}</small>{% endif %}
+                            {% if pkg.cost_usd is not none %}<small>Costo: ${{ "%.2f"|format(pkg.cost_usd) }}</small>{% endif %}
                             {% if pkg.points_reward is not none %}<small>⭐ {{ pkg.points_reward }} pts fijos</small>{% endif %}
                         </div>
                     </td>
@@ -74,7 +76,7 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-outline"
-                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }}, {{ 1 if pkg.image else 0 }}, '{{ pkg.announcement_type or '' }}', '{{ pkg.points_reward if pkg.points_reward is not none else '' }}')">
+                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }}, {{ 1 if pkg.image else 0 }}, '{{ pkg.announcement_type or '' }}', '{{ pkg.points_reward if pkg.points_reward is not none else '' }}', {{ (pkg.show_support_fallback if pkg.show_support_fallback is not none else true) | lower }}, '{{ pkg.bs_price if pkg.bs_price is not none else '' }}', '{{ pkg.cost_usd if pkg.cost_usd is not none else '' }}')">
                                 Editar
                             </button>
                             <form method="POST" action="{{ url_for('admin_bp.package_delete', pkg_id=pkg.id) }}" style="display:inline">
@@ -127,6 +129,11 @@
                     <input type="number" name="usd_price" step="0.01" min="0.01" placeholder="Opcional: 1.49">
                 </div>
                 <div class="form-group">
+                    <label>Precio exclusivo en Bs</label>
+                    <input type="number" name="bs_price" step="1" min="1" placeholder="Opcional: 350">
+                    <small class="form-hint">Si lo llenas, se cobra este monto fijo en Bs sin usar la tasa</small>
+                </div>
+                <div class="form-group">
                     <label>Orden</label>
                     <input type="number" name="sort_order" value="100" min="1">
                 </div>
@@ -134,6 +141,11 @@
                     <label>Puntos que otorga</label>
                     <input type="number" name="points_reward" step="1" min="0" placeholder="Opcional: 13">
                     <small class="form-hint">Vacío = se calcula con los puntos por $1 de la sección Puntos</small>
+                </div>
+                <div class="form-group">
+                    <label>Costo del paquete (USD)</label>
+                    <input type="number" name="cost_usd" step="0.01" min="0" placeholder="Opcional: 0.70">
+                    <small class="form-hint">Lo que te cuesta a ti conseguirlo. Solo se usa para calcular ganancia en Estadísticas, el cliente nunca lo ve.</small>
                 </div>
                 <div class="form-group form-span-2">
                     <label>Descripción</label>
@@ -156,6 +168,16 @@
                 <label class="check-label">
                     <input type="checkbox" name="is_automated"> Paquete automatizado ⚡ (usa stock de PINs)
                 </label>
+            </div>
+            <div class="switch-field" style="margin-top:14px;">
+                <label class="switch-toggle">
+                    <input type="checkbox" name="show_support_fallback" checked>
+                    <span class="switch-slider"></span>
+                </label>
+                <div>
+                    <span class="switch-field-label">Mostrar tarjeta "Finaliza con soporte"</span>
+                    <small class="switch-field-hint">Si se apaga, esta tarjeta no aparecerá en el estado de la orden para este paquete.</small>
+                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('addPkgModal')" class="btn-secondary">Cancelar</button>
@@ -188,6 +210,11 @@
                     <input type="number" name="usd_price" id="editPkgUsdPrice" step="0.01" min="0.01">
                 </div>
                 <div class="form-group">
+                    <label>Precio exclusivo en Bs</label>
+                    <input type="number" name="bs_price" id="editPkgBsPrice" step="1" min="1" placeholder="Opcional: 350">
+                    <small class="form-hint">Si lo llenas, se cobra este monto fijo en Bs sin usar la tasa</small>
+                </div>
+                <div class="form-group">
                     <label>Orden</label>
                     <input type="number" name="sort_order" id="editPkgOrder" min="1">
                 </div>
@@ -195,6 +222,11 @@
                     <label>Puntos que otorga</label>
                     <input type="number" name="points_reward" id="editPkgPoints" step="1" min="0" placeholder="Opcional: 13">
                     <small class="form-hint">Vacío = se calcula con los puntos por $1 de la sección Puntos</small>
+                </div>
+                <div class="form-group">
+                    <label>Costo del paquete (USD)</label>
+                    <input type="number" name="cost_usd" id="editPkgCostUsd" step="0.01" min="0" placeholder="Opcional: 0.70">
+                    <small class="form-hint">Lo que te cuesta a ti conseguirlo. Solo se usa para calcular ganancia en Estadísticas, el cliente nunca lo ve.</small>
                 </div>
                 <div class="form-group">
                     <label>Nueva Imagen (opcional)</label>
@@ -224,6 +256,16 @@
                     <input type="checkbox" name="is_active" id="editPkgActive"> Activo
                 </label>
             </div>
+            <div class="switch-field" style="margin-top:14px;">
+                <label class="switch-toggle">
+                    <input type="checkbox" name="show_support_fallback" id="editPkgSupportFallback">
+                    <span class="switch-slider"></span>
+                </label>
+                <div>
+                    <span class="switch-field-label">Mostrar tarjeta "Finaliza con soporte"</span>
+                    <small class="switch-field-hint">Si se apaga, esta tarjeta no aparecerá en el estado de la orden para este paquete.</small>
+                </div>
+            </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('editPkgModal')" class="btn-secondary">Cancelar</button>
                 <button type="submit" class="btn-primary">Actualizar</button>
@@ -238,15 +280,18 @@
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive, hasImage, announcementType, pointsReward) {
+function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive, hasImage, announcementType, pointsReward, showSupportFallback, bsPrice, costUsd) {
     document.getElementById('editPkgForm').action = '/admin/packages/' + id + '/edit';
     document.getElementById('editPkgName').value = name;
     document.getElementById('editPkgPrice').value = price;
     document.getElementById('editPkgUsdPrice').value = usdPrice || '';
+    document.getElementById('editPkgBsPrice').value = bsPrice || '';
+    document.getElementById('editPkgCostUsd').value = costUsd || '';
     document.getElementById('editPkgDesc').value = desc;
     document.getElementById('editPkgOrder').value = order;
     document.getElementById('editPkgAuto').checked = isAuto;
     document.getElementById('editPkgActive').checked = isActive;
+    document.getElementById('editPkgSupportFallback').checked = showSupportFallback;
     document.getElementById('editPkgRemoveImage').checked = false;
     document.getElementById('editPkgRemoveImageWrap').style.display = hasImage ? 'inline-flex' : 'none';
     document.getElementById('editPkgAnnouncementType').value = announcementType || '';

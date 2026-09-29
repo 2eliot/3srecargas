@@ -83,6 +83,62 @@
             border-color: rgba(255,0,0,0.65);
             box-shadow: 0 0 0 3px rgba(255,0,0,0.15), inset 0 2px 4px rgba(0,0,0,0.1);
         }
+
+        /* ── Grid del sorteo: mismo estilo de animación del gif de
+           referencia (saltos entre celdas hasta aterrizar en el ganador),
+           pero con la paleta roja/negra propia del sitio en vez de la del
+           gif. 4 columnas fijas, pensado para el ancho móvil. */
+        .raffle-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 6px;
+            width: 100%;
+            max-height: 340px;
+            overflow-y: auto;
+            padding: 2px;
+            scroll-behavior: smooth;
+            scrollbar-width: none;      /* Firefox */
+            -ms-overflow-style: none;   /* Edge/IE viejos */
+        }
+        .raffle-grid::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+        .raffle-cell {
+            background: rgba(0,0,0,0.45);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 6px 2px;
+            min-height: 54px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease, opacity .2s ease;
+        }
+        .raffle-cell-ticket { font-size: 8.5px; font-weight: 800; letter-spacing: .02em; color: #ff3b3b; }
+        .raffle-cell-name {
+            font-size: 9px; font-weight: 800; color: #fff;
+            max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .raffle-cell-id { font-size: 7.5px; font-weight: 600; color: #94a3b8; }
+        .raffle-cell.is-active {
+            border-color: rgba(255,60,60,0.95);
+            background: linear-gradient(135deg, rgba(255,20,20,0.4), rgba(255,0,0,0.12));
+            box-shadow: 0 0 14px rgba(255,0,0,0.65);
+            transform: scale(1.08);
+            z-index: 2;
+        }
+        .raffle-cell.is-active .raffle-cell-ticket,
+        .raffle-cell.is-active .raffle-cell-name { color: #fff; }
+        .raffle-cell.is-winner {
+            border-color: rgba(251,191,36,0.95);
+            background: linear-gradient(135deg, rgba(251,191,36,0.4), rgba(251,191,36,0.1));
+            box-shadow: 0 0 16px rgba(251,191,36,0.7);
+            transform: scale(1.05);
+        }
+        .raffle-cell.is-winner .raffle-cell-ticket,
+        .raffle-cell.is-winner .raffle-cell-name { color: #fde68a; }
+
+        #registered-list-grid.is-collapsed { max-height: 120px; }
     </style>
 </head>
 <body class="bg-black text-slate-100 flex justify-center">
@@ -152,15 +208,16 @@
             </div>
 
             <div id="slot-section" class="glass-card w-full p-3.5 rounded-2xl hidden flex flex-col items-center gap-3 custom-glow">
-                <div class="relative w-full bg-gradient-to-b from-[#000000] to-[#030303] border-2 border-red-600/50 rounded-xl shadow-2xl overflow-hidden flex flex-col items-center p-2">
-                    <div class="absolute top-2 left-2.5 flex items-center gap-1 text-[10px] text-red-400/90 font-bold tracking-wider uppercase truncate max-w-[65%]">
-                        <span>🎰</span> <span id="timer-display" class="truncate">Iniciando giro...</span>
+                <div class="relative w-full bg-gradient-to-b from-[#000000] to-[#030303] border-2 border-red-600/50 rounded-xl shadow-2xl overflow-hidden flex flex-col items-center p-2.5">
+                    <div class="w-full flex items-center justify-between mb-2 px-0.5">
+                        <div class="flex items-center gap-1 text-[9px] text-red-400/90 font-bold tracking-normal uppercase whitespace-nowrap min-w-0 max-w-[70%]">
+                            <span>🎰</span> <span id="timer-display" class="truncate">Iniciando giro...</span>
+                        </div>
+                        <div class="text-[10px] text-amber-400 font-bold tracking-widest flex items-center gap-1">
+                            <span id="reward-label-badge">--</span>
+                        </div>
                     </div>
-                    <div class="absolute top-2 right-2.5 text-[10px] text-amber-400 font-bold tracking-widest flex items-center gap-1">
-                        <span id="reward-label-badge">--</span>
-                    </div>
-                    <!-- Canvas adaptable optimizado mobile -->
-                    <canvas id="slotCanvas" width="360" height="140" class="w-full h-[140px] rounded-lg mt-5 bg-black object-contain"></canvas>
+                    <div id="raffleGrid" class="raffle-grid"></div>
                 </div>
                 <button id="spin-btn" disabled class="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-extrabold text-xs py-3 rounded-xl shadow-lg shadow-red-600/30 opacity-70 cursor-not-allowed uppercase tracking-wider border border-red-500/40 flex items-center justify-center gap-1.5">
                     <span>🔄</span> Sorteo Automático en Progreso...
@@ -232,6 +289,19 @@
                 </div>
             </div>
 
+            <div id="registered-list-container" class="glass-card w-full p-3.5 rounded-2xl hidden">
+                <div class="flex justify-between items-center mb-3 border-b border-zinc-900 pb-2">
+                    <h2 class="text-xs font-extrabold text-white flex items-center gap-1.5">
+                        <span>👥</span> Inscritos (<span id="registered-count" class="text-red-500 font-black">0</span>)
+                    </h2>
+                    <span class="text-[9px] text-slate-500 font-semibold uppercase">ID parcialmente oculto</span>
+                </div>
+                <div id="registered-list-grid" class="raffle-grid is-collapsed"></div>
+                <button type="button" id="registered-list-toggle" class="w-full mt-2 text-[10px] font-bold uppercase tracking-wider text-red-400 bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 rounded-lg py-1.5">
+                    Ver más
+                </button>
+            </div>
+
             <div id="today-winners-container" class="glass-card w-full p-3.5 rounded-2xl">
                 <div class="flex justify-between items-center mb-3 border-b border-zinc-900 pb-2">
                     <div>
@@ -297,7 +367,7 @@
                 <p id="replay-day-label" class="text-[10px] text-slate-400 mb-3">--</p>
 
                 <div class="bg-black border border-red-500/40 rounded-xl p-2.5 shadow-inner relative overflow-hidden">
-                    <canvas id="replayCanvas" width="340" height="140" class="w-full h-[140px] rounded-lg bg-black object-contain"></canvas>
+                    <div id="replayGrid" class="raffle-grid" style="max-height:280px;"></div>
                 </div>
                 <p id="replay-status" class="text-[10px] text-slate-400 mt-2.5 min-h-[14px]">Cargando participantes...</p>
             </div>
@@ -320,36 +390,18 @@
         let isSpinning = false;
         let registeredIdsSet = new Set();
         let pollTimer = null;
-        // Solo se anima la ruleta para quien estuvo en la página viendo el
-        // "registro abierto" o "sorteo en vivo" antes de que hubiera
-        // ganadores — así nadie que entra después de que ya se sorteó ve
-        // una repetición de la animación, solo el registro + el historial.
-        let witnessedLiveTransition = false;
 
         function switchGame(id) {
             const url = new URL(window.location.href);
             url.searchParams.set('game_id', id);
             window.location.href = url.toString();
         }
-        const canvas = document.getElementById('slotCanvas');
-        const ctx = canvas ? canvas.getContext('2d') : null;
 
-        function configurarCanvasHD() {
-            if (!canvas) return;
-            const dpr = window.devicePixelRatio || 1;
-            const displayWidth = canvas.clientWidth || 340;
-            const displayHeight = 140;
-
-            canvas.width = displayWidth * dpr;
-            canvas.height = displayHeight * dpr;
-
-            ctx.scale(dpr, dpr);
-            canvas.style.width = displayWidth + 'px';
-            canvas.style.height = displayHeight + 'px';
+        function escapeHtml(str) {
+            return String(str == null ? '' : str).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
         }
-
-        window.addEventListener('resize', configurarCanvasHD);
-        configurarCanvasHD();
 
         function obtenerFechaActual() {
             const options = { timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'long' };
@@ -374,21 +426,6 @@
             return `${diaCap} ${fechaStr}, ${horaStr}`;
         }
 
-        function drawStaticDisplay(text) {
-            if (!ctx) return;
-            const width = canvas.width / (window.devicePixelRatio || 1);
-            const height = canvas.height / (window.devicePixelRatio || 1);
-
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0, 0, width, height);
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 13px Outfit, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(text, width / 2, height / 2);
-        }
-
         function lanzarConfetiGanador() {
             if (typeof confetti === 'function') {
                 confetti({
@@ -410,9 +447,9 @@
                 if (winners[i]) {
                     html += `<div class="bg-[#000000] border border-red-500/40 rounded-xl p-2.5 text-center flex items-center justify-between shadow animate-pulse">
                                 <span class="text-[9px] text-red-400 font-extrabold uppercase">👑 #${i+1}</span>
-                                <span class="text-xs font-black text-amber-400">Ticket #${winners[i].ticket}</span>
-                                <span class="text-[11px] font-bold text-white truncate max-w-[90px]">${winners[i].name}</span>
-                                <span class="text-[9px] font-mono text-slate-300">ID: ${winners[i].id}</span>
+                                <span class="text-xs font-black text-amber-400">Ticket #${escapeHtml(winners[i].ticket)}</span>
+                                <span class="text-[11px] font-bold text-white truncate max-w-[90px]">${escapeHtml(winners[i].name)}</span>
+                                <span class="text-[9px] font-mono text-slate-300">ID: ${escapeHtml(winners[i].id)}</span>
                            </div>`;
                 } else {
                     html += `<div class="bg-[#000000] border border-zinc-900 rounded-xl p-2 text-center text-slate-500 text-xs flex items-center justify-between">
@@ -441,9 +478,9 @@
                     badgesHtml += `
                         <div class="bg-black border border-red-500/30 p-2 rounded-lg text-center flex items-center justify-between shadow">
                             <span class="text-[9px] text-red-400 font-extrabold uppercase">👑 #${index + 1}</span>
-                            <span class="text-[11px] font-black text-amber-400">Ticket #${w.ticket_number}</span>
-                            <span class="text-[10px] font-bold text-white truncate max-w-[90px]">${w.name || 'Jugador'}</span>
-                            <span class="text-[9px] font-mono text-slate-400">ID: ${w.player_id}</span>
+                            <span class="text-[11px] font-black text-amber-400">Ticket #${escapeHtml(w.ticket_number)}</span>
+                            <span class="text-[10px] font-bold text-white truncate max-w-[90px]">${escapeHtml(w.name || 'Jugador')}</span>
+                            <span class="text-[9px] font-mono text-slate-400">ID: ${escapeHtml(w.player_id)}</span>
                         </div>
                     `;
                 });
@@ -453,9 +490,9 @@
                     <div class="bg-black border border-zinc-900 p-2.5 rounded-xl shadow">
                         <div class="flex items-center justify-between border-b border-zinc-900 pb-1.5">
                             <div class="flex items-center gap-1.5 text-white font-bold text-[11px] truncate">
-                                <span>🏆</span> <span class="truncate">${dia.day_key}</span>
+                                <span>🏆</span> <span class="truncate">${escapeHtml(dia.day_key)}</span>
                             </div>
-                            <button onclick="abrirRepeticion('${dia.day_key}')" class="text-[9px] bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full font-bold uppercase tracking-wide flex items-center gap-1 flex-shrink-0">
+                            <button onclick="abrirRepeticion('${escapeHtml(dia.day_key)}')" class="text-[9px] bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-full font-bold uppercase tracking-wide flex items-center gap-1 flex-shrink-0">
                                 <span>🎬</span> Ver repetición
                             </button>
                         </div>
@@ -492,10 +529,12 @@
                     relojEl.innerText = '00h 00m 00s';
                     if (!autoReloadScheduled) {
                         autoReloadScheduled = true;
-                        // Pequeño margen para que el servidor (que revisa
-                        // el sorteo cada ~20s en segundo plano) ya haya
-                        // alcanzado a correrlo y tenga ganadores listos.
-                        setTimeout(() => window.location.reload(), 4000);
+                        // Margen mínimo solo por si el reloj del navegador
+                        // va un poco adelantado: /api/sorteo/show ya corre
+                        // el sorteo al instante en la primera consulta si
+                        // hace falta (no depende de esperar al scheduler
+                        // de 20s), así que no hay que esperar de más aquí.
+                        setTimeout(() => window.location.reload(), 800);
                     }
                     return;
                 }
@@ -509,65 +548,179 @@
             nextDrawIntervalId = setInterval(actualizarReloj, 1000);
         }
 
-        // ── Animación del giro (idéntica a la original): recorre la lista real
-        // de participantes de hoy en el canvas y aterriza, cada 12s, sobre el
-        // ganador que YA decidió el servidor — el navegador nunca elige premios
-        // reales por su cuenta, solo dramatiza un resultado ya sellado.
+        // Oculta los 3 dígitos del medio del ID (privacidad en la lista
+        // pública de inscritos). "12345678" (8) -> "12***678"; IDs muy
+        // cortos (3 o menos) se ocultan por completo.
+        function maskId(id) {
+            const s = String(id == null ? '' : id);
+            if (s.length <= 3) return '*'.repeat(s.length);
+            const midStart = Math.floor((s.length - 3) / 2);
+            const midEnd = midStart + 3;
+            return s.slice(0, midStart) + '***' + s.slice(midEnd);
+        }
+
+        // ── Lista pública de inscritos de hoy: ticket + ID parcialmente
+        // oculto por privacidad. Se repinta cada vez que cargarEstado()
+        // trae la lista fresca de participantes.
+        // Colapsado = 2 filas de 4 columnas = 8 celdas visibles.
+        const REGISTERED_LIST_COLLAPSED_COUNT = 8;
+
+        function actualizarListaInscritos() {
+            const container = document.getElementById('registered-list-container');
+            const grid = document.getElementById('registered-list-grid');
+            const countEl = document.getElementById('registered-count');
+            const toggleBtn = document.getElementById('registered-list-toggle');
+            if (!container || !grid || !countEl) return;
+
+            countEl.innerText = participants.length;
+            if (!participants.length) {
+                container.classList.add('hidden');
+                grid.innerHTML = '';
+                return;
+            }
+            container.classList.remove('hidden');
+            grid.innerHTML = participants.map(p => `
+                <div class="raffle-cell">
+                    <span class="raffle-cell-ticket">#${escapeHtml(p.ticket)}</span>
+                    <span class="raffle-cell-name">${escapeHtml(p.name)}</span>
+                    <span class="raffle-cell-id">${escapeHtml(maskId(p.id))}</span>
+                </div>
+            `).join('');
+
+            if (toggleBtn) {
+                toggleBtn.classList.toggle('hidden', participants.length <= REGISTERED_LIST_COLLAPSED_COUNT);
+            }
+        }
+
+        const registeredListToggleBtn = document.getElementById('registered-list-toggle');
+        if (registeredListToggleBtn) {
+            registeredListToggleBtn.addEventListener('click', function () {
+                const grid = document.getElementById('registered-list-grid');
+                if (!grid) return;
+                const collapsed = grid.classList.toggle('is-collapsed');
+                registeredListToggleBtn.textContent = collapsed ? 'Ver más' : 'Ver menos';
+            });
+        }
+
+        // ── Grid del sorteo: una celda por participante real de hoy. Se
+        // construye una sola vez (mismo orden que participants, por ticket).
+        let raffleCells = [];
+        let raffleCellByTicket = new Map();
+
+        function buildRaffleGrid() {
+            const grid = document.getElementById('raffleGrid');
+            if (!grid || !participants.length) return;
+            grid.innerHTML = participants.map(p => `
+                <div class="raffle-cell" data-ticket="${escapeHtml(p.ticket)}">
+                    <span class="raffle-cell-ticket">#${escapeHtml(p.ticket)}</span>
+                    <span class="raffle-cell-name">${escapeHtml(p.name)}</span>
+                    <span class="raffle-cell-id">${escapeHtml(p.id)}</span>
+                </div>
+            `).join('');
+            raffleCells = Array.from(grid.querySelectorAll('.raffle-cell'));
+            raffleCellByTicket = new Map(raffleCells.map(c => [c.dataset.ticket, c]));
+        }
+
+        // Cada ganador tarda esto saltando entre las celdas antes de
+        // aterrizar (pedido explícito del cliente: 25s por ganador, no un
+        // total repartido entre todos). Aparte hay una pausa corta fija
+        // para mostrar el modal de "ganador acreditado" antes del siguiente.
+        const RAFFLE_SPIN_DURATION_MS = 25000;
+        const RAFFLE_PAUSE_DURATION_MS = 2000;
+
+        // Precalcula todos los saltos del barrido (arriba -> abajo, en orden)
+        // para que el ÚLTIMO salto caiga justo sobre el ganador: se ajusta la
+        // cantidad de saltos para que el recorrido termine en su casilla y
+        // se reparten en la duración con la misma desaceleración.
+        function buildHopSchedule(eligibleCells, winnerCell, durationMs) {
+            const L = eligibleCells.length;
+            let winnerIdx = eligibleCells.indexOf(winnerCell);
+            if (!L || winnerIdx < 0) return { times: [0], cells: [winnerCell] };
+
+            const interval = (p) => 75 + Math.pow(p, 3) * 225;
+            let nominal = 0;
+            for (let t = 0; t < durationMs; t += interval(t / durationMs)) nominal++;
+
+            const minHops = Math.max(1, Math.ceil(nominal * 0.95));
+            let hops = winnerIdx + 1;
+            while (hops < minHops) hops += L;
+
+            const raw = [];
+            let total = 0;
+            // Frenazo final para dar emoción: las últimas casillas antes del
+            // ganador se quedan cada vez más tiempo encendidas.
+            const SLOWDOWN_HOPS = 8;
+            for (let i = 0; i < hops; i++) {
+                const remaining = hops - 1 - i;
+                const slow = remaining < SLOWDOWN_HOPS ? Math.pow(SLOWDOWN_HOPS - remaining, 2) * 25 : 0;
+                const r = interval(i / hops) + slow;
+                raw.push(r);
+                total += r;
+            }
+            const scale = durationMs / total;
+            const times = [];
+            const cells = [];
+            let acc = 0;
+            for (let i = 0; i < hops; i++) {
+                times.push(acc);
+                cells.push(eligibleCells[i % L]);
+                acc += raw[i] * scale;
+            }
+            return { times, cells };
+        }
+
+        // ── Animación del giro: el resaltado salta entre las celdas reales
+        // de hoy (cada vez más lento) y aterriza sobre el ganador que YA
+        // decidió el servidor — el navegador nunca elige premios reales por
+        // su cuenta, solo dramatiza un resultado ya sellado. Los ganadores
+        // ya coronados quedan fuera del pool de saltos (no se repiten).
         function iniciarSorteo() {
             if (isSpinning || winners.length >= serverWinners.length || participants.length === 0) return;
+            if (!raffleCells.length) buildRaffleGrid();
+            if (!raffleCells.length) return;
 
             isSpinning = true;
             let startTime = null;
-            const duration = 12000;
+
+            const spinMs = RAFFLE_SPIN_DURATION_MS;
+            const pauseMs = RAFFLE_PAUSE_DURATION_MS;
 
             const timerDisplay = document.getElementById('timer-display');
-            let timeLeft = 12;
+            const ganadorNum = winners.length + 1;
+            let timeLeft = Math.ceil(spinMs / 1000);
+            timerDisplay.innerText = `Ganador #${ganadorNum} • ${timeLeft}s`;
             const countdownInterval = setInterval(() => {
                 timeLeft--;
                 if (timeLeft >= 0) {
-                    timerDisplay.innerText = `Sorteando... Restan ${timeLeft}s`;
+                    timerDisplay.innerText = `Ganador #${ganadorNum} • ${timeLeft}s`;
                 }
             }, 1000);
 
             const finalWinner = serverWinners[winners.length];
-            let virtualIndex = Math.floor(Math.random() * participants.length);
+            const winnerCell = raffleCellByTicket.get(String(finalWinner.ticket));
+            const eligibleCells = raffleCells.filter(c => !c.classList.contains('is-winner'));
+
+            let activeCell = null;
+            let hopIndex = -1;
+            const schedule = buildHopSchedule(eligibleCells, winnerCell, spinMs);
 
             function animate(timestamp) {
                 if (!startTime) startTime = timestamp;
                 const elapsed = timestamp - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-
-                const width = canvas.width / (window.devicePixelRatio || 1);
-                const height = canvas.height / (window.devicePixelRatio || 1);
-
-                ctx.fillStyle = '#000000';
-                ctx.fillRect(0, 0, width, height);
-
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
+                const progress = Math.min(elapsed / spinMs, 1);
 
                 if (progress >= 1) {
+                    if (activeCell && activeCell !== winnerCell) activeCell.classList.remove('is-active');
+                    if (winnerCell) {
+                        winnerCell.classList.remove('is-active');
+                        winnerCell.classList.add('is-winner');
+                        winnerCell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
                     clearInterval(countdownInterval);
                     winners.push(finalWinner);
                     const ganadorIndex = winners.length;
                     actualizarListaGanadores();
                     lanzarConfetiGanador();
-
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = '800 15px Outfit, sans-serif';
-                    ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
-                    ctx.shadowBlur = 12;
-                    ctx.fillText(`👑 ¡Ganador #${ganadorIndex}! Ticket #${finalWinner.ticket}`, width / 2, 38);
-
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = '700 12px Outfit, sans-serif';
-                    ctx.fillText(`${finalWinner.name} • ID: ${finalWinner.id}`, width / 2, 70);
-
-                    ctx.fillStyle = '#fbbf24';
-                    ctx.font = '700 11px Outfit, sans-serif';
-                    ctx.fillText(`(${rewardLabel} Acreditado)`, width / 2, 102);
-                    ctx.shadowBlur = 0;
-
                     isSpinning = false;
 
                     const modal = document.getElementById('countdown-modal');
@@ -578,12 +731,9 @@
                     document.getElementById('modal-winner-id').innerText = `ID: ${finalWinner.id}`;
                     modal.classList.remove('hidden');
 
-                    let delayLeft = 12;
-                    if (winners.length >= serverWinners.length) {
-                        modalCountdownLabel.innerText = "Sorteo Finalizado En";
-                    } else {
-                        modalCountdownLabel.innerText = "Siguiente Giro En";
-                    }
+                    let delayLeft = Math.max(Math.round(pauseMs / 1000), 1);
+                    modalCountdownLabel.innerText = (winners.length >= serverWinners.length)
+                        ? "Sorteo Finalizado En" : "Siguiente Giro En";
                     modalCountdown.innerText = `${delayLeft}s`;
 
                     const delayInterval = setInterval(() => {
@@ -594,9 +744,7 @@
                             clearInterval(delayInterval);
                             modal.classList.add('hidden');
                             if (winners.length < serverWinners.length) {
-                                if (!isSpinning) {
-                                    iniciarSorteo();
-                                }
+                                if (!isSpinning) iniciarSorteo();
                             } else {
                                 timerDisplay.innerText = `🏆 ¡SORTEO FINALIZADO! 🏆`;
                                 document.getElementById('live-panel').classList.add('hidden');
@@ -611,28 +759,20 @@
                     return;
                 }
 
-                let speedFactor = 45;
-                virtualIndex += speedFactor * 0.25;
-                const currentIndex = Math.floor(virtualIndex) % participants.length;
-                const itemPrev = participants[(currentIndex - 1 + participants.length) % participants.length];
-                const itemCurr = participants[currentIndex % participants.length];
-                const itemNext = participants[(currentIndex + 1) % participants.length];
-
-                if (itemPrev && itemCurr && itemNext) {
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                    ctx.font = '10px Outfit, sans-serif';
-                    ctx.fillText(`Ticket #${itemPrev.ticket} • ${itemPrev.name}`, width / 2, 28);
-
-                    ctx.fillStyle = '#ffffff';
-                    ctx.font = '800 14px Outfit, sans-serif';
-                    ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
-                    ctx.shadowBlur = 12;
-                    ctx.fillText(`Ticket #${itemCurr.ticket} • ${itemCurr.name} (ID: ${itemCurr.id})`, width / 2, 70);
-                    ctx.shadowBlur = 0;
-
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                    ctx.font = '10px Outfit, sans-serif';
-                    ctx.fillText(`Ticket #${itemNext.ticket} • ${itemNext.name}`, width / 2, 112);
+                let nextIndex = hopIndex;
+                while (nextIndex + 1 < schedule.times.length && schedule.times[nextIndex + 1] <= elapsed) nextIndex++;
+                if (nextIndex !== hopIndex) {
+                    hopIndex = nextIndex;
+                    if (activeCell) activeCell.classList.remove('is-active');
+                    activeCell = schedule.cells[hopIndex] || activeCell;
+                    if (activeCell) {
+                        activeCell.classList.add('is-active');
+                        // El contenedor sigue al cuadrado seleccionador: si
+                        // salta a una celda más abajo, baja solo; si salta a
+                        // una de más arriba, sube solo — nunca se queda
+                        // fuera de vista con listas largas (300+ inscritos).
+                        activeCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                    }
                 }
 
                 requestAnimationFrame(animate);
@@ -641,42 +781,36 @@
             requestAnimationFrame(animate);
         }
 
-        // ── Repetición de un sorteo ya pasado: usa su propio canvas y su
+        // ── Repetición de un sorteo ya pasado: usa su propio grid y su
         // propio estado (replayParticipants/replayWinners/replayIndex), sin
         // tocar nada del sorteo en vivo — solo dramatiza, con los mismos
         // datos reales de ese día, cómo fueron saliendo los ganadores.
-        let replayCanvas, replayCtx;
         let replayParticipants = [];
         let replayWinners = [];
         let replayIndex = 0;
         let replaySpinning = false;
         let replayAbortId = 0;
+        let replayCells = [];
+        let replayCellByTicket = new Map();
 
-        function configurarReplayCanvasHD() {
-            replayCanvas = document.getElementById('replayCanvas');
-            if (!replayCanvas) return;
-            replayCtx = replayCanvas.getContext('2d');
-            const dpr = window.devicePixelRatio || 1;
-            const displayWidth = replayCanvas.clientWidth || 320;
-            const displayHeight = 140;
-            replayCanvas.width = displayWidth * dpr;
-            replayCanvas.height = displayHeight * dpr;
-            replayCtx.scale(dpr, dpr);
-            replayCanvas.style.width = displayWidth + 'px';
-            replayCanvas.style.height = displayHeight + 'px';
-        }
-
-        function replayDrawStatic(text) {
-            if (!replayCtx) return;
-            const width = replayCanvas.width / (window.devicePixelRatio || 1);
-            const height = replayCanvas.height / (window.devicePixelRatio || 1);
-            replayCtx.fillStyle = '#000000';
-            replayCtx.fillRect(0, 0, width, height);
-            replayCtx.fillStyle = '#ffffff';
-            replayCtx.font = 'bold 13px Outfit, sans-serif';
-            replayCtx.textAlign = 'center';
-            replayCtx.textBaseline = 'middle';
-            replayCtx.fillText(text, width / 2, height / 2);
+        function buildReplayGrid() {
+            const grid = document.getElementById('replayGrid');
+            if (!grid) return;
+            if (!replayParticipants.length) {
+                grid.innerHTML = '';
+                replayCells = [];
+                replayCellByTicket = new Map();
+                return;
+            }
+            grid.innerHTML = replayParticipants.map(p => `
+                <div class="raffle-cell" data-ticket="${escapeHtml(p.ticket)}">
+                    <span class="raffle-cell-ticket">#${escapeHtml(p.ticket)}</span>
+                    <span class="raffle-cell-name">${escapeHtml(p.name)}</span>
+                    <span class="raffle-cell-id">${escapeHtml(p.id)}</span>
+                </div>
+            `).join('');
+            replayCells = Array.from(grid.querySelectorAll('.raffle-cell'));
+            replayCellByTicket = new Map(replayCells.map(c => [c.dataset.ticket, c]));
         }
 
         async function abrirRepeticion(dayKey) {
@@ -688,8 +822,8 @@
             modal.classList.remove('hidden');
             dayLabelEl.innerText = dayKey;
             statusEl.innerText = 'Cargando participantes...';
-            configurarReplayCanvasHD();
-            replayDrawStatic('Cargando...');
+            const gridEl = document.getElementById('replayGrid');
+            if (gridEl) gridEl.innerHTML = '';
 
             try {
                 const res = await fetch(`/promos/api/sorteo/replay?game_id=${GAME_ID}&day_key=${encodeURIComponent(dayKey)}`);
@@ -697,7 +831,6 @@
                 if (myAbortId !== replayAbortId) return; // el usuario ya cerró/abrió otra
                 if (!data.ok) {
                     statusEl.innerText = data.error || 'No se pudo cargar ese sorteo.';
-                    replayDrawStatic('Sin datos disponibles');
                     return;
                 }
                 replayParticipants = data.participants || [];
@@ -705,9 +838,9 @@
                 replayIndex = 0;
                 if (!replayParticipants.length || !replayWinners.length) {
                     statusEl.innerText = 'Ese día no tiene suficientes datos para repetir la animación.';
-                    replayDrawStatic('Sin datos disponibles');
                     return;
                 }
+                buildReplayGrid();
                 reproducirSiguienteGiroReplay(myAbortId);
             } catch (e) {
                 if (myAbortId !== replayAbortId) return;
@@ -727,92 +860,66 @@
 
             if (replayIndex >= replayWinners.length) {
                 statusEl.innerText = '🏁 Repetición finalizada.';
-                replayDrawStatic('🏁 ¡Repetición finalizada!');
                 return;
             }
 
             replaySpinning = true;
             const finalWinner = replayWinners[replayIndex];
-            const duration = 2600;
+            const duration = 2800;
             let startTime = null;
-            let virtualIndex = Math.floor(Math.random() * replayParticipants.length);
+            let activeCell = null;
+            const winnerCell = replayCellByTicket.get(String(finalWinner.ticket));
+            const eligibleCells = replayCells.filter(c => !c.classList.contains('is-winner'));
             statusEl.innerText = `Girando por el ganador #${replayIndex + 1} de ${replayWinners.length}...`;
+
+            let hopIndex = -1;
+            const schedule = buildHopSchedule(eligibleCells, winnerCell, duration);
 
             function animateReplay(timestamp) {
                 if (myAbortId !== replayAbortId) return;
                 if (!startTime) startTime = timestamp;
                 const elapsed = timestamp - startTime;
                 const progress = Math.min(elapsed / duration, 1);
-                const width = replayCanvas.width / (window.devicePixelRatio || 1);
-                const height = replayCanvas.height / (window.devicePixelRatio || 1);
-
-                replayCtx.fillStyle = '#000000';
-                replayCtx.fillRect(0, 0, width, height);
-                replayCtx.textAlign = 'center';
-                replayCtx.textBaseline = 'middle';
 
                 if (progress >= 1) {
+                    if (activeCell && activeCell !== winnerCell) activeCell.classList.remove('is-active');
+                    if (winnerCell) {
+                        winnerCell.classList.remove('is-active');
+                        winnerCell.classList.add('is-winner');
+                        winnerCell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
                     replaySpinning = false;
                     lanzarConfetiGanador();
-
-                    replayCtx.fillStyle = '#ffffff';
-                    replayCtx.font = '800 15px Outfit, sans-serif';
-                    replayCtx.shadowColor = 'rgba(255, 255, 255, 0.9)';
-                    replayCtx.shadowBlur = 12;
-                    replayCtx.fillText(`👑 ¡Ganador #${replayIndex + 1}! Ticket #${finalWinner.ticket}`, width / 2, 55);
-
-                    replayCtx.fillStyle = '#ffffff';
-                    replayCtx.font = '700 12px Outfit, sans-serif';
-                    replayCtx.fillText(`${finalWinner.name} • ID: ${finalWinner.id}`, width / 2, 85);
-                    replayCtx.shadowBlur = 0;
 
                     replayIndex++;
                     statusEl.innerText = replayIndex >= replayWinners.length
                         ? '🏆 ¡Último ganador! Terminando...'
                         : `👑 Ganador #${replayIndex} • siguiente en unos segundos...`;
 
-                    setTimeout(() => reproducirSiguienteGiroReplay(myAbortId), 2200);
+                    setTimeout(() => reproducirSiguienteGiroReplay(myAbortId), 1800);
                     return;
                 }
 
-                let speedFactor = 45;
-                virtualIndex += speedFactor * 0.25;
-                const currentIndex = Math.floor(virtualIndex) % replayParticipants.length;
-                const itemPrev = replayParticipants[(currentIndex - 1 + replayParticipants.length) % replayParticipants.length];
-                const itemCurr = replayParticipants[currentIndex % replayParticipants.length];
-                const itemNext = replayParticipants[(currentIndex + 1) % replayParticipants.length];
-
-                if (itemPrev && itemCurr && itemNext) {
-                    replayCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                    replayCtx.font = '10px Outfit, sans-serif';
-                    replayCtx.fillText(`Ticket #${itemPrev.ticket} • ${itemPrev.name}`, width / 2, 28);
-
-                    replayCtx.fillStyle = '#ffffff';
-                    replayCtx.font = '800 14px Outfit, sans-serif';
-                    replayCtx.shadowColor = 'rgba(255, 255, 255, 0.9)';
-                    replayCtx.shadowBlur = 12;
-                    replayCtx.fillText(`Ticket #${itemCurr.ticket} • ${itemCurr.name} (ID: ${itemCurr.id})`, width / 2, 70);
-                    replayCtx.shadowBlur = 0;
-
-                    replayCtx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                    replayCtx.font = '10px Outfit, sans-serif';
-                    replayCtx.fillText(`Ticket #${itemNext.ticket} • ${itemNext.name}`, width / 2, 112);
+                let nextIndex = hopIndex;
+                while (nextIndex + 1 < schedule.times.length && schedule.times[nextIndex + 1] <= elapsed) nextIndex++;
+                if (nextIndex !== hopIndex) {
+                    hopIndex = nextIndex;
+                    if (activeCell) activeCell.classList.remove('is-active');
+                    activeCell = schedule.cells[hopIndex] || activeCell;
+                    if (activeCell) {
+                        activeCell.classList.add('is-active');
+                        // El contenedor sigue al cuadrado seleccionador: si
+                        // salta a una celda más abajo, baja solo; si salta a
+                        // una de más arriba, sube solo — nunca se queda
+                        // fuera de vista con listas largas (300+ inscritos).
+                        activeCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                    }
                 }
 
                 requestAnimationFrame(animateReplay);
             }
 
             requestAnimationFrame(animateReplay);
-        }
-
-        function showConcludedState() {
-            document.getElementById('live-panel').classList.add('hidden');
-            document.getElementById('slot-section').classList.add('hidden');
-            document.getElementById('today-winners-container').classList.add('hidden');
-            document.getElementById('history-section').classList.remove('hidden');
-            document.getElementById('register-section').classList.remove('hidden');
-            winners = serverWinners.slice();
-            actualizarListaGanadores();
         }
 
         function registrarNuevoJugador() {
@@ -951,6 +1058,7 @@
             rewardPerWinnerValue = parseInt(rewardLabel) || 0;
             participants = data.participants || [];
             serverWinners = data.winners_show || [];
+            actualizarListaInscritos();
 
             document.getElementById('page-title').innerText = `🎲 SORTEO DIARIO • ${rewardLabel} c/u`;
             document.getElementById('schedule-sub').innerHTML =
@@ -966,42 +1074,40 @@
             generarHistorial(data.history);
 
             if (data.drawn) {
-                if (!witnessedLiveTransition && winners.length === 0) {
-                    // Ya se sorteó y esta pestaña nunca vio el "en vivo"
-                    // antes de que hubiera ganadores: llegó tarde, así que
-                    // ve directo el resultado (registro + historial), no la
-                    // animación completa de un sorteo que ya pasó.
-                    showConcludedState();
-                } else if (!isSpinning && winners.length === 0) {
+                // Aunque el sorteo ya haya corrido (llegaste después de la
+                // hora, o recargaste la página), esta pestaña todavía no vio
+                // la animación con sus propios ojos (winners.length === 0):
+                // se reproduce igual, saltando por el grid real hasta
+                // aterrizar en cada ganador ya decidido — nunca se salta
+                // directo al resultado.
+                if (!isSpinning && winners.length === 0) {
                     document.getElementById('slot-section').classList.remove('hidden');
                     document.getElementById('register-section').classList.add('hidden');
                     document.getElementById('countdown-timer').innerText = '✨ ¡EN PROGRESO! ✨';
-                    setTimeout(() => iniciarSorteo(), 1200);
+                    buildRaffleGrid();
+                    setTimeout(() => iniciarSorteo(), 500);
                 }
             } else if (data.is_draw_time) {
                 // Hora del sorteo pero el servidor todavía no marcó "drawn": se
                 // ve la ruleta con un mensaje de espera, no el formulario de
                 // registro (ya cerró) ni la animación (los ganadores reales
-                // todavía no existen). Esta pestaña sí está presente desde
-                // antes de que hubiera ganadores, así que si luego "drawn" se
-                // activa, le toca ver la animación en vivo.
-                witnessedLiveTransition = true;
+                // todavía no existen).
                 document.getElementById('slot-section').classList.remove('hidden');
                 document.getElementById('register-section').classList.add('hidden');
                 document.getElementById('countdown-timer').innerText = '✨ ¡EN PROGRESO! ✨';
-                drawStaticDisplay(participants.length ? '🎲 ¡SORTEO EN VIVO! 🎲' : 'Esperando participantes...');
+                buildRaffleGrid();
+                document.getElementById('timer-display').innerText = participants.length
+                    ? '🎲 ¡SORTEO EN VIVO! 🎲' : 'Esperando participantes...';
             } else {
                 // Fuera del horario del sorteo: lo que se ve primero es el
-                // registro, no la ruleta (esa recién arranca a la hora del
+                // registro, no el grid (ese recién arranca a la hora del
                 // sorteo, cuando data.is_draw_time o data.drawn se activan).
                 document.getElementById('slot-section').classList.add('hidden');
                 document.getElementById('register-section').classList.remove('hidden');
                 document.getElementById('countdown-timer').innerText = `📡 Registro abierto — sorteo a las ${formatDrawTime(data)}`;
-                drawStaticDisplay(`🎲 ¡SORTEO ${formatDrawTime(data)} (Venezuela)! 🎲`);
             }
         }
 
-        configurarCanvasHD();
         cargarEstado();
         pollTimer = setInterval(cargarEstado, 20000);
     </script>
