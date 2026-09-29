@@ -634,6 +634,7 @@ def _ensure_horde_columns():
         'promo_horde_configs': ['package_id_2 INTEGER', 'package_id_3 INTEGER', 'points_per_extra_run INTEGER DEFAULT 0'],
         'promo_horde_runs': ['points_spent INTEGER NOT NULL DEFAULT 0', 'seed BIGINT', 'wave INTEGER', 'flag VARCHAR(40)',
                              'replay_check VARCHAR(20)', 'replay_wave INTEGER', 'replay_diamonds INTEGER'],
+        'promo_horde_replays': ['rules INTEGER DEFAULT 1'],
         # Asistente de IA del chat de soporte. Los chats que ya existían
         # quedan con la IA apagada (quizás ya los atiende una persona); los
         # nuevos la traen encendida por el default del modelo.

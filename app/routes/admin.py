@@ -4433,6 +4433,7 @@ def promos_horde_replay_view(run_id):
         'check': request.args.get('check') == '1',
         'seed': run.seed,
         'W': replay.width, 'H': replay.height, 'ch': replay.character_slot or 0,
+        'rules': replay.rules or 1,
         'data': replay.data,
         'reported': {'wave': run.wave or 0, 'claimed': run.claimed_diamonds or 0},
         'verdict_url': url_for('admin_bp.promos_horde_replay_verdict', run_id=run.id),

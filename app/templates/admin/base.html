@@ -6,7 +6,7 @@
     <title>{% block title %}Admin{% endblock %} — 3S Recargas</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/admin.css') }}">
     {% block extra_css %}{% endblock %}
     <script>
         // Aplica el estado colapsado antes de pintar la página para evitar
@@ -468,6 +468,52 @@ document.addEventListener('change', function (evt) {
     var label = document.querySelector('label[for="' + evt.target.id + '"]');
     if (label) label.classList.toggle('has-file', evt.target.files && evt.target.files.length > 0);
 });
+</script>
+<script>
+// Al guardar un formulario, cambiar de juego o recargar, el admin vuelve a
+// la misma página: aquí se recuerda dónde estabas (scroll) y qué secciones
+// tenías abiertas, para que no tengas que volver a bajar y abrir todo.
+// Solo se restaura si vienes de la misma página (no al entrar desde el menú).
+(function () {
+    var KEY = 'adminView:' + location.pathname;
+    try { history.scrollRestoration = 'manual'; } catch (e) {}
+
+    function save() {
+        try {
+            var open = [];
+            document.querySelectorAll('details').forEach(function (d, i) { if (d.open) open.push(i); });
+            sessionStorage.setItem(KEY, JSON.stringify({ y: window.scrollY, open: open, t: Date.now() }));
+        } catch (e) {}
+    }
+    window.addEventListener('pagehide', save);
+    document.addEventListener('submit', save, true);
+
+    var cameFromSamePage = false;
+    try { cameFromSamePage = !!document.referrer && new URL(document.referrer).pathname === location.pathname; } catch (e) {}
+    var state = null;
+    try { state = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) {}
+    if (!cameFromSamePage || !state || Date.now() - state.t > 30 * 60 * 1000) return;
+
+    var all = document.querySelectorAll('details');
+    (state.open || []).forEach(function (i) { if (all[i]) all[i].open = true; });
+    function restore() { window.scrollTo(0, state.y || 0); }
+    restore();
+    // Las imágenes pueden cambiar el alto al terminar de cargar.
+    window.addEventListener('load', restore);
+})();
+
+// Los avisos ("Guardado", errores) flotan arriba a la derecha para que se
+// vean aunque estés abajo en la página. Los de éxito se van solos.
+(function () {
+    document.querySelectorAll('.admin-flashes .flash-success, .admin-flashes .flash-info').forEach(function (el) {
+        setTimeout(function () {
+            el.style.transition = 'opacity .4s, transform .4s';
+            el.style.opacity = '0';
+            el.style.transform = 'translateX(20px)';
+            setTimeout(function () { el.remove(); }, 450);
+        }, 4500);
+    });
+})();
 </script>
 {% block extra_js %}{% endblock %}
 </body>

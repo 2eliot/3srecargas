@@ -286,7 +286,14 @@ html.sidebar-collapsed .nav-subitem { padding-left: 12px; }
 .sidebar-overlay { display: none; }
 
 /* ── Flash Messages ─────────────────────────────────────── */
-.admin-flashes { padding: 0 20px; display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+/* Flotantes arriba a la derecha: se ven aunque la página esté bajada (al
+   guardar, el admin vuelve a la misma posición en vez de subir). */
+.admin-flashes {
+    position: fixed; top: 14px; right: 14px; z-index: 3000;
+    width: min(420px, calc(100vw - 28px));
+    display: flex; flex-direction: column; gap: 8px;
+}
+.admin-flashes .flash { box-shadow: 0 10px 30px rgba(0,0,0,.45); }
 .flash {
     display: flex;
     align-items: flex-start;
@@ -665,7 +672,9 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
 .admin-order-feed--compact .admin-order-card__grid { gap: 6px; }
 .admin-order-feed--compact .admin-order-card__item { padding: 4px 8px; gap: 1px; font-size: 11px; border-radius: 8px; }
 .admin-order-feed--compact .admin-order-card__player-id { font-size: 13px; font-weight: 800; }
-.admin-order-feed--compact .admin-order-card__item .ref-code { font-size: 10px; padding: 1px 4px; }
+/* La referencia es lo que más se busca al verificar un pago: grande y en negrita. */
+.admin-order-card__item .ref-code,
+.admin-order-feed--compact .admin-order-card__item .ref-code { font-size: 12px; font-weight: 800; color: #fff; letter-spacing: .02em; padding: 2px 5px; }
 .admin-order-feed--compact .admin-order-card__actions { gap: 4px; padding-top: 0; }
 .admin-order-feed--compact .admin-order-card__actions .btn-sm,
 .admin-order-feed--compact .admin-order-card__actions button,

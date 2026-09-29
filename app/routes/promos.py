@@ -1,13 +1,13 @@
 """Rutas públicas de las 3 promociones: Recarga Acumulada, Sorteo Diario y
 Adivina el Número. Cada una tiene una página (elige juego si hay más de
 uno activo) y un mini-API JSON que la página consume con fetch()."""
-from flask import Blueprint, jsonify, render_template, request, url_for
+from flask import Blueprint, jsonify, make_response, render_template, request, url_for
 
 from ..utils.locks import check_rate_limit
 from ..utils.promos import (
     get_accumulated_enabled_games, get_accumulated_progress_state,
     get_guess_enabled_games, get_guess_public_state, submit_guess,
-    HORDE_BANNED_MESSAGE, HordeNotEnoughPoints, get_horde_config, get_horde_enabled_games, is_horde_banned, get_horde_public_state, start_horde_run, finish_horde_run,
+    HORDE_BANNED_MESSAGE, HordeNotEnoughPoints, HordeOutdatedPage, get_horde_config, get_horde_enabled_games, is_horde_banned, get_horde_public_state, start_horde_run, finish_horde_run,
     get_raffle_enabled_games, get_raffle_public_state, get_raffle_replay_state,
     get_raffle_show_state, register_raffle_entry,
     run_daily_raffle_draws,
@@ -232,11 +232,15 @@ def hordas_page():
          'cover_url': url_for('static', filename='uploads/' + (c['cover'] or c['image']))}
         for c in get_horde_characters() if c['image']
     ]
-    return render_template(
+    response = make_response(render_template(
         'promos/hordas.html', games=games, game=game, verifiable=verifiable,
         characters=characters,
         horde_extra_cost=int(config.points_per_extra_run or 0) if config else 0,
-    )
+    ))
+    # Sin caché: tras una actualización del juego el navegador debe traer
+    # siempre la versión nueva (una vieja jugaría con reglas viejas).
+    response.headers['Cache-Control'] = 'no-store, max-age=0'
+    return response
 
 
 @promos_bp.route('/api/hordas/estado')
@@ -276,7 +280,10 @@ def hordas_iniciar():
         return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
 
     try:
-        result = start_horde_run(game_id, data.get('player_id'), ip=ip, use_points=bool(data.get('use_points')))
+        result = start_horde_run(game_id, data.get('player_id'), ip=ip, use_points=bool(data.get('use_points')),
+                                 rules=data.get('rules'))
+    except HordeOutdatedPage as exc:
+        return jsonify({'ok': False, 'code': 'outdated', 'error': str(exc)}), 409
     except HordeNotEnoughPoints as exc:
         return jsonify({'ok': False, 'code': 'no_points', 'error': str(exc), 'points_balance': exc.balance}), 400
     except ValueError as exc:

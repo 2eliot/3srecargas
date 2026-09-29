@@ -86,13 +86,26 @@ button, input, select { touch-action: manipulation; }
 .rank-row.is-me { border-color: rgba(34,211,238,.7) !important; background: rgba(34,211,238,.08) !important; }
 
 /* ── Pantalla de juego ── */
-#gameOverlay { position: fixed; inset: 0; z-index: 60; background: #07070a; }
-#hordeCanvas { position: absolute; inset: 0; touch-action: none; display: block; }
-.hud { position: absolute; top: 0; left: 0; right: 0; padding: 10px 12px calc(10px); display: flex; align-items: center; gap: 10px; pointer-events: none; }
-.hud-chip { background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 4px 9px; font-weight: 900; font-size: 13px; white-space: nowrap; }
-.hud-hp { flex: 1; height: 12px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; border: 1px solid rgba(255,255,255,.18); }
+#gameOverlay { position: fixed; inset: 0; z-index: 60; background: #000; touch-action: none; }
+/* El campo es de tamaño fijo y se centra: las franjas sobrantes quedan negras. */
+#hordeCanvas { position: absolute; touch-action: none; display: block; box-shadow: 0 0 0 1px rgba(239,68,68,.18); }
+.hud { position: absolute; top: 0; left: 0; right: 0; padding: 10px 12px calc(10px); display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.hud-chip { background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 4px 9px; font-weight: 900; font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+.hud-hp { flex: 1 1 0; min-width: 20px; height: 12px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; border: 1px solid rgba(255,255,255,.18); }
 .hud-hp > div { height: 100%; background: linear-gradient(90deg, #ef4444, #f87171); transition: width .15s linear; }
-.hud-btn { pointer-events: auto; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.2); border-radius: 10px; width: 36px; height: 30px; font-size: 14px; }
+.joy-zone { position: absolute; left: 0; right: 0; bottom: 0; touch-action: none; user-select: none; -webkit-user-select: none;
+    background: linear-gradient(180deg, rgba(20,20,28,.96), #050507); border-top: 1px solid rgba(239,68,68,.25); }
+.joy-base { position: absolute; width: 124px; height: 124px; margin: -62px 0 0 -62px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,.06) 0%, rgba(255,255,255,.1) 60%, rgba(239,68,68,.18) 100%);
+    border: 2px solid rgba(255,255,255,.22); box-shadow: 0 0 18px rgba(239,68,68,.25), inset 0 0 18px rgba(0,0,0,.5);
+    transition: opacity .15s; opacity: .55; pointer-events: none; }
+.joy-base.is-active { opacity: 1; transition: none; }
+.joy-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff6b6b, #dc2626 55%, #7f1d1d);
+    border: 2px solid rgba(255,255,255,.55); box-shadow: 0 4px 14px rgba(0,0,0,.6), 0 0 14px rgba(239,68,68,.55); }
+.joy-hint { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-size: 10px; font-weight: 800;
+    letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.28); pointer-events: none; }
+.hud-btn { flex-shrink: 0; pointer-events: auto; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.2); border-radius: 10px; width: 36px; height: 30px; font-size: 14px; }
 .game-modal { position: absolute; inset: 0; background: rgba(0,0,0,.78); display: flex; align-items: center; justify-content: center; padding: 18px; }
 .game-modal-card { width: 100%; max-width: 360px; background: linear-gradient(180deg, #0c0c10, #000); border: 2px solid rgba(239,68,68,.6); border-radius: 18px; padding: 18px; text-align: center; box-shadow: 0 0 30px rgba(239,68,68,.2); }
 .upgrade-card { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); }
@@ -205,10 +218,10 @@ button, input, select { touch-action: manipulation; }
         <div class="glass-card w-full p-3.5 rounded-2xl text-[11px] text-slate-300 leading-relaxed">
             <h2 class="text-xs font-extrabold text-white mb-1.5">🎮 Cómo jugar</h2>
             <p>• Se juega solo en teléfono, en vertical 📱.</p>
-            <p>• Pon el dedo en la pantalla y el personaje va justo ahí; arrástralo para esquivar. Disparas solo al enemigo más cercano.</p>
+            <p>• 🕹️ Muévete con el <b>joystick</b> de abajo: pon el pulgar en la franja inferior y arrástralo hacia donde quieras ir (más lejos, más rápido). Disparas solo al enemigo más cercano.</p>
             <p>• Los enemigos sueltan 💎: pasa cerca para recogerlos.</p>
-            <p>• Son 10 oleadas. La 10 es la <b class="text-red-400">oleada final</b>: nadie la ha superado y ahí no caen diamantes. Tus diamantes son los que juntes en las oleadas 1 a 9.</p>
-            <p>• Al terminar cada oleada eliges una mejora. Cada 5 oleadas sale un jefe, y desde la oleada 5 algunos enemigos (los azules) te disparan: esquiva sus balas.</p>
+            <p>• 🔥 Desde la oleada 6 <b class="text-red-400">el borde quema</b>: si te quedas pegado a la orilla pierdes vida. Además, algunos monstruos te cortan el paso: no sirve solo dar vueltas.</p>
+            <p>• ❤️ Cada oleada empieza con tu vida llena. Al terminar cada oleada eliges una mejora. Cada 5 oleadas sale un jefe, y desde la oleada 5 algunos enemigos (los azules) te disparan: esquiva sus balas.</p>
             <p>• Los grandes tienen poderes: cuando brillan, algo viene. Los morados te embisten en línea recta (quítate del camino amarillo) y el jefe dispara en círculo, invoca esbirros o también embiste.</p>
             <p id="howToPoints" {% if not (games and horde_extra_cost) %}hidden{% endif %}>• ¿Se acabaron tus partidas gratis del día? Sigue jugando canjeando los puntos que ganas con tus recargas en ese ID ({{ horde_extra_cost }} pts por partida) y sube más en el top.</p>
             <p>• Antes de entregar los premios revisamos las partidas de los ganadores. Si hay trampa, ese ID queda bloqueado y el premio pasa al siguiente.</p>
@@ -233,6 +246,12 @@ button, input, select { touch-action: manipulation; }
 
 <div id="gameOverlay" hidden>
     <canvas id="hordeCanvas"></canvas>
+    <!-- Joystick: franja propia abajo, fuera del campo, para que el dedo
+         nunca tape al personaje. Aparece donde se pone el pulgar. -->
+    <div id="joyZone" class="joy-zone" {% if replay %}hidden{% endif %}>
+        <div id="joyBase" class="joy-base"><div id="joyKnob" class="joy-knob"></div></div>
+        <span class="joy-hint">Mueve con el joystick</span>
+    </div>
     <div class="hud">
         <div class="hud-chip">💎 <span id="hudDiamonds">0</span></div>
         <div class="hud-chip" id="hudWave">Oleada 1</div>
@@ -639,29 +658,41 @@ const FOLLOW_SPEED_MULT = 5;
 let W = 0, H = 0;
 let gridCanvas = null;
 
+// Campo de juego de tamaño FIJO para todos (forma de un teléfono normal).
+// Antes el campo medía lo que la pantalla: con el navegador alejado (zoom
+// out) salía gigante, los monstruos aparecían mucho más lejos y era más
+// fácil. Ahora el campo mide siempre lo mismo y solo se agranda o achica
+// para llenar la pantalla (con franjas si la forma no coincide). El
+// servidor rechaza partidas con otro tamaño (app/utils/promos.py).
+const FIELD_W = 400;
+const FIELD_H = 800;
 let viewScale = 1;
+
+// Alto de la franja del joystick: 180 px, pero nunca más del 24% de la
+// pantalla (en teléfonos chicos el campo necesita el espacio).
+function joyZoneHeight() {
+    return Math.round(Math.min(180, window.innerHeight * 0.24));
+}
 
 function resizeCanvas() {
     const dpr = LOW_END ? 1 : Math.min(window.devicePixelRatio || 1, 2);
-    if (REPLAY_MODE) {
-        // El tamaño de la partida es el del teléfono del jugador (grabado);
-        // aquí solo se escala para que quepa en la pantalla del admin.
-        viewScale = Math.min(window.innerWidth / W, (window.innerHeight - REPLAY_BAR_H) / H);
-    } else {
-        viewScale = 1;
-        W = window.innerWidth;
-        H = window.innerHeight;
-    }
+    // En la repetición se usa el tamaño grabado (las partidas viejas
+    // pueden tener otro); en vivo, siempre el campo fijo.
+    if (!REPLAY_MODE) { W = FIELD_W; H = FIELD_H; }
+    // Abajo va la franja del joystick (o la barra de la repetición): el
+    // campo usa el resto de la pantalla.
+    const controlH = REPLAY_MODE ? REPLAY_BAR_H : joyZoneHeight();
+    if (!REPLAY_MODE) $('joyZone').style.height = controlH + 'px';
+    const availH = window.innerHeight - controlH;
+    viewScale = Math.min(window.innerWidth / W, availH / H);
     canvas.width = Math.round(W * viewScale * dpr);
     canvas.height = Math.round(H * viewScale * dpr);
     canvas.style.width = W * viewScale + 'px';
     canvas.style.height = H * viewScale + 'px';
-    if (REPLAY_MODE) {
-        canvas.style.left = Math.max(0, (window.innerWidth - W * viewScale) / 2) + 'px';
-        canvas.style.top = '0px';
-        canvas.style.right = 'auto';
-        canvas.style.bottom = 'auto';
-    }
+    canvas.style.left = Math.max(0, (window.innerWidth - W * viewScale) / 2) + 'px';
+    canvas.style.top = Math.max(0, (availH - H * viewScale) / 2) + 'px';
+    canvas.style.right = 'auto';
+    canvas.style.bottom = 'auto';
     ctx.setTransform(dpr * viewScale, 0, 0, dpr * viewScale, 0, 0);
 
     gridCanvas = document.createElement('canvas');
@@ -736,13 +767,54 @@ let currentToken = null;
 let runSubmitted = false;
 const touch = { active: false, id: null, x: 0, y: 0 };
 
+// ─── Versión de las reglas ──────────────────────────────────────────────────
+// Cada grabación guarda con qué reglas se jugó, para que una repetición de
+// una partida vieja se vuelva a jugar con SUS reglas (si no, saldría "no
+// coincide" solo porque el juego cambió después).
+//   1: reglas originales.
+//   2: los monstruos se empujan entre sí (no forman una bola), un tercio de
+//      los verdes/rosados te corta el paso, el borde quema desde la oleada 6,
+//      oleadas 6+ más difíciles, el jugador empieza con 75 de vida y el
+//      máximo de monstruos en pantalla es igual en todos los teléfonos.
+//   3: el personaje se mueve con un joystick abajo (fuera del campo) en vez
+//      de ir a donde está el dedo: así el dedo no tapa al personaje.
+//   4: la vida se llena al 100% al empezar cada oleada (y por eso ya no se
+//      ofrece la mejora "Curación").
+const RULES_VERSION = 4;
+const JOY_MAX_SPEED = 270;  // velocidad con el joystick a fondo (unidades del campo por segundo)
+const JOY_RADIUS = 52;      // cuánto hay que arrastrar el pulgar para ir a fondo (px de pantalla)
+const JOY_DEADZONE = 0.12;  // un toque mínimo no mueve al personaje
+const EDGE_BAND = 30;      // ancho de la franja del borde que quema (reglas 2)
+const EDGE_DPS = 30;       // vida por segundo que quita
+const EDGE_FROM_WAVE = 6;
+const HARD_FROM_WAVE = 6;
+const FLANK_CHANCE = 0.35;
+const CONTACT_DMG_MULT = 2.0;
+
+function maxEnemies() {
+    return game && game.rules >= 2 ? 90 : MAX_ENEMIES;
+}
+
+// Oleadas 6+ más difíciles (reglas 2). La oleada 5 queda igual.
+function hardExtra(wave) {
+    return game.rules >= 2 && wave >= HARD_FROM_WAVE ? wave - (HARD_FROM_WAVE - 1) : 0;
+}
+
+function edgeZoneActive() {
+    return game.rules >= 2 && game.wave >= EDGE_FROM_WAVE;
+}
+
 function newGame(seed) {
+    const rules = REPLAY_MODE ? (REPLAY.rules || 1) : RULES_VERSION;
+    const startHp = rules >= 2 ? 75 : 100;
     const g = {
         state: 'play',
         tick: 0,
+        rules,
         // Lo que la partida "ve" del dedo. Se actualiza cada INPUT_EVERY pasos
         // (en vivo desde la pantalla, en repetición desde la grabación).
-        input: { active: false, x: 0, y: 0 },
+        // jx, jy: joystick (-100..100 en cada eje) con las reglas 3.
+        input: { active: false, x: 0, y: 0, jx: 0, jy: 0 },
         wave: 0,
         waveQuota: 0,
         waveSpawned: 0,
@@ -755,7 +827,7 @@ function newGame(seed) {
         nextId: 1,
         upgradeCounts: {},
         player: {
-            x: W / 2, y: H / 2, r: 13, speed: 175, hp: 100, maxHp: 100,
+            x: W / 2, y: H / 2, r: 13, speed: 175, hp: startHp, maxHp: startHp, vx: 0, vy: 0,
             damage: 1, fireDelay: 0.42, fireTimer: 0, multishot: 1, pierce: 0,
             magnet: 75, aim: -Math.PI / 2, hurt: 0,
             diagonal: 0, rear: 0, side: 0, doubleShot: 0, bounce: 0, wallBounce: 0,
@@ -813,6 +885,8 @@ function isFinalWave() {
 
 function startWave() {
     game.wave += 1;
+    // Reglas 4: cada oleada empieza con la vida llena.
+    if (game.rules >= 4) game.player.hp = game.player.maxHp;
     game.waveQuota = isFinalWave() ? FINAL_QUOTA : 10 + game.wave * 5;
     game.waveSpawned = 0;
     game.spawnTimer = 0.6;
@@ -849,18 +923,27 @@ function spawnEnemy(typeKey) {
     const hpScale = 1 + (game.wave - 1) * 0.18;
     const speedScale = Math.min(1.5, 1 + (game.wave - 1) * 0.03);
     const final = isFinalWave();
+    // Oleadas 6+ (reglas 2): cada oleada después de la 5 suma +12% de vida,
+    // +8% de daño y +4% de velocidad a los monstruos.
+    const hard = hardExtra(game.wave);
     const hp = t.hp * hpScale * (typeKey === 'boss' ? 1 + game.wave * 0.1 : 1) * DIFFICULTY
-        * (final && typeKey === 'boss' ? FINAL_BOSS_HP_MULT : 1);
-    game.enemies.push({
+        * (final && typeKey === 'boss' ? FINAL_BOSS_HP_MULT : 1) * (1 + hard * 0.12);
+    const enemy = {
         id: game.nextId++, type: typeKey, x, y, r: t.r, hp, maxHp: hp,
-        speed: t.speed * speedScale * DIFFICULTY * (0.9 + R() * 0.2),
-        color: t.color, edge: t.edge, dmg: t.dmg * DIFFICULTY * (final ? FINAL_DMG_MULT : 1),
+        speed: t.speed * speedScale * DIFFICULTY * (0.9 + R() * 0.2) * (1 + hard * 0.04),
+        color: t.color, edge: t.edge, dmg: t.dmg * DIFFICULTY * (final ? FINAL_DMG_MULT : 1) * (1 + hard * 0.08),
         drop: final ? 0 : t.drop, flash: 0, summons: 0,
         shooter: !!t.shooter, fireTimer: 1.2 + R() * 1.2,
         keepDist: 150 + R() * 60,
         phase: 'walk', phaseTime: 0, dashAngle: 0, power: null, powerIndex: 0,
         powerTimer: typeKey === 'boss' ? 2 : 2 + R() * 2,
-    });
+    };
+    // Reglas 2: un tercio de los verdes y rosados te corta el paso (va hacia
+    // donde vas a estar). Contra dar vueltas por el borde: te salen de frente.
+    if (game.rules >= 2 && (typeKey === 'grunt' || typeKey === 'runner')) {
+        enemy.flank = R() < FLANK_CHANCE;
+    }
+    game.enemies.push(enemy);
 }
 
 // ─── Poderes de los enemigos grandes ────────────────────────────────────────
@@ -925,7 +1008,7 @@ function releasePower(e, minions) {
         e.summons += 1;
         const t = ENEMY_TYPES.runner;
         const final = isFinalWave();
-        for (let i = 0; i < 3 && game.enemies.length + minions.length < MAX_ENEMIES; i++) {
+        for (let i = 0; i < 3 && game.enemies.length + minions.length < maxEnemies(); i++) {
             const a = (i / 3) * Math.PI * 2;
             const hp = t.hp * (1 + (game.wave - 1) * 0.18) * DIFFICULTY;
             minions.push({
@@ -1117,13 +1200,49 @@ function updateOrbs(p, dt) {
     for (const e of game.enemies) if (e.orbCd > 0) e.orbCd -= dt;
 }
 
+// Reglas 2: los monstruos se empujan entre sí para no encimarse. Así no
+// forman una sola bola detrás del jugador: se abren y lo rodean. Los grandes
+// empujan más de lo que los empujan; el que está embistiendo no se desvía.
+function separateEnemies() {
+    const list = game.enemies;
+    for (let i = 0; i < list.length; i++) {
+        const a = list[i];
+        for (let j = i + 1; j < list.length; j++) {
+            const b = list[j];
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const min = (a.r + b.r) * 0.9;
+            if (Math.abs(dx) >= min || Math.abs(dy) >= min) continue;
+            const d2 = dx * dx + dy * dy;
+            if (d2 >= min * min) continue;
+            const d = Math.sqrt(d2) || 0.01;
+            const nx = d2 ? dx / d : 1, ny = d2 ? dy / d : 0;
+            const push = (min - d) * 0.5;
+            const aFixed = a.phase === 'dash', bFixed = b.phase === 'dash';
+            if (aFixed && bFixed) continue;
+            const wa = aFixed ? 0 : (bFixed ? 1 : b.r / (a.r + b.r));
+            const wb = bFixed ? 0 : (aFixed ? 1 : a.r / (a.r + b.r));
+            a.x -= nx * push * 2 * wa; a.y -= ny * push * 2 * wa;
+            b.x += nx * push * 2 * wb; b.y += ny * push * 2 * wb;
+        }
+    }
+}
+
 function update(dt) {
     const p = game.player;
 
     const prevX = p.x, prevY = p.y;
-    // El personaje va directo a donde está el dedo, muy rápido.
     const input = game.input;
-    if (input.active) {
+    if (game.rules >= 3) {
+        // Joystick: camina en la dirección del pulgar; más lejos, más rápido.
+        const jx = input.jx / 100, jy = input.jy / 100;
+        const mag = Math.min(1, Math.hypot(jx, jy));
+        if (mag > 0) {
+            const speed = JOY_MAX_SPEED * mag;
+            p.x = Math.min(Math.max(p.x + (jx / mag) * speed * dt, p.r), W - p.r);
+            p.y = Math.min(Math.max(p.y + (jy / mag) * speed * dt, 48 + p.r), H - p.r);
+        }
+    } else if (input.active) {
+        // Reglas 1 y 2: el personaje va directo a donde está el dedo.
         const tx = Math.min(Math.max(input.x, p.r), W - p.r);
         const ty = Math.min(Math.max(input.y, 48 + p.r), H - p.r);
         const dx = tx - p.x, dy = ty - p.y;
@@ -1133,14 +1252,29 @@ function update(dt) {
         else { p.x += (dx / dist) * step; p.y += (dy / dist) * step; }
     }
     if (p.hurt > 0) p.hurt -= dt;
+    // Velocidad del jugador suavizada: la usan los que te cortan el paso.
+    p.vx += ((p.x - prevX) / dt - p.vx) * 0.2;
+    p.vy += ((p.y - prevY) / dt - p.vy) * 0.2;
     updateWalk(p, Math.hypot(p.x - prevX, p.y - prevY) / Math.max(dt, 1e-6), dt);
     emitAuraSparks(p, dt);
+
+    // Reglas 2, oleada 6+: el borde quema. Dar vueltas pegado al borde era
+    // la forma de que todos los monstruos quedaran en fila detrás.
+    if (edgeZoneActive()) {
+        const edgeDist = Math.min(p.x, W - p.x, p.y - 48, H - p.y);
+        if (edgeDist < EDGE_BAND) {
+            p.hp -= EDGE_DPS * dt;
+            p.hurt = 0.15;
+        }
+    }
 
     // Aparición de enemigos de la oleada.
     if (game.waveSpawned < game.waveQuota) {
         game.spawnTimer -= dt;
-        const interval = Math.max(0.16, 0.9 - game.wave * 0.06) / DIFFICULTY / (isFinalWave() ? 1.6 : 1);
-        while (game.spawnTimer <= 0 && game.waveSpawned < game.waveQuota && game.enemies.length < MAX_ENEMIES) {
+        // Oleadas 6+ (reglas 2): salen un 6% más seguido por cada oleada.
+        const interval = Math.max(0.16, 0.9 - game.wave * 0.06) / DIFFICULTY / (isFinalWave() ? 1.6 : 1)
+            / (1 + hardExtra(game.wave) * 0.06);
+        while (game.spawnTimer <= 0 && game.waveSpawned < game.waveQuota && game.enemies.length < maxEnemies()) {
             if (game.bossPending && game.waveSpawned >= Math.floor(game.waveQuota / 2)) {
                 spawnEnemy('boss');
                 game.bossPending = false;
@@ -1205,6 +1339,16 @@ function update(dt) {
         const dx = p.x - e.x, dy = p.y - e.y;
         const d = Math.hypot(dx, dy) || 1;
         let dir = 1;
+        // Hacia dónde camina: directo al jugador, o (si corta el paso y
+        // todavía está lejos) hacia donde el jugador va a estar.
+        let mx = dx, my = dy, md = d;
+        if (e.flank && d > 70) {
+            const lead = Math.min(1.2, d / Math.max(e.speed, 1));
+            const tx = Math.min(Math.max(p.x + p.vx * lead, 0), W);
+            const ty = Math.min(Math.max(p.y + p.vy * lead, 48), H);
+            mx = tx - e.x; my = ty - e.y;
+            md = Math.hypot(mx, my) || 1;
+        }
         if ((e.type === 'tank' || e.type === 'boss') && updateBigPower(e, dx, dy, d, dt, pendingMinions)) {
             dir = 0;
         }
@@ -1225,14 +1369,19 @@ function update(dt) {
         if (e.burnTime > 0) { e.burnTime -= dt; e.hp -= e.burnDps * dt; }
         if (e.slowTime > 0) e.slowTime -= dt;
         const slowMult = e.slowTime > 0 ? 0.55 : 1;
-        e.x += (dx / d) * e.speed * dir * slowMult * dt;
-        e.y += (dy / d) * e.speed * dir * slowMult * dt;
+        // Retroceder (disparadores) siempre es alejándose del jugador.
+        const ux = dir < 0 ? dx / d : mx / md, uy = dir < 0 ? dy / d : my / md;
+        e.x += ux * e.speed * dir * slowMult * dt;
+        e.y += uy * e.speed * dir * slowMult * dt;
         if (e.flash > 0) e.flash -= dt;
         if (d < e.r + p.r) {
-            p.hp -= e.dmg * dt;
+            // Reglas 2: como ya no se enciman, menos monstruos te tocan a la
+            // vez; cada uno pega más para que no quede más fácil que antes.
+            p.hp -= e.dmg * dt * (game.rules >= 2 ? CONTACT_DMG_MULT : 1);
             p.hurt = 0.15;
         }
     }
+    if (game.rules >= 2) separateEnemies();
     for (let i = game.enemies.length - 1; i >= 0; i--) {
         if (game.enemies[i].hp <= 0) killEnemy(i);
     }
@@ -1737,6 +1886,36 @@ const gemSprite = (() => {
     return c;
 })();
 
+// Franja de fuego en el borde (reglas 2, oleada 6+): roja y pulsante, más
+// intensa si el jugador está dentro, para que se entienda por qué pierde vida.
+function drawEdgeZone(p) {
+    const t = performance.now() / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+    const inside = Math.min(p.x, W - p.x, p.y - 48, H - p.y) < EDGE_BAND;
+    const alpha = (inside ? 0.38 : 0.2) + pulse * 0.12;
+    const top = 48;
+    ctx.save();
+    const bands = [
+        [0, top, W, EDGE_BAND, 0, top, 0, top + EDGE_BAND],
+        [0, H - EDGE_BAND, W, EDGE_BAND, 0, H, 0, H - EDGE_BAND],
+        [0, top, EDGE_BAND, H - top, 0, 0, EDGE_BAND, 0],
+        [W - EDGE_BAND, top, EDGE_BAND, H - top, W, 0, W - EDGE_BAND, 0],
+    ];
+    for (const [x, y, w, h, gx0, gy0, gx1, gy1] of bands) {
+        const grad = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
+        grad.addColorStop(0, `rgba(255,40,20,${alpha})`);
+        grad.addColorStop(1, 'rgba(255,40,20,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, y, w, h);
+    }
+    ctx.strokeStyle = `rgba(255,90,40,${0.45 + pulse * 0.35})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -t * 40;
+    ctx.strokeRect(EDGE_BAND, top + EDGE_BAND, W - EDGE_BAND * 2, H - top - EDGE_BAND * 2);
+    ctx.restore();
+}
+
 function draw() {
     if (gridCanvas) {
         ctx.save();
@@ -1746,6 +1925,8 @@ function draw() {
     }
     if (!game) return;
     const p = game.player;
+
+    if (edgeZoneActive()) drawEdgeZone(p);
 
     for (const g of game.gems) ctx.drawImage(gemSprite, g.x - GEM_SIZE / 2, g.y - GEM_SIZE / 2, GEM_SIZE, GEM_SIZE);
 
@@ -1858,7 +2039,16 @@ function draw() {
     }
 
 
-    if (REPLAY_MODE && game.input.active) {
+    if (REPLAY_MODE && game.rules >= 3) {
+        // Joystick del jugador, en miniatura en la esquina de abajo.
+        const cx = W - 44, cy = H - 44, jx = game.input.jx / 100, jy = game.input.jy / 100;
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath(); ctx.arc(cx + jx * 20, cy + jy * 20, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+    } else if (REPLAY_MODE && game.input.active) {
         // Dónde tenía el dedo el jugador.
         ctx.strokeStyle = 'rgba(250,204,21,0.85)';
         ctx.lineWidth = 2;
@@ -1883,6 +2073,7 @@ function draw() {
             if (game.wave % 5 === 0) warnings.push('⚠ ¡Viene un jefe!');
             if (game.wave === 5) warnings.push('⚠ ¡Ahora algunos enemigos disparan!');
             if (game.wave === MAX_WAVE - 1) warnings.push('⚠ ¡La próxima es la oleada final!');
+            if (game.rules >= 2 && game.wave === EDGE_FROM_WAVE) warnings.push('🔥 ¡Desde ahora el borde quema! No te pegues a él');
         }
         ctx.fillStyle = '#f87171';
         ctx.font = '800 15px Outfit, sans-serif';
@@ -1910,6 +2101,7 @@ function updateHud() {
 //   tipo 0: soltó el dedo · 1: dedo en (dx, dy) respecto al anterior
 //   tipo 2: la pantalla cambió de tamaño (W, H) · 3: eligió la mejora n
 //   tipo 4: fin de la partida (0 terminó, 1 murió, 2 ganó la final, 3 salió)
+//   tipo 5: joystick en (jx, jy), de -100 a 100 (reglas 3)
 const STEP = 1 / 60;
 const INPUT_EVERY = 3; // el dedo se lee 20 veces por segundo
 const MAX_STEPS_PER_FRAME = 8;
@@ -1928,6 +2120,15 @@ function recPush(kind, ...values) {
 
 function sampleInput() {
     const inp = game.input;
+    if (game.rules >= 3) {
+        // Joystick en enteros (-100..100): se graba solo cuando cambia.
+        const jx = Math.round(joy.vx * 100), jy = Math.round(joy.vy * 100);
+        if (jx !== inp.jx || jy !== inp.jy) {
+            recPush(5, jx, jy);
+            inp.jx = jx; inp.jy = jy;
+        }
+        return;
+    }
     if (touch.active) {
         const x = Math.round(touch.x), y = Math.round(touch.y);
         if (!inp.active || x !== inp.x || y !== inp.y) {
@@ -1976,7 +2177,7 @@ function decodeInts(text) {
 
 function replayPayload() {
     if (!rec) return null;
-    return { v: 1, W: rec.W, H: rec.H, ch: selectedSlot || 0, data: encodeInts(rec.ints) };
+    return { v: 1, r: game ? game.rules : RULES_VERSION, W: rec.W, H: rec.H, ch: selectedSlot || 0, data: encodeInts(rec.ints) };
 }
 
 function frame(t) {
@@ -2001,7 +2202,9 @@ function frame(t) {
 
 function showUpgrades() {
     game.state = 'upgrade';
-    const pool = UPGRADES.filter((u) => !u.max || (game.upgradeCounts[u.id] || 0) < u.max);
+    const pool = UPGRADES.filter((u) => (!u.max || (game.upgradeCounts[u.id] || 0) < u.max)
+        // Con la vida llena en cada oleada (reglas 4), curarse no sirve.
+        && !(game.rules >= 4 && u.id === 'heal'));
     const options = [];
     while (options.length < 3 && pool.length) {
         options.push(pool.splice(Math.floor(R() * pool.length), 1)[0]);
@@ -2037,29 +2240,68 @@ function applyUpgrade(upgrade) {
 
 // ─── Controles ──────────────────────────────────────────────────────────────
 
-canvas.addEventListener('pointerdown', (e) => {
-    if (touch.active) return;
-    touch.active = true; touch.id = e.pointerId;
-    touch.x = e.clientX; touch.y = e.clientY;
-    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
-});
-canvas.addEventListener('pointermove', (e) => {
-    if (!touch.active || e.pointerId !== touch.id) return;
-    touch.x = e.clientX; touch.y = e.clientY;
-});
-function releaseTouch(e) {
-    if (e.pointerId !== touch.id) return;
-    touch.active = false; touch.id = null;
+// ─── Joystick (reglas 3) ─────────────────────────────────────────────────────
+// Se toca en cualquier parte de la franja de abajo: el joystick aparece ahí
+// y el personaje camina hacia donde se arrastra el pulgar. Al soltar, el
+// joystick vuelve al centro de la franja y el personaje se detiene.
+const joy = { active: false, id: null, bx: 0, by: 0, vx: 0, vy: 0 };
+const joyZone = $('joyZone'), joyBase = $('joyBase'), joyKnob = $('joyKnob');
+
+function placeJoyBase(x, y) {
+    joyBase.style.left = x + 'px';
+    joyBase.style.top = y + 'px';
 }
-canvas.addEventListener('pointerup', releaseTouch);
-canvas.addEventListener('pointercancel', releaseTouch);
+
+function resetJoy() {
+    joy.active = false; joy.id = null; joy.vx = 0; joy.vy = 0;
+    joyBase.classList.remove('is-active');
+    joyKnob.style.transform = '';
+    placeJoyBase(joyZone.clientWidth / 2, joyZone.clientHeight / 2);
+}
+
+function moveJoy(e) {
+    const rect = joyZone.getBoundingClientRect();
+    let dx = e.clientX - rect.left - joy.bx, dy = e.clientY - rect.top - joy.by;
+    const dist = Math.hypot(dx, dy);
+    if (dist > JOY_RADIUS) { dx = dx / dist * JOY_RADIUS; dy = dy / dist * JOY_RADIUS; }
+    joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+    // Fuerza de 0 a 1 (con una zona muerta pequeña al centro) en la
+    // dirección del pulgar.
+    const d = Math.hypot(dx, dy);
+    const mag = d / JOY_RADIUS;
+    const strength = mag < JOY_DEADZONE ? 0 : (mag - JOY_DEADZONE) / (1 - JOY_DEADZONE);
+    joy.vx = d ? (dx / d) * strength : 0;
+    joy.vy = d ? (dy / d) * strength : 0;
+}
+
+joyZone.addEventListener('pointerdown', (e) => {
+    if (joy.active) return;
+    const rect = joyZone.getBoundingClientRect();
+    joy.active = true; joy.id = e.pointerId;
+    // El joystick aparece donde se puso el pulgar (sin salirse de la franja).
+    const margin = 64;
+    joy.bx = Math.min(Math.max(e.clientX - rect.left, margin), rect.width - margin);
+    joy.by = Math.min(Math.max(e.clientY - rect.top, margin), Math.max(margin, rect.height - margin));
+    placeJoyBase(joy.bx, joy.by);
+    joyBase.classList.add('is-active');
+    moveJoy(e);
+    try { joyZone.setPointerCapture(e.pointerId); } catch (err) {}
+});
+joyZone.addEventListener('pointermove', (e) => {
+    if (joy.active && e.pointerId === joy.id) moveJoy(e);
+});
+function releaseJoy(e) {
+    if (e.pointerId === joy.id) resetJoy();
+}
+joyZone.addEventListener('pointerup', releaseJoy);
+joyZone.addEventListener('pointercancel', releaseJoy);
 
 function checkOrientation() {
     if (REPLAY_MODE || $('gameOverlay').hidden) return;
     const portrait = isPortrait();
     $('rotateModal').hidden = portrait;
     if (!portrait) pauseGame();
-    else resizeCanvas();
+    else { resizeCanvas(); if (!joy.active) resetJoy(); }
 }
 window.addEventListener('resize', checkOrientation);
 window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 250));
@@ -2068,6 +2310,7 @@ function pauseGame() {
     if (REPLAY_MODE || !game || game.state !== 'play') return;
     game.state = 'paused';
     touch.active = false;
+    resetJoy();
     $('pauseModal').hidden = false;
 }
 
@@ -2115,10 +2358,17 @@ async function requestRun() {
     }
     const res = await fetch('/promos/api/hordas/iniciar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ game_id: GAME_ID, player_id: playerId, use_points: needsPoints() }),
+        // Versión del juego de esta página: si el juego se actualizó mientras
+        // estaba abierta, el servidor pide recargar antes de jugar.
+        body: JSON.stringify({ game_id: GAME_ID, player_id: playerId, use_points: needsPoints(), rules: RULES_VERSION }),
     });
     const data = await res.json();
     if (!data.ok) {
+        if (data.code === 'outdated') {
+            setPlayMsg(data.error || 'El juego se actualizó. Recargando…', 'info');
+            setTimeout(() => window.location.reload(), 900);
+            return null;
+        }
         if (data.code === 'no_points') {
             setPlayMsg('', 'info');
             showNoPoints(data.points_balance);
@@ -2153,6 +2403,7 @@ async function launchGame(fromOverlay) {
         $('gameOverlay').hidden = false;
         document.body.classList.add('is-playing');
         resizeCanvas();
+        resetJoy();
         game = newGame(Number(data.seed) || 0);
         recStart();
         stepAcc = 0;
@@ -2229,6 +2480,7 @@ function endRun(reason) {
     if (REPLAY_MODE) { replayFinished(); return; }
     recPush(4, END_CODES[reason] ?? 0);
     touch.active = false;
+    resetJoy();
     $('upgradeModal').hidden = true;
     if (reason === 'cleared') {
         $('overTitle').textContent = '⚠ Partida no válida';
@@ -2285,7 +2537,7 @@ window.addEventListener('pagehide', () => {
 // Como todo lo que decide la partida sale de ahí, el resultado debe ser el
 // mismo que reportó el teléfono. Si en la repetición muere antes, o elige una
 // mejora que no le ofrecieron, la partida real no fue limpia.
-const EVENT_SIZES = { 0: 0, 1: 2, 2: 2, 3: 1, 4: 1 };
+const EVENT_SIZES = { 0: 0, 1: 2, 2: 2, 3: 1, 4: 1, 5: 2 };
 const REPLAY_MAX_TICKS = 31 * 60 * 60;
 const REPLAY_SPEEDS = [1, 2, 4, 8];
 let rp = null;
@@ -2310,6 +2562,8 @@ function replayApplyEvents() {
         } else if (kind === 1) {
             rp.px += vals[0]; rp.py += vals[1];
             inp.active = true; inp.x = rp.px; inp.y = rp.py;
+        } else if (kind === 5) {
+            inp.jx = vals[0]; inp.jy = vals[1];
         } else if (kind === 2) {
             W = vals[0]; H = vals[1];
             clampPlayerToScreen();

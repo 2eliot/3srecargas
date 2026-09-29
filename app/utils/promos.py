@@ -727,6 +727,9 @@ def submit_guess(game_id, player_id, guess_value):
         release_lock(lock_key, lock_holder)
 
 
+GUESS_HISTORY_DAYS = 2  # días que muestra el historial de Adivina el Número
+
+
 def get_guess_public_state(game_id, player_id):
     config = get_guess_config(game_id)
     if not config:
@@ -753,13 +756,24 @@ def get_guess_public_state(game_id, player_id):
         .order_by(PromoGuessWinner.slot_index.asc())
         .all()
     )
+    # Solo los 2 días más recientes con ganadores (antes de hoy; hoy sale
+    # aparte en "Ganadores de hoy"). Antes eran las últimas 30 filas, que
+    # abarcaban muchos días.
+    recent_day_keys = [
+        row[0] for row in
+        db.session.query(PromoGuessWinner.day_key)
+        .filter(PromoGuessWinner.game_id == game_id, PromoGuessWinner.day_key < round_row.day_key)
+        .distinct()
+        .order_by(PromoGuessWinner.day_key.desc())
+        .limit(GUESS_HISTORY_DAYS)
+        .all()
+    ]
     history = (
         PromoGuessWinner.query
-        .filter(PromoGuessWinner.game_id == game_id, PromoGuessWinner.day_key < round_row.day_key)
+        .filter(PromoGuessWinner.game_id == game_id, PromoGuessWinner.day_key.in_(recent_day_keys))
         .order_by(PromoGuessWinner.day_key.desc(), PromoGuessWinner.slot_index.asc())
-        .limit(30)
         .all()
-    )
+    ) if recent_day_keys else []
     history_by_day = {}
     for w in history:
         history_by_day.setdefault(w.day_key, []).append({
@@ -816,6 +830,15 @@ HORDE_RANKING_SIZE = 10
 # Si se cambian estas reglas en el juego hay que cambiarlas aquí también.
 HORDE_MAX_WAVE = 10
 HORDE_DIFFICULTY = 1.25
+# Tamaño fijo del campo (FIELD_W/FIELD_H en el juego): igual para todos,
+# así el zoom del navegador no agranda el campo ni aleja a los monstruos.
+HORDE_FIELD_W = 400
+HORDE_FIELD_H = 800
+# Versión de reglas vigente (RULES_VERSION en el juego). Una partida nueva
+# con reglas viejas (más fáciles, o moviéndose con el dedo en vez del
+# joystick) no suma: sería un juego modificado.
+HORDE_RULES_VERSION = 4
+HORDE_HARD_FROM_WAVE = 6   # desde aquí los monstruos salen más seguido (reglas 2)
 HORDE_DROPS = {'grunt': 1, 'runner': 1, 'tank': 3, 'boss': 10, 'shooter': 2}
 HORDE_BOSS_MAX_SUMMONS = 4      # cada invocación son 3 esbirros de 1 💎
 HORDE_MINION_DROPS = HORDE_BOSS_MAX_SUMMONS * 3
@@ -876,7 +899,9 @@ def horde_min_seconds_by_wave():
     oleadas 1..n (sin contar el tiempo de matarlos ni de elegir mejoras)."""
     totals = [0.0]
     for wave in range(1, HORDE_MAX_WAVE):
-        interval = max(0.16, 0.9 - wave * 0.06) / HORDE_DIFFICULTY
+        # Con las reglas 2 salen un 6% más seguido por oleada desde la 6.
+        faster = 1 + max(0, wave - (HORDE_HARD_FROM_WAVE - 1)) * 0.06
+        interval = max(0.16, 0.9 - wave * 0.06) / HORDE_DIFFICULTY / faster
         totals.append(totals[-1] + 0.6 + (_horde_wave_quota(wave) - 1) * interval)
     return totals
 
@@ -987,6 +1012,12 @@ def get_horde_week_ranking(game_id, week_key, limit=HORDE_RANKING_SIZE):
     return [(pid, nick, int(t or 0)) for pid, nick, t in query.all()]
 
 
+class HordeOutdatedPage(ValueError):
+    """La página del juego abierta es de una versión vieja (se actualizó el
+    juego mientras la tenía abierta): se recarga antes de jugar, así nadie
+    juega una partida que después se anularía por 'reglas viejas'."""
+
+
 class HordeNotEnoughPoints(ValueError):
     """Faltan puntos para la partida extra (la página muestra un popup)."""
 
@@ -1001,7 +1032,7 @@ def _horde_free_runs_today(game_id, player_id, day_key):
     ).count()
 
 
-def start_horde_run(game_id, player_id, ip='', use_points=False):
+def start_horde_run(game_id, player_id, ip='', use_points=False, rules=None):
     """Abre una partida y devuelve su token. Lanza ValueError con un
     mensaje listo para mostrar si no se puede jugar.
 
@@ -1020,6 +1051,12 @@ def start_horde_run(game_id, player_id, ip='', use_points=False):
         raise ValueError('Ese ID no es válido.')
     if is_horde_banned(game_id, player_id):
         raise ValueError(HORDE_BANNED_MESSAGE)
+    try:
+        page_rules = int(rules) if rules is not None else None
+    except (TypeError, ValueError):
+        page_rules = None
+    if page_rules != HORDE_RULES_VERSION:
+        raise HordeOutdatedPage('El juego se actualizó. Recargando para jugar con la versión nueva…')
 
     day_key = today_ve_str()
     week_key = _horde_week_key()
@@ -1118,6 +1155,7 @@ def _store_horde_replay(run, replay):
     try:
         width, height = int(replay.get('W')), int(replay.get('H'))
         slot = int(replay.get('ch') or 0)
+        rules = min(max(int(replay.get('r') or 1), 1), 99)
     except (TypeError, ValueError):
         return
     if not isinstance(data, str) or not data or len(data) > HORDE_REPLAY_MAX_BYTES:
@@ -1139,12 +1177,26 @@ def _store_horde_replay(run, replay):
 
     db.session.add(PromoHordeReplay(
         run_id=run.id, game_id=run.game_id, week_key=run.week_key, player_id=run.player_id,
-        width=width, height=height, character_slot=slot, data=data, size=len(data),
+        width=width, height=height, character_slot=slot, rules=rules, data=data, size=len(data),
     ))
     try:
         db.session.commit()
     except Exception:
         db.session.rollback()
+
+
+def _replay_rules(replay):
+    try:
+        return int(replay.get('r') or 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _replay_field_size(replay):
+    try:
+        return int(replay.get('W')), int(replay.get('H'))
+    except (TypeError, ValueError):
+        return None
 
 
 def cleanup_horde_replays():
@@ -1207,6 +1259,14 @@ def finish_horde_run(token, diamonds, kills, wave=None, final_cleared=False, rep
     flag = None
     if final_cleared or wave > HORDE_MAX_WAVE:
         flag = 'gano_oleada_final'
+        cap = 0
+    elif isinstance(replay, dict) and _replay_field_size(replay) != (HORDE_FIELD_W, HORDE_FIELD_H):
+        # Campo de otro tamaño = juego modificado (o una versión vieja de
+        # la página abierta desde antes del cambio): no suma.
+        flag = 'campo_distinto'
+        cap = 0
+    elif isinstance(replay, dict) and _replay_rules(replay) != HORDE_RULES_VERSION:
+        flag = 'reglas_viejas'
         cap = 0
     elif run.seed is not None:
         # Oleada a la que de verdad se puede llegar en el tiempo que duró:

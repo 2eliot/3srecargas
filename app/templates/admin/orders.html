@@ -134,13 +134,11 @@
                                 {% if order.player_id %}<span class="admin-order-card__player-id">{{ order.player_id }}</span>{% endif %}
                                 {% if order.player_nickname %}<small style="color:#22c55e;font-weight:600">{{ order.player_nickname }}</small>{% endif %}
                                 {% if order.zone_id %}<small>Zone: {{ order.zone_id }}</small>{% endif %}
-                                {% if order.email %}<span>{{ order.email }}</span>{% endif %}
-                                {% if order.phone %}
-                                <div class="customer-phone-row">
-                                    <span class="customer-phone-value">{{ order.phone }}</span>
-                                    <button type="button" class="btn-sm btn-whatsapp-admin" onclick="openAdminWhatsAppContact('{{ order.phone|e }}')">WhatsApp</button>
-                                </div>
-                                {% endif %}
+                                {# En la lista no se muestran datos de contacto: el teléfono (y
+                                   WhatsApp) están en el detalle de la orden. El correo solo se
+                                   ve cuando es el dato de la recarga (juegos sin ID, p. ej.
+                                   códigos o Roblox); si la recarga es por ID, es solo contacto. #}
+                                {% if order.email and not order.player_id %}<span>{{ order.email }}</span>{% endif %}
                             </div>
                         </div>
                         <div class="admin-order-card__item">
@@ -366,13 +364,9 @@ function _renderOrderRow(o) {
     if (o.player_id) playerBits += '<span class="admin-order-card__player-id">' + _escapeHtml(o.player_id) + '</span>';
     if (o.player_nickname) playerBits += '<small style="color:#22c55e;font-weight:600">' + _escapeHtml(o.player_nickname) + '</small>';
     if (o.zone_id) playerBits += '<small>Zone: ' + _escapeHtml(o.zone_id) + '</small>';
-    if (o.email) playerBits += '<span>' + _escapeHtml(o.email) + '</span>';
-    if (o.phone) {
-        playerBits += '<div class="customer-phone-row">' +
-            '<span class="customer-phone-value">' + _escapeHtml(o.phone) + '</span>' +
-            '<button type="button" class="btn-sm btn-whatsapp-admin" onclick="openAdminWhatsAppContact(\'' + _escapeHtml(o.phone) + '\')">WhatsApp</button>' +
-        '</div>';
-    }
+    // Igual que la plantilla: sin teléfono ni WhatsApp en la lista (están en
+    // el detalle), y el correo solo si es el dato de la recarga (sin ID).
+    if (o.email && !o.player_id) playerBits += '<span>' + _escapeHtml(o.email) + '</span>';
 
     var aff = o.affiliate_code ? '<span class="aff-badge">' + _escapeHtml(o.affiliate_code) + '</span>' : '—';
     var actions = '—';

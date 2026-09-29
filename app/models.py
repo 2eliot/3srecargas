@@ -1368,6 +1368,8 @@ class PromoHordeReplay(db.Model):
     width = db.Column(db.Integer, nullable=False)
     height = db.Column(db.Integer, nullable=False)
     character_slot = db.Column(db.Integer, default=0)
+    # Versión de las reglas con que se jugó (la repetición usa las mismas).
+    rules = db.Column(db.Integer, default=1)
     data = db.Column(db.Text, nullable=False)
     size = db.Column(db.Integer, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
