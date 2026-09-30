@@ -176,7 +176,7 @@ _REV_NON_RETRYABLE_HINTS = {
         '(Admin → Revendedores → Sincronizar) y revisa el mapeo de este paquete.'
     ),
     'player': 'Verifica el ID del jugador con el cliente antes de reintentar.',
-    'balance': 'Recarga saldo en Revendedores y luego reintenta la orden.',
+    'balance': 'Recarga saldo en Revendedores y vuelve a darle Aprobar: la aprobación manual reintenta esta recarga.',
 }
 
 
@@ -267,24 +267,37 @@ def process_revendedores_queue(order, base_state=None, force=False):
             continue
 
         # Si este paso ya quedó marcado como rechazo DEFINITIVO (ID
-        # inválido, paquete dado de baja, saldo agotado...), no se vuelve a
-        # llamar a Revendedores aunque se dispare este proceso otra vez
-        # (p.ej. el admin le da "Aprobar" de nuevo esperando que ahora sí
-        # funcione). Antes esto SÍ se reintentaba en cada llamada nueva,
-        # aunque la nota ya dijera "no se reintenta automáticamente" — de
-        # ahí que la misma nota apareciera duplicada varias veces. Se
-        # limpia solo si se corrige el ID del jugador (eso borra
-        # automation_response, ver order_update_player_id).
-        if step.get('blocked_cause'):
+        # inválido, paquete dado de baja...), no se vuelve a llamar a
+        # Revendedores aunque se dispare este proceso otra vez (p.ej. el
+        # admin le da "Aprobar" de nuevo esperando que ahora sí funcione).
+        # Antes esto SÍ se reintentaba en cada llamada nueva, aunque la
+        # nota ya dijera "no se reintenta automáticamente" — de ahí que la
+        # misma nota apareciera duplicada varias veces. Se limpia solo si
+        # se corrige el ID del jugador (eso borra automation_response, ver
+        # order_update_player_id). Excepción: el bloqueo por saldo sí se
+        # arregla sin tocar la orden (recargando la billetera en
+        # Revendedores), así que una aprobación explícita (force) limpia
+        # ese bloqueo y genera un intento nuevo. No duplica recargas: el
+        # 402 nunca llegó a crear la orden del lado de Revendedores, el
+        # chequeo de order-status de abajo lo confirma antes del POST, y
+        # el intento nuevo lleva otro external_order_id (-s{paso}-{n}).
+        blocked_cause = step.get('blocked_cause')
+        if blocked_cause == 'balance' and force:
+            step['blocked_cause'] = ''
+            auto_resp['blocked_cause'] = ''
+            retry_no = int(step.get('rev_attempt') or 0) + 1
+            order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Reintento manual (intento {retry_no}) tras rechazo por saldo insuficiente.').strip()
+        elif blocked_cause:
+            hint = _REV_NON_RETRYABLE_HINTS.get(blocked_cause) or 'Corrige el ID del jugador (u otro dato) antes de reintentar.'
             return {
                 'ok': False,
                 'changed': False,
                 'pending_verification': False,
                 'current_step_index': step_index,
-                'blocked_cause': step.get('blocked_cause'),
+                'blocked_cause': blocked_cause,
                 'message': (
                     f"Revendedores ya rechazó esta recarga en el paso {step_index + 1}: {step.get('error') or 'rechazo definitivo'}. "
-                    'Corrige el ID del jugador (u otro dato) antes de reintentar.'
+                    + hint
                 ),
                 'category': 'danger',
             }
