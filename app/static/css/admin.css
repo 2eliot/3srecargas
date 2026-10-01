@@ -661,9 +661,9 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
 .admin-order-feed--compact .admin-order-card__date {
     padding: 1px 7px;
     border-radius: 6px;
-    border: 1px solid rgba(250,204,21,.35);
-    background: rgba(250,204,21,.08);
-    color: #facc15;
+    border: 1px solid rgba(255,255,255,.18);
+    background: rgba(255,255,255,.06);
+    color: rgba(255,255,255,.72);
     font-weight: 700;
 }
 .admin-order-feed--compact .admin-order-card__amount-wrap { min-width: 70px; gap: 1px; }
@@ -1868,3 +1868,17 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
     text-transform: uppercase;
     letter-spacing: .02em;
 }
+
+/* Zona para subir una foto (p. ej. comprobante al forzar una recarga):
+   recuadro punteado clicable con vista previa, en vez del input del navegador. */
+.proof-drop {
+    border: 1.5px dashed rgba(255,255,255,.22); border-radius: 12px; padding: 14px;
+    background: rgba(255,255,255,.03); cursor: pointer; transition: border-color .15s, background .15s;
+}
+.proof-drop:hover, .proof-drop:focus { border-color: var(--accent); background: rgba(139,92,246,.07); outline: none; }
+.proof-drop-empty { display: flex; align-items: center; gap: 12px; color: var(--text-muted); font-size: 13px; }
+.proof-drop-empty strong { color: var(--text-primary); }
+.proof-drop-icon { font-size: 26px; }
+.proof-drop-filled { display: flex; align-items: center; gap: 12px; }
+.proof-drop-filled img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); }
+.proof-drop-name { flex: 1; min-width: 0; font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

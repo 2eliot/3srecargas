@@ -199,6 +199,10 @@ class Order(db.Model):
     awaiting_payment_completion = db.Column(db.Boolean, default=False)
     paid_amount_bs = db.Column(db.Numeric(10, 2))
     remainder_reference = db.Column(db.String(255))
+    # Todas las referencias de pagos restantes YA sumadas a paid_amount_bs
+    # (separadas por coma): ninguna se puede sumar dos veces, ni la del
+    # primer pago se puede mandar como "restante".
+    remainder_references = db.Column(db.Text)
     remainder_capture = db.Column(db.String(255))
     remainder_ai_extracted_reference = db.Column(db.String(255))
     # Última respuesta cruda (JSON) que mandó Pabilo al verificar el pago de

@@ -915,6 +915,7 @@ def _ensure_order_payment_completion_columns():
             'remainder_reference VARCHAR(255)',
             'remainder_capture VARCHAR(255)',
             'remainder_ai_extracted_reference VARCHAR(255)',
+            'remainder_references TEXT',
         ]):
             return
 
@@ -933,6 +934,8 @@ def _ensure_order_payment_completion_columns():
             db.session.execute(text('ALTER TABLE orders ADD COLUMN remainder_capture VARCHAR(255)'))
         if 'remainder_ai_extracted_reference' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN remainder_ai_extracted_reference VARCHAR(255)'))
+        if 'remainder_references' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN remainder_references TEXT'))
         db.session.commit()
     except Exception:
         db.session.rollback()

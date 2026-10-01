@@ -976,6 +976,74 @@ def _check_payment_min_date(payment_data, is_new):
     return 'ok'
 
 
+# ─── Pago incompleto / pago restante ────────────────────────────────────────
+
+def counted_remainder_keys(order):
+    """Referencias de pagos restantes que YA se sumaron a esta orden."""
+    return {k for k in (normalize_reference_key(r) for r in (order.remainder_references or '').split(',')) if k}
+
+
+def remainder_reference_problem(order, reference):
+    """Motivo por el que esta referencia NO puede contarse como pago
+    restante de la orden, o None si se puede. Evita que el mismo pago se
+    sume dos veces, o que el cliente mande la referencia del primer pago
+    como si fuera el restante (antes ambas cosas se aceptaban)."""
+    key = normalize_reference_key(reference)
+    if not key:
+        return None
+    if key == normalize_reference_key(order.payment_reference):
+        return 'Esa es la referencia del primer pago. Envía la referencia del pago restante (el nuevo pago que hiciste).'
+    if key in counted_remainder_keys(order):
+        return 'Ese pago restante ya fue sumado a la orden.'
+    return None
+
+
+def record_remainder_reference(order, reference):
+    refs = [r for r in (order.remainder_references or '').split(',') if r.strip()]
+    refs.append(str(reference).strip())
+    order.remainder_references = ','.join(refs)[-2000:]
+
+
+def _covers_order(order, paid):
+    expected, error = _get_expected_order_amount(order)
+    if error or expected is None:
+        return False, None
+    minimum = (expected * PABILO_MIN_ACCEPTANCE_RATIO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    missing = (expected - paid).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return paid >= minimum, missing
+
+
+def apply_underpaid_verification(order, verification):
+    """Pabilo confirmó el primer pago, pero no alcanza. Deja la orden
+    esperando el pago restante SIN borrar lo que ya se había sumado de
+    pagos restantes (antes, al volver a verificar el primer pago, el total
+    volvía al monto inicial y se le pedía al cliente pagar otra vez).
+
+    Devuelve (cubierta, faltante): si con lo ya sumado la orden está
+    cubierta, la marca como pago verificado."""
+    reported = Decimal(str(verification.get('reported_amount') or '0'))
+    current = Decimal(str(order.paid_amount_bs or 0))
+    # Si ya hubo pagos restantes (también los de antes de existir la lista
+    # remainder_references), lo pagado nunca baja al monto del primer pago.
+    had_remainder = bool(order.remainder_references or order.remainder_reference)
+    paid = max(current, reported) if had_remainder else reported
+    order.paid_amount_bs = paid
+
+    resolved_reference = str(verification.get('resolved_reference') or '').strip()
+    if resolved_reference:
+        order.payment_reference = resolved_reference
+        order.payment_reference_last5 = normalize_reference_last5(resolved_reference)
+
+    covered, missing = _covers_order(order, paid)
+    if covered:
+        order.awaiting_payment_completion = False
+        order.payment_verified_at = order.payment_verified_at or datetime.utcnow()
+        order.payment_verification_id = verification.get('verification_id') or order.payment_verification_id
+        return True, Decimal('0')
+    order.awaiting_payment_completion = True
+    return False, missing
+
+
 def clear_pabilo_verification_state(order):
     order.payment_verified_at = None
     order.payment_verification_id = None

@@ -246,14 +246,42 @@
             </span>
         </div>
         {% endif %}
-        {% if order.delivery_proof %}
+        {% if remainder_refs or order.remainder_capture or order.awaiting_payment_completion %}
+        {# Pago restante: el cliente pagó menos y completó con otro pago. #}
+        <div class="detail-row" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px;border-radius:12px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.06);">
+            <span class="detail-label" style="color:#fbbf24;font-weight:800;">💰 Pago restante</span>
+            {% if order.awaiting_payment_completion %}
+            <span class="detail-value" style="color:#fbbf24;font-weight:700;">⏳ Esperando que el cliente complete el pago{% if remainder_missing %}: falta Bs {{ remainder_missing }}{% endif %}.</span>
+            {% else %}
+            <span class="detail-value" style="color:#4ade80;font-weight:700;">✅ Pago completado{% if order.paid_amount_bs %} · total pagado Bs {{ order.paid_amount_bs }}{% endif %}</span>
+            {% endif %}
+            {% if remainder_refs %}
+            <span class="detail-value">Referencia{{ 's' if remainder_refs|length > 1 }} del pago restante:
+                {% for ref in remainder_refs %}<code class="ref-code" style="font-size:14px;font-weight:800;margin:0 4px;">{{ ref }}</code>{% endfor %}
+            </span>
+            {% endif %}
+            {% if order.remainder_capture %}
+            <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+                <a href="{{ url_for('static', filename='uploads/' + order.remainder_capture) }}" target="_blank" rel="noopener">
+                    <img src="{{ url_for('static', filename='uploads/' + order.remainder_capture) }}" alt="Comprobante del pago restante" style="display:block;width:100%;max-width:220px;max-height:220px;object-fit:cover;border-radius:12px;border:1px solid var(--border-color);">
+                </a>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;">
+                    <a class="btn-secondary" style="padding:6px 10px;font-size:12px" target="_blank" href="{{ url_for('static', filename='uploads/' + order.remainder_capture) }}">Ver comprobante</a>
+                    <a class="btn-secondary" style="padding:6px 10px;font-size:12px" download href="{{ url_for('static', filename='uploads/' + order.remainder_capture) }}">Descargar</a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if can_upload_delivery_proof or order.delivery_proof %}
         <div class="detail-row">
-            <span class="detail-label">Comprobante enviado</span>
+            <span class="detail-label">Comprobante de entrega</span>
             <span class="detail-value">
                 <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+                    {% if order.delivery_proof %}
                     <div style="display:flex;flex-direction:column;gap:8px;max-width:220px;">
                         <a href="{{ url_for('static', filename='uploads/' + order.delivery_proof) }}" target="_blank" rel="noopener">
-                            <img src="{{ url_for('static', filename='uploads/' + order.delivery_proof) }}" alt="Comprobante enviado al cliente" style="display:block;width:100%;max-width:220px;max-height:220px;object-fit:cover;border-radius:12px;border:1px solid var(--border-color);box-shadow:0 10px 22px rgba(0,0,0,.18);">
+                            <img src="{{ url_for('static', filename='uploads/' + order.delivery_proof) }}" alt="Comprobante de la recarga" style="display:block;width:100%;max-width:220px;max-height:220px;object-fit:cover;border-radius:12px;border:1px solid var(--border-color);box-shadow:0 10px 22px rgba(0,0,0,.18);">
                         </a>
                     </div>
                     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;">
@@ -262,6 +290,16 @@
                         <a class="btn-secondary" style="padding:6px 10px;font-size:12px" download
                            href="{{ url_for('static', filename='uploads/' + order.delivery_proof) }}">Descargar</a>
                     </div>
+                    {% endif %}
+                    {% if can_upload_delivery_proof %}
+                    {# Un solo botón: abre el selector de imagen y al elegirla se sube sola. #}
+                    <form method="POST" action="{{ url_for('admin_bp.order_upload_delivery_proof', order_id=order.id) }}" enctype="multipart/form-data" style="margin:0;">
+                        <input type="file" name="delivery_proof" id="deliveryProofUpload" accept="image/*" hidden
+                               onchange="if (this.files.length) { this.form.querySelector('button').textContent = '⏳ Subiendo…'; this.form.submit(); }">
+                        <button type="button" class="btn-secondary" style="padding:6px 10px;font-size:12px"
+                                onclick="document.getElementById('deliveryProofUpload').click()">{{ '🔄 Reemplazar foto' if order.delivery_proof else '📎 Subir foto' }}</button>
+                    </form>
+                    {% endif %}
                 </div>
             </span>
         </div>
@@ -415,10 +453,26 @@
             Úsalo solo si la recarga se hizo por fuera de la web (proveedor externo) porque la API falló o no tenía saldo.
             La orden se marca como completada tal cual, sin llamar al bot ni a Revendedores, y sale de la cola de reintentos para que no se recargue dos veces.
         </p>
-        <form method="POST" action="{{ url_for('admin_bp.order_force_approve', order_id=order.id) }}">
+        <form method="POST" action="{{ url_for('admin_bp.order_force_approve', order_id=order.id) }}" enctype="multipart/form-data">
             <div class="form-group" style="margin-top:16px">
                 <label>Nota (opcional)</label>
                 <textarea name="admin_note" rows="2" placeholder="Ej: API sin saldo, recargado con proveedor X..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>📎 Foto del comprobante de la recarga (opcional)</label>
+                <input type="file" name="delivery_proof" id="forceProofInput" accept="image/*" hidden>
+                <div id="forceProofDrop" class="proof-drop" role="button" tabindex="0">
+                    <div class="proof-drop-empty" id="forceProofEmpty">
+                        <span class="proof-drop-icon">🖼️</span>
+                        <span><strong>Toca para subir la foto</strong><br><small>PNG, JPG o WEBP</small></span>
+                    </div>
+                    <div class="proof-drop-filled" id="forceProofFilled" hidden>
+                        <img id="forceProofPreview" alt="Vista previa del comprobante">
+                        <span class="proof-drop-name" id="forceProofName"></span>
+                        <button type="button" class="btn-sm btn-outline" id="forceProofClear">Quitar</button>
+                    </div>
+                </div>
+                <small class="form-hint" style="display:block;margin-top:6px;">Queda guardada en la orden. También la puedes subir después desde el detalle.</small>
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="document.getElementById('forceApproveModal').style.display='none'" class="btn-secondary">Cancelar</button>
@@ -454,6 +508,40 @@
 
 {% block extra_js %}
 <script>
+// Foto del comprobante al forzar la recarga: recuadro con vista previa.
+(function () {
+    var input = document.getElementById('forceProofInput');
+    var drop = document.getElementById('forceProofDrop');
+    if (!input || !drop) return;
+    var empty = document.getElementById('forceProofEmpty');
+    var filled = document.getElementById('forceProofFilled');
+    var preview = document.getElementById('forceProofPreview');
+    var name = document.getElementById('forceProofName');
+    var clear = document.getElementById('forceProofClear');
+    var url = null;
+
+    function show(file) {
+        if (url) URL.revokeObjectURL(url);
+        url = file ? URL.createObjectURL(file) : null;
+        empty.hidden = !!file;
+        filled.hidden = !file;
+        if (file) { preview.src = url; name.textContent = file.name; }
+    }
+    drop.addEventListener('click', function (e) {
+        if (e.target === clear) return;
+        input.click();
+    });
+    drop.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+    });
+    input.addEventListener('change', function () { show(input.files[0] || null); });
+    clear.addEventListener('click', function (e) {
+        e.stopPropagation();
+        input.value = '';
+        show(null);
+    });
+})();
+
 (function() {
     function normalizeWhatsAppTarget(raw) {
         if (raw === null || raw === undefined) return '';

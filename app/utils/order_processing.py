@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import requests
@@ -122,6 +122,10 @@ def _load_revendedores_auto_response(order, catalog_items, base_state=None):
             'error': current.get('error') or '',
             'verified': bool(current.get('verified')),
             'blocked_cause': current.get('blocked_cause') or '',
+            # Reintento automático de rechazos temporales (proveedor sin saldo).
+            'transient_failures': int(current.get('transient_failures') or 0),
+            'retry_after': current.get('retry_after') or '',
+            'first_transient_at': current.get('first_transient_at') or '',
         })
 
     if not existing_steps and auto_resp.get('source') == 'revendedores_api' and steps:
@@ -165,9 +169,6 @@ _REV_NON_RETRYABLE_PATTERNS = (
     ('usuario no existe', 'player'),
     ('user id não existe', 'player'),
     ('user id nao existe', 'player'),
-    ('insufficient credits', 'balance'),
-    ('saldo insuficiente', 'balance'),
-    ('insufficient balance', 'balance'),
 )
 
 _REV_NON_RETRYABLE_HINTS = {
@@ -178,6 +179,25 @@ _REV_NON_RETRYABLE_HINTS = {
     'player': 'Verifica el ID del jugador con el cliente antes de reintentar.',
     'balance': 'Recarga saldo en Revendedores y vuelve a darle Aprobar: la aprobación manual reintenta esta recarga.',
 }
+
+# Rechazos TEMPORALES: el proveedor no pudo en ese momento (sin saldo, de su
+# lado o del nuestro, o saturado). Antes se trataban como definitivos y la
+# orden quedaba bloqueada para siempre: cuando el proveedor volvía a tener
+# saldo, las órdenes nuevas salían solas pero las viejas se quedaban
+# pendientes. Ahora se reintentan solas cada REV_TRANSIENT_RETRY_SECONDS
+# durante REV_TRANSIENT_MAX_HOURS.
+_REV_TRANSIENT_PATTERNS = (
+    'intenta nuevamente', 'intente nuevamente', 'intentalo nuevamente', 'inténtalo nuevamente',
+    'try again', 'no se pudo completar', 'saldo insuficiente', 'insufficient credits',
+    'insufficient balance', 'sin saldo', 'temporalmente', 'temporarily', 'timeout',
+)
+REV_TRANSIENT_RETRY_SECONDS = 5 * 60
+REV_TRANSIENT_MAX_HOURS = 24
+
+
+def is_transient_revendedores_error(message):
+    text = str(message or '').strip().lower()
+    return bool(text) and any(needle in text for needle in _REV_TRANSIENT_PATTERNS)
 
 
 def classify_revendedores_error(message):
@@ -267,27 +287,38 @@ def process_revendedores_queue(order, base_state=None, force=False):
             continue
 
         # Si este paso ya quedó marcado como rechazo DEFINITIVO (ID
-        # inválido, paquete dado de baja...), no se vuelve a llamar a
+        # inválido, paquete dado de baja), no se vuelve a llamar a
         # Revendedores aunque se dispare este proceso otra vez (p.ej. el
         # admin le da "Aprobar" de nuevo esperando que ahora sí funcione).
         # Antes esto SÍ se reintentaba en cada llamada nueva, aunque la
         # nota ya dijera "no se reintenta automáticamente" — de ahí que la
         # misma nota apareciera duplicada varias veces. Se limpia solo si
         # se corrige el ID del jugador (eso borra automation_response, ver
-        # order_update_player_id). Excepción: el bloqueo por saldo sí se
-        # arregla sin tocar la orden (recargando la billetera en
-        # Revendedores), así que una aprobación explícita (force) limpia
-        # ese bloqueo y genera un intento nuevo. No duplica recargas: el
-        # 402 nunca llegó a crear la orden del lado de Revendedores, el
-        # chequeo de order-status de abajo lo confirma antes del POST, y
-        # el intento nuevo lleva otro external_order_id (-s{paso}-{n}).
+        # order_update_player_id).
+        #
+        # Excepción: los bloqueos que en realidad eran TEMPORALES — por
+        # saldo (402) o "No se pudo completar la recarga. Intenta nuevamente
+        # en unos minutos", que es lo que responde el proveedor sin saldo —
+        # se arreglan sin tocar la orden (recargando la billetera), así que
+        # se desbloquean y pasan al reintento automático cada
+        # REV_TRANSIENT_RETRY_SECONDS; una aprobación explícita (force) lo
+        # intenta ya. No duplica recargas: un intento rechazado nunca creó
+        # la orden del lado de Revendedores, el chequeo de order-status de
+        # abajo lo confirma antes del POST, y el intento nuevo lleva otro
+        # external_order_id (-s{paso}-{n}).
         blocked_cause = step.get('blocked_cause')
-        if blocked_cause == 'balance' and force:
+        if blocked_cause and blocked_cause not in ('player', 'mapping') and (
+                blocked_cause == 'balance' or is_transient_revendedores_error(step.get('error'))):
             step['blocked_cause'] = ''
             auto_resp['blocked_cause'] = ''
-            retry_no = int(step.get('rev_attempt') or 0) + 1
-            order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Reintento manual (intento {retry_no}) tras rechazo por saldo insuficiente.').strip()
-        elif blocked_cause:
+            if not step.get('first_transient_at'):
+                step['first_transient_at'] = datetime.utcnow().isoformat()
+            if force:
+                retry_no = int(step.get('rev_attempt') or 0) + 1
+                order.notes = ((order.notes or '') + f'\n[Revendedores API][Paso {step_index + 1}] Reintento manual (intento {retry_no}) tras rechazo por saldo insuficiente.').strip()
+            blocked_cause = ''
+
+        if blocked_cause:
             hint = _REV_NON_RETRYABLE_HINTS.get(blocked_cause) or 'Corrige el ID del jugador (u otro dato) antes de reintentar.'
             return {
                 'ok': False,
@@ -351,8 +382,44 @@ def process_revendedores_queue(order, base_state=None, force=False):
                 # del POST (más abajo) es el que decide detenerse en vez de
                 # seguir reintentando solo.
 
+        # Rechazo temporal anterior: se espera REV_TRANSIENT_RETRY_SECONDS
+        # entre intentos (sin llamar a Revendedores), y tras
+        # REV_TRANSIENT_MAX_HOURS se deja para revisión manual. El admin
+        # ("Aprobar") siempre puede forzar un intento ya.
+        if not force and step.get('retry_after'):
+            try:
+                retry_after = datetime.fromisoformat(step['retry_after'])
+            except (TypeError, ValueError):
+                retry_after = None
+            if retry_after and datetime.utcnow() < retry_after:
+                return {
+                    'ok': False,
+                    'changed': False,
+                    'pending_verification': True,
+                    'current_step_index': step_index,
+                    'message': 'El proveedor no pudo completar la recarga hace poco; se reintentará sola en unos minutos.',
+                    'category': 'warning',
+                }
+        if not force and step.get('first_transient_at'):
+            try:
+                first_transient = datetime.fromisoformat(step['first_transient_at'])
+            except (TypeError, ValueError):
+                first_transient = None
+            if first_transient and datetime.utcnow() - first_transient > timedelta(hours=REV_TRANSIENT_MAX_HOURS):
+                return {
+                    'ok': False,
+                    'changed': False,
+                    'pending_verification': False,
+                    'current_step_index': step_index,
+                    'message': (f'El proveedor no pudo completar esta recarga durante {REV_TRANSIENT_MAX_HOURS} h: '
+                                'se dejó de reintentar sola. Dale "Aprobar" para intentarlo de nuevo.'),
+                    'category': 'danger',
+                }
+
         prior_attempts = int(step.get('rev_attempt') or 0)
-        if not force and prior_attempts >= MAX_REV_RETRIES:
+        # Los rechazos temporales no gastan los reintentos normales.
+        counted_attempts = prior_attempts - int(step.get('transient_failures') or 0)
+        if not force and counted_attempts >= MAX_REV_RETRIES:
             auto_resp['pending_verification'] = False
             auto_resp['current_step_index'] = step_index
             auto_resp['last_error'] = step.get('error') or 'Se agotaron los reintentos automáticos.'
@@ -484,6 +551,47 @@ def process_revendedores_queue(order, base_state=None, force=False):
             # del error identifica una causa que no se arregla reintentando
             # (paquete dado de baja, ID inválido, saldo agotado): reintentar
             # solo retrasaba el aviso al admin.
+            # Rechazo TEMPORAL (sin saldo, "intenta nuevamente"): no se
+            # bloquea; se reintenta solo cada REV_TRANSIENT_RETRY_SECONDS.
+            # Seguro: un intento 'fallido' no cobró nada, y el siguiente usa
+            # otro external_order_id.
+            if not non_retryable_cause and is_transient_revendedores_error(rev_error):
+                now = datetime.utcnow()
+                step.update({
+                    'rev_attempt': rev_attempt,
+                    'external_order_id': ext_order_id,
+                    'error': rev_error,
+                    'success': False,
+                    'pending_verification': True,
+                    'blocked_cause': '',
+                    'transient_failures': int(step.get('transient_failures') or 0) + 1,
+                    'retry_after': (now + timedelta(seconds=REV_TRANSIENT_RETRY_SECONDS)).isoformat(),
+                })
+                if not step.get('first_transient_at'):
+                    step['first_transient_at'] = now.isoformat()
+                auto_resp['pending_verification'] = True
+                auto_resp['current_step_index'] = step_index
+                auto_resp['external_order_id'] = ext_order_id
+                auto_resp['last_error'] = rev_error
+                auto_resp['blocked_cause'] = ''
+                order.automation_response = json.dumps(auto_resp)
+                # Una sola nota aunque se reintente muchas veces.
+                transient_note = (f'[Revendedores API][Paso {step_index + 1}] El proveedor no pudo completar la recarga '
+                                  f'(posible falta de saldo): {rev_error}. Se reintentará sola cada '
+                                  f'{REV_TRANSIENT_RETRY_SECONDS // 60} minutos durante {REV_TRANSIENT_MAX_HOURS} h.')
+                if transient_note not in (order.notes or ''):
+                    order.notes = ((order.notes or '') + '\n' + transient_note).strip()
+                db.session.commit()
+                return {
+                    'ok': False,
+                    'changed': False,
+                    'pending_verification': True,
+                    'current_step_index': step_index,
+                    'message': (f'El proveedor no pudo completar la recarga ahora ({rev_error}). '
+                                f'Se reintentará sola cada {REV_TRANSIENT_RETRY_SECONDS // 60} minutos.'),
+                    'category': 'warning',
+                }
+
             if rev_reported_status == 'fallida' or non_retryable_cause:
                 hint = _REV_NON_RETRYABLE_HINTS.get(non_retryable_cause, '')
                 step.update({

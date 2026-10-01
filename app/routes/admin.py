@@ -5,6 +5,7 @@ import re
 import requests
 from collections import defaultdict
 from datetime import datetime, timedelta
+from decimal import Decimal
 from functools import wraps
 from flask import (
     Blueprint, render_template, request, redirect, Response,
@@ -72,6 +73,7 @@ from ..utils.auth_accounts import (
     sync_env_admin_user,
 )
 from ..utils.payment_verification import (
+    apply_underpaid_verification,
     clear_pabilo_verification_state,
     normalize_reference_last5,
     payment_method_uses_payer_identity_verification,
@@ -219,10 +221,14 @@ def save_video(file, subfolder=''):
 
 
 def order_supports_delivery_proof(order):
+    """¿Se puede adjuntar la foto del comprobante al aprobar? En todas las
+    recargas por ID (también las automáticas: cuando la API falla y se hace
+    a mano, antes no aparecía la opción). Las tarjetas/códigos entregan un
+    PIN y no la usan."""
     if not order or not order.package or not order.game:
         return False
     category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
-    return not (order.package.is_automated or category_slug == 'tarjetas')
+    return category_slug != 'tarjetas'
 
 
 def cleanup_old_orders():
@@ -1064,6 +1070,7 @@ def orders():
         services=services,
         packages=packages,
         to_deliver_count=count_orders_to_deliver(),
+        pending_count=Order.query.filter(Order.status == 'pending').count(),
     )
 
 
@@ -1161,14 +1168,55 @@ def order_detail(order_id):
     same_game_packages = Package.query.filter_by(
         game_id=order.game_id, is_active=True
     ).order_by(Package.sort_order.asc(), Package.id.asc()).all()
+
+    # Pago restante: solo las referencias que de verdad se sumaron. Las
+    # órdenes de antes de existir esa lista guardaban solo la última.
+    remainder_refs = [r for r in (order.remainder_references or '').split(',') if r.strip()]
+    if not remainder_refs and order.remainder_reference and not order.awaiting_payment_completion and order.paid_amount_bs:
+        remainder_refs = [order.remainder_reference]
+    remainder_missing = None
+    if order.awaiting_payment_completion:
+        from ..utils.payment_verification import _get_expected_order_amount
+        expected, error = _get_expected_order_amount(order)
+        if not error and expected is not None:
+            remainder_missing = (expected - Decimal(str(order.paid_amount_bs or 0))).quantize(Decimal('0.01'))
+
     return render_template(
         'admin/order_detail.html',
         order=order,
         payment_method_config=payment_method_config,
         can_send_delivery_proof=order_supports_delivery_proof(order),
+        can_upload_delivery_proof=order.status != 'rejected',
+        remainder_refs=remainder_refs,
+        remainder_missing=remainder_missing,
         same_game_packages=same_game_packages,
         can_verify_player=order.game_id in verifiable_game_ids(),
     )
+
+
+@admin_bp.route('/orders/<int:order_id>/delivery-proof', methods=['POST'])
+@login_required
+def order_upload_delivery_proof(order_id):
+    """Sube o reemplaza la foto del comprobante de la recarga en cualquier
+    orden (también en las automáticas o las forzadas a mano, donde antes no
+    había dónde subirla)."""
+    order = Order.query.get_or_404(order_id)
+    redirect_target = url_for('admin_bp.order_detail', order_id=order.id)
+    file = request.files.get('delivery_proof')
+    if not file or not file.filename:
+        flash('Elige una imagen para subir.', 'warning')
+        return redirect(redirect_target)
+    if not allowed_file(file.filename):
+        flash('El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.', 'danger')
+        return redirect(redirect_target)
+    new_path = save_image(file, 'delivery_proofs')
+    old_path = order.delivery_proof
+    order.delivery_proof = new_path
+    db.session.commit()
+    if old_path and old_path != new_path:
+        delete_uploaded_file(old_path)
+    flash('Foto del comprobante guardada en la orden.', 'success')
+    return redirect(redirect_target)
 
 
 @admin_bp.route('/orders/<int:order_id>/player-id', methods=['POST'])
@@ -1365,6 +1413,26 @@ def _run_admin_pabilo_reverification(order, reference=None, force_reference=Fals
             flash(verification.get('message') or 'Pago re-verificado correctamente en Pabilo.', 'success')
             return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
+        if verification.get('underpaid'):
+            # El pago existe pero no alcanza: la orden pasa a esperar el pago
+            # restante (al cliente le aparece el aviso para completarlo en la
+            # página de su orden), sin perder lo que ya hubiera sumado antes.
+            covered, missing = apply_underpaid_verification(order, verification)
+            if covered:
+                note = f'[Admin] Pago re-verificado: con los pagos restantes ya sumados (total Bs {order.paid_amount_bs}) la orden está cubierta.'
+                category, message = 'success', 'El pago está completo sumando el pago restante. Ya puedes aprobar la orden.'
+            else:
+                note = (f'[Admin] Al re-verificar, el pago quedó incompleto: Pabilo reportó Bs {verification.get("reported_amount")} '
+                        f'de Bs {verification.get("expected_amount")}. Falta Bs {missing}. Se le pidió al cliente completar el pago.')
+                category = 'warning'
+                message = (f'💰 Al pago le faltan Bs {missing}. La orden quedó esperando el pago restante: '
+                           'al cliente le aparece el aviso para completarlo en la página de su orden.')
+            if note not in (order.notes or ''):
+                order.notes = ((order.notes or '') + '\n' + note).strip()
+            db.session.commit()
+            flash(message, category)
+            return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
         note = verification.get('message') or 'No se pudo re-verificar el pago en Pabilo.'
         audit_note = f'[Admin] {note}'
         existing_notes = order.notes or ''
@@ -1418,7 +1486,13 @@ def order_approve(order_id):
 
         result = approve_order(order, delivery_proof_path=delivery_proof_path)
         if delivery_proof_path and getattr(order, 'delivery_proof', None) != delivery_proof_path:
-            delete_uploaded_file(delivery_proof_path)
+            if order.status in ('approved', 'completed'):
+                # Se completó por la vía automática (que no guarda la foto):
+                # la foto que subió el admin igual queda en la orden.
+                order.delivery_proof = delivery_proof_path
+                db.session.commit()
+            else:
+                delete_uploaded_file(delivery_proof_path)
         flash(result['message'], result['category'])
         return redirect(redirect_target)
     except Exception:
@@ -1438,11 +1512,27 @@ def order_approve(order_id):
 def order_force_approve(order_id):
     order = Order.query.get_or_404(order_id)
     admin_note = request.form.get('admin_note', '').strip()
+    # Foto opcional del comprobante de la recarga hecha por fuera de la web.
+    proof_path = None
+    proof_file = request.files.get('delivery_proof')
+    if proof_file and proof_file.filename:
+        if not allowed_file(proof_file.filename):
+            flash('El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.', 'danger')
+            return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+        proof_path = save_image(proof_file, 'delivery_proofs')
     try:
         result = force_approve_order_manually(order, admin_note=admin_note)
+        if proof_path:
+            if result.get('ok'):
+                order.delivery_proof = proof_path
+                db.session.commit()
+            else:
+                delete_uploaded_file(proof_path)
         flash(result['message'], result['category'])
     except Exception:
         db.session.rollback()
+        if proof_path:
+            delete_uploaded_file(proof_path)
         current_app.logger.exception(
             'Error al forzar la aprobación manual de la orden %s',
             getattr(order, 'id', None),

@@ -29,6 +29,9 @@ from ..utils.points import (
 )
 from ..utils.payment_verification import (
     PABILO_MIN_ACCEPTANCE_RATIO,
+    apply_underpaid_verification,
+    record_remainder_reference,
+    remainder_reference_problem,
     _get_expected_order_amount,
     find_reference_conflict,
     is_auto_verify_enabled,
@@ -86,6 +89,9 @@ checkout_bp = Blueprint('checkout_bp', __name__)
 # sin importar este límite.
 AUTO_VERIFY_MAX_ATTEMPTS = 30
 AUTO_VERIFY_COOLDOWN_SECONDS = 60
+# Con el pago ya confirmado, cada cuánto se reintenta la ENTREGA (p. ej. si
+# el proveedor se quedó sin saldo). No se vuelve a preguntar a Pabilo.
+DELIVERY_RETRY_SECONDS = 5 * 60
 
 # Lock en base de datos: solo 1 solicitud a Pabilo al mismo tiempo. Un
 # threading.Lock() normal no alcanza porque en producción la app corre con
@@ -194,6 +200,31 @@ def auto_verify_and_process_order(order, force=False):
             'stop_polling': True,
         }
 
+    if order.payment_verified_at:
+        # El pago YA está confirmado y lo que falló fue la entrega (p. ej. el
+        # proveedor sin saldo). No se vuelve a preguntar a Pabilo: antes se
+        # re-verificaba el primer pago, y en un pago incompleto eso borraba
+        # lo ya sumado del pago restante y le volvía a pedir dinero al
+        # cliente. Solo se reintenta la entrega, como mucho cada 5 minutos.
+        if not force and order.payment_last_verification_at:
+            elapsed = (datetime.utcnow() - order.payment_last_verification_at).total_seconds()
+            if elapsed < DELIVERY_RETRY_SECONDS:
+                return {
+                    'checked': False,
+                    'verified': True,
+                    'payment_verified': True,
+                    'message': 'Pago confirmado. La recarga se está procesando.',
+                    'stop_polling': True,
+                }
+        order.payment_last_verification_at = datetime.utcnow()
+        db.session.commit()
+        approval = approve_order(order)
+        approval['checked'] = True
+        approval['verified'] = True
+        approval['payment_verified'] = True
+        approval['stop_polling'] = True
+        return approval
+
     attempts = int(order.payment_verification_attempts or 0)
     if attempts >= AUTO_VERIFY_MAX_ATTEMPTS and not force and not order.payment_verified_at:
         return {
@@ -270,18 +301,14 @@ def auto_verify_and_process_order(order, force=False):
             return approval
 
         if verification.get('underpaid'):
-            reported_amount = Decimal(str(verification.get('reported_amount') or '0'))
-            order.awaiting_payment_completion = True
-            order.paid_amount_bs = reported_amount
             # Pabilo SÍ confirmó que esta referencia existe (solo que el monto
-            # no alcanza): se guarda ahora en la orden, no cuando se complete
-            # el pago, para que quede "reservada" de inmediato y nadie pueda
-            # reusar ese mismo comprobante real en una orden distinta mientras
-            # esta sigue esperando el resto.
-            resolved_reference = str(verification.get('resolved_reference') or '').strip()
-            if resolved_reference:
-                order.payment_reference = resolved_reference
-                order.payment_reference_last5 = normalize_reference_last5(resolved_reference)
+            # no alcanza): queda guardada en la orden de inmediato para que
+            # nadie la reuse en otra orden, y la orden pasa a esperar el pago
+            # restante sin perder lo que ya se hubiera sumado antes.
+            covered, _missing = apply_underpaid_verification(order, verification)
+            if covered:
+                db.session.commit()
+                return auto_verify_and_process_order(order, force=True)
             underpaid_note = (
                 f"[Pabilo] Pago incompleto: reportó Bs {verification.get('reported_amount')} "
                 f"de Bs {verification.get('expected_amount')} esperados. "
@@ -1463,9 +1490,25 @@ def order_complete_payment(order_number):
         ai_reference = str((extraction or {}).get('reference') or '').strip()
 
     candidate_references = []
+    rejected_reason = None
     for ref in (manual_reference, ai_reference):
-        if ref and ref not in candidate_references:
-            candidate_references.append(ref)
+        if not ref or ref in candidate_references:
+            continue
+        # Ni la referencia del primer pago ni un restante ya sumado cuentan
+        # otra vez (antes se aceptaban y el total se duplicaba).
+        problem = remainder_reference_problem(order, ref)
+        if problem:
+            rejected_reason = rejected_reason or problem
+            continue
+        candidate_references.append(ref)
+
+    if not candidate_references and rejected_reason:
+        if capture_path:
+            try:
+                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], capture_path))
+            except OSError:
+                pass
+        return jsonify({'ok': False, 'message': rejected_reason}), 400
 
     if not candidate_references:
         if capture_path:
@@ -1501,10 +1544,18 @@ def order_complete_payment(order_number):
             'message': verification.get('message', 'El pago restante todavía no aparece verificado en Pabilo.'),
         })
 
+    # Última defensa: la referencia que Pabilo resolvió podría ser una ya
+    # contada (o la del primer pago) aunque el cliente la escribiera distinto.
+    problem = remainder_reference_problem(order, order.remainder_reference)
+    if problem:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': problem}), 400
+
     new_amount = Decimal(str(verification.get('reported_amount') or '0'))
     already_paid = Decimal(str(order.paid_amount_bs or 0))
     total_paid = already_paid + new_amount
     order.paid_amount_bs = total_paid
+    record_remainder_reference(order, order.remainder_reference)
 
     note = f"[Pabilo] Pago restante verificado: Bs {new_amount} (ref: {order.remainder_reference}). Total acumulado: Bs {total_paid}."
     order.notes = ((order.notes or '') + '\n' + note).strip()

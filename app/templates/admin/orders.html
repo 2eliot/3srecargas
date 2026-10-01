@@ -12,7 +12,10 @@
         <a href="{{ url_for('admin_bp.orders', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab {% if not status_filter %}active{% endif %}">Todas</a>
         <a href="{{ url_for('admin_bp.orders', status='pending', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
-           class="filter-tab {% if status_filter == 'pending' %}active{% endif %}">Pendientes</a>
+           class="filter-tab {% if status_filter == 'pending' %}active{% endif %}">
+            Pendientes
+            {% if pending_count %}<span class="filter-tab-count">{{ pending_count }}</span>{% endif %}
+        </a>
         <a href="{{ url_for('admin_bp.orders', status='to_deliver', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab filter-tab-deliver {% if status_filter == 'to_deliver' %}active{% endif %}">
             Por entregar
