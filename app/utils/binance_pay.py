@@ -48,6 +48,10 @@ Settings en BD (modelo Setting):
 import hashlib
 import hmac
 import random
+
+# Generador seguro (del sistema operativo): impredecible aunque alguien observe
+# miles de resultados. El `random` normal de Python se puede predecir así.
+_secure_random = random.SystemRandom()
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -299,7 +303,7 @@ def generate_binance_auto_code(app) -> str:
         from ..models import Order
         cutoff = datetime.utcnow() - timedelta(days=30)
         for _ in range(50):
-            code = "".join(random.choices(chars, k=6))
+            code = "".join(_secure_random.choices(chars, k=6))
             clash = (
                 Order.query
                 .filter(Order.payment_reference == code)
@@ -311,7 +315,7 @@ def generate_binance_auto_code(app) -> str:
             )
             if not clash:
                 return code
-    return f"{random.randint(0, 999999):06d}"
+    return f"{_secure_random.randint(0, 999999):06d}"
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────

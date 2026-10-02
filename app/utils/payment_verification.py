@@ -673,19 +673,16 @@ def verify_order_payment(order, force_reference=False):
             payment_status = str(payment_data.get('status') or '').strip().lower()
             is_new = bool(payload_data.get('is_new'))
 
-            if verification_id:
-                existing_by_verification = Order.query.filter(
-                    Order.payment_verification_id == verification_id,
-                    Order.id != order.id,
-                    Order.status.in_(['approved', 'completed'])
-                ).first()
-                if existing_by_verification:
-                    return {
-                        'ok': False,
-                        'verified': False,
-                        'message': 'Ese pago ya fue usado para aprobar otra orden.',
-                        'response': full_data,
-                    }
+            # Mismo pago del banco = mismo id de Pabilo, aunque la referencia
+            # se escriba distinta: no puede contar en dos órdenes (tampoco si
+            # la otra sigue pendiente, ni si allá fue el "pago restante").
+            if verification_id and find_order_using_payment_id(verification_id, order.id):
+                return {
+                    'ok': False,
+                    'verified': False,
+                    'message': 'Ese pago ya fue usado en otra orden.',
+                    'response': full_data,
+                }
 
             root_status = str(data.get('status') or '').strip().lower()
             is_verified_flag = bool(payload_data.get('verified') or full_data.get('verified'))
@@ -710,6 +707,7 @@ def verify_order_payment(order, force_reference=False):
                     # pago real en una orden distinta mientras se completa.
                     amount_validation['resolved_reference'] = variant_ref
                     amount_validation['resolved_reference_source'] = source
+                    amount_validation['verification_id'] = verification_id or f"fallback:{payment_method.id}:{variant_ref or source}"
                 return amount_validation
 
             date_verdict = _check_payment_min_date(payment_data, is_new)
@@ -861,19 +859,9 @@ def verify_remainder_reference(order, reference):
         payment_status = str(payment_data.get('status') or '').strip().lower()
         is_new = bool(payload_data.get('is_new'))
 
-        if verification_id:
-            existing_by_verification = Order.query.filter(
-                Order.payment_verification_id == verification_id,
-                Order.id != order.id,
-                Order.status.in_(['approved', 'completed']),
-            ).first()
-            if existing_by_verification:
-                return {
-                    'ok': False,
-                    'verified': False,
-                    'message': 'Ese pago ya fue usado para aprobar otra orden.',
-                    'response': full_data,
-                }
+        same_payment = _remainder_payment_id_problem(order, verification_id, full_data)
+        if same_payment:
+            return same_payment
 
         root_status = str(data.get('status') or '').strip().lower()
         is_verified_flag = bool(payload_data.get('verified') or full_data.get('verified'))
@@ -916,6 +904,9 @@ def verify_remainder_reference(order, reference):
 
         if not verification_id:
             verification_id = f"fallback:{payment_method.id}:{variant_ref}"
+            same_payment = _remainder_payment_id_problem(order, verification_id, full_data)
+            if same_payment:
+                return same_payment
 
         quantized_amount = reported_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         return {
@@ -978,30 +969,126 @@ def _check_payment_min_date(payment_data, is_new):
 
 # ─── Pago incompleto / pago restante ────────────────────────────────────────
 
-def counted_remainder_keys(order):
+# Pabilo encuentra un pago aunque solo le pasen sus últimos 4 dígitos, así
+# que si una referencia es el final de la otra pueden ser el MISMO pago del
+# banco (ej. 979477 y 180181979477).
+SAME_PAYMENT_MIN_DIGITS = 4
+
+
+def same_bank_reference(a, b):
+    """True si a y b pueden ser la misma operación del banco escrita de dos
+    formas: iguales, o una es el final de la otra."""
+    key_a, key_b = normalize_reference_key(a), normalize_reference_key(b)
+    if not key_a or not key_b:
+        return False
+    if key_a == key_b:
+        return True
+    if not (key_a.isdigit() and key_b.isdigit()):
+        return False
+    if min(len(key_a), len(key_b)) < SAME_PAYMENT_MIN_DIGITS:
+        return False
+    return key_a.endswith(key_b) or key_b.endswith(key_a)
+
+
+def _split_list(value):
+    return [v.strip() for v in (value or '').split(',') if v.strip()]
+
+
+def counted_remainder_references(order):
     """Referencias de pagos restantes que YA se sumaron a esta orden."""
-    return {k for k in (normalize_reference_key(r) for r in (order.remainder_references or '').split(',')) if k}
+    return _split_list(order.remainder_references)
+
+
+def first_payment_references(order):
+    """Referencias con las que se identificó el PRIMER pago de la orden: la
+    que escribió el cliente y la que se leyó de su comprobante."""
+    return [r for r in (order.payment_reference, order.ai_extracted_reference) if str(r or '').strip()]
 
 
 def remainder_reference_problem(order, reference):
     """Motivo por el que esta referencia NO puede contarse como pago
     restante de la orden, o None si se puede. Evita que el mismo pago se
-    sume dos veces, o que el cliente mande la referencia del primer pago
-    como si fuera el restante (antes ambas cosas se aceptaban)."""
-    key = normalize_reference_key(reference)
-    if not key:
+    sume dos veces, o que el cliente mande el primer pago como si fuera el
+    restante, también escrito distinto (por ejemplo solo sus últimos dígitos)."""
+    if not normalize_reference_key(reference):
         return None
-    if key == normalize_reference_key(order.payment_reference):
+    if any(same_bank_reference(reference, ref) for ref in first_payment_references(order)):
         return 'Esa es la referencia del primer pago. Envía la referencia del pago restante (el nuevo pago que hiciste).'
-    if key in counted_remainder_keys(order):
+    if any(same_bank_reference(reference, ref) for ref in counted_remainder_references(order)):
         return 'Ese pago restante ya fue sumado a la orden.'
     return None
 
 
-def record_remainder_reference(order, reference):
-    refs = [r for r in (order.remainder_references or '').split(',') if r.strip()]
+def remainders_matching_first_payment(order, remainder_refs):
+    """Pagos restantes ya sumados que en realidad son el mismo primer pago
+    (se colaron antes de existir este chequeo): para avisar en el admin."""
+    firsts = first_payment_references(order)
+    return [ref for ref in remainder_refs if any(same_bank_reference(ref, first) for first in firsts)]
+
+
+def order_payment_ids(order):
+    """Ids de Pabilo de los pagos que ya cuentan en esta orden (el primero y
+    los restantes). Un mismo pago del banco trae siempre el mismo id, sin
+    importar cómo se escriba su referencia."""
+    ids = set(_split_list(order.remainder_verification_ids))
+    if order.payment_verification_id:
+        ids.add(order.payment_verification_id.strip())
+    return ids
+
+
+def find_order_using_payment_id(verification_id, exclude_order_id):
+    """Otra orden viva que ya tenga contado este pago de Pabilo, como primer
+    pago o como pago restante."""
+    if not verification_id:
+        return None
+    candidates = Order.query.filter(
+        Order.id != exclude_order_id,
+        Order.status.in_(['pending', 'approved', 'completed']),
+        or_(
+            Order.payment_verification_id == verification_id,
+            Order.remainder_verification_ids.contains(verification_id),
+        ),
+    ).all()
+    for candidate in candidates:
+        if verification_id in order_payment_ids(candidate):
+            return candidate
+    return None
+
+
+def _remainder_payment_id_problem(order, verification_id, full_data=None):
+    """Rechazo si el pago que Pabilo encontró para el "pago restante" ya
+    cuenta en esta orden (es el mismo primer pago) o en otra orden."""
+    if not verification_id:
+        return None
+    if verification_id in order_payment_ids(order):
+        return {
+            'ok': False,
+            'verified': False,
+            'same_payment': True,
+            'message': (
+                'Ese es el mismo pago que ya se contó en esta orden. '
+                'Envía la referencia del NUEVO pago con el que completaste lo que faltaba.'
+            ),
+            'response': full_data,
+        }
+    if find_order_using_payment_id(verification_id, order.id):
+        return {
+            'ok': False,
+            'verified': False,
+            'message': 'Ese pago ya fue usado en otra orden.',
+            'response': full_data,
+        }
+    return None
+
+
+def record_remainder_reference(order, reference, verification_id=None):
+    refs = counted_remainder_references(order)
     refs.append(str(reference).strip())
     order.remainder_references = ','.join(refs)[-2000:]
+    if verification_id:
+        ids = _split_list(order.remainder_verification_ids)
+        ids.append(str(verification_id).strip())
+        order.remainder_verification_ids = ','.join(ids)[-2000:]
 
 
 def _covers_order(order, paid):
@@ -1033,6 +1120,9 @@ def apply_underpaid_verification(order, verification):
     if resolved_reference:
         order.payment_reference = resolved_reference
         order.payment_reference_last5 = normalize_reference_last5(resolved_reference)
+    # Id de Pabilo del primer pago: con él se reconoce ese mismo pago si
+    # luego lo mandan como "pago restante" escrito de otra forma.
+    order.payment_verification_id = verification.get('verification_id') or order.payment_verification_id
 
     covered, missing = _covers_order(order, paid)
     if covered:

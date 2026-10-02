@@ -1174,12 +1174,29 @@ def order_detail(order_id):
     remainder_refs = [r for r in (order.remainder_references or '').split(',') if r.strip()]
     if not remainder_refs and order.remainder_reference and not order.awaiting_payment_completion and order.paid_amount_bs:
         remainder_refs = [order.remainder_reference]
+    from ..utils.payment_verification import _get_expected_order_amount, remainders_matching_first_payment
     remainder_missing = None
     if order.awaiting_payment_completion:
-        from ..utils.payment_verification import _get_expected_order_amount
         expected, error = _get_expected_order_amount(order)
         if not error and expected is not None:
             remainder_missing = (expected - Decimal(str(order.paid_amount_bs or 0))).quantize(Decimal('0.01'))
+
+    # Órdenes de antes del arreglo: un "pago restante" que en realidad era el
+    # mismo primer pago se sumó dos veces. Se calcula lo que de verdad pagó.
+    remainder_repeats = remainders_matching_first_payment(order, remainder_refs)
+    repeat_real_paid = repeat_real_missing = None
+    if remainder_repeats and order.paid_amount_bs:
+        counted_twice = sum(
+            (Decimal(amount) for amount, ref in re.findall(
+                r'\[Pabilo\] Pago restante verificado: Bs ([\d.]+) \(ref: ([^)]+)\)', order.notes or '')
+             if ref.strip() in remainder_repeats),
+            Decimal('0'),
+        )
+        if counted_twice:
+            repeat_real_paid = (Decimal(str(order.paid_amount_bs)) - counted_twice).quantize(Decimal('0.01'))
+            expected, error = _get_expected_order_amount(order)
+            if not error and expected is not None:
+                repeat_real_missing = (expected - repeat_real_paid).quantize(Decimal('0.01'))
 
     return render_template(
         'admin/order_detail.html',
@@ -1189,6 +1206,9 @@ def order_detail(order_id):
         can_upload_delivery_proof=order.status != 'rejected',
         remainder_refs=remainder_refs,
         remainder_missing=remainder_missing,
+        remainder_repeats=remainder_repeats,
+        repeat_real_paid=repeat_real_paid,
+        repeat_real_missing=repeat_real_missing,
         same_game_packages=same_game_packages,
         can_verify_player=order.game_id in verifiable_game_ids(),
     )
@@ -3741,6 +3761,11 @@ def minigames():
             .order_by(PromoGuessWinner.slot_index.asc())
             .all()
         )
+        from ..models import PromoGuessLog
+        promos_guess_recent_attempts = (
+            PromoGuessLog.query.filter_by(game_id=promos_selected_game.id)
+            .order_by(PromoGuessLog.id.desc()).limit(40).all()
+        )
         promos_guess_today_slots = []
         if promos_guess_config:
             won_by_slot = {w.slot_index: w for w in promos_guess_winners_today}
@@ -3753,8 +3778,11 @@ def minigames():
                     })
                 elif slot == len(promos_guess_winners_today) + 1 and promos_guess_round_today:
                     promos_guess_today_slots.append({
+                        # El número vigente NO se muestra (ni se envía a la página):
+                        # es el que gana ahora mismo, y verlo en el panel, en una
+                        # captura o en una pantalla compartida lo filtraría.
                         'slot': slot, 'status': 'current',
-                        'number': promos_guess_round_today.secret_number, 'player_id': None,
+                        'number': None, 'player_id': None,
                     })
                 else:
                     promos_guess_today_slots.append({'slot': slot, 'status': 'pending', 'number': None, 'player_id': None})
@@ -3790,6 +3818,7 @@ def minigames():
             recent_raffle_winners=promos_recent_raffle_winners,
             recent_guess_winners=promos_recent_guess_winners,
             guess_today_slots=promos_guess_today_slots,
+            guess_recent_attempts=promos_guess_recent_attempts,
             today_key=promos_today_key,
             horde_config=promos_horde_config,
             horde_week_key=promos_horde_week_key,

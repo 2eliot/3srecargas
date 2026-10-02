@@ -203,6 +203,10 @@ class Order(db.Model):
     # (separadas por coma): ninguna se puede sumar dos veces, ni la del
     # primer pago se puede mandar como "restante".
     remainder_references = db.Column(db.Text)
+    # Ids que Pabilo asigna a cada pago restante YA sumado (uno por pago del
+    # banco, sin importar cómo se escribió la referencia): detecta que el
+    # "pago restante" sea en realidad el mismo pago del primero.
+    remainder_verification_ids = db.Column(db.Text)
     remainder_capture = db.Column(db.String(255))
     remainder_ai_extracted_reference = db.Column(db.String(255))
     # Última respuesta cruda (JSON) que mandó Pabilo al verificar el pago de
@@ -1233,6 +1237,22 @@ class PromoGuessConfig(db.Model):
 
     game = db.relationship('Game')
     package = db.relationship('Package')
+
+
+class PromoGuessLog(db.Model):
+    """Registro de CADA intento de Adivina el Número (hora, ID, número
+    probado, si ganó, IP). Sirve para investigar patrones raros: muchos IDs
+    desde la misma IP, intentos a medianoche en punto, etc."""
+    __tablename__ = 'promo_guess_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    day_key = db.Column(db.String(10), nullable=False, index=True)
+    player_id = db.Column(db.String(100), nullable=False, index=True)
+    guess = db.Column(db.Integer)
+    won = db.Column(db.Boolean, default=False)
+    ip = db.Column(db.String(64), index=True)
+    user_agent = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
 class PromoGuessRound(db.Model):

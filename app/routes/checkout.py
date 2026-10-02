@@ -1,5 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
+import hashlib
 import json
 import os
 from uuid import uuid4
@@ -1332,6 +1333,12 @@ def binance_auto_code(package_id):
     if existing_code and is_binance_auto_reference(existing_code):
         code = existing_code
     else:
+        # Dirección pública que fabrica un código por visita: se limita por
+        # IP (solo al generar uno nuevo; quien ya tiene código en su sesión
+        # no gasta cupo) para que nadie la use como fuente masiva de valores.
+        if not check_rate_limit(f'binance_code_ip:{client_ip()}', BINANCE_CODES_PER_MINUTE, 60):
+            return jsonify({'ok': False, 'enabled': True, 'code': '', 'wallet': '',
+                            'error': 'Demasiadas solicitudes seguidas. Espera un momento.'}), 429
         code = generate_binance_auto_code(_app)
         binance_codes[pkg_key] = code
         session['binance_codes'] = binance_codes
@@ -1463,6 +1470,36 @@ def order_auto_verify(order_number):
     })
 
 
+def _same_uploaded_file(relative_a, relative_b):
+    """True si los dos comprobantes subidos son el mismo archivo, byte a byte."""
+    if not relative_a or not relative_b:
+        return False
+    digests = []
+    for relative in (relative_a, relative_b):
+        try:
+            with open(os.path.join(current_app.config['UPLOAD_FOLDER'], relative), 'rb') as fh:
+                digests.append(hashlib.sha256(fh.read()).hexdigest())
+        except OSError:
+            return False
+    return digests[0] == digests[1]
+
+
+def _reject_remainder(order, capture_path, reference, reason):
+    """Rechaza un "pago restante" que en realidad es un pago ya contado:
+    borra el comprobante subido y deja constancia en la orden (una sola vez
+    por referencia) para que el admin vea el intento."""
+    if capture_path:
+        try:
+            os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], capture_path))
+        except OSError:
+            pass
+    note = f"[Pabilo] Pago restante RECHAZADO (ref: {reference or 'comprobante'}): {reason}"
+    if note not in (order.notes or ''):
+        order.notes = ((order.notes or '') + '\n' + note).strip()
+    db.session.commit()
+    return jsonify({'ok': False, 'message': reason}), 400
+
+
 @checkout_bp.route('/order/<order_number>/complete-payment', methods=['POST'])
 def order_complete_payment(order_number):
     """El cliente sube el pago RESTANTE cuando Pabilo detectó que el primer
@@ -1486,6 +1523,12 @@ def order_complete_payment(order_number):
         if not is_allowed_capture_file(capture_file.filename):
             return jsonify({'ok': False, 'message': 'El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.'}), 400
         capture_path = save_capture(capture_file)
+        # La misma imagen del primer pago subida otra vez.
+        if _same_uploaded_file(capture_path, order.payment_capture):
+            return _reject_remainder(
+                order, capture_path, manual_reference,
+                'Ese comprobante es el mismo del primer pago. Sube el comprobante del NUEVO pago con el que completaste lo que faltaba.',
+            )
         extraction = extract_reference_from_saved_capture(capture_path)
         ai_reference = str((extraction or {}).get('reference') or '').strip()
 
@@ -1494,21 +1537,23 @@ def order_complete_payment(order_number):
     for ref in (manual_reference, ai_reference):
         if not ref or ref in candidate_references:
             continue
-        # Ni la referencia del primer pago ni un restante ya sumado cuentan
-        # otra vez (antes se aceptaban y el total se duplicaba).
-        problem = remainder_reference_problem(order, ref)
-        if problem:
-            rejected_reason = rejected_reason or problem
-            continue
+        # Ni el primer pago ni un restante ya sumado cuentan otra vez, aunque
+        # se escriban distinto (ej. solo los últimos dígitos). Si lo escrito
+        # o el comprobante subido son de un pago ya contado, se rechaza todo
+        # el envío: antes se probaba con la otra referencia y así se coló el
+        # mismo comprobante del primer pago como "pago restante".
+        rejected_reason = remainder_reference_problem(order, ref)
+        if rejected_reason:
+            if ref == ai_reference and ref != manual_reference:
+                rejected_reason = (
+                    'El comprobante que subiste es de un pago que ya se contó en esta orden. '
+                    'Sube el comprobante del NUEVO pago con el que completaste lo que faltaba.'
+                )
+            break
         candidate_references.append(ref)
 
-    if not candidate_references and rejected_reason:
-        if capture_path:
-            try:
-                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], capture_path))
-            except OSError:
-                pass
-        return jsonify({'ok': False, 'message': rejected_reason}), 400
+    if rejected_reason:
+        return _reject_remainder(order, capture_path, ref, rejected_reason)
 
     if not candidate_references:
         if capture_path:
@@ -1527,11 +1572,16 @@ def order_complete_payment(order_number):
     verification = None
     for candidate in candidate_references:
         verification = verify_remainder_reference(order, candidate)
-        if verification.get('verified'):
+        if verification.get('verified') or verification.get('same_payment'):
             break
 
     if not verification:
         return jsonify({'ok': False, 'message': 'No se pudo verificar el pago restante.'})
+
+    if verification.get('same_payment'):
+        # Pabilo devolvió el MISMO pago del banco que ya cuenta en la orden.
+        db.session.rollback()
+        return _reject_remainder(order, capture_path, candidate, verification.get('message'))
 
     _store_raw_pabilo_response(order, verification)
     order.remainder_reference = verification.get('resolved_reference') or candidate_references[0]
@@ -1548,14 +1598,15 @@ def order_complete_payment(order_number):
     # contada (o la del primer pago) aunque el cliente la escribiera distinto.
     problem = remainder_reference_problem(order, order.remainder_reference)
     if problem:
+        resolved = order.remainder_reference
         db.session.rollback()
-        return jsonify({'ok': False, 'message': problem}), 400
+        return _reject_remainder(order, capture_path, resolved, problem)
 
     new_amount = Decimal(str(verification.get('reported_amount') or '0'))
     already_paid = Decimal(str(order.paid_amount_bs or 0))
     total_paid = already_paid + new_amount
     order.paid_amount_bs = total_paid
-    record_remainder_reference(order, order.remainder_reference)
+    record_remainder_reference(order, order.remainder_reference, verification.get('verification_id'))
 
     note = f"[Pabilo] Pago restante verificado: Bs {new_amount} (ref: {order.remainder_reference}). Total acumulado: Bs {total_paid}."
     order.notes = ((order.notes or '') + '\n' + note).strip()
@@ -1587,7 +1638,9 @@ def order_complete_payment(order_number):
 
     order.awaiting_payment_completion = False
     order.payment_verified_at = datetime.utcnow()
-    order.payment_verification_id = verification.get('verification_id') or order.payment_verification_id
+    # Se conserva el id del PRIMER pago (el del restante quedó en
+    # remainder_verification_ids): así ninguno de los dos se puede reusar.
+    order.payment_verification_id = order.payment_verification_id or verification.get('verification_id')
     complete_note = '[Pabilo] Pago completado: el total acumulado ya cubre la orden.'
     if complete_note not in (order.notes or ''):
         order.notes = ((order.notes or '') + '\n' + complete_note).strip()
@@ -1760,6 +1813,8 @@ def points_balance():
 
 
 POINTS_ACTIONS_PER_MINUTE = 12
+# Códigos nuevos de Binance por IP y por minuto (clientes reales piden 1 por compra).
+BINANCE_CODES_PER_MINUTE = 30
 
 
 @checkout_bp.route('/api/points/spin', methods=['POST'])

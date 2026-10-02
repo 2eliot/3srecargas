@@ -1,5 +1,9 @@
 import json
 import random
+
+# Generador seguro (del sistema operativo): impredecible aunque alguien observe
+# miles de resultados. El `random` normal de Python se puede predecir así.
+_secure_random = random.SystemRandom()
 from datetime import datetime
 
 from flask import current_app
@@ -244,7 +248,7 @@ def build_minigame_result_payload(game_key, reward, choice_index=None, catalog=N
         # Al perder hay varios FAILED donde parar: se elige uno al azar para
         # que la rueda no frene siempre en el mismo sector, que es lo que
         # delataría que el resultado ya venía decidido.
-        target_index = random.choice(coincidencias) if coincidencias else 0
+        target_index = _secure_random.choice(coincidencias) if coincidencias else 0
         return {
             'segments': segments,
             'target_index': target_index,

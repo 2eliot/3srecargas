@@ -483,7 +483,7 @@
                     <tr>
                         <td>#{{ slot.slot }}</td>
                         <td style="font-weight:700;">
-                            {% if slot.status == 'pending' %}—{% else %}{{ slot.number }}{% endif %}
+                            {% if slot.status == 'pending' %}—{% elif slot.status == 'current' %}🔒 Oculto{% else %}{{ slot.number }}{% endif %}
                         </td>
                         <td>
                             {% if slot.status == 'won' %}
@@ -500,8 +500,32 @@
                 </tbody>
             </table>
         </div>
+        {% if guess_recent_attempts %}
+        {% set ip_ids = {} %}
+        {% for a in guess_recent_attempts %}{% if a.ip %}{% set _ = ip_ids.setdefault(a.ip, []) %}{% if a.player_id not in ip_ids[a.ip] %}{% set _ = ip_ids[a.ip].append(a.player_id) %}{% endif %}{% endif %}{% endfor %}
+        <details style="margin-top:12px;">
+            <summary style="cursor:pointer;font-weight:700;">🕵️ Últimos intentos (hora, ID, número probado, IP)</summary>
+            <div class="table-wrap" style="margin-top:8px;">
+                <table class="admin-table">
+                    <thead><tr><th>Hora (Venezuela)</th><th>ID</th><th>Probó</th><th>¿Ganó?</th><th>IP</th></tr></thead>
+                    <tbody>
+                        {% for a in guess_recent_attempts %}
+                        <tr>
+                            <td>{{ a.created_at|datetime_ve('%d/%m %H:%M:%S') }}</td>
+                            <td>{{ a.player_id }}</td>
+                            <td>{{ a.guess }}</td>
+                            <td>{{ '🏆 Sí' if a.won else 'No' }}</td>
+                            <td{% if a.ip and ip_ids.get(a.ip, [])|length > 1 %} style="color:#f87171;font-weight:700;" title="Esta IP probó con {{ ip_ids[a.ip]|length }} IDs distintos"{% endif %}>{{ a.ip or '—' }}{% if a.ip and ip_ids.get(a.ip, [])|length > 1 %} ⚠ {{ ip_ids[a.ip]|length }} IDs{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="form-hint">En rojo: una misma IP que probó con varios IDs distintos (señal de alguien usando muchas cuentas).</p>
+        </details>
+        {% endif %}
         <p class="form-hint mg-guess-slots-hint">
-            El número "vigente ahora mismo" es el que gana si alguien acierta en este momento — cambia solo cuando se gana ese cupo.
+            El número "vigente ahora mismo" es el que gana si alguien acierta en este momento y se mantiene oculto a propósito (así no se puede filtrar en una captura o pantalla compartida). Cambia solo cuando se gana ese cupo.
         </p>
     </div>
     {% endif %}

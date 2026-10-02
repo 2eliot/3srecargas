@@ -202,7 +202,7 @@ def adivina_intentar():
         return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
 
     try:
-        result = submit_guess(game_id, player_id, guess)
+        result = submit_guess(game_id, player_id, guess, ip=_client_ip(), user_agent=request.headers.get('User-Agent', ''))
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
 

@@ -8,6 +8,10 @@ misma verificación real que usa la tienda antes de aceptar un registro o
 una jugada — así no se le puede regalar un premio a un ID inventado.
 """
 import random
+
+# Generador seguro (del sistema operativo): impredecible aunque alguien observe
+# miles de resultados. El `random` normal de Python se puede predecir así.
+_secure_random = random.SystemRandom()
 import secrets
 from datetime import datetime, time, timedelta
 from uuid import uuid4
@@ -21,7 +25,7 @@ from .timezone import now_ve, today_ve_str, format_ve
 from ..models import (
     Game, Order, Package, PlayerPoints,
     PromoAccumulatedAward, PromoAccumulatedLevel, PromoAccumulatedOrderLog, PromoAccumulatedProgress,
-    PromoGuessAttempt, PromoGuessConfig, PromoGuessRound, PromoGuessWinner,
+    PromoGuessAttempt, PromoGuessConfig, PromoGuessLog, PromoGuessRound, PromoGuessWinner,
     PromoHordeBan, PromoHordeConfig, PromoHordeReplay, PromoHordeRun, PromoHordeWinner,
     PromoRaffleConfig, PromoRaffleEntry, PromoRaffleWinner,
     Setting, db,
@@ -383,7 +387,7 @@ def run_daily_raffle_draws():
 
             game = Game.query.get(config.game_id)
             winners_needed = min(config.winners_per_draw or 5, len(unique_entries))
-            chosen = random.sample(unique_entries, winners_needed)
+            chosen = _secure_random.sample(unique_entries, winners_needed)
 
             for entry in chosen:
                 prize_order = None
@@ -599,14 +603,14 @@ def _get_or_create_round(game_id, number_max):
         return round_row
     round_row = PromoGuessRound(
         game_id=game_id, day_key=day_key,
-        secret_number=random.randint(1, number_max), winners_count=0,
+        secret_number=_secure_random.randint(1, number_max), winners_count=0,
     )
     db.session.add(round_row)
     db.session.flush()
     return round_row
 
 
-def submit_guess(game_id, player_id, guess_value):
+def submit_guess(game_id, player_id, guess_value, ip='', user_agent=''):
     """Procesa un intento. Lanza ValueError con un mensaje listo para
     mostrar si algo no procede. Devuelve un dict con el resultado."""
     config = get_guess_config(game_id)
@@ -668,6 +672,10 @@ def submit_guess(game_id, player_id, guess_value):
         attempt.attempts_used += 1
         attempt.updated_at = datetime.utcnow()
         remaining_attempts = config.max_attempts - attempt.attempts_used
+        db.session.add(PromoGuessLog(
+            game_id=game_id, day_key=round_row.day_key, player_id=player_id, guess=guess_value,
+            won=(guess_value == round_row.secret_number), ip=(ip or '')[:64], user_agent=(user_agent or '')[:200],
+        ))
 
         if guess_value == round_row.secret_number:
             from .order_processing import deliver_prize_to_player
@@ -701,7 +709,7 @@ def submit_guess(game_id, player_id, guess_value):
                     .all()
                 }
                 available = [n for n in range(1, config.number_max + 1) if n not in used_today]
-                round_row.secret_number = random.choice(available) if available else random.randint(1, config.number_max)
+                round_row.secret_number = _secure_random.choice(available) if available else _secure_random.randint(1, config.number_max)
             round_row.updated_at = datetime.utcnow()
             db.session.commit()
 
