@@ -337,8 +337,11 @@ def admin_housekeeping_hook():
 def admin_access_guard():
     if request.endpoint in {'admin_bp.login'}:
         return None
+    # Red de seguridad para TODO el panel: aunque alguna ruta se agregue sin
+    # @login_required, aquí se exige sesión antes de ejecutar la vista. Sin
+    # sesión -> al login; con sesión que no es de admin (ej. un cliente) -> fuera.
     if not current_user.is_authenticated:
-        return None
+        return redirect(url_for('admin_bp.login', next=request.url))
     if current_user.__class__.__name__ != 'AdminUser':
         flash('Esta sección es solo para administradores.', 'warning')
         return redirect(url_for('main_bp.index'))

@@ -107,6 +107,13 @@ def create_app(config_class=Config):
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
     app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+    # Secure: el navegador solo manda la cookie por HTTPS, nunca por http://,
+    # así no se puede interceptar en una red abierta. Se activa solo en
+    # producción (detectada por usar Postgres) y se deja apagado en local
+    # (SQLite, http://localhost) para no romper el acceso al panel al probar.
+    _is_production = str(app.config.get('SQLALCHEMY_DATABASE_URI', '')).startswith('postgres')
+    app.config['SESSION_COOKIE_SECURE'] = _is_production
+    app.config['REMEMBER_COOKIE_SECURE'] = _is_production
 
     _configure_sqlite_concurrency(app)
 

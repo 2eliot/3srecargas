@@ -18,6 +18,19 @@ from ..player_verify import (
 
 verify_bp = Blueprint('verify_bp', __name__)
 
+# Verificaciones de ID por IP y por minuto. La caché solo evita reconsultar el
+# MISMO ID; variando el ID se forzaría una consulta externa nueva cada vez, así
+# que se limita por IP para que nadie dispare el costo ni haga que baneen
+# nuestra clave en el proveedor. Un cliente real verifica unos pocos IDs.
+VERIFY_LOOKUPS_PER_MINUTE = 20
+
+
+def _verify_rate_limited():
+    from ..utils.locks import check_rate_limit, client_ip
+    if not check_rate_limit(f'id_verify_ip:{client_ip()}', VERIFY_LOOKUPS_PER_MINUTE, 60):
+        return jsonify({"ok": False, "error": "Demasiadas verificaciones seguidas. Espera un momento."}), 429
+    return None
+
 
 # ── Helpers to read/write Setting table (mirrors Inefable's get_config_value) ─
 
@@ -185,6 +198,9 @@ VERIFIED_PLAYER_ERRORS = {
 
 @verify_bp.route('/store/player/verify')
 def store_player_verify():
+    limited = _verify_rate_limited()
+    if limited:
+        return limited
     payload, status = verify_player_nick(
         request.args.get("uid"), request.args.get("gid"), mode='ff'
     )
@@ -195,6 +211,9 @@ def store_player_verify():
 
 @verify_bp.route('/store/player/verify/bloodstrike')
 def store_player_verify_bloodstrike():
+    limited = _verify_rate_limited()
+    if limited:
+        return limited
     payload, status = verify_player_nick(
         request.args.get("uid"), request.args.get("gid"), mode='bs'
     )
@@ -207,6 +226,9 @@ def store_player_verify_bloodstrike():
 
 @verify_bp.route('/store/player/verify/auto')
 def store_player_verify_auto():
+    limited = _verify_rate_limited()
+    if limited:
+        return limited
     payload, status = verify_player_nick(
         request.args.get("uid"), request.args.get("gid"), mode='auto'
     )

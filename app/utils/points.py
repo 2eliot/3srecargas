@@ -10,10 +10,33 @@ de entrega automática que el resto de la tienda.
 
 from datetime import datetime, timedelta
 
+from sqlalchemy import update
+
 from ..models import (
     Game, MiniGameCounter, Package, PlayerPoints, PointsPrizeMapping,
     PointsRedeemLog, PointsRedeemOption, PointsSpinLog, Setting, db,
 )
+from .locks import acquire_lock, release_lock
+
+
+def _spend_points_atomic(game_id, player_id, cost):
+    """Descuenta `cost` puntos solo si el saldo alcanza EN ESE INSTANTE, en
+    una sola operación de base de datos. Devuelve True si se descontó.
+
+    Antes se leía el saldo, se comprobaba y luego se restaba en pasos
+    separados: dos peticiones del mismo ID disparadas a la vez podían pasar
+    las dos la comprobación con el mismo saldo y gastar los puntos una sola
+    vez recibiendo DOS premios. Este UPDATE condicional lo impide."""
+    spent = db.session.execute(
+        update(PlayerPoints)
+        .where(
+            PlayerPoints.game_id == game_id,
+            PlayerPoints.player_id == player_id,
+            PlayerPoints.points_balance >= cost,
+        )
+        .values(points_balance=PlayerPoints.points_balance - cost, updated_at=datetime.utcnow())
+    ).rowcount
+    return spent == 1
 
 DEFAULT_POINTS_PER_DOLLAR = 10
 DEFAULT_POINTS_SPIN_COST = 5
@@ -186,59 +209,67 @@ def spend_points_and_spin(game_id, player_id):
         raise ValueError('Este juego no tiene un premio de puntos configurado en este momento.')
 
     cost = get_points_spin_cost()
-    record = PlayerPoints.query.filter_by(game_id=game_id, player_id=player_id).first()
-    balance = int(record.points_balance) if record else 0
-    if balance < cost:
-        raise ValueError(f'No tienes suficientes puntos. Cada giro cuesta {cost} puntos y tienes {balance}.')
 
-    record.points_balance = balance - cost
-    record.updated_at = datetime.utcnow()
+    # Candado por (juego, ID): serializa los giros del mismo jugador para que
+    # el contador de premios y el saldo no se pisen entre peticiones paralelas.
+    lock_key = f'points_spin:{game_id}:{player_id}'
+    lock_holder = f'spin-{datetime.utcnow().timestamp()}'
+    if not acquire_lock(lock_key, 15, lock_holder):
+        raise ValueError('Tu giro anterior todavía se está procesando. Espera un momento.')
 
-    counter_key = f'points_{game_id}'
-    counter = MiniGameCounter.query.filter_by(game_key=counter_key).first()
-    if not counter:
-        counter = MiniGameCounter(game_key=counter_key, play_count=0, last_position=0)
-        db.session.add(counter)
-        db.session.flush()
-    counter.play_count = int(counter.play_count or 0) + 1
-    counter.last_position = counter.play_count
-    counter.updated_at = datetime.utcnow()
+    try:
+        if not _spend_points_atomic(game_id, player_id, cost):
+            db.session.rollback()
+            balance = get_player_points_balance(game_id, player_id)
+            raise ValueError(f'No tienes suficientes puntos. Cada giro cuesta {cost} puntos y tienes {balance}.')
 
-    win_interval = get_points_win_interval()
-    is_win = counter.play_count % win_interval == 0
+        counter_key = f'points_{game_id}'
+        counter = MiniGameCounter.query.filter_by(game_key=counter_key).first()
+        if not counter:
+            counter = MiniGameCounter(game_key=counter_key, play_count=0, last_position=0)
+            db.session.add(counter)
+            db.session.flush()
+        counter.play_count = int(counter.play_count or 0) + 1
+        counter.last_position = counter.play_count
+        counter.updated_at = datetime.utcnow()
 
-    prize_order = None
-    reward_label = 'Fallaste'
-    if is_win:
-        from .order_processing import deliver_prize_to_player
+        win_interval = get_points_win_interval()
+        is_win = counter.play_count % win_interval == 0
 
-        game = Game.query.get(game_id)
-        prize_order, approval = deliver_prize_to_player(
-            game, mapping.package, player_id,
-            note=f'Premio canjeado con puntos ({cost} pts, giro #{counter.play_count}).',
-            reference_prefix='PUNTOS',
+        prize_order = None
+        reward_label = 'Fallaste'
+        if is_win:
+            from .order_processing import deliver_prize_to_player
+
+            game = Game.query.get(game_id)
+            prize_order, approval = deliver_prize_to_player(
+                game, mapping.package, player_id,
+                note=f'Premio canjeado con puntos ({cost} pts, giro #{counter.play_count}).',
+                reference_prefix='PUNTOS',
+            )
+            reward_label = mapping.package.name
+            if prize_order and approval and not approval.get('ok'):
+                reward_label = f'{reward_label} (pendiente de entrega)'
+
+        log = PointsSpinLog(
+            game_id=game_id,
+            player_id=player_id,
+            points_spent=cost,
+            won=is_win,
+            reward_label=reward_label,
+            prize_order_id=prize_order.id if prize_order else None,
         )
-        reward_label = mapping.package.name
-        if prize_order and approval and not approval.get('ok'):
-            reward_label = f'{reward_label} (pendiente de entrega)'
-
-    log = PointsSpinLog(
-        game_id=game_id,
-        player_id=player_id,
-        points_spent=cost,
-        won=is_win,
-        reward_label=reward_label,
-        prize_order_id=prize_order.id if prize_order else None,
-    )
-    db.session.add(log)
-    db.session.commit()
+        db.session.add(log)
+        db.session.commit()
+    finally:
+        release_lock(lock_key, lock_holder)
 
     return {
         'won': is_win,
         'reward_label': reward_label if is_win else 'Fallaste',
         'prize_label': mapping.package.name,
         'points_spent': cost,
-        'points_balance': record.points_balance,
+        'points_balance': get_player_points_balance(game_id, player_id),
     }
 
 
@@ -296,52 +327,60 @@ def redeem_points_for_package(game_id, player_id, option_id):
     if not option or not option.package or not option.package.is_active:
         raise ValueError('Ese paquete ya no está disponible para canjear.')
 
-    last = get_last_points_redeem(game_id, player_id)
-    if last and last.created_at:
-        proxima = last.created_at + timedelta(hours=POINTS_REDEEM_COOLDOWN_HOURS)
-        if datetime.utcnow() < proxima:
-            from .timezone import format_ve
+    # Candado por (juego, ID): sin él, dos canjes del mismo jugador a la vez
+    # podían pasar ambos el límite diario y el saldo con los mismos puntos,
+    # entregando DOS paquetes por el precio de uno.
+    lock_key = f'points_redeem:{game_id}:{player_id}'
+    lock_holder = f'redeem-{datetime.utcnow().timestamp()}'
+    if not acquire_lock(lock_key, 20, lock_holder):
+        raise ValueError('Tu canje anterior todavía se está procesando. Espera un momento.')
+
+    try:
+        last = get_last_points_redeem(game_id, player_id)
+        if last and last.created_at:
+            proxima = last.created_at + timedelta(hours=POINTS_REDEEM_COOLDOWN_HOURS)
+            if datetime.utcnow() < proxima:
+                from .timezone import format_ve
+                raise ValueError(
+                    f'Ya canjeaste un paquete hoy. Puedes volver a canjear a partir de las '
+                    f'{format_ve(proxima)}.'
+                )
+
+        if not _spend_points_atomic(game_id, player_id, option.points_cost):
+            db.session.rollback()
+            balance = get_player_points_balance(game_id, player_id)
             raise ValueError(
-                f'Ya canjeaste un paquete hoy. Puedes volver a canjear a partir de las '
-                f'{format_ve(proxima)}.'
+                f'No tienes suficientes puntos. Este premio cuesta {option.points_cost} '
+                f'puntos y tienes {balance}.'
             )
 
-    record = PlayerPoints.query.filter_by(game_id=game_id, player_id=player_id).first()
-    balance = int(record.points_balance) if record else 0
-    if balance < option.points_cost:
-        raise ValueError(
-            f'No tienes suficientes puntos. Este premio cuesta {option.points_cost} '
-            f'puntos y tienes {balance}.'
+        from .order_processing import deliver_prize_to_player
+
+        game = Game.query.get(game_id)
+        prize_order, approval = deliver_prize_to_player(
+            game, option.package, player_id,
+            note=f'Premio canjeado con puntos ({option.points_cost} pts, canje directo).',
+            reference_prefix='CANJE',
         )
 
-    record.points_balance = balance - option.points_cost
-    record.updated_at = datetime.utcnow()
-
-    from .order_processing import deliver_prize_to_player
-
-    game = Game.query.get(game_id)
-    prize_order, approval = deliver_prize_to_player(
-        game, option.package, player_id,
-        note=f'Premio canjeado con puntos ({option.points_cost} pts, canje directo).',
-        reference_prefix='CANJE',
-    )
-
-    log = PointsRedeemLog(
-        game_id=game_id,
-        player_id=player_id,
-        option_id=option.id,
-        package_id=option.package_id,
-        points_spent=option.points_cost,
-        prize_order_id=prize_order.id if prize_order else None,
-    )
-    db.session.add(log)
-    db.session.commit()
+        log = PointsRedeemLog(
+            game_id=game_id,
+            player_id=player_id,
+            option_id=option.id,
+            package_id=option.package_id,
+            points_spent=option.points_cost,
+            prize_order_id=prize_order.id if prize_order else None,
+        )
+        db.session.add(log)
+        db.session.commit()
+    finally:
+        release_lock(lock_key, lock_holder)
 
     delivered = bool(prize_order and approval and approval.get('ok'))
     return {
         'package_name': option.package.name,
         'points_spent': option.points_cost,
-        'points_balance': record.points_balance,
+        'points_balance': get_player_points_balance(game_id, player_id),
         'delivered': delivered,
         'order_number': prize_order.order_number if prize_order else '',
     }

@@ -1815,6 +1815,9 @@ def points_balance():
 POINTS_ACTIONS_PER_MINUTE = 12
 # Códigos nuevos de Binance por IP y por minuto (clientes reales piden 1 por compra).
 BINANCE_CODES_PER_MINUTE = 30
+# Lecturas de comprobante por IP y por minuto (cada una gasta IA; un cliente
+# real la usa una o dos veces por compra).
+OCR_EXTRACT_PER_MINUTE = 15
 
 
 @checkout_bp.route('/api/points/spin', methods=['POST'])
@@ -1893,6 +1896,12 @@ def points_redeem():
 
 @checkout_bp.route('/api/extract-payment-reference', methods=['POST'])
 def extract_payment_reference():
+    # Esta lectura de comprobante llama a un servicio de IA que cuesta por
+    # imagen. Sin límite, cualquiera podía dispararla en bucle y disparar el
+    # gasto. Un cliente real la usa una o dos veces por compra.
+    if not check_rate_limit(f'ocr_ref_ip:{client_ip()}', OCR_EXTRACT_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'reference': '', 'message': 'Demasiadas solicitudes seguidas. Espera un momento.'}), 429
+
     capture_file = request.files.get('payment_capture')
     if not capture_file or not capture_file.filename:
         return jsonify({'ok': False, 'reference': '', 'message': 'Debes adjuntar un comprobante.'}), 400
