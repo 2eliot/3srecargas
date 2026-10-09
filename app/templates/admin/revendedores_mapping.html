@@ -1,57 +1,91 @@
 {% extends "admin/base.html" %}
-{% block title %}Mapeo Revendedores{% endblock %}
-{% block page_title %}Mapeo Revendedores{% endblock %}
+{% block title %}Mapeo de proveedores{% endblock %}
+{% block page_title %}Mapeo de proveedores{% endblock %}
 
 {% block content %}
-<div style="max-width:900px;">
+<style>
+  .map-label { display:block; font-size:12px; color:#94a3b8; margin-bottom:6px; }
+  .map-select { width:100%; max-width:400px; padding:10px 12px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; }
+  .map-btn { padding:8px 16px; border-radius:8px; border:none; cursor:pointer; font-weight:500; color:#e2e8f0; background:#334155; }
+  .map-btn.primary { background:#6366f1; color:#fff; }
+  .map-route { padding:14px; border-radius:10px; border:1px solid #334155; background:#0f172a; margin-top:14px; }
+  .map-route.backup { border-style:dashed; }
+  .map-route-title { font-weight:700; font-size:13px; letter-spacing:.4px; text-transform:uppercase; margin-bottom:10px; }
+  .map-route-title small { text-transform:none; letter-spacing:0; font-weight:400; color:#94a3b8; margin-left:6px; }
+  .map-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .map-row select, .map-row input { padding:8px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px; }
+  .map-row .grp { flex:1; min-width:150px; }
+  .map-row .pkg { flex:1.4; min-width:200px; }
+  .map-row .qty { width:70px; text-align:center; }
+  .map-row .rm { padding:7px 10px; background:#1e293b; color:#fca5a5; cursor:pointer; font-weight:700; }
+  .map-extra { flex-basis:100%; font-size:12px; color:#94a3b8; display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:2px; }
+  .map-extra select { max-width:230px; }
+  .map-note { font-size:12px; margin-top:8px; color:#fbbf24; }
+  .map-chip { display:inline-flex; align-items:center; gap:8px; padding:6px 12px; border-radius:999px; background:#1e293b; border:1px solid #334155; font-size:12px; color:#cbd5e1; }
+</style>
+
+<div style="max-width:980px;">
   <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center;">
-    <button id="btn-rev-sync" class="btn btn-primary" style="padding:8px 18px; border-radius:8px; background:#6366f1; color:#fff; border:none; cursor:pointer; font-weight:500;">
-      Sincronizar Catálogo
-    </button>
-    <button id="btn-rev-refresh" style="padding:8px 18px; border-radius:8px; background:#334155; color:#e2e8f0; border:none; cursor:pointer; font-weight:500;">
-      Refrescar
-    </button>
+    <button id="btn-sync-revendedores" class="map-btn primary">Sincronizar Revendedores</button>
+    <button id="btn-sync-centralone" class="map-btn primary">Sincronizar Central One</button>
+    <button id="btn-rev-refresh" class="map-btn">Refrescar</button>
+    <span id="co-balance" class="map-chip" style="display:none;"></span>
   </div>
 
   <!-- Paso 1: juego -->
   <div style="margin-bottom:16px;">
-    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:6px;">1. Elige el juego</label>
-    <select id="rev-game-select" class="form-control" style="width:100%; max-width:400px; padding:10px 12px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0;">
+    <label class="map-label">1. Elige el juego de tu tienda</label>
+    <select id="rev-game-select" class="map-select">
       <option value="">Selecciona un juego…</option>
     </select>
   </div>
 
   <!-- Paso 2: paquete -->
   <div id="rev-package-wrap" style="margin-bottom:20px; display:none;">
-    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:6px;">2. Elige el paquete</label>
-    <select id="rev-package-select" class="form-control" style="width:100%; max-width:400px; padding:10px 12px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0;">
+    <label class="map-label">2. Elige el paquete</label>
+    <select id="rev-package-select" class="map-select">
       <option value="">Selecciona un paquete…</option>
     </select>
   </div>
 
-  <!-- Paso 3: items del paquete elegido -->
+  <!-- Paso 3: cómo se entrega -->
   <div id="rev-items-wrap" style="display:none; padding:16px; background:#1e293b; border-radius:10px; border:1px solid #334155;">
     <div style="font-weight:600; color:#e2e8f0; margin-bottom:2px;" id="rev-items-title">—</div>
-    <div style="font-size:12px; color:#94a3b8; margin-bottom:14px;" id="rev-items-subtitle">—</div>
+    <div style="font-size:12px; color:#94a3b8; margin-bottom:6px;" id="rev-items-subtitle">—</div>
 
-    <div id="rev-items-header" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-      <span style="flex:1; min-width:160px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8;">Item</span>
-      <span style="flex:1; min-width:180px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8;">Paquete</span>
-      <span style="width:70px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#94a3b8; text-align:center;">Cantidad</span>
-      <span style="width:34px;"></span>
+    <!-- Proveedor principal -->
+    <div class="map-route">
+      <div class="map-route-title" style="color:#818cf8;">Proveedor principal</div>
+      <label class="map-label">¿Quién entrega este paquete?</label>
+      <select id="route-primary-provider" class="map-select" style="margin-bottom:12px;"></select>
+      <div id="route-primary-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+      <button id="route-primary-add" type="button" class="map-btn" style="margin-top:12px; border:1px dashed #64748b; font-size:13px;">+ Agregar item</button>
+      <div id="route-primary-note" class="map-note"></div>
     </div>
-    <div id="rev-items-list" style="display:flex; flex-direction:column; gap:10px;"></div>
 
-    <button id="btn-rev-add-item" type="button" style="margin-top:12px; padding:7px 14px; border-radius:8px; background:#334155; color:#e2e8f0; border:1px dashed #64748b; cursor:pointer; font-weight:600; font-size:13px;">
-      + Agregar item
-    </button>
+    <!-- Proveedor de respaldo -->
+    <div class="map-route backup">
+      <div class="map-route-title" style="color:#34d399;">Proveedor de respaldo <small>(opcional)</small></div>
+      <label class="map-label">Si el principal no puede entregar, ¿quién lo intenta?</label>
+      <select id="route-backup-provider" class="map-select" style="margin-bottom:6px;"></select>
+      <div style="font-size:12px; color:#94a3b8; margin-bottom:10px; line-height:1.5;">
+        La orden pasa sola al respaldo solo cuando el principal <b>confirma que no entregó nada</b>
+        (sin saldo, sin stock, producto dado de baja o llave inválida). Si hay duda de que el principal
+        ya recargó, <b>no</b> se manda al respaldo: así el cliente nunca recibe la recarga dos veces.
+      </div>
+      <div id="route-backup-body" style="display:none;">
+        <div id="route-backup-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+        <button id="route-backup-add" type="button" class="map-btn" style="margin-top:12px; border:1px dashed #64748b; font-size:13px;">+ Agregar item</button>
+        <div id="route-backup-note" class="map-note"></div>
+      </div>
+    </div>
 
     <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd5e1; margin-top:18px;">
       <input type="checkbox" id="rev-auto-chk">
       Recarga automática secuencial
     </label>
 
-    <button id="btn-rev-save" style="margin-top:16px; padding:9px 20px; border-radius:8px; background:#22c55e; color:#fff; border:none; cursor:pointer; font-weight:600;">
+    <button id="btn-rev-save" class="map-btn" style="margin-top:16px; padding:9px 20px; background:#22c55e; color:#fff; font-weight:600;">
       Guardar mapeo de este paquete
     </button>
   </div>
@@ -63,181 +97,263 @@
 {% block extra_js %}
 <script>
 (function() {
-  const gameSelect = document.getElementById('rev-game-select');
-  const packageWrap = document.getElementById('rev-package-wrap');
-  const packageSelect = document.getElementById('rev-package-select');
-  const itemsWrap = document.getElementById('rev-items-wrap');
-  const itemsTitle = document.getElementById('rev-items-title');
-  const itemsSubtitle = document.getElementById('rev-items-subtitle');
-  const itemsList = document.getElementById('rev-items-list');
-  const btnAddItem = document.getElementById('btn-rev-add-item');
-  const autoChk = document.getElementById('rev-auto-chk');
-  const btnSync = document.getElementById('btn-rev-sync');
-  const btnSave = document.getElementById('btn-rev-save');
-  const btnRefresh = document.getElementById('btn-rev-refresh');
+  const $ = id => document.getElementById(id);
+  const gameSelect = $('rev-game-select');
+  const packageWrap = $('rev-package-wrap');
+  const packageSelect = $('rev-package-select');
+  const itemsWrap = $('rev-items-wrap');
+  const autoChk = $('rev-auto-chk');
+  const btnSave = $('btn-rev-save');
+  const balanceChip = $('co-balance');
 
-  let mappingData = null;    // última respuesta de /mapping-data
-  let remoteGroups = {};     // { "Free Fire": [{catalog_id, remote_package_name, price}, ...] }
-  let catalogToGroup = {};   // catalog_id -> nombre del grupo, para preseleccionar al editar
+  const routes = {
+    primary: { provider: $('route-primary-provider'), list: $('route-primary-list'), add: $('route-primary-add'), note: $('route-primary-note'), body: null },
+    backup:  { provider: $('route-backup-provider'),  list: $('route-backup-list'),  add: $('route-backup-add'),  note: $('route-backup-note'),  body: $('route-backup-body') },
+  };
+
+  let mappingData = null;   // última respuesta de /mapping-data
+  const catalog = {};       // proveedor -> { groups: {juego: [item]}, byId: {id: item} }
 
   function toast(msg) {
     const d = document.createElement('div');
     d.style.cssText = 'background:#1e293b; color:#e2e8f0; padding:12px 20px; border-radius:10px; margin-bottom:8px; box-shadow:0 4px 12px rgba(0,0,0,.4); max-width:420px; white-space:pre-wrap; font-size:13px; border:1px solid #334155;';
     d.textContent = msg;
-    document.getElementById('toast-container').appendChild(d);
+    $('toast-container').appendChild(d);
     setTimeout(() => d.remove(), 8000);
   }
 
-  function mappingFor(pkgId) {
-    return (mappingData.mappings || []).find(m => String(m.store_package_id) === String(pkgId));
+  // Los nombres vienen del proveedor: se escriben siempre como texto, nunca como HTML.
+  function option(value, text) {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    return o;
   }
 
-  /* Trae TODO el catálogo (sin filtrar por juego): un paquete puede
-     armarse con items de otro juego si hace falta, así que no conviene
-     limitar las opciones de la fila al juego elegido en el paso 1. */
+  function providerInfo(code) {
+    return (mappingData.providers || []).find(p => p.code === code);
+  }
+
+  function deliveryFor(pkgId) {
+    return (mappingData.deliveries || []).find(d => String(d.store_package_id) === String(pkgId));
+  }
+
   async function fetchMappingData() {
     const res = await fetch('/admin/revendedores/mapping-data');
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Error cargando datos');
     mappingData = data;
-    buildRemoteOptions(data.remote_catalog || []);
-    renderGames(data.games || []);
-  }
-
-  function buildRemoteOptions(remoteCatalog) {
-    remoteGroups = {};
-    catalogToGroup = {};
-    remoteCatalog.forEach(rc => {
-      const gName = (rc.remote_product_name || '').trim() || 'Otro';
-      if (!remoteGroups[gName]) remoteGroups[gName] = [];
-      remoteGroups[gName].push(rc);
-      catalogToGroup[rc.catalog_id] = gName;
+    Object.keys(data.catalogs || {}).forEach(code => {
+      const groups = {}, byId = {};
+      data.catalogs[code].forEach(item => {
+        (groups[item.group] = groups[item.group] || []).push(item);
+        byId[item.catalog_id] = item;
+      });
+      catalog[code] = { groups, byId };
     });
+    renderGames(data.games || []);
   }
 
   function renderGames(games) {
     const current = gameSelect.value;
-    gameSelect.innerHTML = '<option value="">Selecciona un juego…</option>';
-    games.forEach(g => {
-      const opt = document.createElement('option');
-      opt.value = g.id;
-      opt.textContent = g.name;
-      if (String(g.id) === String(current)) opt.selected = true;
-      gameSelect.appendChild(opt);
-    });
+    gameSelect.innerHTML = '';
+    gameSelect.appendChild(option('', 'Selecciona un juego…'));
+    games.forEach(g => gameSelect.appendChild(option(g.id, g.name)));
+    gameSelect.value = current;
   }
 
   function renderPackages(gameId) {
-    packageSelect.innerHTML = '<option value="">Selecciona un paquete…</option>';
+    packageSelect.innerHTML = '';
+    packageSelect.appendChild(option('', 'Selecciona un paquete…'));
     const packages = (mappingData.store_packages || []).filter(p => String(p.game_id) === String(gameId));
     packages.forEach(p => {
-      const mapped = mappingFor(p.id);
-      const tag = mapped && mapped.items && mapped.items.length ? ' ✓ mapeado' : '';
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = `${p.name} — ID ${p.id} · USD ${Number(p.price).toFixed(2)}${tag}`;
-      packageSelect.appendChild(opt);
+      const d = deliveryFor(p.id);
+      let tag = '';
+      if (d) {
+        const backup = d.backup ? ' + respaldo' : '';
+        const name = (providerInfo(d.primary.provider) || {}).name || d.primary.provider;
+        tag = ` ✓ ${name}${backup}`;
+      }
+      packageSelect.appendChild(option(p.id, `${p.name} — ID ${p.id} · USD ${Number(p.price).toFixed(2)}${tag}`));
     });
     packageWrap.style.display = packages.length ? '' : 'none';
     itemsWrap.style.display = 'none';
     packageSelect.value = '';
   }
 
-  /* Llena el segundo select (paquete) con las opciones del grupo elegido
-     en el primero (nombre del item / juego remoto). */
-  function fillPackageSelect(packageSel, groupName, selectedCatalogId) {
-    const opciones = remoteGroups[groupName] || [];
-    packageSel.innerHTML = '<option value="">Elige el paquete…</option>';
-    opciones.forEach(rc => {
-      const pkgName = (rc.remote_package_name || '').trim() || ('Paquete ' + rc.remote_package_id);
-      const priceTag = rc.price != null ? ` ($${Number(rc.price).toFixed(2)})` : '';
-      const opt = document.createElement('option');
-      opt.value = rc.catalog_id;
-      opt.textContent = `${pkgName}${priceTag}`;
-      packageSel.appendChild(opt);
-    });
-    packageSel.disabled = !opciones.length;
-    if (selectedCatalogId) packageSel.value = selectedCatalogId;
+  // ── Proveedores ────────────────────────────────────────────────────────────
+  function fillProviderSelects(primaryCode, backupCode) {
+    const providers = mappingData.providers || [];
+    const label = p => p.name + (p.configured ? '' : ' (sin configurar)');
+
+    const primary = routes.primary.provider;
+    primary.innerHTML = '';
+    providers.forEach(p => primary.appendChild(option(p.code, label(p))));
+    primary.value = primaryCode || 'revendedores';
+
+    const backup = routes.backup.provider;
+    backup.innerHTML = '';
+    backup.appendChild(option('', 'Sin respaldo'));
+    providers.filter(p => p.code !== primary.value).forEach(p => backup.appendChild(option(p.code, label(p))));
+    backup.value = (backupCode && backupCode !== primary.value) ? backupCode : '';
+    routes.backup.body.style.display = backup.value ? '' : 'none';
   }
 
-  function addItemRow(catalogId, quantity) {
-    const row = document.createElement('div');
-    row.className = 'rev-item-row';
-    row.style.cssText = 'display:flex; gap:8px; align-items:center; flex-wrap:wrap;';
-    row.innerHTML = `
-      <select class="rev-item-name" style="flex:1; min-width:160px; padding:8px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;">
-        <option value="">Elige el item…</option>
-        ${Object.keys(remoteGroups).sort().map(g => `<option value="${g}">${g}</option>`).join('')}
-      </select>
-      <select class="rev-item-package" style="flex:1; min-width:180px; padding:8px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px;" disabled>
-        <option value="">Elige el paquete…</option>
-      </select>
-      <input type="number" class="rev-item-qty" min="1" value="${quantity || 1}" title="Cantidad"
-             style="width:70px; padding:8px 10px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:13px; text-align:center;">
-      <button type="button" class="rev-item-remove" title="Quitar item"
-              style="padding:7px 10px; border-radius:6px; border:1px solid #475569; background:#1e293b; color:#fca5a5; cursor:pointer; font-weight:700;">×</button>
-    `;
-    const nameSel = row.querySelector('.rev-item-name');
-    const packageSel = row.querySelector('.rev-item-package');
-
-    nameSel.addEventListener('change', () => fillPackageSelect(packageSel, nameSel.value, ''));
-    row.querySelector('.rev-item-remove').addEventListener('click', () => row.remove());
-
-    if (catalogId && catalogToGroup[catalogId]) {
-      const grupo = catalogToGroup[catalogId];
-      nameSel.value = grupo;
-      fillPackageSelect(packageSel, grupo, catalogId);
+  function updateRouteNote(key) {
+    const code = routes[key].provider.value;
+    const note = routes[key].note;
+    note.textContent = '';
+    if (!code) return;
+    const info = providerInfo(code);
+    const hasCatalog = Object.keys((catalog[code] || {}).groups || {}).length > 0;
+    if (info && !info.configured) {
+      note.textContent = `⚠ Falta la llave de ${info.name} en el servidor (archivo .env).`;
+    } else if (!hasCatalog) {
+      note.textContent = `⚠ No hay catálogo guardado de ${info ? info.name : code}: presiona "Sincronizar ${info ? info.name : ''}" arriba.`;
     }
-
-    itemsList.appendChild(row);
   }
 
-  function renderItemsEditor(pkgId) {
+  // ── Filas de items ─────────────────────────────────────────────────────────
+  function fillPackageOptions(key, row, groupName, selectedId) {
+    const provider = routes[key].provider.value;
+    const items = ((catalog[provider] || {}).groups || {})[groupName] || [];
+    row._pkg.innerHTML = '';
+    row._pkg.appendChild(option('', 'Elige el paquete…'));
+    items.forEach(it => {
+      const price = it.price != null ? ` ($${provider === 'centralone' ? Number(it.price).toFixed(4) : Number(it.price).toFixed(2)})` : '';
+      const stock = (provider === 'centralone' && !it.in_stock) ? ' · SIN STOCK' : '';
+      row._pkg.appendChild(option(it.catalog_id, `${it.name}${price}${stock}`));
+    });
+    row._pkg.disabled = !items.length;
+    if (selectedId) row._pkg.value = selectedId;
+  }
+
+  // Central One: cada producto pide sus propios datos del jugador. Si pide
+  // elegir algo de una lista (servidor), se puede dejar un valor fijo aquí.
+  function renderExtra(key, row, defaults) {
+    row._extra.innerHTML = '';
+    const provider = routes[key].provider.value;
+    if (provider !== 'centralone') return;
+    const item = (catalog.centralone || { byId: {} }).byId[row._pkg.value];
+    if (!item) return;
+    if ((item.fields || []).length) {
+      const hint = document.createElement('span');
+      hint.textContent = 'Datos que pide: ' + item.fields.join(', ');
+      row._extra.appendChild(hint);
+    }
+    (item.selects || []).forEach(sel => {
+      const wrap = document.createElement('label');
+      wrap.style.cssText = 'display:flex; gap:6px; align-items:center;';
+      wrap.appendChild(document.createTextNode(`Valor fijo de "${sel.label}":`));
+      const s = document.createElement('select');
+      s.dataset.key = sel.key;
+      s.appendChild(option('', 'el cliente lo escribe'));
+      (sel.options || []).forEach(o => s.appendChild(option(o.value, o.label || o.value)));
+      s.value = (defaults && defaults[sel.key]) || '';
+      wrap.appendChild(s);
+      row._extra.appendChild(wrap);
+    });
+  }
+
+  function addRow(key, catalogId, quantity, defaults) {
+    const provider = routes[key].provider.value;
+    if (!provider) return;
+    const row = document.createElement('div');
+    row.className = 'map-row';
+
+    const grp = document.createElement('select');
+    grp.className = 'grp';
+    grp.appendChild(option('', 'Elige el juego…'));
+    Object.keys((catalog[provider] || {}).groups || {}).sort().forEach(g => grp.appendChild(option(g, g)));
+
+    const pkg = document.createElement('select');
+    pkg.className = 'pkg';
+    pkg.disabled = true;
+    pkg.appendChild(option('', 'Elige el paquete…'));
+
+    const qty = document.createElement('input');
+    qty.type = 'number'; qty.min = '1'; qty.value = quantity || 1; qty.title = 'Cantidad'; qty.className = 'qty';
+
+    const rm = document.createElement('button');
+    rm.type = 'button'; rm.className = 'rm'; rm.title = 'Quitar item'; rm.textContent = '×';
+
+    const extra = document.createElement('div');
+    extra.className = 'map-extra';
+
+    row._grp = grp; row._pkg = pkg; row._qty = qty; row._extra = extra;
+    row.append(grp, pkg, qty, rm, extra);
+
+    grp.addEventListener('change', () => { fillPackageOptions(key, row, grp.value, ''); renderExtra(key, row); });
+    pkg.addEventListener('change', () => renderExtra(key, row));
+    rm.addEventListener('click', () => row.remove());
+
+    const known = catalogId && (catalog[provider] || { byId: {} }).byId[catalogId];
+    if (known) {
+      grp.value = known.group;
+      fillPackageOptions(key, row, known.group, catalogId);
+      renderExtra(key, row, defaults);
+    }
+    routes[key].list.appendChild(row);
+  }
+
+  function renderRoute(key, route) {
+    routes[key].list.innerHTML = '';
+    const items = (route && route.items) || [];
+    if (items.length) items.forEach(it => addRow(key, it.catalog_id, it.quantity, it.target_defaults));
+    else addRow(key, '', 1);
+    updateRouteNote(key);
+  }
+
+  function renderEditor(pkgId) {
     const pkg = (mappingData.store_packages || []).find(p => String(p.id) === String(pkgId));
     if (!pkg) { itemsWrap.style.display = 'none'; return; }
 
-    const mapping = mappingFor(pkgId);
-    itemsTitle.textContent = `${pkg.game_name} — ${pkg.name}`;
-    itemsSubtitle.textContent = `ID ${pkg.id} · USD ${Number(pkg.price).toFixed(2)}`;
-    autoChk.checked = !!(mapping && mapping.auto_enabled);
+    const delivery = deliveryFor(pkgId);
+    $('rev-items-title').textContent = `${pkg.game_name} — ${pkg.name}`;
+    $('rev-items-subtitle').textContent = `ID ${pkg.id} · USD ${Number(pkg.price).toFixed(2)}`;
+    autoChk.checked = !!(delivery && delivery.auto_enabled);
 
-    itemsList.innerHTML = '';
-    const items = (mapping && mapping.items && mapping.items.length) ? mapping.items : [];
-    if (items.length) {
-      items.forEach(it => addItemRow(it.catalog_id, it.quantity));
-    } else {
-      addItemRow('', 1);
-    }
+    fillProviderSelects(delivery && delivery.primary.provider, delivery && delivery.backup && delivery.backup.provider);
+    renderRoute('primary', delivery && delivery.primary);
+    renderRoute('backup', delivery && delivery.backup);
     itemsWrap.style.display = '';
   }
 
-  async function syncCatalog() {
-    const res = await fetch('/admin/revendedores/sync', { method: 'POST' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo sincronizar');
-    return data;
+  // ── Guardar ────────────────────────────────────────────────────────────────
+  function collect(key) {
+    const provider = routes[key].provider.value;
+    if (!provider) return null;
+    const items = [];
+    routes[key].list.querySelectorAll('.map-row').forEach(row => {
+      const id = row._pkg.value;
+      if (!id) return;
+      const item = { catalog_id: id, quantity: parseInt(row._qty.value, 10) || 1 };
+      if (provider === 'centralone') {
+        const defaults = {};
+        row._extra.querySelectorAll('select[data-key]').forEach(s => { if (s.value) defaults[s.dataset.key] = s.value; });
+        item.target_defaults = defaults;
+      }
+      items.push(item);
+    });
+    return { provider, items };
   }
 
-  async function savePackageMapping() {
+  async function saveMapping() {
     const pkgId = parseInt(packageSelect.value, 10);
     if (!pkgId) throw new Error('Elige un paquete primero.');
-
-    const items = [];
-    itemsList.querySelectorAll('.rev-item-row').forEach(row => {
-      const catalogId = row.querySelector('.rev-item-package').value;
-      const qty = parseInt(row.querySelector('.rev-item-qty').value, 10) || 1;
-      if (catalogId) items.push({ catalog_id: catalogId, quantity: qty });
-    });
-
-    const res = await fetch('/admin/revendedores/mappings/bulk', {
+    const primary = collect('primary');
+    const backup = collect('backup');
+    if (backup && backup.items.length && !(primary && primary.items.length)) {
+      throw new Error('Elige primero el paquete del proveedor principal.');
+    }
+    const res = await fetch('/admin/providers/mapping/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        entries: [{
-          store_package_id: pkgId,
-          items,
-          auto_enabled: !!autoChk.checked,
-        }],
+        store_package_id: pkgId,
+        auto_enabled: !!autoChk.checked,
+        primary,
+        backup: backup && backup.items.length ? backup : null,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -245,47 +361,91 @@
     return data;
   }
 
-  // Eventos
-  gameSelect.addEventListener('change', () => renderPackages(gameSelect.value));
-  packageSelect.addEventListener('change', () => renderItemsEditor(packageSelect.value));
-  btnAddItem.addEventListener('click', () => addItemRow('', 1));
+  async function syncCatalog(url) {
+    const res = await fetch(url, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo sincronizar');
+    return data;
+  }
 
-  btnRefresh.addEventListener('click', () => {
+  async function reload() {
     const g = gameSelect.value, p = packageSelect.value;
-    fetchMappingData()
-      .then(() => {
-        if (g) { gameSelect.value = g; renderPackages(g); }
-        if (p) { packageSelect.value = p; renderItemsEditor(p); }
-      })
-      .catch(e => toast(e.message));
+    await fetchMappingData();
+    if (g) { gameSelect.value = g; renderPackages(g); }
+    if (p) { packageSelect.value = p; renderEditor(p); }
+  }
+
+  async function loadBalance() {
+    const info = providerInfo('centralone');
+    if (!info || !info.configured) { balanceChip.style.display = 'none'; return; }
+    balanceChip.style.display = '';
+    balanceChip.textContent = 'Saldo Central One: consultando…';
+    try {
+      const res = await fetch('/admin/centralone/balance');
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'sin respuesta');
+      balanceChip.textContent = `Saldo Central One: ${data.currency} ${Number(data.available).toFixed(2)} disponible · ${Number(data.held).toFixed(2)} retenido`;
+    } catch (e) {
+      balanceChip.textContent = 'Saldo Central One: no se pudo consultar (' + e.message + ')';
+    }
+  }
+
+  // ── Eventos ────────────────────────────────────────────────────────────────
+  gameSelect.addEventListener('change', () => renderPackages(gameSelect.value));
+  packageSelect.addEventListener('change', () => renderEditor(packageSelect.value));
+  routes.primary.add.addEventListener('click', () => addRow('primary', '', 1));
+  routes.backup.add.addEventListener('click', () => addRow('backup', '', 1));
+
+  routes.primary.provider.addEventListener('change', () => {
+    // Al cambiar de proveedor sus items ya no valen (cada uno tiene su catálogo).
+    fillProviderSelects(routes.primary.provider.value, routes.backup.provider.value);
+    renderRoute('primary', null);
+    renderRoute('backup', routes.backup.provider.value ? { items: [] } : null);
+  });
+  routes.backup.provider.addEventListener('change', () => {
+    routes.backup.body.style.display = routes.backup.provider.value ? '' : 'none';
+    renderRoute('backup', null);
   });
 
-  btnSync.addEventListener('click', async () => {
+  $('btn-rev-refresh').addEventListener('click', () => reload().catch(e => toast(e.message)));
+
+  $('btn-sync-revendedores').addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
     try {
-      btnSync.disabled = true;
-      const data = await syncCatalog();
-      const gamesInfo = data.games ? Object.entries(data.games).map(([g, c]) => `${g}: ${c}`).join('\n') : '';
-      toast(`Sincronizado: ${data.created || 0} nuevos, ${data.updated || 0} actualizados, ${data.active_in_db || 0} activos en DB\n${gamesInfo}`);
-      const g = gameSelect.value, p = packageSelect.value;
-      await fetchMappingData();
-      if (g) { gameSelect.value = g; renderPackages(g); }
-      if (p) { packageSelect.value = p; renderItemsEditor(p); }
+      btn.disabled = true;
+      const data = await syncCatalog('/admin/revendedores/sync');
+      const info = data.games ? Object.entries(data.games).map(([g, c]) => `${g}: ${c}`).join('\n') : '';
+      toast(`Revendedores sincronizado: ${data.created || 0} nuevos, ${data.updated || 0} actualizados, ${data.active_in_db || 0} activos\n${info}`);
+      await reload();
     } catch (e) {
-      toast(e.message || 'Error al sincronizar');
+      toast(e.message || 'Error al sincronizar Revendedores');
     } finally {
-      btnSync.disabled = false;
+      btn.disabled = false;
+    }
+  });
+
+  $('btn-sync-centralone').addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    try {
+      btn.disabled = true;
+      const data = await syncCatalog('/admin/centralone/sync');
+      const info = data.games ? Object.entries(data.games).map(([g, c]) => `${g}: ${c}`).join('\n') : '';
+      toast(`Central One sincronizado: ${data.created || 0} nuevos, ${data.updated || 0} actualizados, ${data.deactivated || 0} desactivados\n${info}`);
+      await reload();
+      loadBalance();
+    } catch (e) {
+      toast(e.message || 'Error al sincronizar Central One');
+    } finally {
+      btn.disabled = false;
     }
   });
 
   btnSave.addEventListener('click', async () => {
     try {
       btnSave.disabled = true;
-      await savePackageMapping();
+      await saveMapping();
       toast('Mapeo guardado');
-      const g = gameSelect.value, p = packageSelect.value;
-      await fetchMappingData();
-      gameSelect.value = g; renderPackages(g);
-      packageSelect.value = p; renderItemsEditor(p);
+      await reload();
     } catch (e) {
       toast(e.message || 'Error al guardar');
     } finally {
@@ -294,7 +454,7 @@
   });
 
   // Init
-  fetchMappingData().catch(e => toast(e.message));
+  fetchMappingData().then(loadBalance).catch(e => toast(e.message));
 })();
 </script>
 {% endblock %}

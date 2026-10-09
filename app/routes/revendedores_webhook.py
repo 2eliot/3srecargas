@@ -9,7 +9,7 @@ aunque Revendedores ya la hubiera completado.
 El payload NUNCA se usa para decidir el resultado — cualquiera podría
 falsificarlo, y el secreto HMAC de la cuenta no está disponible de este
 lado. Solo se usa `external_order_id` como pista de qué orden re-verificar:
-el estado real sale de process_revendedores_queue, que confirma contra
+el estado real sale de process_order_delivery, que confirma contra
 /api/v1/order-status con nuestra propia API key (el mismo camino que usan
 el scheduler de recuperación y el botón "Verificar" del admin, así que es
 idempotente y no puede duplicar recargas).
@@ -20,7 +20,7 @@ import re
 from flask import Blueprint, current_app, jsonify, request
 
 from ..models import Order
-from ..utils.order_processing import process_revendedores_queue
+from ..utils.order_processing import process_order_delivery
 
 revendedores_webhook_bp = Blueprint('revendedores_webhook_bp', __name__)
 
@@ -58,7 +58,7 @@ def revendedores_webhook():
         return jsonify({'ok': True, 'result': 'no_verification_needed'})
 
     try:
-        result = process_revendedores_queue(order, base_state=auto_resp, force=False)
+        result = process_order_delivery(order, base_state=auto_resp, force=False)
     except Exception:
         current_app.logger.exception('[RevWebhook] Error verificando la orden %s', order.order_number)
         # No se toca la orden: el scheduler de recuperación la retomará.

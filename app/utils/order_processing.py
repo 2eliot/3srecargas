@@ -5,7 +5,10 @@ from uuid import uuid4
 import requests
 from flask import current_app
 
-from ..models import Affiliate, AffiliateCommission, Order, Pin, RevendedoresItemMapping, db
+from ..models import (
+    Affiliate, AffiliateCommission, CentralOneItemMapping, Order, PackageDeliveryPlan, Pin,
+    RevendedoresItemMapping, db,
+)
 from .locks import acquire_lock, release_lock
 from .minigames import ensure_minigame_opportunity
 from .notifications import notify_order_approved, notify_order_completed
@@ -16,6 +19,29 @@ from .points import award_points_for_order
 # muere a mitad de camino, el lock se libere solo y la orden no quede
 # bloqueada para siempre en lugar de solo "pendiente".
 ORDER_APPROVE_LOCK_TTL_SECONDS = 300
+
+# Proveedores de recarga automática. Cada paquete elige uno principal y, si
+# quiere, otro de respaldo (PackageDeliveryPlan).
+PROVIDER_REVENDEDORES = 'revendedores'
+PROVIDER_CENTRALONE = 'centralone'
+PROVIDER_LABELS = {
+    PROVIDER_REVENDEDORES: 'Revendedores',
+    PROVIDER_CENTRALONE: 'Central One',
+}
+
+# Lock de la entrega de UNA orden: el scheduler, el botón Aprobar, el polling
+# del admin y el webhook pueden coincidir; sin él dos de ellos podían decidir
+# a la vez pasar al respaldo y recargar dos veces. Cubre la llamada más larga
+# (120 s de Revendedores) más margen.
+ORDER_DELIVERY_LOCK_TTL_SECONDS = 300
+
+_ROUTE_CAUSE_TEXT = {
+    'balance': 'sin saldo',
+    'stock': 'sin stock',
+    'config': 'no está configurado o su llave no sirve',
+    'mapping': 'el producto ya no existe o no se pudo armar la recarga',
+    'rejected': 'rechazó la recarga',
+}
 
 
 def process_affiliate_commission(order):
@@ -35,14 +61,9 @@ def process_affiliate_commission(order):
     db.session.add(commission)
 
 
-def get_order_auto_mapping(order_obj):
-    mappings = get_order_auto_mappings(order_obj)
-    return mappings[0] if mappings else None
-
-
 def order_qualifies_for_auto_fulfillment(order):
     """True si la orden puede completarse SOLA (stock de PINs propio o
-    mapeo de Revendedores) sin que un admin tenga que hacer la recarga a
+    mapeo de algún proveedor) sin que un admin tenga que hacer la recarga a
     mano (p.ej. Zinli, o un juego al que le quitaron el mapeo).
 
     La usan tanto el auto-verify de Pabilo como el de Binance Pay para
@@ -52,7 +73,7 @@ def order_qualifies_for_auto_fulfillment(order):
     """
     if not order:
         return False
-    has_mapping = bool(get_order_auto_mapping(order))
+    has_mapping = bool(get_order_delivery_routes(order))
     category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
     uses_pin_stock = bool(order.package and order.package.is_automated) or category_slug == 'tarjetas'
     return has_mapping or uses_pin_stock
@@ -88,6 +109,87 @@ def get_order_auto_mappings(order_obj):
         return items
     except Exception:
         return []
+
+
+def get_order_centralone_items(order_obj):
+    """Productos de Central One que entregan el paquete de la orden, repetidos
+    según su cantidad: [(producto, {campo: valor fijo}), ...]. Vacío si el
+    paquete no tiene un mapeo de Central One activo y automático."""
+    try:
+        if not order_obj or not order_obj.package_id:
+            return []
+        mapping = CentralOneItemMapping.query.filter_by(
+            store_package_id=int(order_obj.package_id),
+            active=True,
+            auto_enabled=True,
+        ).first()
+        if not mapping:
+            return []
+
+        items = []
+        for row in sorted(mapping.items or [], key=lambda r: r.sort_order or 0):
+            if not row.catalog_item:
+                continue
+            try:
+                defaults = json.loads(row.target_defaults or '') or {}
+            except (TypeError, ValueError):
+                defaults = {}
+            if not isinstance(defaults, dict):
+                defaults = {}
+            items.extend([(row.catalog_item, defaults)] * max(1, int(row.quantity or 1)))
+        return items
+    except Exception:
+        return []
+
+
+def get_order_delivery_routes(order_obj):
+    """Proveedores que pueden entregar esta orden, en orden: [principal] o
+    [principal, respaldo]. Sin plan guardado el paquete se entrega como
+    siempre (Revendedores) y sin respaldo."""
+    try:
+        if not order_obj or not order_obj.package_id:
+            return []
+        available = {
+            PROVIDER_REVENDEDORES: bool(get_order_auto_mappings(order_obj)),
+            PROVIDER_CENTRALONE: bool(get_order_centralone_items(order_obj)),
+        }
+        plan = PackageDeliveryPlan.query.filter_by(store_package_id=int(order_obj.package_id)).first()
+        preferred = [plan.primary_provider, plan.backup_provider] if plan else [PROVIDER_REVENDEDORES, PROVIDER_CENTRALONE]
+
+        routes = []
+        for code in preferred:
+            if available.get(code) and code not in routes:
+                routes.append(code)
+        return routes if plan else routes[:1]
+    except Exception:
+        return []
+
+
+def _rev_step_was_ambiguous(step):
+    """True si algún intento de este paso terminó sin saber si Revendedores
+    recargó o no (timeout, error de red, "procesando" sin confirmar). Mientras
+    haya duda NO se puede pasar la orden a otro proveedor: se entregaría dos
+    veces. Los pasos guardados antes de existir este dato se juzgan por sus
+    intentos: si todos fueron rechazos explícitos por saldo, no hay duda."""
+    if not isinstance(step, dict):
+        return False
+    if 'ambiguous_attempt' in step:
+        return bool(step.get('ambiguous_attempt'))
+    attempts = int(step.get('rev_attempt') or 0)
+    return attempts > int(step.get('transient_failures') or 0) and not step.get('success')
+
+
+def _rev_rejection_flags(steps, step_index, step, cause):
+    """Señales para el despachador: Revendedores rechazó de forma definitiva
+    y, si no hubo ninguna recarga ni duda, la orden puede pasar al respaldo."""
+    steps_done = sum(1 for s in steps if s.get('success'))
+    return {
+        'provider': 'revendedores',
+        'definitive_rejection': True,
+        'rejection_cause': cause,
+        'steps_done': steps_done,
+        'safe_to_switch': step_index == 0 and steps_done == 0 and not step.get('ambiguous_attempt'),
+    }
 
 
 def _load_revendedores_auto_response(order, catalog_items, base_state=None):
@@ -126,6 +228,7 @@ def _load_revendedores_auto_response(order, catalog_items, base_state=None):
             'transient_failures': int(current.get('transient_failures') or 0),
             'retry_after': current.get('retry_after') or '',
             'first_transient_at': current.get('first_transient_at') or '',
+            'ambiguous_attempt': _rev_step_was_ambiguous(current),
         })
 
     if not existing_steps and auto_resp.get('source') == 'revendedores_api' and steps:
@@ -280,6 +383,11 @@ def process_revendedores_queue(order, base_state=None, force=False):
             'pending_verification': False,
             'message': 'Revendedores API no configurada.',
             'category': 'warning',
+            'provider': 'revendedores',
+            'definitive_rejection': True,
+            'rejection_cause': 'config',
+            'steps_done': sum(1 for s in steps if s.get('success')),
+            'safe_to_switch': not any(s.get('success') or s.get('external_order_id') for s in steps),
         }
 
     for step_index, step in enumerate(steps):
@@ -331,6 +439,7 @@ def process_revendedores_queue(order, base_state=None, force=False):
                     + hint
                 ),
                 'category': 'danger',
+                **_rev_rejection_flags(steps, step_index, step, blocked_cause),
             }
 
         # Si el paso ya tenía un intento previo (procesando, error de red,
@@ -381,6 +490,8 @@ def process_revendedores_queue(order, base_state=None, force=False):
                 # nuevo vuelve a salir 'fallida', el manejo de la respuesta
                 # del POST (más abajo) es el que decide detenerse en vez de
                 # seguir reintentando solo.
+                if confirmed_status == 'fallida':
+                    step['ambiguous_attempt'] = False  # se confirmó que no recargó
 
         # Rechazo temporal anterior: se espera REV_TRANSIENT_RETRY_SECONDS
         # entre intentos (sin llamar a Revendedores), y tras
@@ -491,6 +602,7 @@ def process_revendedores_queue(order, base_state=None, force=False):
                     'reference_no': ref_no,
                     'order_id': rev_data.get('order_id'),
                     'error': 'Recarga aceptada pero en estado "procesando" en Revendedores. Verificar manualmente.',
+                    'ambiguous_attempt': True,  # aceptada: aún puede completarse
                 })
                 auto_resp['pending_verification'] = True
                 auto_resp['current_step_index'] = step_index
@@ -566,6 +678,8 @@ def process_revendedores_queue(order, base_state=None, force=False):
                     'blocked_cause': '',
                     'transient_failures': int(step.get('transient_failures') or 0) + 1,
                     'retry_after': (now + timedelta(seconds=REV_TRANSIENT_RETRY_SECONDS)).isoformat(),
+                    # Rechazo explícito: no cambia la duda de intentos anteriores.
+                    'ambiguous_attempt': bool(step.get('ambiguous_attempt')),
                 })
                 if not step.get('first_transient_at'):
                     step['first_transient_at'] = now.isoformat()
@@ -590,6 +704,7 @@ def process_revendedores_queue(order, base_state=None, force=False):
                     'message': (f'El proveedor no pudo completar la recarga ahora ({rev_error}). '
                                 f'Se reintentará sola cada {REV_TRANSIENT_RETRY_SECONDS // 60} minutos.'),
                     'category': 'warning',
+                    **_rev_rejection_flags(steps, step_index, step, 'balance'),
                 }
 
             if rev_reported_status == 'fallida' or non_retryable_cause:
@@ -601,6 +716,7 @@ def process_revendedores_queue(order, base_state=None, force=False):
                     'success': False,
                     'pending_verification': False,
                     'blocked_cause': non_retryable_cause or 'rejected',
+                    'ambiguous_attempt': bool(step.get('ambiguous_attempt')),
                 })
                 auto_resp['pending_verification'] = False
                 auto_resp['current_step_index'] = step_index
@@ -623,6 +739,7 @@ def process_revendedores_queue(order, base_state=None, force=False):
                         + (hint or 'Verifica el ID del jugador u otros datos y reintenta manualmente.')
                     ),
                     'category': 'danger',
+                    **_rev_rejection_flags(steps, step_index, step, non_retryable_cause or 'rejected'),
                 }
 
             step['rev_attempt'] = rev_attempt
@@ -630,6 +747,7 @@ def process_revendedores_queue(order, base_state=None, force=False):
             step['error'] = rev_error
             step['success'] = False
             step['pending_verification'] = True
+            step['ambiguous_attempt'] = True
 
             auto_resp['pending_verification'] = True
             auto_resp['current_step_index'] = step_index
@@ -654,6 +772,7 @@ def process_revendedores_queue(order, base_state=None, force=False):
             step['error'] = str(exc)
             step['success'] = False
             step['pending_verification'] = True
+            step['ambiguous_attempt'] = True
 
             auto_resp['pending_verification'] = True
             auto_resp['current_step_index'] = step_index
@@ -696,6 +815,170 @@ def process_revendedores_queue(order, base_state=None, force=False):
         'message': f'Orden #{order.order_number} completada vía Revendedores API en {len(steps)} paso(s).',
         'category': 'success',
     }
+
+
+def _load_delivery_state(order):
+    try:
+        state = json.loads(order.automation_response or '{}')
+    except (TypeError, ValueError):
+        return {}
+    return state if isinstance(state, dict) else {}
+
+
+def _state_provider(state):
+    """Proveedor que ya está trabajando en la orden ('' si aún no hay)."""
+    provider = str(state.get('provider') or '').strip()
+    if provider in PROVIDER_LABELS:
+        return provider
+    # Órdenes de antes del respaldo: solo existía Revendedores.
+    return PROVIDER_REVENDEDORES if state.get('source') == 'revendedores_api' else ''
+
+
+def _state_has_activity(state):
+    """Hay una recarga hecha, en curso o dudosa en el estado de la orden."""
+    for step in state.get('steps') or []:
+        if not isinstance(step, dict):
+            continue
+        if (step.get('success') or step.get('pending_verification') or step.get('rev_attempt')
+                or step.get('external_order_id') or step.get('remote_order_id') or step.get('idempotency_key')):
+            return True
+    return False
+
+
+def _run_provider_engine(provider, order, base_state, force):
+    if provider == PROVIDER_CENTRALONE:
+        from .central_one import process_centralone_queue
+        return process_centralone_queue(order, base_state=base_state, force=force)
+    return process_revendedores_queue(order, base_state=base_state, force=force)
+
+
+def _fallback_allowed(result):
+    """El proveedor confirmó que NO entregó nada y, además, el motivo no es
+    del cliente (un ID inválido lo rechazaría cualquier proveedor)."""
+    return bool(
+        result
+        and not result.get('ok')
+        and result.get('definitive_rejection')
+        and result.get('safe_to_switch')
+        and result.get('rejection_cause') != 'player'
+    )
+
+
+def _switch_provider(order, old, new, result, force):
+    """Pasa la orden del proveedor `old` al de respaldo `new` y lo intenta ya.
+
+    Solo se llega aquí cuando `old` confirmó que no hizo ninguna recarga, así
+    que el cliente no recibe el paquete dos veces. Del proveedor anterior
+    queda un resumen en `history` para auditar qué pasó."""
+    state = _load_delivery_state(order)
+    now_iso = datetime.utcnow().isoformat()
+    cause = result.get('rejection_cause') or 'rejected'
+    history = list(state.get('history') or [])
+    history.append({
+        'provider': old,
+        'at': now_iso,
+        'cause': cause,
+        'reason': (result.get('message') or '')[:300],
+        'steps': state.get('steps') or [],
+    })
+    new_state = {
+        'provider': new,
+        'fallback_from': old,
+        'fallback_at': now_iso,
+        'history': history[-3:],
+    }
+    order.automation_response = json.dumps(new_state)
+    cause_text = _ROUTE_CAUSE_TEXT.get(cause, 'rechazó la recarga')
+    note = (f'[Respaldo] {PROVIDER_LABELS[old]} no pudo entregar esta orden ({cause_text}) y confirmó que no '
+            f'recargó nada. Se intenta con {PROVIDER_LABELS[new]}.')
+    if note not in (order.notes or ''):
+        order.notes = ((order.notes or '') + '\n' + note).strip()
+    db.session.commit()
+
+    new_result = _run_provider_engine(new, order, new_state, force)
+    if new_result is None:
+        return result
+    new_result['fallback_used'] = True
+    new_result['fallback_from'] = old
+    new_result['message'] = (
+        f'{PROVIDER_LABELS[old]} no pudo ({cause_text}); la orden pasó a {PROVIDER_LABELS[new]}. '
+        + (new_result.get('message') or '')
+    ).strip()
+    return new_result
+
+
+def process_order_delivery(order, base_state=None, force=False):
+    """Punto de entrada de la entrega automática de una orden.
+
+    Elige el proveedor (el principal del paquete, o el que ya esté trabajando
+    en la orden), avanza su cola de recargas y, si ese proveedor confirma que
+    NO entregó nada, pasa la orden al de respaldo. Nunca vuelve al anterior:
+    una vez que el respaldo toma la orden, solo él puede entregarla.
+
+    Devuelve el mismo diccionario que `process_revendedores_queue`, o None si
+    la orden no tiene ninguna entrega automática configurada.
+    """
+    routes = get_order_delivery_routes(order)
+    if not routes:
+        if not _state_provider(_load_delivery_state(order)):
+            return None
+        # Se quitó el mapeo mientras la orden estaba en curso: seguir sin él
+        # podría repetir una recarga ya hecha. Se deja para el admin.
+        if _state_has_activity(_load_delivery_state(order)):
+            return {
+                'ok': False, 'changed': False, 'pending_verification': False,
+                'message': ('Esta orden ya tenía una recarga en curso y se quitó el mapeo del paquete. '
+                            'Revisa la orden a mano para no recargarla dos veces.'),
+                'category': 'danger',
+            }
+        return None
+
+    lock_key = f'order_delivery:{order.id}'
+    lock_holder = uuid4().hex
+    if not acquire_lock(lock_key, ORDER_DELIVERY_LOCK_TTL_SECONDS, lock_holder):
+        return {
+            'ok': False,
+            'changed': False,
+            'pending_verification': True,
+            'message': 'Esta orden se está procesando en este momento. Se vuelve a revisar sola en unos segundos.',
+            'category': 'warning',
+        }
+
+    try:
+        # Con el lock en la mano, el estado se lee de nuevo: otro proceso pudo
+        # avanzar la orden mientras esperábamos.
+        db.session.refresh(order)
+        if order.status != 'pending':
+            return {
+                'ok': False, 'changed': False, 'pending_verification': False,
+                'message': 'La orden ya no está pendiente.', 'category': 'warning',
+            }
+
+        state = _load_delivery_state(order)
+        provider = _state_provider(state)
+        if provider and provider not in routes:
+            if _state_has_activity(state):
+                return {
+                    'ok': False, 'changed': False, 'pending_verification': False,
+                    'message': (f'Esta orden ya tenía una recarga en curso con {PROVIDER_LABELS[provider]} y se '
+                                'quitó su mapeo. Revisa la orden a mano para no recargarla dos veces.'),
+                    'category': 'danger',
+                }
+            provider = ''
+        if not provider:
+            provider = routes[0]
+
+        base = dict(state)
+        base['provider'] = provider
+        result = _run_provider_engine(provider, order, base, force)
+
+        tried = {provider} | {h.get('provider') for h in state.get('history') or [] if isinstance(h, dict)}
+        remaining = [code for code in routes[routes.index(provider) + 1:] if code not in tried] if provider in routes else []
+        if remaining and _fallback_allowed(result):
+            return _switch_provider(order, provider, remaining[0], result, force)
+        return result
+    finally:
+        release_lock(lock_key, lock_holder)
 
 
 def get_revendedores_env():
@@ -1031,7 +1314,7 @@ def _release_pin(pin):
 def _approve_order_locked(order, delivery_proof_path=None):
     package = order.package
     category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
-    rev_mapping = get_order_auto_mapping(order)
+    has_auto_route = bool(get_order_delivery_routes(order))
 
     # Qué vía usa cada paquete lo decide el admin con el interruptor
     # "Automatizado ⚡ (usa stock de PINs)". Antes esa elección no servía de
@@ -1044,8 +1327,8 @@ def _approve_order_locked(order, delivery_proof_path=None):
     # se trabe (que es justamente lo que el mapeo permite cubrir).
     pin = _claim_pin_for_order(package, order) if package.is_automated else None
 
-    if pin is None and rev_mapping:
-        result = process_revendedores_queue(order, force=True)
+    if pin is None and has_auto_route:
+        result = process_order_delivery(order, force=True)
         if result:
             return result
 

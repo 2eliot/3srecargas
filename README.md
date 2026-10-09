@@ -119,6 +119,23 @@ El interruptor **"Automatizado ⚡ (usa stock de PINs)"** de cada paquete es el 
 
 Es decir: marcar el paquete como automatizado y cargarle PINs es suficiente para que las recargas pasen a hacerse con tu propio stock. Si el stock se agota y el paquete tiene mapeo, las órdenes siguen saliendo por Revendedores en vez de quedarse trabadas.
 
+### Proveedores de recarga (Revendedores y Central One)
+
+Un paquete con mapeo se recarga por API con **uno de dos proveedores**. En **Admin → Juegos → Mapeo de proveedores** se elige, por paquete:
+
+- **Proveedor principal**: quien entrega ese paquete (con su propio catálogo de juegos y paquetes y la cantidad de recargas).
+- **Proveedor de respaldo** (opcional): el otro proveedor. Si el principal **confirma que no entregó nada** (sin saldo, sin stock, producto dado de baja, llave inválida o pedido fallido), la orden pasa sola al respaldo y queda anotado en las notas (`[Respaldo]`) y en el detalle de la orden.
+
+Reglas que evitan recargar dos veces (cada recarga repetida es dinero perdido):
+
+- Nunca se pasa al respaldo si hay duda de que el principal ya recargó (timeout, error de red, "procesando" sin confirmar).
+- Nunca se pasa al respaldo si el principal ya hizo alguna recarga de un mapeo de varios pasos.
+- Un ID de jugador inválido tampoco pasa al respaldo: lo rechazaría igual.
+- Una vez que el respaldo toma la orden, **no vuelve** al proveedor anterior.
+- Central One recibe una llave de idempotencia por intento: si la conexión se cae, el reintento usa la misma llave y devuelve el pedido original en vez de crear otro.
+
+Configuración de Central One en el `.env` del servidor (la llave nunca va al navegador): `CENTRALONE_API_KEY` y, si hace falta, `CENTRALONE_BASE_URL`. Permisos que debe tener la llave: `catalog:read`, `balance:read`, `orders:read` y `orders:write`. Luego, en el mapeo, **Sincronizar Central One** trae su catálogo. Central One no tiene modo de prueba: cada pedido mueve saldo real.
+
 ### Payload enviado al bot (`POST /redeem`)
 
 ```json

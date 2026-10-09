@@ -36,6 +36,11 @@ class Config:
     ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'webm', 'mov', 'm4v'}
     REVENDEDORES_BASE_URL = os.environ.get('REVENDEDORES_BASE_URL', '')
     REVENDEDORES_API_KEY = os.environ.get('REVENDEDORES_API_KEY', '')
+    # Central One (segundo proveedor de recargas). La llave vive SOLO aquí, en el
+    # servidor: nunca va al navegador. Permisos que necesita: catalog:read,
+    # balance:read, orders:read y orders:write.
+    CENTRALONE_BASE_URL = os.environ.get('CENTRALONE_BASE_URL', 'https://portal.centraloneglobal.com/api/v1').strip()
+    CENTRALONE_API_KEY = os.environ.get('CENTRALONE_API_KEY', '').strip()
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '').strip()
     GEMINI_REFERENCE_TIMEOUT = int(os.environ.get('GEMINI_REFERENCE_TIMEOUT', 25))
     # Binance Pay auto-verification

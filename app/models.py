@@ -679,6 +679,91 @@ class RevendedoresMappingItem(db.Model):
     catalog_item = db.relationship('RevendedoresCatalogItem')
 
 
+class CentralOneCatalogItem(db.Model):
+    """Producto del catálogo de Central One (segundo proveedor de recargas).
+
+    `product_id` es el UUID que Central One manda como `catalog_item_id` al
+    crear un pedido. `family_name` es el juego y `name` el paquete: con eso el
+    mapeo muestra "juego → paquetes" igual que con Revendedores."""
+    __tablename__ = 'centralone_catalog'
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    sku = db.Column(db.String(120), default='')
+    name = db.Column(db.String(255), default='')
+    family_id = db.Column(db.String(120), default='')
+    family_name = db.Column(db.String(200), default='')
+    category = db.Column(db.String(60), default='')
+    product_type = db.Column(db.String(60), default='')
+    currency = db.Column(db.String(10), default='USD')
+    # Precio con 4 decimales: el margen vive ahí, no se redondea a 2.
+    price = db.Column(db.Numeric(12, 4))
+    in_stock = db.Column(db.Boolean, default=True)
+    available_stock = db.Column(db.Integer)  # None = el proveedor no informa cantidad
+    requires_target = db.Column(db.Boolean, default=False)
+    target_fields = db.Column(db.Text, default='[]')   # JSON: claves que pide el producto
+    target_schema = db.Column(db.Text, default='[]')   # JSON: tipo (text/select) y opciones
+    price_updated_at = db.Column(db.String(40), default='')
+    active = db.Column(db.Boolean, default=True)
+    raw_json = db.Column(db.Text, default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    synced_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class CentralOneItemMapping(db.Model):
+    """Qué recarga(s) de Central One entregan un paquete de la tienda."""
+    __tablename__ = 'centralone_item_mappings'
+    id = db.Column(db.Integer, primary_key=True)
+    store_package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    active = db.Column(db.Boolean, default=True)
+    auto_enabled = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    package = db.relationship('Package')
+    items = db.relationship(
+        'CentralOneMappingItem',
+        order_by='CentralOneMappingItem.sort_order',
+        cascade='all, delete-orphan',
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint('store_package_id', name='uq_co_mapping_package'),
+    )
+
+
+class CentralOneMappingItem(db.Model):
+    """Un producto de Central One dentro de un mapeo, con cuántas veces se
+    repite (cada repetición es una recarga aparte, en orden)."""
+    __tablename__ = 'centralone_mapping_items'
+    id = db.Column(db.Integer, primary_key=True)
+    mapping_id = db.Column(db.Integer, db.ForeignKey('centralone_item_mappings.id'), nullable=False)
+    catalog_item_id = db.Column(db.Integer, db.ForeignKey('centralone_catalog.id'), nullable=False)
+    quantity = db.Column(db.Integer, default=1)
+    sort_order = db.Column(db.Integer, default=0)
+    # JSON {campo: valor} para campos del producto que el cliente no llena en
+    # la tienda (por ejemplo un servidor fijo de una lista).
+    target_defaults = db.Column(db.Text, default='')
+
+    catalog_item = db.relationship('CentralOneCatalogItem')
+
+
+class PackageDeliveryPlan(db.Model):
+    """Qué proveedor entrega cada paquete y cuál lo respalda.
+
+    Sin fila = comportamiento de siempre (Revendedores). Con respaldo, si el
+    principal confirma que NO entregó nada (sin saldo, sin stock, paquete dado
+    de baja) la orden pasa sola al respaldo."""
+    __tablename__ = 'package_delivery_plans'
+    id = db.Column(db.Integer, primary_key=True)
+    store_package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    primary_provider = db.Column(db.String(20), nullable=False, default='revendedores')
+    backup_provider = db.Column(db.String(20))
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('store_package_id', name='uq_delivery_plan_package'),
+    )
+
+
 class AdminUser(db.Model, UserMixin):
     __tablename__ = 'admin_users'
     id = db.Column(db.Integer, primary_key=True)

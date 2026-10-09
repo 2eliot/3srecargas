@@ -27,6 +27,14 @@
                 <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
             </span>
         </div>
+        {% if delivery_info %}
+        <div class="detail-row">
+            <span class="detail-label">Entrega</span>
+            <span class="detail-value">
+                {{ delivery_info.provider }}{% if delivery_info.fallback_from %} <span style="color:#fbbf24;font-weight:700;">· respaldo de {{ delivery_info.fallback_from }}</span>{% endif %}{% if delivery_info.cost %} · costo USD {{ delivery_info.cost }}{% endif %}
+            </span>
+        </div>
+        {% endif %}
         <div class="detail-row">
             <span class="detail-label">Juego</span>
             <span class="detail-value">{{ order.game.name }}</span>

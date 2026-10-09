@@ -21,6 +21,7 @@ from ..models import (
     OrderMiniGameOpportunity, PlayerPoints, PointsPrizeMapping, PointsSpinLog,
     PointsRedeemOption, PointsRedeemLog,
     RevendedoresCatalogItem, RevendedoresItemMapping, RevendedoresMappingItem, GiftCode,
+    CentralOneCatalogItem, CentralOneItemMapping, CentralOneMappingItem, PackageDeliveryPlan,
     AffiliateWithdrawal, MiniCourseVideo, MiniNotification, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod,
     PromoAccumulatedAward, PromoAccumulatedLevel,
     PromoRaffleConfig, PromoRaffleWinner, PromoRaffleEntry,
@@ -54,7 +55,14 @@ from ..utils.minigames import (
 from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
-from ..utils.order_processing import approve_order, force_approve_order_manually, get_revendedores_env, process_affiliate_commission, process_revendedores_queue
+from ..utils.order_processing import (
+    PROVIDER_LABELS, approve_order, force_approve_order_manually, get_revendedores_env,
+    process_affiliate_commission, process_order_delivery,
+)
+from ..utils.central_one import (
+    CentralOneError, CentralOneUnknown, fetch_balance as fetch_central_one_balance, get_centralone_env,
+    sync_catalog as sync_central_one_catalog,
+)
 from ..models import PushSubscription
 from ..utils.push_notifications import is_push_configured, send_push_broadcast
 from ..utils.points import (
@@ -682,9 +690,7 @@ def game_delete_permanent(game_id):
 
     try:
         if package_ids:
-            RevendedoresItemMapping.query.filter(
-                RevendedoresItemMapping.store_package_id.in_(package_ids)
-            ).delete(synchronize_session=False)
+            _delete_package_delivery_config(package_ids)
             Pin.query.filter(Pin.package_id.in_(package_ids)).delete(synchronize_session=False)
             Package.query.filter(Package.id.in_(package_ids)).delete(synchronize_session=False)
 
@@ -873,7 +879,7 @@ def package_delete_permanent(pkg_id):
 
     pkg_name = pkg.name
     try:
-        RevendedoresItemMapping.query.filter_by(store_package_id=pkg.id).delete(synchronize_session=False)
+        _delete_package_delivery_config([pkg.id])
         Pin.query.filter_by(package_id=pkg.id).delete(synchronize_session=False)
         if pkg.image:
             delete_uploaded_file(pkg.image)
@@ -1184,6 +1190,21 @@ def order_detail(order_id):
         if not error and expected is not None:
             remainder_missing = (expected - Decimal(str(order.paid_amount_bs or 0))).quantize(Decimal('0.01'))
 
+    # Qué proveedor entregó (o está entregando) la orden, y si fue por respaldo.
+    delivery_state = _json_dict(order.automation_response)
+    delivery_code = str(delivery_state.get('provider') or '').strip()
+    if delivery_code not in PROVIDER_LABELS and delivery_state.get('source') == 'revendedores_api':
+        delivery_code = 'revendedores'
+    delivery_info = None
+    if delivery_code in PROVIDER_LABELS:
+        costs = [Decimal(str(s['cost_usd'])) for s in delivery_state.get('steps') or []
+                 if isinstance(s, dict) and s.get('cost_usd') and s.get('success')]
+        delivery_info = {
+            'provider': PROVIDER_LABELS[delivery_code],
+            'fallback_from': PROVIDER_LABELS.get(delivery_state.get('fallback_from')),
+            'cost': str(sum(costs, Decimal('0')).quantize(Decimal('0.0001'))) if costs else '',
+        }
+
     # Órdenes de antes del arreglo: un "pago restante" que en realidad era el
     # mismo primer pago se sumó dos veces. Se calcula lo que de verdad pagó.
     remainder_repeats = remainders_matching_first_payment(order, remainder_refs)
@@ -1207,6 +1228,7 @@ def order_detail(order_id):
         payment_method_config=payment_method_config,
         can_send_delivery_proof=order_supports_delivery_proof(order),
         can_upload_delivery_proof=order.status != 'rejected',
+        delivery_info=delivery_info,
         remainder_refs=remainder_refs,
         remainder_missing=remainder_missing,
         remainder_repeats=remainder_repeats,
@@ -4740,6 +4762,74 @@ def revendedores_sync_catalog():
     })
 
 
+def _delete_package_delivery_config(package_ids):
+    """Borra todo lo que entrega estos paquetes: los mapeos de Revendedores y
+    de Central One (con sus items) y su plan de principal/respaldo."""
+    if not package_ids:
+        return
+    for mapping_model, item_model in (
+        (RevendedoresItemMapping, RevendedoresMappingItem),
+        (CentralOneItemMapping, CentralOneMappingItem),
+    ):
+        mapping_ids = [m.id for m in mapping_model.query.filter(mapping_model.store_package_id.in_(package_ids)).all()]
+        if mapping_ids:
+            item_model.query.filter(item_model.mapping_id.in_(mapping_ids)).delete(synchronize_session=False)
+            mapping_model.query.filter(mapping_model.id.in_(mapping_ids)).delete(synchronize_session=False)
+    PackageDeliveryPlan.query.filter(PackageDeliveryPlan.store_package_id.in_(package_ids)).delete(synchronize_session=False)
+
+
+def _central_one_error_text(exc):
+    code = getattr(exc, 'code', '')
+    if code == 'invalid_api_key':
+        return 'La llave de Central One no es válida, fue revocada o la cuenta está inactiva.'
+    if code == 'insufficient_scope':
+        return 'La llave de Central One no tiene permiso para esto (necesita catalog:read, balance:read, orders:read y orders:write).'
+    if code == 'rate_limited':
+        return 'Central One pidió esperar un momento. Intenta de nuevo en unos segundos.'
+    return str(exc)
+
+
+@admin_bp.route('/centralone/sync', methods=['POST'])
+@login_required
+def centralone_sync_catalog():
+    _, api_key = get_centralone_env()
+    if not api_key:
+        return jsonify({'ok': False, 'error': 'Falta CENTRALONE_API_KEY en el servidor (archivo .env).'}), 400
+    try:
+        summary = sync_central_one_catalog()
+    except (CentralOneError, CentralOneUnknown) as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': f'No se pudo sincronizar Central One: {_central_one_error_text(exc)}'}), 502
+    return jsonify({'ok': True, 'source': 'api', **summary})
+
+
+@admin_bp.route('/centralone/balance', methods=['GET'])
+@login_required
+def centralone_balance():
+    _, api_key = get_centralone_env()
+    if not api_key:
+        return jsonify({'ok': False, 'error': 'Falta CENTRALONE_API_KEY en el servidor (archivo .env).'}), 400
+    try:
+        balance = fetch_central_one_balance()
+    except (CentralOneError, CentralOneUnknown) as exc:
+        return jsonify({'ok': False, 'error': _central_one_error_text(exc)}), 502
+    return jsonify({
+        'ok': True,
+        'available': balance.get('available_balance'),
+        'held': balance.get('held_balance'),
+        'total': balance.get('total_balance'),
+        'currency': balance.get('currency') or 'USD',
+    })
+
+
+def _json_dict(text):
+    try:
+        value = json.loads(text or '')
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 @admin_bp.route('/revendedores/mapping-data', methods=['GET'])
 @login_required
 def revendedores_mapping_data():
@@ -4750,28 +4840,97 @@ def revendedores_mapping_data():
     if game_id:
         packages_query = packages_query.filter_by(game_id=game_id)
     store_packages = packages_query.order_by(Package.sort_order.asc(), Package.id.asc()).all()
+    package_ids = [p.id for p in store_packages]
 
-    mappings = RevendedoresItemMapping.query.filter(
-        RevendedoresItemMapping.store_package_id.in_([p.id for p in store_packages])
-    ).all() if store_packages else []
-    mapping_map = {m.store_package_id: m for m in mappings}
-
-    catalog_rows = RevendedoresCatalogItem.query.filter_by(active=True).order_by(
-        RevendedoresCatalogItem.remote_product_name.asc(),
-        RevendedoresCatalogItem.remote_package_name.asc(),
-        RevendedoresCatalogItem.id.asc(),
-    ).all()
+    rev_by_pkg = {m.store_package_id: m for m in RevendedoresItemMapping.query.filter(
+        RevendedoresItemMapping.store_package_id.in_(package_ids)).all()} if package_ids else {}
+    co_by_pkg = {m.store_package_id: m for m in CentralOneItemMapping.query.filter(
+        CentralOneItemMapping.store_package_id.in_(package_ids)).all()} if package_ids else {}
+    plan_by_pkg = {p.store_package_id: p for p in PackageDeliveryPlan.query.filter(
+        PackageDeliveryPlan.store_package_id.in_(package_ids)).all()} if package_ids else {}
 
     def _extract_price(raw_json_str):
         try:
             obj = json.loads(raw_json_str or '{}')
             p = obj.get('price') or obj.get('precio') or obj.get('cost')
             if p is not None:
-                return round(float(p), 2)
+                return str(round(float(p), 2))
         except Exception:
             pass
         return None
 
+    rev_catalog = [
+        {
+            'catalog_id': r.id,
+            'group': (r.remote_product_name or '').strip() or 'Otro',
+            'name': (r.remote_package_name or '').strip() or f'Paquete {r.remote_package_id}',
+            'price': _extract_price(r.raw_json),
+        }
+        for r in RevendedoresCatalogItem.query.filter_by(active=True).order_by(
+            RevendedoresCatalogItem.remote_product_name.asc(),
+            RevendedoresCatalogItem.remote_package_name.asc(),
+            RevendedoresCatalogItem.id.asc(),
+        ).all()
+    ]
+
+    co_catalog = []
+    for r in CentralOneCatalogItem.query.filter_by(active=True).order_by(
+            CentralOneCatalogItem.family_name.asc(), CentralOneCatalogItem.name.asc(), CentralOneCatalogItem.id.asc()).all():
+        try:
+            fields = json.loads(r.target_fields or '[]')
+            schema = json.loads(r.target_schema or '[]')
+        except ValueError:
+            fields, schema = [], []
+        co_catalog.append({
+            'catalog_id': r.id,
+            'group': (r.family_name or '').strip() or 'Otro',
+            'name': (r.name or '').strip() or r.sku or r.product_id,
+            'price': str(r.price) if r.price is not None else None,
+            'in_stock': bool(r.in_stock),
+            'available_stock': r.available_stock,
+            'fields': fields,
+            # Campos de lista (servidor): la tienda necesita saber su valor.
+            'selects': [
+                {'key': f.get('key'), 'label': f.get('label') or f.get('key'), 'options': f.get('options') or []}
+                for f in schema if isinstance(f, dict) and f.get('type') == 'select'
+            ],
+        })
+
+    def _route(provider, mapping):
+        if provider == 'revendedores':
+            items = (
+                [{'catalog_id': it.catalog_item_id, 'quantity': it.quantity or 1} for it in mapping.items]
+                if mapping.items else
+                [{'catalog_id': cid, 'quantity': 1} for cid in (mapping.catalog_item_id, mapping.catalog_item_id_2) if cid]
+            )
+        else:
+            items = [
+                {'catalog_id': it.catalog_item_id, 'quantity': it.quantity or 1, 'target_defaults': _json_dict(it.target_defaults)}
+                for it in mapping.items
+            ]
+        return {'provider': provider, 'items': items}
+
+    deliveries = []
+    for pid in package_ids:
+        mappings = {'revendedores': rev_by_pkg.get(pid), 'centralone': co_by_pkg.get(pid)}
+        if not any(mappings.values()):
+            continue
+        plan = plan_by_pkg.get(pid)
+        order = [plan.primary_provider, plan.backup_provider] if plan else ['revendedores', 'centralone']
+        routes = [_route(code, mappings[code]) for code in order if code and mappings.get(code)]
+        if not plan or not routes:
+            # Sin plan (o con un plan que apunta a un mapeo que ya no existe):
+            # se muestra el único mapeo que haya, como lo entrega el sistema.
+            routes = (routes or [_route(code, mappings[code]) for code in ('revendedores', 'centralone') if mappings.get(code)])[:1]
+        deliveries.append({
+            'store_package_id': pid,
+            'auto_enabled': bool(mappings[routes[0]['provider']].auto_enabled),
+            'primary': routes[0],
+            'backup': routes[1] if len(routes) > 1 else None,
+        })
+
+    rev_base, rev_key = get_revendedores_env()[:2]
+    co_base, co_key = get_centralone_env()
     return jsonify({
         'ok': True,
         'games': [{'id': g.id, 'name': g.name} for g in games],
@@ -4785,40 +4944,175 @@ def revendedores_mapping_data():
             }
             for p in store_packages
         ],
-        'remote_catalog': [
-            {
-                'catalog_id': r.id,
-                'remote_product_id': r.remote_product_id,
-                'remote_product_name': r.remote_product_name or '',
-                'remote_package_id': r.remote_package_id,
-                'remote_package_name': r.remote_package_name or '',
-                'price': _extract_price(r.raw_json),
-            }
-            for r in catalog_rows
+        'providers': [
+            {'code': 'revendedores', 'name': PROVIDER_LABELS['revendedores'], 'configured': bool(rev_base and rev_key)},
+            {'code': 'centralone', 'name': PROVIDER_LABELS['centralone'], 'configured': bool(co_base and co_key)},
         ],
-        'mappings': [
-            {
-                'store_package_id': m.store_package_id,
-                'auto_enabled': m.auto_enabled,
-                # Mapeos guardados con el editor nuevo traen su lista de items
-                # (con cantidad) ya armada. Los que quedaron del formato viejo
-                # (2 casillas fijas, sin fila en revendedores_mapping_items)
-                # se arman al vuelo desde catalog_item_id/catalog_item_id_2
-                # para que se sigan viendo y editando sin perder nada.
-                'items': (
-                    [
-                        {'catalog_id': it.catalog_item_id, 'quantity': it.quantity or 1}
-                        for it in m.items
-                    ] if m.items else [
-                        {'catalog_id': cid, 'quantity': 1}
-                        for cid in (m.catalog_item_id, m.catalog_item_id_2)
-                        if cid
-                    ]
-                ),
-            }
-            for m in mappings
-        ],
+        'catalogs': {'revendedores': rev_catalog, 'centralone': co_catalog},
+        'deliveries': deliveries,
     })
+
+
+def _parse_mapping_items(raw_items, max_quantity=None):
+    items = []
+    for it in raw_items or []:
+        cid_str = str((it or {}).get('catalog_id') or '').strip()
+        if not cid_str:
+            continue
+        qty = max(1, int((it or {}).get('quantity') or 1))
+        if max_quantity:
+            qty = min(qty, max_quantity)
+        items.append((int(cid_str), qty, (it or {}).get('target_defaults')))
+    return items
+
+
+def _save_revendedores_mapping(store_pkg_id, items, auto_enabled):
+    """Guarda el mapeo de Revendedores de un paquete (o lo borra si no hay
+    items). `items` = [(catalog_id, cantidad), ...]. Devuelve 'saved',
+    'removed' o '' si no había nada que hacer."""
+    existing = RevendedoresItemMapping.query.filter_by(store_package_id=store_pkg_id).first()
+    if not items:
+        if existing:
+            db.session.delete(existing)
+            return 'removed'
+        return ''
+
+    # catalog_item_id/catalog_item_id_2 se mantienen como espejo del primer y
+    # segundo item para no romper mapeos leídos por código viejo; la lista
+    # completa (con cantidad) vive en mapping.items.
+    catalog_id = items[0][0]
+    catalog_id_2 = items[1][0] if len(items) > 1 else None
+
+    if existing:
+        mapping = existing
+        mapping.catalog_item_id = catalog_id
+        mapping.catalog_item_id_2 = catalog_id_2
+        mapping.auto_enabled = auto_enabled
+        mapping.active = True
+    else:
+        mapping = RevendedoresItemMapping(
+            store_package_id=store_pkg_id,
+            catalog_item_id=catalog_id,
+            catalog_item_id_2=catalog_id_2,
+            active=True,
+            auto_enabled=auto_enabled,
+        )
+        db.session.add(mapping)
+
+    mapping.items = [
+        RevendedoresMappingItem(catalog_item_id=cid, quantity=qty, sort_order=idx)
+        for idx, (cid, qty, *_rest) in enumerate(items)
+    ]
+    return 'saved'
+
+
+def _clean_target_defaults(defaults, catalog_item):
+    """Solo se guardan valores fijos de campos que el producto de verdad pide."""
+    if not isinstance(defaults, dict):
+        return {}
+    try:
+        allowed = {str(f) for f in json.loads(catalog_item.target_fields or '[]')}
+    except ValueError:
+        allowed = set()
+    return {str(k): str(v).strip()[:100] for k, v in defaults.items() if str(k) in allowed and str(v or '').strip()}
+
+
+def _save_centralone_mapping(store_pkg_id, items, auto_enabled):
+    """Igual que _save_revendedores_mapping pero para Central One. `items` =
+    [(catalog_id, cantidad, valores_fijos), ...]."""
+    existing = CentralOneItemMapping.query.filter_by(store_package_id=store_pkg_id).first()
+    if not items:
+        if existing:
+            db.session.delete(existing)
+            return 'removed'
+        return ''
+
+    if existing:
+        mapping = existing
+        mapping.auto_enabled = auto_enabled
+        mapping.active = True
+    else:
+        mapping = CentralOneItemMapping(store_package_id=store_pkg_id, active=True, auto_enabled=auto_enabled)
+        db.session.add(mapping)
+
+    catalog = {c.id: c for c in CentralOneCatalogItem.query.filter(
+        CentralOneCatalogItem.id.in_([cid for cid, *_ in items])).all()}
+    rows = []
+    for idx, (cid, qty, defaults) in enumerate(items):
+        clean = _clean_target_defaults(defaults, catalog[cid])
+        rows.append(CentralOneMappingItem(
+            catalog_item_id=cid, quantity=min(qty, 50), sort_order=idx,
+            target_defaults=json.dumps(clean, ensure_ascii=False) if clean else '',
+        ))
+    mapping.items = rows
+    return 'saved'
+
+
+@admin_bp.route('/providers/mapping/save', methods=['POST'])
+@login_required
+def provider_mapping_save():
+    """Guarda cómo se entrega un paquete: proveedor principal y, si se quiere,
+    otro de respaldo. Cada ruta trae sus items del catálogo de ESE proveedor."""
+    data = request.get_json(silent=True) or {}
+    try:
+        store_pkg_id = int(data.get('store_package_id') or 0)
+    except (TypeError, ValueError):
+        store_pkg_id = 0
+    if not store_pkg_id or not Package.query.get(store_pkg_id):
+        return jsonify({'ok': False, 'error': 'Elige un paquete válido.'}), 400
+    auto_enabled = bool(data.get('auto_enabled'))
+
+    def read_route(key):
+        route = data.get(key)
+        if not isinstance(route, dict):
+            return None
+        provider = str(route.get('provider') or '').strip()
+        if provider not in PROVIDER_LABELS:
+            return None
+        try:
+            items = _parse_mapping_items(route.get('items'), max_quantity=50 if provider == 'centralone' else None)
+        except (TypeError, ValueError):
+            return None
+        return {'provider': provider, 'items': items} if items else None
+
+    primary = read_route('primary')
+    backup = read_route('backup')
+    if backup and not primary:
+        return jsonify({'ok': False, 'error': 'Elige primero el paquete del proveedor principal.'}), 400
+    if primary and backup and primary['provider'] == backup['provider']:
+        return jsonify({'ok': False, 'error': 'El respaldo tiene que ser otro proveedor distinto al principal.'}), 400
+
+    used = {route['provider']: route for route in (primary, backup) if route}
+    for provider, model in (('revendedores', RevendedoresCatalogItem), ('centralone', CentralOneCatalogItem)):
+        route = used.get(provider)
+        if route:
+            wanted = {cid for cid, *_ in route['items']}
+            found = {row.id for row in model.query.filter(model.id.in_(wanted)).all()}
+            if wanted - found:
+                return jsonify({'ok': False, 'error': f'Algún paquete de {PROVIDER_LABELS[provider]} ya no existe. Sincroniza su catálogo y vuelve a elegir.'}), 400
+
+    try:
+        revendedores = used.get('revendedores')
+        centralone = used.get('centralone')
+        _save_revendedores_mapping(
+            store_pkg_id, [(cid, qty) for cid, qty, *_ in revendedores['items']] if revendedores else [], auto_enabled)
+        _save_centralone_mapping(store_pkg_id, centralone['items'] if centralone else [], auto_enabled)
+
+        plan = PackageDeliveryPlan.query.filter_by(store_package_id=store_pkg_id).first()
+        if primary:
+            if not plan:
+                plan = PackageDeliveryPlan(store_package_id=store_pkg_id)
+                db.session.add(plan)
+            plan.primary_provider = primary['provider']
+            plan.backup_provider = backup['provider'] if backup else None
+        elif plan:
+            db.session.delete(plan)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': str(exc)}), 500
+
+    return jsonify({'ok': True, 'removed': primary is None})
 
 
 @admin_bp.route('/revendedores/mappings/bulk', methods=['POST'])
@@ -4843,52 +5137,15 @@ def revendedores_mappings_bulk():
                     {'catalog_id': entry.get('catalog_id_2'), 'quantity': 1},
                 ]
 
-            items = []
-            for it in raw_items:
-                cid_str = str((it or {}).get('catalog_id') or '').strip()
-                if not cid_str:
-                    continue
-                qty = max(1, int((it or {}).get('quantity') or 1))
-                items.append((int(cid_str), qty))
-
             if not store_pkg_id:
                 continue
 
-            existing = RevendedoresItemMapping.query.filter_by(store_package_id=store_pkg_id).first()
-
-            if not items:
-                if existing:
-                    db.session.delete(existing)
-                    removed += 1
-                continue
-
-            # catalog_item_id/catalog_item_id_2 se mantienen como espejo del
-            # primer y segundo item para no romper mapeos leídos por código
-            # viejo; la lista completa (con cantidad) vive en mapping.items.
-            catalog_id = items[0][0]
-            catalog_id_2 = items[1][0] if len(items) > 1 else None
-
-            if existing:
-                mapping = existing
-                mapping.catalog_item_id = catalog_id
-                mapping.catalog_item_id_2 = catalog_id_2
-                mapping.auto_enabled = auto_enabled
-                mapping.active = True
-            else:
-                mapping = RevendedoresItemMapping(
-                    store_package_id=store_pkg_id,
-                    catalog_item_id=catalog_id,
-                    catalog_item_id_2=catalog_id_2,
-                    active=True,
-                    auto_enabled=auto_enabled,
-                )
-                db.session.add(mapping)
-
-            mapping.items = [
-                RevendedoresMappingItem(catalog_item_id=cid, quantity=qty, sort_order=idx)
-                for idx, (cid, qty) in enumerate(items)
-            ]
-            saved += 1
+            outcome = _save_revendedores_mapping(
+                store_pkg_id, [(cid, qty) for cid, qty, *_ in _parse_mapping_items(raw_items)], auto_enabled)
+            if outcome == 'saved':
+                saved += 1
+            elif outcome == 'removed':
+                removed += 1
 
         db.session.commit()
     except Exception as exc:
@@ -4904,11 +5161,11 @@ def revendedores_mappings_bulk():
 @admin_bp.route('/orders/<int:order_id>/verify-recharge', methods=['POST'])
 @login_required
 def order_verify_recharge(order_id):
-    """Revisa/continúa la cola de recargas de Revendedores para una orden.
+    """Revisa/continúa la cola de recargas (Revendedores o Central One) de una orden.
 
     Delega toda la lógica (confirmar el intento previo, decidir si hay que
     reintentar, avanzar al siguiente paso o completar la orden) a
-    process_revendedores_queue, que es la misma función que usa el
+    process_order_delivery, que es la misma función que usa el
     scheduler de recuperación en segundo plano. Así este botón y la
     recuperación automática nunca pueden quedar desincronizados ni disparar
     una recarga duplicada.
@@ -4932,7 +5189,7 @@ def order_verify_recharge(order_id):
         # automáticos igual que el scheduler de recuperación. Una vez
         # agotados, el flujo pasa al botón normal "✓ Aprobar", que sí
         # fuerza un intento más de forma explícita.
-        result = process_revendedores_queue(order, base_state=auto_resp, force=False)
+        result = process_order_delivery(order, base_state=auto_resp, force=False)
     except Exception as exc:
         current_app.logger.exception('Error verificando recarga de Revendedores para la orden %s', order_id)
         return jsonify({'ok': False, 'error': f'No se pudo verificar: {exc}', 'can_approve': False})

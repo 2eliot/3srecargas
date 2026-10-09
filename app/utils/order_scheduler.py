@@ -11,7 +11,7 @@ ningún proceso en el servidor que la retomara.
 Este módulo agrega un hilo en segundo plano, uno por proceso/worker, que
 cada _TICK_INTERVAL_SECONDS revisa las órdenes 'pending' que necesitan
 seguimiento y las reintenta usando las mismas funciones que ya usan las
-rutas manuales (auto_verify_and_process_order, process_revendedores_queue).
+rutas manuales (auto_verify_and_process_order, process_order_delivery).
 Como la app corre con varios workers de Gunicorn, cada worker tiene su
 propio hilo; el lock de `order_recovery_scheduler` (ver utils/locks.py)
 asegura que en cada tick solo uno de ellos haga el trabajo, para no
@@ -103,7 +103,7 @@ def _run_tick(app):
         auto_verify_and_process_order,
         order_supports_background_payment_verification,
     )
-    from .order_processing import process_revendedores_queue
+    from .order_processing import process_order_delivery
 
     pending_orders = (
         Order.query
@@ -126,13 +126,14 @@ def _run_tick(app):
 
         try:
             if auto_resp.get('pending_verification'):
-                # Reintenta el siguiente paso de un mapeo Revendedores con
-                # varios items (cantidad ≥ 2): es continuar una entrega YA
+                # Reintenta el siguiente paso de un mapeo con varios items
+                # (cantidad ≥ 2), una recarga en espera de saldo o una que
+                # el proveedor aún está procesando: es continuar una entrega YA
                 # aprobada, no verificar un pago nuevo, así que no depende
                 # de "auto_verify_payments" ni de Binance — si dependiera,
                 # con ese interruptor apagado (como en este sitio) el paso
                 # 2 en adelante se quedaba en "procesando" para siempre.
-                process_revendedores_queue(order, base_state=auto_resp, force=False)
+                process_order_delivery(order, base_state=auto_resp, force=False)
                 processed += 1
             elif binance_on and is_binance_auto_order(order):
                 # El hilo dedicado que se lanza al crear la orden vive dentro

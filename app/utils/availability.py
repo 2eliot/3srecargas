@@ -7,7 +7,7 @@ paquete agotado. Ahora la regla vive en un solo sitio y la usan las dos
 puntas.
 """
 
-from ..models import RevendedoresItemMapping, Setting
+from ..models import CentralOneItemMapping, RevendedoresItemMapping, Setting
 from .timezone import now_ve
 
 # Los paquetes que se recargan a mano solo se venden dentro del horario de
@@ -20,18 +20,15 @@ DEFAULT_MANUAL_CLOSE_HOUR = 22
 
 
 def package_has_auto_mapping(package_id):
-    """True si el paquete tiene un mapeo activo de Revendedores que sirva de
-    respaldo cuando el stock de PINs llega a 0."""
+    """True si el paquete tiene un mapeo activo (Revendedores o Central One)
+    que sirva de respaldo cuando el stock de PINs llega a 0."""
     if not package_id:
         return False
     try:
-        return bool(
-            RevendedoresItemMapping.query.filter_by(
-                store_package_id=int(package_id),
-                active=True,
-                auto_enabled=True,
-            ).first()
-        )
+        for model in (RevendedoresItemMapping, CentralOneItemMapping):
+            if model.query.filter_by(store_package_id=int(package_id), active=True, auto_enabled=True).first():
+                return True
+        return False
     except Exception:
         return False
 
@@ -43,14 +40,17 @@ def package_ids_with_auto_mapping(package_ids):
     if not ids:
         return set()
     try:
-        return {
-            m.store_package_id
-            for m in RevendedoresItemMapping.query.filter(
-                RevendedoresItemMapping.store_package_id.in_(ids),
-                RevendedoresItemMapping.active == True,  # noqa: E712
-                RevendedoresItemMapping.auto_enabled == True,  # noqa: E712
-            ).all()
-        }
+        mapped = set()
+        for model in (RevendedoresItemMapping, CentralOneItemMapping):
+            mapped.update(
+                m.store_package_id
+                for m in model.query.filter(
+                    model.store_package_id.in_(ids),
+                    model.active == True,  # noqa: E712
+                    model.auto_enabled == True,  # noqa: E712
+                ).all()
+            )
+        return mapped
     except Exception:
         return set()
 
