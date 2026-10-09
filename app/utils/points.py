@@ -131,6 +131,11 @@ def order_qualifies_for_points(order):
         return False
     if not (order.player_id or '').strip():
         return False
+    # Los premios (órdenes internas de $0 de deliver_prize_to_player) no son
+    # recargas pagadas. Si contaran, el premio de la Recarga Acumulada volvía
+    # a llenar la barra y entregaba otro premio, y ese otro, en bucle.
+    if (order.payment_method or '') == 'prize':
+        return False
     category_slug = (order.game.category.slug if order.game and order.game.category else '').lower()
     if category_slug in ('tarjetas', 'wallet'):
         return False
@@ -229,12 +234,14 @@ def spend_points_and_spin(game_id, player_id):
             counter = MiniGameCounter(game_key=counter_key, play_count=0, last_position=0)
             db.session.add(counter)
             db.session.flush()
-        counter.play_count = int(counter.play_count or 0) + 1
-        counter.last_position = counter.play_count
-        counter.updated_at = datetime.utcnow()
+        # Suma atómica: el lock de arriba es por ID, así que dos jugadores
+        # distintos sí pueden girar a la vez y antes podían quedarse con el
+        # mismo número de giro (el ganador, dos veces).
+        from .minigames import next_counter_position
+        spin_position = next_counter_position(counter)
 
         win_interval = get_points_win_interval()
-        is_win = counter.play_count % win_interval == 0
+        is_win = spin_position % win_interval == 0
 
         prize_order = None
         reward_label = 'Fallaste'
@@ -244,7 +251,7 @@ def spend_points_and_spin(game_id, player_id):
             game = Game.query.get(game_id)
             prize_order, approval = deliver_prize_to_player(
                 game, mapping.package, player_id,
-                note=f'Premio canjeado con puntos ({cost} pts, giro #{counter.play_count}).',
+                note=f'Premio canjeado con puntos ({cost} pts, giro #{spin_position}).',
                 reference_prefix='PUNTOS',
             )
             reward_label = mapping.package.name

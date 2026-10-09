@@ -11,6 +11,15 @@
 .mg-slot-grid { padding: 0 20px 20px; }
 .mg-promo-body { padding: 0 20px 20px; }
 .mg-guess-slots-hint { padding: 0 20px; margin-top: 8px; }
+.acc-status-card { margin-bottom: 20px; padding: 18px 20px; }
+.acc-status-card.is-on { border-color: rgba(34,197,94,.35); }
+.acc-status-card.is-off { border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.06); }
+.acc-status-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.acc-status-text { flex: 1 1 320px; min-width: 0; }
+.acc-status-title { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.acc-delivery { margin: 0 0 4px; }
+.acc-delivery.is-ok { color: #86efac; }
+.acc-delivery.is-warn { color: #fbbf24; }
 </style>
 {% endblock %}
 
@@ -155,13 +164,209 @@
     <div class="row-pager" id="mgWinnersPager" style="display:none; padding:12px 20px;"></div>
 </details>
 
-<h2 style="margin:28px 0 14px;">Recarga Acumulada</h2>
+<h2 id="recarga-acumulada" style="margin:28px 0 14px;">Recarga Acumulada</h2>
+
+{% set acc = accumulated_overview %}
+<div class="admin-card acc-status-card {{ 'is-on' if acc.enabled else 'is-off' }}">
+    <div class="acc-status-row">
+        <div class="acc-status-text">
+            <div class="acc-status-title">
+                <span class="badge {{ 'badge-active' if acc.enabled else 'badge-inactive' }}">{{ 'ENCENDIDA' if acc.enabled else 'APAGADA' }}</span>
+                <strong>Recarga Acumulada en la tienda</strong>
+            </div>
+            <p class="form-hint">
+                {% if acc.enabled %}
+                Se ve en la tienda, las compras suman a la barra y los premios se entregan solos, dentro de los seguros de abajo.
+                {% else %}
+                No se ve en la tienda, las compras no suman a la barra y no se entrega ningún premio. Los niveles quedan guardados para cuando la vuelvas a encender.
+                {% endif %}
+            </p>
+            <p class="form-hint">Premios de hoy: <strong>{{ acc.today_total }}</strong> · Retenidos esperando tu revisión: <strong>{{ acc.held_count }}</strong></p>
+        </div>
+        <form method="POST" action="{{ url_for('admin_bp.promos_accumulated_toggle') }}"
+              onsubmit="return confirm('{{ '¿Apagar la Recarga Acumulada en toda la tienda?' if acc.enabled else '¿Encender la Recarga Acumulada en la tienda?' }}');">
+            <input type="hidden" name="game_id" value="{{ selected_game.id if selected_game else '' }}">
+            <input type="hidden" name="enabled" value="{{ '0' if acc.enabled else '1' }}">
+            <button type="submit" class="{{ 'btn-danger-solid' if acc.enabled else 'btn-primary' }}">
+                {{ 'Apagar Recarga Acumulada' if acc.enabled else 'Encender Recarga Acumulada' }}
+            </button>
+        </form>
+    </div>
+</div>
+
+{% if all_games %}
+<details class="admin-card" style="margin-bottom:20px;" open>
+    <summary class="card-header settings-section-summary">
+        <span style="display:flex; align-items:center; gap:10px;">
+            <h2>Niveles y premios — {{ selected_game.name }}</h2>
+            <span class="badge {% if levels and acc.enabled %}badge-active{% else %}badge-inactive{% endif %}">
+                {% if not levels %}Sin configurar{% elif acc.enabled %}Activa{% else %}Apagada{% endif %}
+            </span>
+        </span>
+        <span class="settings-chevron">▾</span>
+    </summary>
+    <div class="mg-promo-body">
+    <form method="GET" action="{{ url_for('admin_bp.minigames') }}#recarga-acumulada" class="form-grid-2" style="margin-bottom:14px;">
+        <div class="form-group">
+            <label for="acc_game_id">Juego a configurar</label>
+            <select id="acc_game_id" name="game_id" onchange="this.form.submit()">
+                {% for g in all_games %}
+                <option value="{{ g.id }}" {{ 'selected' if selected_game and selected_game.id == g.id }}>{{ g.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+    {% if not game_packages %}
+    <p class="form-hint" style="color:#f59e0b;">Este juego no tiene paquetes activos — agrega al menos uno para poder elegir premio.</p>
+    {% endif %}
+    <p class="form-hint">
+        Barra por niveles: suma los diamantes/oro que el ID recarga durante el mes (hora Venezuela) — el mismo
+        número que trae el nombre del paquete (ej. "550 Diamantes" → 550), igual que el Ranking — y entrega el
+        premio del nivel en automático al llegar a la cantidad. Al completar un nivel pasa al siguiente; el
+        excedente se acredita ya al nivel nuevo. Se reinicia sola cada 1° de mes. Los premios NO suman a la
+        barra (solo las compras pagadas). Para apagarla en toda la tienda usa el botón de arriba.
+    </p>
+    <form method="POST" action="{{ url_for('admin_bp.promos_accumulated_save') }}">
+        <input type="hidden" name="game_id" value="{{ selected_game.id }}">
+        <div class="form-group" style="max-width:220px;margin-bottom:14px;">
+            <label>Posición del juego en el selector</label>
+            <input type="number" step="1" min="1" name="sort_order" value="{{ accumulated_sort_order }}">
+            <small class="form-hint" style="display:block;margin-top:4px;">La 1 aparece primero y queda seleccionada por defecto.</small>
+        </div>
+        {% for number in (1, 2, 3) %}
+        {% set lvl = levels.get(number) %}
+        {% set delivery = level_delivery.get(number) if level_delivery else None %}
+        <div class="form-grid-2" style="margin-bottom:4px;align-items:end;">
+            <div class="form-group">
+                <label>Nivel {{ number }} — nombre</label>
+                <input type="text" name="level_{{ number }}_name" maxlength="60"
+                       placeholder="{{ ['Bronce', 'Plata', 'Oro'][number - 1] }}"
+                       value="{{ lvl.level_name if lvl else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Diamantes/unidades necesarias</label>
+                <input type="number" step="1" min="1" name="level_{{ number }}_threshold"
+                       value="{{ lvl.threshold_amount|int if lvl else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Paquete que entrega como premio</label>
+                <select name="level_{{ number }}_package_id">
+                    <option value="">— Sin asignar —</option>
+                    {% for pkg in game_packages %}
+                    <option value="{{ pkg.id }}" {{ 'selected' if lvl and lvl.package_id == pkg.id }}>{{ pkg.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% if lvl and delivery %}
+        <p class="form-hint acc-delivery {{ 'is-ok' if delivery.automatic else 'is-warn' }}">
+            Entrega de "{{ lvl.package.name if lvl.package else '—' }}":
+            {% if delivery.routes %}✓ mapeado en {{ delivery.routes|join(' y ') }}.{% endif %}
+            {% if delivery.is_automated %}{{ '✓' if delivery.free_pins else '⚠' }} {{ delivery.free_pins }} PIN(es) en stock.{% endif %}
+            {% if not delivery.automatic %}⚠ Sin mapeo ni stock: el premio queda pendiente y lo tienes que entregar a mano.{% endif %}
+            <a href="{{ url_for('admin_bp.revendedores_mapping') }}">Abrir mapeo</a>
+        </p>
+        {% endif %}
+        <div style="margin-bottom:10px;"></div>
+        {% endfor %}
+        <div class="form-group">
+            <button type="submit" class="btn-primary">Guardar niveles</button>
+        </div>
+    </form>
+    </div>
+
+    {% if recent_awards %}
+    <div class="table-wrap" style="margin-top:14px;">
+        <table class="admin-table">
+            <thead><tr><th>Fecha</th><th>ID</th><th>Nivel</th><th>Mes</th><th>Orden del premio</th></tr></thead>
+            <tbody id="accWinnersBody" data-page-size="6">
+                {% for a in recent_awards %}
+                <tr>
+                    <td>{{ a.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ a.player_id }}</td>
+                    <td>{{ a.level_name }}</td>
+                    <td>{{ a.month_key }}</td>
+                    <td>{% if a.prize_order %}<a href="{{ url_for('admin_bp.order_detail', order_id=a.prize_order.id) }}">#{{ a.prize_order.order_number }}</a>{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="row-pager" id="accWinnersPager" style="display:none; padding:12px 20px;"></div>
+    {% endif %}
+</details>
+{% endif %}
+
+<details class="admin-card" style="margin-bottom:20px;">
+    <summary class="card-header settings-section-summary">
+        <span style="display:flex; flex-direction:column; gap:4px;">
+            <h2>Seguros anti-abuso</h2>
+            <p class="form-hint">Topes de premios automáticos por día. Lo que pase de un tope no se pierde: queda retenido para que lo revises.</p>
+        </span>
+        <span class="settings-chevron">▾</span>
+    </summary>
+    <div class="mg-promo-body">
+        <p class="form-hint">
+            Siempre activos, además de estos topes: un premio nunca vuelve a sumar a la barra, el mismo nivel no se
+            paga dos veces en el mes al mismo ID y dos compras simultáneas no pueden cobrar el mismo nivel. Los
+            premios retenidos aparecen en Órdenes con referencia <code>RECARGA-ACUM-RET-…</code>, pendientes, para
+            que los apruebes o los rechaces.
+        </p>
+        <form method="POST" action="{{ url_for('admin_bp.promos_accumulated_limits') }}">
+            <input type="hidden" name="game_id" value="{{ selected_game.id if selected_game else '' }}">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="acc_max_per_id_day">Premios automáticos por ID al día</label>
+                    <input type="number" id="acc_max_per_id_day" name="max_per_id_day" min="0" step="1" value="{{ acc.max_per_id_day }}">
+                    <small class="form-hint" style="display:block;margin-top:4px;">0 = todos los premios quedan retenidos para revisión.</small>
+                </div>
+                <div class="form-group">
+                    <label for="acc_max_per_day">Premios automáticos en toda la tienda al día</label>
+                    <input type="number" id="acc_max_per_day" name="max_per_day" min="0" step="1" value="{{ acc.max_per_day }}">
+                    <small class="form-hint" style="display:block;margin-top:4px;">Freno general por si algo falla: pasado este número, todo queda retenido.</small>
+                </div>
+            </div>
+            <div class="form-group">
+                <button type="submit" class="btn-primary">Guardar seguros</button>
+            </div>
+        </form>
+    </div>
+</details>
+
+<details class="admin-card" style="margin-bottom:20px;" {{ 'open' if acc.held_count }}>
+    <summary class="card-header settings-section-summary">
+        <span style="display:flex; align-items:center; gap:10px;">
+            <h2>Premios retenidos</h2>
+            <span class="badge {{ 'badge-warning' if acc.held_count else 'badge-inactive' }}">{{ acc.held_count }}</span>
+        </span>
+        <span class="settings-chevron">▾</span>
+    </summary>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Fecha</th><th>Juego</th><th>ID</th><th>Premio</th><th>Motivo</th><th>Orden</th></tr></thead>
+            <tbody>
+                {% for o in acc.held_orders %}
+                <tr>
+                    <td>{{ o.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ o.game.name if o.game else '—' }}</td>
+                    <td>{{ o.player_id }}</td>
+                    <td>{{ o.package.name if o.package else '—' }}</td>
+                    <td><small>{{ (o.notes or '').split('RETENIDO para revisión manual: ')[-1].split('. Apruébalo')[0] }}</small></td>
+                    <td><a href="{{ url_for('admin_bp.order_detail', order_id=o.id) }}">#{{ o.order_number }}</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="empty-row">No hay premios retenidos.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</details>
 
 <details class="admin-card" style="margin-bottom:20px;">
     <summary class="card-header settings-section-summary">
         <span style="display:flex; flex-direction:column; gap:4px;">
             <h2>Ganadores — Recarga Acumulada</h2>
-            <p class="form-hint">De todos los juegos juntos. Para configurar los niveles de uno en particular, bajá hasta "Promociones".</p>
+            <p class="form-hint">De todos los juegos juntos.</p>
         </span>
         <span class="settings-chevron">▾</span>
     </summary>
@@ -254,7 +459,7 @@
     </details>
 </div>
 
-<h2 style="margin:28px 0 14px;">Promociones (Recarga Acumulada / Sorteo Diario / Adivina el Número / Hordas)</h2>
+<h2 style="margin:28px 0 14px;">Promociones (Sorteo Diario / Adivina el Número / Hordas)</h2>
 
 {% if not all_games %}
 <div class="admin-card" style="padding:20px;">
@@ -278,83 +483,7 @@
     {% endif %}
 </div>
 
-<!-- Recarga Acumulada -->
-<details class="admin-card" style="margin-bottom:20px;">
-    <summary class="card-header settings-section-summary">
-        <span style="display:flex; align-items:center; gap:10px;">
-            <h2>Recarga Acumulada — {{ selected_game.name }}</h2>
-            <span class="badge {% if levels %}badge-active{% else %}badge-inactive{% endif %}">
-                {{ 'Activa' if levels else 'Sin configurar' }}
-            </span>
-        </span>
-        <span class="settings-chevron">▾</span>
-    </summary>
-    <div class="mg-promo-body">
-    <p class="form-hint">
-        Barra por niveles: suma los diamantes/oro que el ID recarga durante el mes (hora Venezuela) — el mismo
-        número que trae el nombre del paquete (ej. "550 Diamantes" → 550), igual que el Ranking — y entrega el
-        premio del nivel en automático al llegar a la cantidad. Al completar un nivel pasa al siguiente; el
-        excedente se acredita ya al nivel nuevo. Se reinicia sola cada 1° de mes. Deja los 3 niveles completos
-        para activarla, o vacíos para desactivarla.
-    </p>
-    <form method="POST" action="{{ url_for('admin_bp.promos_accumulated_save') }}">
-        <input type="hidden" name="game_id" value="{{ selected_game.id }}">
-        <div class="form-group" style="max-width:220px;margin-bottom:14px;">
-            <label>Posición del juego en el selector</label>
-            <input type="number" step="1" min="1" name="sort_order" value="{{ accumulated_sort_order }}">
-            <small class="form-hint" style="display:block;margin-top:4px;">La 1 aparece primero y queda seleccionada por defecto.</small>
-        </div>
-        {% for number in (1, 2, 3) %}
-        {% set lvl = levels.get(number) %}
-        <div class="form-grid-2" style="margin-bottom:10px;align-items:end;">
-            <div class="form-group">
-                <label>Nivel {{ number }} — nombre</label>
-                <input type="text" name="level_{{ number }}_name" maxlength="60"
-                       placeholder="{{ ['Bronce', 'Plata', 'Oro'][number - 1] }}"
-                       value="{{ lvl.level_name if lvl else '' }}">
-            </div>
-            <div class="form-group">
-                <label>Diamantes/unidades necesarias</label>
-                <input type="number" step="1" min="1" name="level_{{ number }}_threshold"
-                       value="{{ lvl.threshold_amount|int if lvl else '' }}">
-            </div>
-            <div class="form-group">
-                <label>Paquete que entrega como premio</label>
-                <select name="level_{{ number }}_package_id">
-                    <option value="">— Sin asignar —</option>
-                    {% for pkg in game_packages %}
-                    <option value="{{ pkg.id }}" {{ 'selected' if lvl and lvl.package_id == pkg.id }}>{{ pkg.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-        </div>
-        {% endfor %}
-        <div class="form-group">
-            <button type="submit" class="btn-primary">Guardar niveles</button>
-        </div>
-    </form>
-    </div>
-
-    {% if recent_awards %}
-    <div class="table-wrap" style="margin-top:14px;">
-        <table class="admin-table">
-            <thead><tr><th>Fecha</th><th>ID</th><th>Nivel</th><th>Mes</th><th>Orden del premio</th></tr></thead>
-            <tbody id="accWinnersBody" data-page-size="6">
-                {% for a in recent_awards %}
-                <tr>
-                    <td>{{ a.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
-                    <td>{{ a.player_id }}</td>
-                    <td>{{ a.level_name }}</td>
-                    <td>{{ a.month_key }}</td>
-                    <td>{% if a.prize_order %}<a href="{{ url_for('admin_bp.order_detail', order_id=a.prize_order.id) }}">#{{ a.prize_order.order_number }}</a>{% else %}—{% endif %}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    <div class="row-pager" id="accWinnersPager" style="display:none; padding:12px 20px;"></div>
-    {% endif %}
-</details>
+<p class="form-hint" style="margin:-6px 0 18px;">La Recarga Acumulada se configura y se apaga arriba, en su propia sección <a href="#recarga-acumulada">Recarga Acumulada</a>.</p>
 
 <!-- Sorteo Diario -->
 <details class="admin-card" style="margin-bottom:20px;">

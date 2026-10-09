@@ -73,6 +73,10 @@ _ORDER_POLL_INTERVAL = 30
 _ORDER_POLL_INITIAL_DELAY = 12
 # TTL del lock por orden: cubre una verificación + aprobación completa.
 _VERIFY_LOCK_TTL_SECONDS = 300
+# Un pago SIN memo solo se acredita por monto si llegó a partir de esta
+# cantidad de minutos antes de crear la orden (el cliente paga y luego
+# confirma): un pago sin memo más viejo es de otro cliente.
+_AMOUNT_MATCH_LOOKBACK_MINUTES = 30
 
 
 # ── Firma ─────────────────────────────────────────────────────────────────────
@@ -205,7 +209,8 @@ def _is_incoming_usdt(tx) -> bool:
 
 def find_matching_transaction(txs, order_reference: str, expected_usdt: float,
                               tolerance: float = 0.02, allow_amount_match: bool = True,
-                              claimed_tx_ids=None, ambiguous_amount: bool = False):
+                              claimed_tx_ids=None, ambiguous_amount: bool = False,
+                              amount_min_time_ms: int = 0):
     """Busca la transacción que corresponde a esta orden.
 
     Devuelve `(tx, motivo)` o `(None, motivo_del_rechazo)`.
@@ -237,12 +242,15 @@ def find_matching_transaction(txs, order_reference: str, expected_usdt: float,
         return None, 'not_found'
 
     # 2) Respaldo por monto: solo si hay exactamente UNA transacción sin
-    #    memo cuyo monto cuadra. Con dos o más no hay forma de saber cuál
-    #    es de este cliente, así que se deja para revisión manual.
+    #    memo, reciente y con el monto EXACTO. Con dos o más no hay forma de
+    #    saber cuál es de este cliente, así que se deja para revisión manual.
+    #    Antes se aceptaba un pago hasta 50 % mayor: el pago sin memo de otro
+    #    cliente (por un paquete más caro) podía acreditarse a esta orden.
     amount_matches = [
         tx for tx in candidates
-        if not _tx_note(tx) and _tx_amount(tx) + tolerance >= expected_usdt
-        and _tx_amount(tx) - expected_usdt < max(expected_usdt * 0.5, 1.0)
+        if not _tx_note(tx)
+        and abs(_tx_amount(tx) - expected_usdt) <= tolerance
+        and _tx_time_ms(tx) >= amount_min_time_ms
     ]
     if len(amount_matches) == 1:
         return amount_matches[0], 'amount'
@@ -254,7 +262,8 @@ def find_matching_transaction(txs, order_reference: str, expected_usdt: float,
 def verify_binance_payment(api_key: str, api_secret: str, proxy: str, timeout: float,
                            order_reference: str, expected_usdt: float, since_ms: int,
                            tolerance: float = 0.02, allow_amount_match: bool = True,
-                           claimed_tx_ids=None, ambiguous_amount: bool = False):
+                           claimed_tx_ids=None, ambiguous_amount: bool = False,
+                           amount_min_time_ms: int = 0):
     """Comprueba si algún cobro de Binance Pay corresponde a esta orden.
 
     Devuelve `(resultado, tx, motivo)` donde resultado es:
@@ -276,6 +285,7 @@ def verify_binance_payment(api_key: str, api_secret: str, proxy: str, timeout: f
         allow_amount_match=allow_amount_match,
         claimed_tx_ids=claimed_tx_ids,
         ambiguous_amount=ambiguous_amount,
+        amount_min_time_ms=amount_min_time_ms,
     )
     if tx is not None:
         return True, tx, reason
@@ -381,6 +391,38 @@ def _other_pending_expects_same_amount(order, expected_usdt, tolerance):
     return False
 
 
+def _amount_tx_may_belong_to_other_order(order, tx, cfg):
+    """¿Otra orden de Binance pudo ser la dueña de este pago sin memo?
+
+    Sí, si hay otra orden de Binance viva (pendiente, o ya aprobada/completada
+    a mano) sin transacción propia acreditada, que espera el mismo monto y se
+    creó en el rango de tiempo en que ese pago le podía corresponder."""
+    from ..models import Order
+
+    amount = _tx_amount(tx)
+    tolerance = max(float(cfg['tolerance']), 0.01)
+    query = (
+        Order.query
+        .filter(Order.id != order.id)
+        .filter(Order.payment_method == 'binance')
+        .filter(Order.status.in_(['pending', 'approved', 'completed']))
+        .filter(Order.binance_tx_id.is_(None))
+    )
+    tx_time_ms = _tx_time_ms(tx)
+    if tx_time_ms:
+        tx_time = datetime.utcfromtimestamp(tx_time_ms / 1000)
+        query = query.filter(
+            Order.created_at >= tx_time - timedelta(minutes=cfg['window']),
+            Order.created_at <= tx_time + timedelta(minutes=cfg['lookback']),
+        )
+    for other in query.all():
+        if not is_binance_auto_reference(other.payment_reference or ''):
+            continue
+        if abs(float(other.amount or 0) - amount) <= tolerance:
+            return True
+    return False
+
+
 def _claimed_tx_ids():
     from ..models import Order
 
@@ -461,10 +503,18 @@ def try_verify_binance_order(order, app):
             allow_amount_match=cfg['match_by_amount'],
             claimed_tx_ids=_claimed_tx_ids(),
             ambiguous_amount=ambiguous,
+            amount_min_time_ms=_to_epoch_ms(created_at - timedelta(minutes=_AMOUNT_MATCH_LOOKBACK_MINUTES)),
         )
 
         if result is None:
             return {'done': False, 'verified': False, 'message': 'La API de Binance no respondió.'}
+
+        if result is True and reason == 'amount' and _amount_tx_may_belong_to_other_order(order, tx, cfg):
+            # Un pago sin memo que también pudo ser de OTRA orden de Binance
+            # (otra pendiente, o una que el admin ya aprobó a mano sin que el
+            # sistema registrara su transacción): acreditarlo aquí cobraría
+            # dos órdenes con un solo pago. Queda para revisión manual.
+            result, tx, reason = False, None, 'ambiguous'
 
         if result is not True:
             # Los casos que necesitan un humano se anotan en la orden una
@@ -549,8 +599,9 @@ def _note_manual_review(order, reason, expected_usdt):
 
     if reason == 'ambiguous':
         note = (
-            '[Binance] Llegaron varios pagos sin memo con este monto y no se pudo '
-            'determinar cuál corresponde a esta orden. Requiere revisión manual.'
+            '[Binance] Llegó un pago sin memo con este monto, pero no se pudo asegurar que sea de '
+            'esta orden (llegaron varios, u otra orden de Binance espera el mismo monto). No se '
+            'acreditó solo: requiere revisión manual.'
         )
     elif str(reason).startswith('underpaid:'):
         paid = str(reason).split(':', 1)[1]

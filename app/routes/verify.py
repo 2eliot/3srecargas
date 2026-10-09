@@ -3,8 +3,10 @@ Player ID verification routes.
 Replicated from Inefablestore – identical endpoint paths, parameters, and error responses.
 """
 import os
+from functools import wraps
+
 from flask import Blueprint, request, jsonify, current_app
-from flask_login import login_required
+from flask_login import current_user, login_required
 from ..models import db, Game, Setting
 from ..player_verify import (
     VERIFY_NAME_TIMEOUT_S,
@@ -237,14 +239,29 @@ def store_player_verify_auto():
 
 # ── Admin config endpoints (mirror Inefable's admin config routes) ───────────
 
+def _admin_only(view):
+    """Estas rutas viven en /admin/config/... pero NO son del blueprint del
+    admin, así que su guardia no las cubre; y @login_required deja pasar a
+    cualquier sesión: los clientes quedan logueados solos al comprar. Sin
+    esto, cualquiera podía apagar la verificación de IDs de la tienda."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if current_user.__class__.__name__ != 'AdminUser':
+            return jsonify({"ok": False, "error": "Solo administradores."}), 403
+        return view(*args, **kwargs)
+    return wrapper
+
+
 @verify_bp.route('/admin/config/active_login_game', methods=['GET'])
 @login_required
+@_admin_only
 def admin_config_active_login_game_get():
     return jsonify({"ok": True, "active_login_game_id": _get_setting("active_login_game_id", "")})
 
 
 @verify_bp.route('/admin/config/active_login_game', methods=['POST'])
 @login_required
+@_admin_only
 def admin_config_active_login_game_set():
     data = request.get_json(silent=True) or {}
     val = (data.get("active_login_game_id") or "").strip()
@@ -254,12 +271,14 @@ def admin_config_active_login_game_set():
 
 @verify_bp.route('/admin/config/bs_package_id', methods=['GET'])
 @login_required
+@_admin_only
 def admin_config_bs_package_id_get():
     return jsonify({"ok": True, "bs_package_id": _get_setting("bs_package_id", "")})
 
 
 @verify_bp.route('/admin/config/bs_package_id', methods=['POST'])
 @login_required
+@_admin_only
 def admin_config_bs_package_id_set():
     data = request.get_json(silent=True) or {}
     val = (data.get("bs_package_id") or "").strip()
@@ -269,12 +288,14 @@ def admin_config_bs_package_id_set():
 
 @verify_bp.route('/admin/config/bs_server_id', methods=['GET'])
 @login_required
+@_admin_only
 def admin_config_bs_server_id_get():
     return jsonify({"ok": True, "bs_server_id": _get_setting("bs_server_id", "-1")})
 
 
 @verify_bp.route('/admin/config/bs_server_id', methods=['POST'])
 @login_required
+@_admin_only
 def admin_config_bs_server_id_set():
     data = request.get_json(silent=True) or {}
     val = (data.get("bs_server_id") or "").strip()

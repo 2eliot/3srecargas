@@ -41,6 +41,7 @@ from ..utils.payment_verification import (
     normalize_reference_last5,
     payment_method_uses_payer_identity_verification,
     stamp_verified_payment,
+    underpaid_payment_note,
     verify_order_payment,
     verify_remainder_reference,
 )
@@ -53,6 +54,7 @@ from ..utils.binance_pay import (
 from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
 from ..utils.locks import acquire_lock, check_rate_limit, client_ip, release_lock
+from ..utils.order_access import is_own_order, reference_tail_matches, remember_own_order
 
 
 def _digits_only(value):
@@ -93,6 +95,12 @@ AUTO_VERIFY_COOLDOWN_SECONDS = 60
 # Con el pago ya confirmado, cada cuánto se reintenta la ENTREGA (p. ej. si
 # el proveedor se quedó sin saldo). No se vuelve a preguntar a Pabilo.
 DELIVERY_RETRY_SECONDS = 5 * 60
+# La página de la orden pregunta cada 30 s. Lo que llega por la ruta pública
+# respeta este mínimo y este tope: sin ellos, un script podía consultar a
+# Pabilo sin parar (cada consulta gasta créditos y toma el lock global, así
+# que además frenaba la verificación de las órdenes de los demás).
+CUSTOMER_VERIFY_MIN_INTERVAL_SECONDS = 20
+CUSTOMER_VERIFY_MAX_ATTEMPTS = 120
 
 # Lock en base de datos: solo 1 solicitud a Pabilo al mismo tiempo. Un
 # threading.Lock() normal no alcanza porque en producción la app corre con
@@ -171,7 +179,7 @@ def _store_raw_pabilo_response(order, verification):
         pass
 
 
-def auto_verify_and_process_order(order, force=False):
+def auto_verify_and_process_order(order, force=False, customer_request=False):
     payment_verify_allowed = order_supports_background_payment_verification(order)
     auto_approve_allowed = order_qualifies_for_auto_verify(order)
 
@@ -206,8 +214,9 @@ def auto_verify_and_process_order(order, force=False):
         # proveedor sin saldo). No se vuelve a preguntar a Pabilo: antes se
         # re-verificaba el primer pago, y en un pago incompleto eso borraba
         # lo ya sumado del pago restante y le volvía a pedir dinero al
-        # cliente. Solo se reintenta la entrega, como mucho cada 5 minutos.
-        if not force and order.payment_last_verification_at:
+        # cliente. Solo se reintenta la entrega, como mucho cada 5 minutos
+        # (también cuando lo pide la página del cliente).
+        if (not force or customer_request) and order.payment_last_verification_at:
             elapsed = (datetime.utcnow() - order.payment_last_verification_at).total_seconds()
             if elapsed < DELIVERY_RETRY_SECONDS:
                 return {
@@ -227,7 +236,25 @@ def auto_verify_and_process_order(order, force=False):
         return approval
 
     attempts = int(order.payment_verification_attempts or 0)
-    if attempts >= AUTO_VERIFY_MAX_ATTEMPTS and not force and not order.payment_verified_at:
+    if customer_request:
+        if attempts >= CUSTOMER_VERIFY_MAX_ATTEMPTS:
+            return {
+                'checked': False,
+                'verified': False,
+                'message': 'Tu pago todavía no aparece. Escríbenos por soporte con tu número de orden.',
+                'stop_polling': True,
+            }
+        if order.payment_last_verification_at:
+            elapsed = (datetime.utcnow() - order.payment_last_verification_at).total_seconds()
+            if elapsed < CUSTOMER_VERIFY_MIN_INTERVAL_SECONDS:
+                return {
+                    'checked': False,
+                    'verified': False,
+                    'message': 'Verificando tu pago automáticamente...',
+                    'stop_polling': False,
+                    'next_retry_in_seconds': int(CUSTOMER_VERIFY_MIN_INTERVAL_SECONDS - elapsed) + 1,
+                }
+    elif attempts >= AUTO_VERIFY_MAX_ATTEMPTS and not force and not order.payment_verified_at:
         return {
             'checked': False,
             'verified': False,
@@ -306,15 +333,11 @@ def auto_verify_and_process_order(order, force=False):
             # no alcanza): queda guardada en la orden de inmediato para que
             # nadie la reuse en otra orden, y la orden pasa a esperar el pago
             # restante sin perder lo que ya se hubiera sumado antes.
-            covered, _missing = apply_underpaid_verification(order, verification)
+            covered, missing = apply_underpaid_verification(order, verification)
             if covered:
                 db.session.commit()
                 return auto_verify_and_process_order(order, force=True)
-            underpaid_note = (
-                f"[Pabilo] Pago incompleto: reportó Bs {verification.get('reported_amount')} "
-                f"de Bs {verification.get('expected_amount')} esperados. "
-                f"Falta Bs {verification.get('missing_amount')}. Esperando pago restante."
-            )
+            underpaid_note = underpaid_payment_note(order, verification, missing)
             existing_notes = order.notes or ''
             if underpaid_note not in existing_notes:
                 order.notes = (existing_notes + '\n' + underpaid_note).strip()
@@ -974,6 +997,7 @@ def checkout(package_id):
                 data,
                 is_wallet=is_wallet,
             ):
+                remember_own_order(existing_by_token.order_number)
                 return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
 
             checkout_confirm_tokens.pop(pkg_key, None)
@@ -1122,6 +1146,7 @@ def checkout(package_id):
                     data,
                     is_wallet=is_wallet,
                 ):
+                    remember_own_order(existing_by_token.order_number)
                     return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
 
                 checkout_confirm_tokens.pop(pkg_key, None)
@@ -1163,6 +1188,7 @@ def checkout(package_id):
         checkout_confirm_tokens.pop(pkg_key, None)
         session['checkout_confirm_tokens'] = checkout_confirm_tokens
         session.pop('affiliate_code', None)
+        remember_own_order(order.order_number)
         return redirect(url_for('checkout_bp.order_status', order_number=order.order_number))
 
     db_methods = PaymentMethod.query.filter_by(is_active=True).order_by(PaymentMethod.sort_order).all()
@@ -1405,6 +1431,10 @@ def order_status(order_number):
     )
     minigame_state = get_order_minigame_state(order)
 
+    is_pin_order = bool(order.game and order.game.category and order.game.category.slug == 'tarjetas')
+    pin_unlocked = (not is_pin_order) or is_own_order(order.order_number)
+    pin_unlock_error = session.pop('pin_unlock_error', None)
+
     missing_amount_bs = None
     if order.awaiting_payment_completion:
         expected_amount, amount_error = _get_expected_order_amount(order)
@@ -1427,7 +1457,33 @@ def order_status(order_number):
         minigame_state=minigame_state,
         missing_amount_bs=missing_amount_bs,
         payment_method_details=method,
+        pin_unlocked=pin_unlocked,
+        pin_unlock_error=pin_unlock_error,
     )
+
+
+# Intentos para ver el PIN desde otro equipo: por orden (4 dígitos son 10.000
+# combinaciones; con este tope adivinarlos tomaría meses) y por IP.
+PIN_UNLOCK_ATTEMPTS_PER_ORDER = 5
+PIN_UNLOCK_ATTEMPTS_PER_IP = 15
+PIN_UNLOCK_WINDOW_SECONDS = 10 * 60
+
+
+@checkout_bp.route('/order/<order_number>/ver-pin', methods=['POST'])
+def order_unlock_pin(order_number):
+    """Muestra el PIN de una gift card en un equipo distinto al de la compra
+    si se escriben los últimos dígitos de la referencia con que se pagó."""
+    order = Order.query.filter_by(order_number=order_number).first_or_404()
+    target = url_for('checkout_bp.order_status', order_number=order.order_number)
+    if (not check_rate_limit(f'pin_unlock_order:{order.id}', PIN_UNLOCK_ATTEMPTS_PER_ORDER, PIN_UNLOCK_WINDOW_SECONDS)
+            or not check_rate_limit(f'pin_unlock_ip:{client_ip()}', PIN_UNLOCK_ATTEMPTS_PER_IP, PIN_UNLOCK_WINDOW_SECONDS)):
+        session['pin_unlock_error'] = 'Demasiados intentos. Espera unos minutos o escríbenos por soporte.'
+        return redirect(target)
+    if reference_tail_matches(order, request.form.get('reference_tail')):
+        remember_own_order(order.order_number)
+    else:
+        session['pin_unlock_error'] = 'Esos dígitos no coinciden con la referencia de pago de esta orden.'
+    return redirect(target)
 
 
 @checkout_bp.route('/order/<order_number>/auto-verify', methods=['POST'])
@@ -1449,8 +1505,9 @@ def order_auto_verify(order_number):
             'auto_verify_allowed': False,
         })
 
-    # force=True: el usuario lo pidió manualmente, ignorar límite de intentos.
-    result = auto_verify_and_process_order(order, force=True)
+    # force=True: el cliente lo pidió desde su página, no espera el minuto del
+    # scheduler; customer_request le pone su propio mínimo y tope.
+    result = auto_verify_and_process_order(order, force=True, customer_request=True)
     db.session.refresh(order)
     return jsonify({
         'ok': result.get('ok', True),
@@ -1625,8 +1682,15 @@ def order_complete_payment(order_number):
         # en la orden — igual que la referencia original — para que nadie
         # pueda reusar ese mismo comprobante real en otra orden mientras
         # esta sigue esperando el resto. Si el cliente manda un tercer pago,
-        # este campo se actualiza a esa nueva referencia (la anterior ya
-        # quedó protegida en el momento en que se verificó).
+        # este campo se actualiza a esa nueva referencia (la anterior sigue
+        # protegida en remainder_references).
+        if still_missing is not None:
+            still_note = (
+                f'[Pabilo] La orden sigue INCOMPLETA: falta Bs '
+                f'{still_missing.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)}. '
+                'Las referencias ya verificadas quedan reservadas para esta orden. Esperando el pago restante.'
+            )
+            order.notes = ((order.notes or '') + '\n' + still_note).strip()
         db.session.commit()
         return jsonify({
             'ok': True,

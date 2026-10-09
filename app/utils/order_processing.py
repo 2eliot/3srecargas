@@ -47,6 +47,9 @@ _ROUTE_CAUSE_TEXT = {
 def process_affiliate_commission(order):
     if not order.affiliate_id:
         return
+    # Una sola comisión por orden aunque el flujo de aprobación se repita.
+    if AffiliateCommission.query.filter_by(order_id=order.id).first():
+        return
     affiliate = Affiliate.query.get(order.affiliate_id)
     if not affiliate or not affiliate.is_active:
         return
@@ -321,11 +324,14 @@ def _check_revendedores_attempt_status(base_url, api_key, external_order_id):
     anterior en realidad sí se procesó del lado de Revendedores (pero
     nuestra respuesta se perdió por timeout, caída del worker, etc.),
     evita ejecutar una segunda recarga duplicada para el mismo paso.
-    Devuelve None si no se pudo confirmar nada (Revendedores no respondió,
-    o no encuentra ese external_order_id).
+
+    Devuelve (datos, respondio): `datos` es el intento si Revendedores lo
+    encontró (None si no existe allá); `respondio` es False cuando no se pudo
+    preguntar (red, timeout, respuesta rara). Son casos distintos: "no
+    existe" permite un intento nuevo, "no se sabe" no.
     """
     if not external_order_id:
-        return None
+        return None, True
     try:
         resp = requests.get(
             f'{base_url}/api/v1/order-status',
@@ -335,10 +341,12 @@ def _check_revendedores_attempt_status(base_url, api_key, external_order_id):
         )
         data = resp.json()
     except Exception:
-        return None
-    if not isinstance(data, dict) or not data.get('ok') or not data.get('found'):
-        return None
-    return data
+        return None, False
+    if not isinstance(data, dict) or not data.get('ok'):
+        return None, False
+    if not data.get('found'):
+        return None, True
+    return data, True
 
 
 def process_revendedores_queue(order, base_state=None, force=False):
@@ -448,7 +456,32 @@ def process_revendedores_queue(order, base_state=None, force=False):
         # procesó pero no llegamos a registrar el éxito de nuestro lado.
         previous_ext_id = step.get('external_order_id') or ''
         if previous_ext_id:
-            confirmed = _check_revendedores_attempt_status(base_url, api_key, previous_ext_id)
+            confirmed, answered = _check_revendedores_attempt_status(base_url, api_key, previous_ext_id)
+            if not answered and step.get('ambiguous_attempt'):
+                # El intento anterior quedó en duda (timeout, error de red,
+                # "procesando") y ahora tampoco se pudo preguntar cómo
+                # terminó. Antes se mandaba igual un intento nuevo: si el
+                # anterior sí había recargado, el cliente recibía DOS veces.
+                # Se espera y se vuelve a preguntar en el próximo ciclo.
+                step['pending_verification'] = True
+                auto_resp['pending_verification'] = True
+                auto_resp['current_step_index'] = step_index
+                auto_resp['external_order_id'] = previous_ext_id
+                order.automation_response = json.dumps(auto_resp)
+                try:
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                return {
+                    'ok': False,
+                    'changed': False,
+                    'pending_verification': True,
+                    'current_step_index': step_index,
+                    'message': (f'No se pudo confirmar con Revendedores cómo terminó el intento anterior del paso '
+                                f'{step_index + 1} ({previous_ext_id}). No se manda otra recarga hasta saberlo; '
+                                'se vuelve a revisar sola.'),
+                    'category': 'warning',
+                }
             if confirmed:
                 confirmed_status = (confirmed.get('status') or '').strip().lower()
                 confirmed_order = confirmed.get('order') or {}
@@ -843,6 +876,26 @@ def _state_has_activity(state):
                 or step.get('external_order_id') or step.get('remote_order_id') or step.get('idempotency_key')):
             return True
     return False
+
+
+def delivery_reset_blocker(order):
+    """Motivo por el que NO se puede reiniciar la entrega de esta orden, o ''.
+
+    Cambiar el ID del jugador o el paquete borra o rehace el estado de la
+    entrega. Si ya se entregó una parte, o hay una recarga en curso o sin
+    confirmar, reiniciarla mandaría esas recargas otra vez."""
+    state = _load_delivery_state(order)
+    steps = [s for s in (state.get('steps') or []) if isinstance(s, dict)]
+    delivered = sum(1 for s in steps if s.get('success'))
+    if delivered:
+        return f'esta orden ya tiene {delivered} recarga(s) entregada(s) por el proveedor'
+    for step in steps:
+        in_flight_co = bool(step.get('remote_order_id')) or bool(step.get('idempotency_key') and step.get('pending_verification'))
+        if in_flight_co or (state.get('source') == 'revendedores_api' and _rev_step_was_ambiguous(step)):
+            return 'hay una recarga en curso o sin confirmar con el proveedor'
+    if Pin.query.filter_by(order_id=order.id, is_used=False).first():
+        return 'hay un PIN reservado de un canje que no se pudo confirmar'
+    return ''
 
 
 def _run_provider_engine(provider, order, base_state, force):
@@ -1325,6 +1378,25 @@ def _approve_order_locked(order, delivery_proof_path=None):
     # Ahora manda la configuración: con stock disponible se usa el bot, y si
     # el stock se agotó Revendedores queda como respaldo para que la orden no
     # se trabe (que es justamente lo que el mapeo permite cubrir).
+    #
+    # Antes de tomar un PIN: si esta orden ya tiene uno reservado de un canje
+    # dudoso (el bot no respondió o dio un resultado ambiguo), se aclara ese
+    # primero. Antes el reintento (el scheduler lo hace cada 5 minutos en las
+    # órdenes pagadas) tomaba OTRO PIN sin mirar el reservado, y si el
+    # primero sí se había canjeado el cliente recibía dos recargas.
+    if package.is_automated and category_slug != 'tarjetas':
+        reserved_pin = Pin.query.filter_by(order_id=order.id, is_used=False).first()
+        if reserved_pin:
+            outcome = _resolve_ambiguous_redeem(
+                order, reserved_pin, 'Había un PIN reservado de un intento anterior sin confirmar.'
+            )
+            db.session.refresh(reserved_pin)
+            if order.status != 'pending' or reserved_pin.order_id is not None:
+                # Ya se completó (el PIN sí se canjeó) o sigue sin saberse:
+                # no se toca otro PIN.
+                return outcome
+            # Confirmado que no se canjeó y volvió al stock: se sigue normal.
+
     pin = _claim_pin_for_order(package, order) if package.is_automated else None
 
     if pin is None and has_auto_route:

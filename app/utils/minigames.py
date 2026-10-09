@@ -7,6 +7,7 @@ _secure_random = random.SystemRandom()
 from datetime import datetime
 
 from flask import current_app
+from sqlalchemy import func, update
 
 from ..models import Game, MiniGameCounter, OrderMiniGameOpportunity, Package, Setting, db
 
@@ -138,6 +139,9 @@ def get_minigame_slot_for_game(game_id):
 def order_qualifies_for_minigame(order):
     if not order:
         return False
+    # Un premio ($0) no es una recarga: no regala otro giro.
+    if (order.payment_method or '') == 'prize':
+        return False
     if is_minigame_dev_mode():
         return bool(order.status != 'rejected')
     if order.status == 'rejected':
@@ -176,6 +180,22 @@ def get_or_create_minigame_counter(order_or_game):
     db.session.add(counter)
     db.session.flush()
     return counter
+
+
+def next_counter_position(counter):
+    """Suma 1 al contador con un solo UPDATE en la base y devuelve el número
+    de giro que le tocó a quien llamó. Antes era leer, sumar y guardar: dos
+    giros a la vez podían quedarse con el MISMO número, y si ese era el
+    ganador (cada N giros) salían dos premios."""
+    next_value = func.coalesce(MiniGameCounter.play_count, 0) + 1
+    db.session.execute(
+        update(MiniGameCounter)
+        .where(MiniGameCounter.id == counter.id)
+        .values(play_count=next_value, last_position=next_value, updated_at=datetime.utcnow())
+        .execution_options(synchronize_session=False)
+    )
+    db.session.refresh(counter)
+    return int(counter.play_count or 0)
 
 
 def ensure_minigame_opportunity(order):
@@ -300,13 +320,23 @@ def play_order_minigame(order, game_key, choice_index=None):
     if not slot and not dev_mode:
         raise ValueError('Este juego no tiene minijuego habilitado en este momento.')
 
+    # La oportunidad se "gasta" con un UPDATE condicional antes de girar:
+    # varias peticiones a la vez sobre la misma orden (doble toque o un
+    # script) ya no pueden girar cada una por su lado; solo la primera gira.
+    claimed = (
+        db.session.query(OrderMiniGameOpportunity)
+        .filter(OrderMiniGameOpportunity.id == opportunity.id, OrderMiniGameOpportunity.status != 'played')
+        .update({'status': 'played', 'played_at': datetime.utcnow()}, synchronize_session=False)
+    )
+    if not claimed:
+        db.session.refresh(opportunity)
+        return opportunity
+
     win_interval = get_minigame_win_interval()
     counter = get_or_create_minigame_counter(order)
-    counter.play_count = int(counter.play_count or 0) + 1
-    counter.last_position = counter.play_count
-    counter.updated_at = datetime.utcnow()
+    play_position = next_counter_position(counter)
 
-    is_win = bool(slot) and (counter.play_count % win_interval == 0)
+    is_win = bool(slot) and (play_position % win_interval == 0)
     if dev_mode and not is_win:
         is_win = True  # en modo prueba, siempre se gana para poder revisar el flujo
 
@@ -351,8 +381,8 @@ def play_order_minigame(order, game_key, choice_index=None):
     opportunity.reward_discount_id = None
     opportunity.reward_discount_code = ''
     opportunity.prize_order_id = prize_order.id if prize_order else None
-    opportunity.counter_position = counter.play_count
-    opportunity.counter_cycle = ((counter.play_count - 1) // win_interval) + 1
+    opportunity.counter_position = play_position
+    opportunity.counter_cycle = ((play_position - 1) // win_interval) + 1
     opportunity.played_at = datetime.utcnow()
     opportunity.result_payload = json.dumps(
         build_minigame_result_payload(game_key, reward_payload, choice_index=choice_index, catalog=catalog),

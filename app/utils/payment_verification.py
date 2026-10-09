@@ -121,8 +121,11 @@ def find_reference_conflict(reference, payment_method_code, exclude_order_id=Non
         # También hay que buscarla como referencia del PAGO RESTANTE: un
         # pago que Pabilo confirmó pero no alcanzó a cubrir una orden queda
         # "reservado" igual, para que nadie lo reuse en una orden distinta
-        # mientras la primera sigue esperando el resto.
+        # mientras la primera sigue esperando el resto. `remainder_reference`
+        # solo guarda el último; la lista completa está en
+        # `remainder_references` (un cliente puede pagar en 3 o más partes).
         filters.append(Order.remainder_reference == raw_reference)
+        filters.append(Order.remainder_references.contains(raw_reference))
     if reference_last5:
         filters.append(Order.payment_reference_last5 == reference_last5)
     if filters:
@@ -136,8 +139,11 @@ def find_reference_conflict(reference, payment_method_code, exclude_order_id=Non
         candidate_key = normalize_reference_key(candidate.payment_reference)
         if reference_key and candidate_key and candidate_key == reference_key:
             return candidate
-        candidate_remainder_key = normalize_reference_key(candidate.remainder_reference)
-        if reference_key and candidate_remainder_key and candidate_remainder_key == reference_key:
+        candidate_remainder_keys = {
+            normalize_reference_key(ref)
+            for ref in [candidate.remainder_reference] + counted_remainder_references(candidate)
+        }
+        if reference_key and reference_key in candidate_remainder_keys:
             return candidate
         if not reference_key and reference_last5 and candidate.payment_reference_last5 == reference_last5:
             return candidate
@@ -697,19 +703,10 @@ def verify_order_payment(order, force_reference=False):
                 }
                 continue  # probar siguiente variante
 
-            amount_validation = _validate_verified_payment_amount(order, payload_data, full_data)
-            if not amount_validation.get('verified'):
-                amount_validation['response'] = full_data
-                if amount_validation.get('underpaid'):
-                    # Pabilo SÍ encontró y confirmó esta referencia (solo que el
-                    # monto no alcanza): se informa cuál fue para que el caller
-                    # la "reserve" en la orden y nadie pueda reusar ese mismo
-                    # pago real en una orden distinta mientras se completa.
-                    amount_validation['resolved_reference'] = variant_ref
-                    amount_validation['resolved_reference_source'] = source
-                    amount_validation['verification_id'] = verification_id or f"fallback:{payment_method.id}:{variant_ref or source}"
-                return amount_validation
-
+            # La fecha se revisa ANTES que el monto: antes un pago viejo que
+            # no alcanzaba salía por la rama de "pago incompleto" sin pasar
+            # por este piso, y con eso se podía reusar un pago antiguo como
+            # primer pago y completar solo la diferencia.
             date_verdict = _check_payment_min_date(payment_data, is_new)
             if date_verdict == 'old':
                 return {
@@ -726,6 +723,19 @@ def verify_order_payment(order, force_reference=False):
                     'message': 'Pabilo no informó la fecha del pago; queda para revisión manual.',
                     'response': full_data,
                 }
+
+            amount_validation = _validate_verified_payment_amount(order, payload_data, full_data)
+            if not amount_validation.get('verified'):
+                amount_validation['response'] = full_data
+                if amount_validation.get('underpaid'):
+                    # Pabilo SÍ encontró y confirmó esta referencia (solo que el
+                    # monto no alcanza): se informa cuál fue para que el caller
+                    # la "reserve" en la orden y nadie pueda reusar ese mismo
+                    # pago real en una orden distinta mientras se completa.
+                    amount_validation['resolved_reference'] = variant_ref
+                    amount_validation['resolved_reference_source'] = source
+                    amount_validation['verification_id'] = verification_id or f"fallback:{payment_method.id}:{variant_ref or source}"
+                return amount_validation
 
             if not verification_id:
                 verification_id = f"fallback:{payment_method.id}:{variant_ref or source}"
@@ -1100,6 +1110,28 @@ def _covers_order(order, paid):
     return paid >= minimum, missing
 
 
+def _store_resolved_reference(order, resolved_reference):
+    """Guarda en la orden la referencia con la que Pabilo encontró el pago.
+
+    Pabilo a veces lo encuentra solo con los últimos 4-6 dígitos. Antes esa
+    versión corta reemplazaba a la completa que escribió el cliente (o que
+    se leyó del comprobante), y con eso una orden NUEVA con la referencia
+    completa ya no chocaba contra esta en el chequeo de repetidas. Si la
+    corta es el final de una completa que ya conoce la orden, se guarda la
+    completa."""
+    resolved = str(resolved_reference or '').strip()
+    if not resolved:
+        return
+    full_versions = [
+        ref for ref in first_payment_references(order)
+        if same_bank_reference(ref, resolved)
+        and len(normalize_reference_key(ref)) >= len(normalize_reference_key(resolved))
+    ]
+    chosen = max(full_versions, key=lambda ref: len(normalize_reference_key(ref))) if full_versions else resolved
+    order.payment_reference = str(chosen).strip()[:255]
+    order.payment_reference_last5 = normalize_reference_last5(order.payment_reference)
+
+
 def apply_underpaid_verification(order, verification):
     """Pabilo confirmó el primer pago, pero no alcanza. Deja la orden
     esperando el pago restante SIN borrar lo que ya se había sumado de
@@ -1116,10 +1148,7 @@ def apply_underpaid_verification(order, verification):
     paid = max(current, reported) if had_remainder else reported
     order.paid_amount_bs = paid
 
-    resolved_reference = str(verification.get('resolved_reference') or '').strip()
-    if resolved_reference:
-        order.payment_reference = resolved_reference
-        order.payment_reference_last5 = normalize_reference_last5(resolved_reference)
+    _store_resolved_reference(order, verification.get('resolved_reference'))
     # Id de Pabilo del primer pago: con él se reconoce ese mismo pago si
     # luego lo mandan como "pago restante" escrito de otra forma.
     order.payment_verification_id = verification.get('verification_id') or order.payment_verification_id
@@ -1134,6 +1163,23 @@ def apply_underpaid_verification(order, verification):
     return False, missing
 
 
+def underpaid_payment_note(order, verification, missing=None):
+    """Nota de la orden cuando Pabilo confirma el pago pero no alcanza. Deja
+    escrito qué referencia quedó reservada: mientras la orden espera el
+    resto, ese pago no se puede usar en ninguna otra orden."""
+    reference = str(order.payment_reference or verification.get('resolved_reference') or '').strip() or 'sin referencia'
+    if missing is None:
+        missing = verification.get('missing_amount')
+    if isinstance(missing, Decimal):
+        missing = missing.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return (
+        f"[Pabilo] Pago ref {reference} verificado correctamente, pero está INCOMPLETO: "
+        f"llegó Bs {verification.get('reported_amount')} de Bs {verification.get('expected_amount')}. "
+        f"Falta Bs {missing}. Esa referencia queda reservada para esta orden (no se puede usar en otra) "
+        "mientras se espera el pago restante."
+    )
+
+
 def clear_pabilo_verification_state(order):
     order.payment_verified_at = None
     order.payment_verification_id = None
@@ -1142,9 +1188,6 @@ def clear_pabilo_verification_state(order):
 
 
 def stamp_verified_payment(order, verification_result):
-    resolved_reference = str(verification_result.get('resolved_reference') or '').strip()
-    if resolved_reference:
-        order.payment_reference = resolved_reference
-        order.payment_reference_last5 = normalize_reference_last5(resolved_reference)
+    _store_resolved_reference(order, verification_result.get('resolved_reference'))
     order.payment_verified_at = datetime.utcnow()
     order.payment_verification_id = verification_result.get('verification_id') or order.payment_verification_id

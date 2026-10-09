@@ -8,6 +8,7 @@ misma verificación real que usa la tienda antes de aceptar un registro o
 una jugada — así no se le puede regalar un premio a un ID inventado.
 """
 import random
+import threading
 
 # Generador seguro (del sistema operativo): impredecible aunque alguien observe
 # miles de resultados. El `random` normal de Python se puede predecir así.
@@ -16,12 +17,13 @@ import secrets
 from datetime import datetime, time, timedelta
 from uuid import uuid4
 
+from flask import current_app
 from sqlalchemy import update
 
 from .locks import acquire_lock, release_lock
 from .order_units import extract_order_units
 from .points import get_player_points_balance
-from .timezone import now_ve, today_ve_str, format_ve
+from .timezone import now_ve, today_ve_str, format_ve, ve_day_start_utc_naive
 from ..models import (
     Game, Order, Package, PlayerPoints,
     PromoAccumulatedAward, PromoAccumulatedLevel, PromoAccumulatedOrderLog, PromoAccumulatedProgress,
@@ -71,12 +73,22 @@ def get_accumulated_levels(game_id):
     )
 
 
+def is_accumulated_promo_enabled():
+    """Interruptor general de la Recarga Acumulada (Admin > Mini Juegos).
+    Apagada: desaparece de la tienda, las compras no suman a la barra y no
+    se entrega ningún premio. Los niveles configurados no se pierden."""
+    row = Setting.query.filter_by(key=ACC_ENABLED_KEY).first()
+    return (row.value if row else '1').strip() != '0'
+
+
 def get_accumulated_enabled_games():
     """Juegos activos que tienen al menos un nivel configurado, ordenados
     por el campo "Posición" propio de esta promo (editable en Admin >
     Mini Juegos, junto al selector de juego) — el más bajo va primero, y
     ese primero es el que queda seleccionado por defecto sin game_id en
     la URL."""
+    if not is_accumulated_promo_enabled():
+        return []
     order_by_game = dict(
         db.session.query(
             PromoAccumulatedLevel.game_id,
@@ -94,6 +106,115 @@ def get_accumulated_enabled_games():
     return games
 
 
+# Seguros de la Recarga Acumulada. Un premio que pase de estos topes NO se
+# pierde: su orden se crea igual pero queda 'pending' en Órdenes, marcada
+# RETENIDO, para que el admin la apruebe o la rechace a mano. Los topes se
+# cambian desde Admin > Mini Juegos > Recarga Acumulada > Seguros.
+ACC_ENABLED_KEY = 'promo_acc_enabled'
+ACC_MAX_PRIZES_PER_ID_PER_DAY_KEY = 'promo_acc_max_prizes_per_id_day'
+ACC_MAX_PRIZES_PER_DAY_KEY = 'promo_acc_max_prizes_per_day'
+ACC_DEFAULT_MAX_PRIZES_PER_ID_PER_DAY = 1
+ACC_DEFAULT_MAX_PRIZES_PER_DAY = 20
+ACC_PRIZE_REFERENCE_PREFIX = 'RECARGA-ACUM'
+ACC_PRIZE_NOTE_PREFIX = 'Premio Recarga Acumulada — nivel'
+
+_accumulated_guard = threading.local()
+
+
+def _int_setting(key, default):
+    row = Setting.query.filter_by(key=key).first()
+    try:
+        return int(str(row.value).strip()) if row else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _accumulated_prize_orders_since(since_utc):
+    """Órdenes premio de la Recarga Acumulada creadas desde `since_utc`
+    (entregadas, retenidas o esperando stock; las rechazadas no cuentan).
+    Se cuenta sobre Órdenes y no sobre PromoAccumulatedAward porque las
+    órdenes son lo que de verdad salió de la tienda: las del bucle viejo,
+    por ejemplo, quedaron sin su registro de premio."""
+    return Order.query.filter(
+        Order.payment_method == 'prize',
+        Order.payment_reference.like(f'{ACC_PRIZE_REFERENCE_PREFIX}-%'),
+        Order.created_at >= since_utc,
+        Order.status != 'rejected',
+    )
+
+
+def _accumulated_level_already_paid(order, player_id, month_key, level_number):
+    if PromoAccumulatedAward.query.filter_by(
+        game_id=order.game_id, player_id=order.player_id,
+        month_key=month_key, level_number=level_number,
+    ).first():
+        return True
+    month_start = ve_day_start_utc_naive(now_ve().date().replace(day=1))
+    return _accumulated_prize_orders_since(month_start).filter(
+        Order.game_id == order.game_id,
+        Order.player_id == player_id,
+        Order.notes.like(f'{ACC_PRIZE_NOTE_PREFIX} {level_number} (%'),
+    ).first() is not None
+
+
+def _accumulated_hold_reason(game_id, player_id):
+    """Por qué este premio NO se debe entregar solo, o None si puede salir."""
+    day_start = ve_day_start_utc_naive(now_ve().date())
+
+    max_per_id = _int_setting(ACC_MAX_PRIZES_PER_ID_PER_DAY_KEY, ACC_DEFAULT_MAX_PRIZES_PER_ID_PER_DAY)
+    today_for_id = _accumulated_prize_orders_since(day_start).filter(
+        Order.game_id == game_id, Order.player_id == player_id,
+    ).count()
+    if today_for_id >= max_per_id:
+        return f'este ID ya tiene {today_for_id} premio(s) de Recarga Acumulada hoy (máximo {max_per_id} por día)'
+
+    max_per_day = _int_setting(ACC_MAX_PRIZES_PER_DAY_KEY, ACC_DEFAULT_MAX_PRIZES_PER_DAY)
+    today_total = _accumulated_prize_orders_since(day_start).count()
+    if today_total >= max_per_day:
+        return f'la tienda ya lleva {today_total} premios de Recarga Acumulada hoy (tope diario {max_per_day})'
+    return None
+
+
+def get_accumulated_safety_overview():
+    """Lo que el admin ve arriba de la Recarga Acumulada: el interruptor, los
+    topes vigentes, cuántos premios salieron hoy y los retenidos."""
+    day_start = ve_day_start_utc_naive(now_ve().date())
+    held_query = Order.query.filter(
+        Order.payment_method == 'prize',
+        Order.payment_reference.like(f'{ACC_PRIZE_REFERENCE_PREFIX}-RET-%'),
+        Order.status == 'pending',
+    )
+    return {
+        'enabled': is_accumulated_promo_enabled(),
+        'max_per_id_day': _int_setting(ACC_MAX_PRIZES_PER_ID_PER_DAY_KEY, ACC_DEFAULT_MAX_PRIZES_PER_ID_PER_DAY),
+        'max_per_day': _int_setting(ACC_MAX_PRIZES_PER_DAY_KEY, ACC_DEFAULT_MAX_PRIZES_PER_DAY),
+        'today_total': _accumulated_prize_orders_since(day_start).count(),
+        'held_count': held_query.count(),
+        'held_orders': held_query.order_by(Order.created_at.desc()).limit(50).all(),
+    }
+
+
+def _create_held_accumulated_prize(game, package, player_id, zone_id, note):
+    """La orden premio sin aprobar: queda 'pending' para revisión manual. El
+    scheduler no la toma (no tiene pago que verificar ni entrega en curso)."""
+    prize_order = Order(
+        game_id=game.id,
+        package_id=package.id,
+        player_id=player_id,
+        zone_id=(str(zone_id or '').strip() or None),
+        payment_method='prize',
+        payment_reference=f'{ACC_PRIZE_REFERENCE_PREFIX}-RET-{uuid4().hex[:10].upper()}',
+        amount=0,
+        original_amount=0,
+        discount_amount=0,
+        status='pending',
+        notes=note,
+    )
+    db.session.add(prize_order)
+    db.session.flush()
+    return prize_order
+
+
 def award_accumulated_recharge_for_order(order):
     """Suma las unidades (diamantes/oro) de esta orden a la barra de
     Recarga Acumulada del (juego, ID) correspondiente, entregando el premio
@@ -105,6 +226,24 @@ def award_accumulated_recharge_for_order(order):
     no el monto pagado — así la barra mide lo mismo que el ranking."""
     if not order or not order.player_id:
         return
+    # Un premio nunca suma a la barra (ver order_qualifies_for_points).
+    if (order.payment_method or '') == 'prize':
+        return
+    if not is_accumulated_promo_enabled():
+        return
+    # Nunca anidada: entregar un premio aprueba otra orden en este mismo
+    # hilo, y esa aprobación jamás debe volver a entrar aquí (así fue como
+    # un solo nivel Bronce se pagó cientos de veces seguidas).
+    if getattr(_accumulated_guard, 'active', False):
+        return
+    _accumulated_guard.active = True
+    try:
+        _apply_accumulated_recharge(order)
+    finally:
+        _accumulated_guard.active = False
+
+
+def _apply_accumulated_recharge(order):
     if PromoAccumulatedOrderLog.query.filter_by(order_id=order.id).first():
         return
 
@@ -130,44 +269,100 @@ def award_accumulated_recharge_for_order(order):
         db.session.add(progress)
         db.session.flush()
 
+    # El avance se calcula y se "reclama" con un UPDATE condicionado al
+    # nivel leído (mismo patrón que _claim_pin_for_order): con 3 workers más
+    # el scheduler, dos órdenes del mismo ID que terminan a la vez ya no
+    # pueden cobrar las dos el mismo nivel; la segunda no afecta ninguna
+    # fila, relee la barra y suma sobre el estado nuevo.
+    won_levels = None
+    for _ in range(3):
+        start_level = int(progress.current_level_number or 1)
+        if start_level > len(levels):
+            return  # ya completó todos los niveles de este mes
+        total = float(progress.accumulated_amount or 0) + amount_to_apply
+        level_number = start_level
+        won = []
+        while level_number <= len(levels):
+            threshold = float(levels[level_number - 1].threshold_amount)
+            if total < threshold:
+                break
+            won.append(levels[level_number - 1])
+            total -= threshold
+            level_number += 1
+        if level_number > len(levels):
+            total = 0
+
+        claimed = db.session.execute(
+            update(PromoAccumulatedProgress)
+            .where(
+                PromoAccumulatedProgress.id == progress.id,
+                PromoAccumulatedProgress.current_level_number == start_level,
+            )
+            .values(current_level_number=level_number, accumulated_amount=total, updated_at=datetime.utcnow())
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        db.session.expire(progress)
+        if claimed == 1:
+            won_levels = won
+            break
+
+    if won_levels is None:
+        current_app.logger.warning(
+            '[RecargaAcumulada] No se pudo actualizar la barra de %s (orden %s): otro proceso la movía.',
+            order.player_id, order.id,
+        )
+        return
+    if not won_levels:
+        return
+
+    # La barra ya quedó avanzada ANTES de entregar: deliver_prize_to_player
+    # hace commit y aprueba la orden premio en este mismo hilo. Antes el
+    # nivel se subía después de entregar, así que cualquier reentrada (o un
+    # fallo a mitad de la entrega) encontraba la barra todavía "a punto de
+    # completar" y volvía a pagar el mismo nivel una y otra vez.
     from .order_processing import deliver_prize_to_player
 
     game = Game.query.get(order.game_id)
-    remaining = amount_to_apply
-    while remaining > 0 and progress.current_level_number <= len(levels):
-        level = levels[progress.current_level_number - 1]
-        threshold = float(level.threshold_amount)
-        new_total = float(progress.accumulated_amount or 0) + remaining
+    player_id = str(order.player_id).strip()
+    for level in won_levels:
+        if _accumulated_level_already_paid(order, player_id, month_key, level.level_number):
+            current_app.logger.warning(
+                '[RecargaAcumulada] Nivel %s ya pagado este mes al ID %s: la orden %s no lo vuelve a entregar.',
+                level.level_number, player_id, order.id,
+            )
+            continue
 
-        if new_total < threshold:
-            progress.accumulated_amount = new_total
-            remaining = 0
-            break
-
-        overflow = new_total - threshold
-        prize_order, _approval = deliver_prize_to_player(
-            game, level.package, order.player_id,
-            zone_id=order.zone_id,
-            note=f'Premio Recarga Acumulada — nivel {level.level_number} ({level.level_name}), ID {order.player_id}.',
-            reference_prefix='RECARGA-ACUM',
-        )
-        db.session.add(PromoAccumulatedAward(
+        award = PromoAccumulatedAward(
             game_id=order.game_id, player_id=order.player_id, month_key=month_key,
             level_number=level.level_number, level_name=level.level_name,
-            prize_order_id=prize_order.id if prize_order else None,
-        ))
-        progress.current_level_number += 1
-        progress.accumulated_amount = 0
-        remaining = overflow
+        )
+        db.session.add(award)
+        note = f'{ACC_PRIZE_NOTE_PREFIX} {level.level_number} ({level.level_name}), ID {player_id}.'
+        hold_reason = _accumulated_hold_reason(order.game_id, player_id)
 
-    progress.updated_at = datetime.utcnow()
-    db.session.flush()
+        prize_order = None
+        if hold_reason:
+            if game and level.package:
+                prize_order = _create_held_accumulated_prize(
+                    game, level.package, player_id, order.zone_id,
+                    f'{note} RETENIDO para revisión manual: {hold_reason}. Apruébalo o recházalo en Órdenes.',
+                )
+            current_app.logger.warning('[RecargaAcumulada] Premio retenido para %s: %s', player_id, hold_reason)
+        else:
+            prize_order, _approval = deliver_prize_to_player(
+                game, level.package, player_id,
+                zone_id=order.zone_id,
+                note=note,
+                reference_prefix=ACC_PRIZE_REFERENCE_PREFIX,
+            )
+        award.prize_order_id = prize_order.id if prize_order else None
+        db.session.flush()
 
 
 def get_accumulated_progress_state(game_id, player_id):
     """Estado para pintar la barra: nivel actual, % de progreso y los
     premios ya ganados este mes."""
-    levels = get_accumulated_levels(game_id)
+    levels = get_accumulated_levels(game_id) if is_accumulated_promo_enabled() else []
     levels_out = [{
         'level_number': lvl.level_number,
         'level_name': lvl.level_name,
@@ -248,6 +443,12 @@ def get_raffle_enabled_games():
     return games
 
 
+def _raffle_draw_hour(config):
+    """Hora del sorteo (0-23). Antes era `draw_hour or 21`, y un sorteo a
+    medianoche (hora 0) se corría en realidad a las 21:00."""
+    return 21 if config.draw_hour is None else int(config.draw_hour)
+
+
 # Cuánto antes de la hora del sorteo se cierra el registro: así la lista de
 # participantes queda fija un momento antes de sortear, en vez de perseguir
 # a quien se registra justo cuando el contador llega a 0.
@@ -259,7 +460,7 @@ def _raffle_registration_closed_for_today(config):
     hora configurada del sorteo de hoy (o ya se pasó)."""
     now = now_ve()
     draw_at_today = now.replace(
-        hour=config.draw_hour or 21, minute=config.draw_minute or 0,
+        hour=_raffle_draw_hour(config), minute=config.draw_minute or 0,
         second=0, microsecond=0,
     )
     cutoff = draw_at_today - timedelta(seconds=RAFFLE_REGISTRATION_CUTOFF_SECONDS)
@@ -355,7 +556,7 @@ def run_daily_raffle_draws():
     from .order_processing import deliver_prize_to_player
 
     for config in configs:
-        draw_time = time(config.draw_hour or 21, config.draw_minute or 0)
+        draw_time = time(_raffle_draw_hour(config), config.draw_minute or 0)
         if current_time < draw_time:
             continue
 
@@ -389,20 +590,30 @@ def run_daily_raffle_draws():
             winners_needed = min(config.winners_per_draw or 5, len(unique_entries))
             chosen = _secure_random.sample(unique_entries, winners_needed)
 
-            for entry in chosen:
-                prize_order = None
-                if config.package:
-                    prize_order, _approval = deliver_prize_to_player(
-                        game, config.package, entry.player_id,
-                        note=f'Premio Sorteo Diario — ticket #{entry.ticket_number} ({day_key}).',
-                        reference_prefix='SORTEO',
-                    )
-                db.session.add(PromoRaffleWinner(
+            # Los ganadores se guardan ANTES de entregar: cada entrega puede
+            # tardar hasta 2 minutos (bot o proveedor) y el lock vence a los
+            # 60 s. Antes se confirmaban junto con las entregas, así que otra
+            # llamada que tomara el lock vencido veía "todavía no hay
+            # ganadores hoy" y sorteaba (y pagaba) otra vez.
+            winners = [
+                PromoRaffleWinner(
                     game_id=config.game_id, day_key=day_key, player_id=entry.player_id,
                     player_nick=entry.player_nick, ticket_number=entry.ticket_number,
-                    prize_order_id=prize_order.id if prize_order else None,
-                ))
+                )
+                for entry in chosen
+            ]
+            db.session.add_all(winners)
             db.session.commit()
+
+            if config.package:
+                for winner in winners:
+                    prize_order, _approval = deliver_prize_to_player(
+                        game, config.package, winner.player_id,
+                        note=f'Premio Sorteo Diario — ticket #{winner.ticket_number} ({day_key}).',
+                        reference_prefix='SORTEO',
+                    )
+                    winner.prize_order_id = prize_order.id if prize_order else None
+                    db.session.commit()
         finally:
             release_lock(lock_key, lock_holder)
 
@@ -460,7 +671,7 @@ def get_raffle_public_state(game_id, player_id):
         })
 
     now = now_ve()
-    next_draw = now.replace(hour=config.draw_hour or 21, minute=config.draw_minute or 0, second=0, microsecond=0)
+    next_draw = now.replace(hour=_raffle_draw_hour(config), minute=config.draw_minute or 0, second=0, microsecond=0)
     if drawn or now >= next_draw:
         next_draw = next_draw + timedelta(days=1)
 
@@ -526,7 +737,7 @@ def get_raffle_show_state(game_id, player_id):
         for w in winners
     ]
     now = now_ve()
-    draw_time = time(base['draw_hour'] or 21, base.get('draw_minute') or 0)
+    draw_time = time(21 if base['draw_hour'] is None else base['draw_hour'], base.get('draw_minute') or 0)
     base['is_draw_time'] = now.time().replace(second=0, microsecond=0) >= draw_time
     return base
 
@@ -672,53 +883,76 @@ def submit_guess(game_id, player_id, guess_value, ip='', user_agent=''):
         attempt.attempts_used += 1
         attempt.updated_at = datetime.utcnow()
         remaining_attempts = config.max_attempts - attempt.attempts_used
-        db.session.add(PromoGuessLog(
+        guess_log = PromoGuessLog(
             game_id=game_id, day_key=round_row.day_key, player_id=player_id, guess=guess_value,
-            won=(guess_value == round_row.secret_number), ip=(ip or '')[:64], user_agent=(user_agent or '')[:200],
-        ))
+            won=False, ip=(ip or '')[:64], user_agent=(user_agent or '')[:200],
+        )
+        db.session.add(guess_log)
 
         if guess_value == round_row.secret_number:
-            from .order_processing import deliver_prize_to_player
+            # Nuevo número secreto para el siguiente cupo: distinto a TODOS
+            # los que ya ganaron hoy (y a este), no solo al inmediatamente
+            # anterior (con eso solo, un número ya premiado hoy podía volver
+            # a salir como secreto en un cupo más adelante).
+            used_today = {
+                row[0] for row in
+                db.session.query(PromoGuessWinner.guessed_number)
+                .filter_by(game_id=game_id, day_key=round_row.day_key)
+                .all()
+            } | {guess_value}
+            available = [n for n in range(1, config.number_max + 1) if n not in used_today]
+            new_secret = _secure_random.choice(available) if available else _secure_random.randint(1, config.number_max)
 
-            game = Game.query.get(game_id)
-            prize_order = None
-            if config.package:
-                prize_order, _approval = deliver_prize_to_player(
-                    game, config.package, player_id,
-                    note=f'Premio Adivina el Número — cupo #{round_row.winners_count + 1} ({round_row.day_key}).',
-                    reference_prefix='ADIVINA',
+            # El cupo se reclama con un UPDATE condicionado al número que se
+            # acertó: si dos personas lo aciertan a la vez, solo una se lleva
+            # ese cupo. Y el cupo, el número nuevo y el ganador se guardan
+            # ANTES de entregar: la entrega puede tardar hasta 2 minutos y el
+            # lock de 15 s vencía en medio, así que se podía volver a mandar
+            # el mismo número (que seguía siendo el secreto) y ganar otra vez.
+            claimed = db.session.execute(
+                update(PromoGuessRound)
+                .where(
+                    PromoGuessRound.id == round_row.id,
+                    PromoGuessRound.secret_number == guess_value,
+                    PromoGuessRound.winners_count < config.winners_per_day,
                 )
-            round_row.winners_count += 1
-            db.session.add(PromoGuessWinner(
-                game_id=game_id, day_key=round_row.day_key, player_id=player_id,
-                slot_index=round_row.winners_count, guessed_number=guess_value,
-                player_nick=verified_nick,
-                prize_order_id=prize_order.id if prize_order else None,
-            ))
+                .values(
+                    winners_count=PromoGuessRound.winners_count + 1,
+                    secret_number=new_secret,
+                    updated_at=datetime.utcnow(),
+                )
+                .execution_options(synchronize_session=False)
+            ).rowcount
+            if claimed == 1:
+                db.session.refresh(round_row)
+                slot_index = round_row.winners_count
+                closed_for_today = slot_index >= config.winners_per_day
+                guess_log.won = True
+                winner = PromoGuessWinner(
+                    game_id=game_id, day_key=round_row.day_key, player_id=player_id,
+                    slot_index=slot_index, guessed_number=guess_value,
+                    player_nick=verified_nick,
+                )
+                db.session.add(winner)
+                db.session.commit()
 
-            closed_for_today = round_row.winners_count >= config.winners_per_day
-            if not closed_for_today:
-                # Nuevo número secreto para el siguiente cupo: distinto a TODOS
-                # los que ya ganaron hoy, no solo al inmediatamente anterior
-                # (con eso solo, un número ya premiado hoy podía volver a salir
-                # como secreto en un cupo más adelante).
-                used_today = {
-                    row[0] for row in
-                    db.session.query(PromoGuessWinner.guessed_number)
-                    .filter_by(game_id=game_id, day_key=round_row.day_key)
-                    .all()
+                if config.package:
+                    from .order_processing import deliver_prize_to_player
+
+                    prize_order, _approval = deliver_prize_to_player(
+                        Game.query.get(game_id), config.package, player_id,
+                        note=f'Premio Adivina el Número — cupo #{slot_index} ({round_row.day_key}).',
+                        reference_prefix='ADIVINA',
+                    )
+                    winner.prize_order_id = prize_order.id if prize_order else None
+                    db.session.commit()
+
+                return {
+                    'won': True,
+                    'slot_index': slot_index,
+                    'reward_label': config.package.name if config.package else '',
+                    'closed_for_today': closed_for_today,
                 }
-                available = [n for n in range(1, config.number_max + 1) if n not in used_today]
-                round_row.secret_number = _secure_random.choice(available) if available else _secure_random.randint(1, config.number_max)
-            round_row.updated_at = datetime.utcnow()
-            db.session.commit()
-
-            return {
-                'won': True,
-                'slot_index': round_row.winners_count,
-                'reward_label': config.package.name if config.package else '',
-                'closed_for_today': closed_for_today,
-            }
 
         db.session.commit()
         return {

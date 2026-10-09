@@ -112,6 +112,14 @@ def create_app(config_class=Config):
     # producción (detectada por usar Postgres) y se deja apagado en local
     # (SQLite, http://localhost) para no romper el acceso al panel al probar.
     _is_production = str(app.config.get('SQLALCHEMY_DATABASE_URI', '')).startswith('postgres')
+    # En un VPS con SQLite lo de arriba da False aunque el sitio se sirva por
+    # HTTPS, y la cookie de sesión (también la del admin) viajaba sin la
+    # marca Secure. SESSION_COOKIE_SECURE=1 en el .env lo fuerza.
+    _secure_env = (os.environ.get('SESSION_COOKIE_SECURE') or '').strip().lower()
+    if _secure_env in {'1', 'true', 'yes', 'on'}:
+        _is_production = True
+    elif _secure_env in {'0', 'false', 'no', 'off'}:
+        _is_production = False
     app.config['SESSION_COOKIE_SECURE'] = _is_production
     app.config['REMEMBER_COOKIE_SECURE'] = _is_production
 

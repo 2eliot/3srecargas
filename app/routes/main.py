@@ -1,9 +1,11 @@
 import re
 from datetime import date, datetime, timedelta
+from uuid import uuid4
 
 from flask import Blueprint, render_template, jsonify, request, session, redirect, url_for, current_app, has_request_context
 from flask_login import current_user
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 
 from ..models import (
     db, Game, Package, Category, PaymentMethod, Setting,
@@ -21,6 +23,7 @@ from ..utils.points import package_points_preview
 from ..utils.order_units import extract_order_units
 from ..utils.timezone import now_ve, ve_day_start_utc_naive, today_ve_str
 from ..utils.catalog_version import site_version
+from ..utils.locks import acquire_lock, check_rate_limit, client_ip, release_lock
 from ..utils.push_notifications import get_vapid_public_key, subscribe as push_subscribe, unsubscribe as push_unsubscribe
 
 main_bp = Blueprint('main_bp', __name__)
@@ -162,6 +165,9 @@ def _get_ranking_entries(game_id, target_date=None):
         Order.query
         .filter(Order.game_id == game_id)
         .filter(Order.status.in_(['approved', 'completed']))
+        # Los premios ($0) no son compras: sin esto, alguien que reciba
+        # muchos premios sube al ranking y se lleva además el de fin de mes.
+        .filter(or_(Order.payment_method.is_(None), Order.payment_method != 'prize'))
         .filter(Order.created_at >= start_at, Order.created_at < end_at)
         .order_by(Order.created_at.asc())
         .all()
@@ -454,23 +460,61 @@ def archive_previous_month_rankings_if_needed():
         if existing:
             continue
 
-        game = _resolve_ranking_game(config)
-        if not game:
+        # Esta función corre con cada visita a /api/rankings. El primer día
+        # del mes varias visitas llegan a la vez: sin lock, todas veían el
+        # mes sin archivar y TODAS entregaban los premios del top 5.
+        lock_key = f'ranking_archive:{ranking_key}:{year}-{month:02d}'
+        lock_holder = uuid4().hex
+        if not acquire_lock(lock_key, 120, lock_holder):
             continue
+        try:
+            if RankingArchive.query.filter_by(ranking_key=ranking_key, year=year, month=month).first():
+                continue
 
-        entries = _get_ranking_entries(game.id, target_date=previous_month_last_day)
-        if not entries:
-            continue
+            game = _resolve_ranking_game(config)
+            if not game:
+                continue
 
-        prize_config = get_ranking_prize_config(ranking_key)
+            entries = _get_ranking_entries(game.id, target_date=previous_month_last_day)
+            if not entries:
+                continue
 
-        for index, entry in enumerate(entries[:5], start=1):
-            slot = prize_config.get(index) or {}
-            package = slot.get('package')
-            player_id = (entry.get('player_id') or '').strip() or None
+            prize_config = get_ranking_prize_config(ranking_key)
 
-            prize_order_id = None
-            if package and slot.get('auto') and player_id:
+            prizes_to_deliver = []
+            for index, entry in enumerate(entries[:5], start=1):
+                slot = prize_config.get(index) or {}
+                package = slot.get('package')
+                player_id = (entry.get('player_id') or '').strip() or None
+
+                archive = RankingArchive(
+                    ranking_key=ranking_key,
+                    year=year,
+                    month=month,
+                    position=index,
+                    game_name=game.name,
+                    player_id=player_id,
+                    nickname=(entry.get('nickname') or '').strip() or None,
+                    masked_player_id=_mask_player_id(entry.get('player_id')),
+                    masked_nickname=_mask_nickname(entry.get('nickname')),
+                    total_units=entry.get('total_units') or 0,
+                    prize_label=package.name if package else 'Sin premio',
+                )
+                db.session.add(archive)
+                if package and slot.get('auto') and player_id:
+                    prizes_to_deliver.append((archive, package, player_id, index))
+
+            # El mes queda archivado ANTES de entregar: cada entrega puede
+            # tardar hasta 2 minutos, y mientras tanto otra visita que viera
+            # el mes sin archivar volvía a pagar el top 5. El UNIQUE de
+            # (ranking, año, mes, puesto) es la última defensa.
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                continue
+
+            for archive, package, player_id, index in prizes_to_deliver:
                 # Mismo mecanismo que cualquier otro premio automático del
                 # sitio (Recarga Acumulada, Adivina el Número, etc.): crea
                 # una orden interna de $0 y la entrega por el camino normal
@@ -481,22 +525,10 @@ def archive_previous_month_rankings_if_needed():
                     note=f'Premio Ranking Mensual — puesto #{index} de {config["label"]} ({year}-{month:02d}).',
                     reference_prefix='RANKING',
                 )
-                prize_order_id = prize_order.id if prize_order else None
-
-            db.session.add(RankingArchive(
-                ranking_key=ranking_key,
-                year=year,
-                month=month,
-                position=index,
-                game_name=game.name,
-                player_id=player_id,
-                nickname=(entry.get('nickname') or '').strip() or None,
-                masked_player_id=_mask_player_id(entry.get('player_id')),
-                masked_nickname=_mask_nickname(entry.get('nickname')),
-                total_units=entry.get('total_units') or 0,
-                prize_label=package.name if package else 'Sin premio',
-                prize_order_id=prize_order_id,
-            ))
+                archive.prize_order_id = prize_order.id if prize_order else None
+                db.session.commit()
+        finally:
+            release_lock(lock_key, lock_holder)
 
     db.session.commit()
 
@@ -761,43 +793,51 @@ def api_packages(game_id):
     }))
 
 
+# Consultas de código de descuento por IP y por minuto: un cliente real
+# prueba uno o dos; sin tope se podrían adivinar códigos por diccionario.
+DISCOUNT_LOOKUPS_PER_MINUTE = 20
+
+
 @main_bp.route('/api/discounts')
 def get_discounts():
-    """API para obtener códigos de descuento válidos"""
+    """Datos de UN código (de descuento o de afiliado) para que la tienda
+    calcule el precio con descuento: /api/discounts?code=XYZ.
+
+    Antes devolvía la lista de TODOS los códigos activos, así que cualquiera
+    veía los privados (los de un influencer, los de un solo uso para
+    clientes nuevos) y se aplicaba el mejor."""
     from ..models import Discount, Affiliate
 
-    discounts = Discount.query.filter_by(is_active=True).all()
-    payload = {
-        d.code.upper(): {
-            'discount_type': d.discount_type,
-            'discount_value': str(d.discount_value),
-            'min_amount': str(d.min_amount) if d.min_amount else None,
-            'max_discount': str(d.max_discount) if d.max_discount else None,
-            'source': 'discount',
-        }
-        for d in discounts
-        if d.is_valid_for_amount(float(d.min_amount or 1))
-    }
+    code = (request.args.get('code') or '').strip().upper()
+    payload = {}
+    if code:
+        if not check_rate_limit(f'discount_lookup:{client_ip()}', DISCOUNT_LOOKUPS_PER_MINUTE, 60):
+            return _no_store(jsonify({
+                'discounts': {}, 'error': 'Demasiados intentos seguidos. Espera un momento.',
+            })), 429
 
-    affiliates = Affiliate.query.filter_by(is_active=True).all()
-    for affiliate in affiliates:
-        code = (affiliate.code or '').strip().upper()
-        if not code or code in payload:
-            continue
-
-        rate = float(affiliate.client_discount_rate or 0)
-        if rate <= 0:
-            rate = float(affiliate.commission_rate or 0)
-        if rate <= 0:
-            continue
-
-        payload[code] = {
-            'discount_type': 'percentage',
-            'discount_value': str(rate),
-            'min_amount': None,
-            'max_discount': None,
-            'source': 'affiliate',
-        }
+        discount = Discount.query.filter_by(code=code, is_active=True).first()
+        affiliate = None if discount else Affiliate.query.filter_by(code=code, is_active=True).first()
+        if discount and discount.is_valid_for_amount(float(discount.min_amount or 1)):
+            payload[code] = {
+                'discount_type': discount.discount_type,
+                'discount_value': str(discount.discount_value),
+                'min_amount': str(discount.min_amount) if discount.min_amount else None,
+                'max_discount': str(discount.max_discount) if discount.max_discount else None,
+                'source': 'discount',
+            }
+        elif affiliate:
+            rate = float(affiliate.client_discount_rate or 0)
+            if rate <= 0:
+                rate = float(affiliate.commission_rate or 0)
+            if rate > 0:
+                payload[code] = {
+                    'discount_type': 'percentage',
+                    'discount_value': str(rate),
+                    'min_amount': None,
+                    'max_discount': None,
+                    'source': 'affiliate',
+                }
 
     response = jsonify({
         'discounts': payload

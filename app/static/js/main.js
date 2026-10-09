@@ -2547,6 +2547,22 @@
         }
     }
 
+    // El servidor ya no entrega la lista de todos los códigos (se podían ver
+    // los privados): se pregunta solo por el que escribió el cliente.
+    function lookupDiscountCode(code) {
+        window.validDiscounts = window.validDiscounts || {};
+        if (window.validDiscounts[code]) return Promise.resolve();
+        return fetch('/api/discounts?code=' + encodeURIComponent(code) + '&ts=' + Date.now(), { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var found = (data && data.discounts) || {};
+                Object.keys(found).forEach(function (key) {
+                    window.validDiscounts[key] = found[key];
+                });
+            })
+            .catch(function () {});
+    }
+
     function applyDiscountCode() {
         if (!affInput) return;
 
@@ -2560,6 +2576,15 @@
             return;
         }
 
+        setDiscountFeedback('Verificando código...', null);
+        lookupDiscountCode(code).then(function () {
+            // Si mientras tanto el cliente cambió el código, este resultado ya no aplica.
+            if (affInput.value.trim().toUpperCase() !== code) return;
+            finishApplyDiscountCode(code);
+        });
+    }
+
+    function finishApplyDiscountCode(code) {
         var packagePrice = selectedPackage ? getSelectedPackageBasePrice(selectedPackage) : NaN;
         var knownCode = !!(window.validDiscounts && window.validDiscounts[code]);
         var discountMeta = getValidDiscountMeta(code, packagePrice);

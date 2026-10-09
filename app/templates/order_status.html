@@ -1139,7 +1139,20 @@
         <div class="nx-pin-section glass-subpanel">
             <div>
                 <div class="nx-pin-label"><span class="k">🔑</span><span>TU PIN / CÓDIGO</span></div>
+                {% if pin_unlocked %}
                 <div class="nx-pin-code" id="nxPinCode" title="Haz clic para copiar">{{ order.pin_delivered }}</div>
+                {% else %}
+                <div class="nx-pin-code" style="letter-spacing:2px;">••••••••</div>
+                <form method="POST" action="{{ url_for('checkout_bp.order_unlock_pin', order_number=order.order_number) }}"
+                      style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+                    <input type="text" name="reference_tail" inputmode="numeric" maxlength="12" required
+                           placeholder="Últimos 4 dígitos de tu referencia de pago"
+                           style="flex:1 1 220px;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.25);color:inherit;">
+                    <button type="submit" class="nx-pin-video-btn" style="border:0;cursor:pointer;"><span>VER PIN</span></button>
+                </form>
+                <p style="margin-top:8px;font-size:12px;opacity:.8;">Por seguridad, el código se muestra solo en el equipo donde se hizo la compra. Desde otro equipo escribe los últimos 4 dígitos de la referencia (o el código de Binance) con que pagaste.</p>
+                {% if pin_unlock_error %}<p style="margin-top:6px;font-size:13px;color:#fca5a5;">{{ pin_unlock_error }}</p>{% endif %}
+                {% endif %}
             </div>
             <div class="nx-pin-help">
                 <span class="q">¿No sabes cómo canjearlo?</span>

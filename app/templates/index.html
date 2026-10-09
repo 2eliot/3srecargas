@@ -552,12 +552,8 @@
         phone: {{ (current_user.phone if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.phone else '')|tojson }}
     };
 
-    // Cargar descuentos válidos
-    fetch('/api/discounts?ts=' + Date.now(), { cache: 'no-store' })
-        .then(r => r.json())
-        .then(data => {
-            window.validDiscounts = data.discounts;
-        });
+    // Los códigos se consultan de a uno al pulsar APLICAR (ver lookupDiscountCode).
+    window.validDiscounts = {};
 </script>
 <script>
 /* ── Checkout de una sola página ─────────────────────────────────────────

@@ -9,6 +9,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..models import Game, Setting
 from ..utils.timezone import format_ve
+from ..utils.order_access import remember_own_order
 from ..utils.gift_codes import (
     clear_attempts,
     describe_code_problem,
@@ -191,6 +192,8 @@ def redeem():
         return jsonify({'ok': False, 'message': mensaje}), 409
 
     clear_attempts(ip)
+    if order:
+        remember_own_order(order.order_number)
     return jsonify({
         'ok': True,
         'message': mensaje,

@@ -23,7 +23,7 @@ from ..models import (
     RevendedoresCatalogItem, RevendedoresItemMapping, RevendedoresMappingItem, GiftCode,
     CentralOneCatalogItem, CentralOneItemMapping, CentralOneMappingItem, PackageDeliveryPlan,
     AffiliateWithdrawal, MiniCourseVideo, MiniNotification, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod,
-    PromoAccumulatedAward, PromoAccumulatedLevel,
+    PromoAccumulatedAward, PromoAccumulatedLevel, PromoAccumulatedOrderLog,
     PromoRaffleConfig, PromoRaffleWinner, PromoRaffleEntry,
     PromoGuessConfig, PromoGuessRound, PromoGuessWinner, PromoGuessAttempt,
     PromoHordeConfig, PromoHordeWinner, SupportTag,
@@ -31,7 +31,12 @@ from ..models import (
 from ..utils.availability import format_hour, get_manual_schedule
 from ..utils.support_ai import get_ai_settings, save_ai_settings, test_connection as test_support_ai
 from ..utils.locks import check_rate_limit, client_ip
-from ..utils.promos import HORDE_CHARACTER_MODES, HORDE_CHARACTER_SLOTS, get_horde_characters, horde_character_keys
+from ..utils.promos import (
+    ACC_DEFAULT_MAX_PRIZES_PER_DAY, ACC_DEFAULT_MAX_PRIZES_PER_ID_PER_DAY, ACC_ENABLED_KEY,
+    ACC_MAX_PRIZES_PER_DAY_KEY, ACC_MAX_PRIZES_PER_ID_PER_DAY_KEY,
+    HORDE_CHARACTER_MODES, HORDE_CHARACTER_SLOTS, get_accumulated_safety_overview,
+    get_horde_characters, horde_character_keys,
+)
 from ..utils.gift_codes import create_batch as create_gift_batch, format_code as format_gift_code
 from ..utils.mini_influencers import (
     award_rank_bonus,
@@ -56,7 +61,7 @@ from ..utils.notifications import (
     notify_order_approved, notify_order_completed, notify_order_rejected,
 )
 from ..utils.order_processing import (
-    PROVIDER_LABELS, approve_order, force_approve_order_manually, get_revendedores_env,
+    PROVIDER_LABELS, approve_order, delivery_reset_blocker, force_approve_order_manually, get_revendedores_env,
     process_affiliate_commission, process_order_delivery,
 )
 from ..utils.central_one import (
@@ -87,6 +92,7 @@ from ..utils.payment_verification import (
     payment_method_uses_payer_identity_verification,
     recompute_order_payment_amount,
     stamp_verified_payment,
+    underpaid_payment_note,
     verify_order_payment,
 )
 
@@ -240,19 +246,55 @@ def order_supports_delivery_proof(order):
 
 
 def cleanup_old_orders():
+    """Limpieza de las órdenes de más de HOUSEKEEPING_ORDER_RETENTION_DAYS.
+
+    Las órdenes con un pago verificado (o entregadas) ya NO se borran: son el
+    registro de qué pagos ya se usaron. Antes se borraban todas, y a los 60
+    días la referencia y el id de Pabilo de ese pago quedaban libres para
+    cobrar una orden nueva con el mismo pago viejo. De esas solo se borra lo
+    que pesa: las fotos de los comprobantes y la respuesta cruda de Pabilo.
+    Las que sí se borran son las abandonadas (pendientes o rechazadas sin
+    ningún pago confirmado).
+    """
     threshold = datetime.utcnow() - timedelta(days=HOUSEKEEPING_ORDER_RETENTION_DAYS)
-    old_orders = Order.query.filter(Order.created_at < threshold).all()
-    removed = 0
-    for order in old_orders:
-        if order.payment_capture:
-            delete_uploaded_file(order.payment_capture)
+    changed = False
+
+    heavy_orders = Order.query.filter(
+        Order.created_at < threshold,
+        or_(
+            Order.payment_capture.isnot(None),
+            Order.remainder_capture.isnot(None),
+            Order.payment_verification_raw_response.isnot(None),
+        ),
+    ).all()
+    for order in heavy_orders:
+        for field in ('payment_capture', 'remainder_capture'):
+            if getattr(order, field):
+                delete_uploaded_file(getattr(order, field))
+                setattr(order, field, None)
+        order.payment_verification_raw_response = None
+        changed = True
+
+    abandoned_orders = Order.query.filter(
+        Order.created_at < threshold,
+        Order.status.in_(['pending', 'rejected']),
+        Order.payment_verified_at.is_(None),
+        or_(Order.payment_verification_id.is_(None), Order.payment_verification_id == ''),
+        or_(Order.remainder_verification_ids.is_(None), Order.remainder_verification_ids == ''),
+        Order.binance_tx_id.is_(None),
+        or_(Order.awaiting_payment_completion.is_(None), Order.awaiting_payment_completion.is_(False)),
+        or_(Order.payment_method.is_(None), Order.payment_method != 'prize'),
+    ).all()
+    for order in abandoned_orders:
         # Las oportunidades de minijuego referencian la orden, así que hay que
         # borrarlas primero o el DELETE falla por la restricción de clave ajena.
         for opp in OrderMiniGameOpportunity.query.filter_by(order_id=order.id).all():
             db.session.delete(opp)
+        PromoAccumulatedOrderLog.query.filter_by(order_id=order.id).delete()
         db.session.delete(order)
-        removed += 1
-    if removed:
+        changed = True
+
+    if changed:
         db.session.commit()
 
 
@@ -1286,6 +1328,13 @@ def order_update_player_id(order_id):
         flash('El ID del jugador no cambió.', 'info')
         return redirect(redirect_target)
 
+    if updated_player_id != original_player_id:
+        blocker = delivery_reset_blocker(order)
+        if blocker:
+            flash(f'No se puede cambiar el ID: {blocker}. Revisa la orden con el proveedor; si ya se resolvió por '
+                  'fuera, usa "Forzar aprobación manual" o recházala.', 'danger')
+            return redirect(redirect_target)
+
     try:
         if updated_player_id != original_player_id:
             order.player_id = updated_player_id
@@ -1389,6 +1438,11 @@ def order_update_package(order_id):
         flash('El paquete no cambió.', 'info')
         return redirect(redirect_target)
 
+    blocker = delivery_reset_blocker(order)
+    if blocker:
+        flash(f'No se puede cambiar el paquete: {blocker}.', 'danger')
+        return redirect(redirect_target)
+
     try:
         old_package_name = order.package.name if order.package else '?'
         old_amount = order.amount
@@ -1428,6 +1482,15 @@ def _run_admin_pabilo_reverification(order, reference=None, force_reference=Fals
             return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
         previous_reference = str(order.payment_reference or '').strip()
+        # Si la re-verificación falla, se vuelve a esto: antes el pago ya
+        # verificado quedaba borrado de la orden (y su id de Pabilo libre
+        # para usarse en otra orden) solo porque el reintento no funcionó.
+        previous_verification = {
+            'payment_verified_at': order.payment_verified_at,
+            'payment_verification_id': order.payment_verification_id,
+            'payment_reference': order.payment_reference,
+            'payment_reference_last5': order.payment_reference_last5,
+        }
         clear_pabilo_verification_state(order)
         if not uses_payer_identity:
             order.payment_reference = reference
@@ -1467,8 +1530,9 @@ def _run_admin_pabilo_reverification(order, reference=None, force_reference=Fals
                 note = f'[Admin] Pago re-verificado: con los pagos restantes ya sumados (total Bs {order.paid_amount_bs}) la orden está cubierta.'
                 category, message = 'success', 'El pago está completo sumando el pago restante. Ya puedes aprobar la orden.'
             else:
-                note = (f'[Admin] Al re-verificar, el pago quedó incompleto: Pabilo reportó Bs {verification.get("reported_amount")} '
-                        f'de Bs {verification.get("expected_amount")}. Falta Bs {missing}. Se le pidió al cliente completar el pago.')
+                note = ('[Admin] Re-verificación: '
+                        + underpaid_payment_note(order, verification, missing).replace('[Pabilo] ', '', 1)
+                        + ' Se le pidió al cliente completar el pago.')
                 category = 'warning'
                 message = (f'💰 Al pago le faltan Bs {missing}. La orden quedó esperando el pago restante: '
                            'al cliente le aparece el aviso para completarlo en la página de su orden.')
@@ -1479,6 +1543,10 @@ def _run_admin_pabilo_reverification(order, reference=None, force_reference=Fals
             return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
         note = verification.get('message') or 'No se pudo re-verificar el pago en Pabilo.'
+        if previous_verification['payment_verified_at'] or previous_verification['payment_verification_id']:
+            for field, value in previous_verification.items():
+                setattr(order, field, value)
+            note += ' Se conservó el pago verificado que ya tenía la orden.'
         audit_note = f'[Admin] {note}'
         existing_notes = order.notes or ''
         if audit_note not in existing_notes:
@@ -1590,6 +1658,11 @@ def order_force_approve(order_id):
 @login_required
 def order_reject(order_id):
     order = Order.query.get_or_404(order_id)
+    if order.status == 'completed':
+        # Una orden rechazada deja de reservar su referencia de pago: rechazar
+        # una ya entregada dejaba ese mismo pago libre para cobrar otra orden.
+        flash('Esta orden ya fue completada (entregada): no se puede rechazar.', 'warning')
+        return redirect(url_for('admin_bp.order_detail', order_id=order.id))
     notes = request.form.get('notes', '').strip()
     order.status = 'rejected'
     if notes:
@@ -3653,6 +3726,29 @@ def settings():
     )
 
 
+def _prize_package_delivery_status(package):
+    """Cómo saldría solo este paquete cuando se entrega como premio: por
+    mapeo de proveedor, por stock de PINs (bot) o, si no tiene ninguno, a
+    mano por un admin. Es lo que el admin necesita ver junto a cada premio."""
+    if not package:
+        return None
+    routes = []
+    if RevendedoresItemMapping.query.filter_by(store_package_id=package.id, active=True, auto_enabled=True).first():
+        routes.append('Revendedores')
+    if CentralOneItemMapping.query.filter_by(store_package_id=package.id, active=True, auto_enabled=True).first():
+        routes.append('Central One')
+    free_pins = (
+        Pin.query.filter(Pin.package_id == package.id, Pin.is_used.is_(False), Pin.order_id.is_(None)).count()
+        if package.is_automated else 0
+    )
+    return {
+        'routes': routes,
+        'is_automated': bool(package.is_automated),
+        'free_pins': free_pins,
+        'automatic': bool(routes) or free_pins > 0,
+    }
+
+
 @admin_bp.route('/minigames', methods=['GET', 'POST'])
 @login_required
 def minigames():
@@ -3831,11 +3927,16 @@ def minigames():
         promos_accumulated_sort_order = next(
             (lvl.sort_order for lvl in promos_levels.values() if lvl.sort_order is not None), 100
         )
+        promos_level_delivery = {
+            number: _prize_package_delivery_status(lvl.package)
+            for number, lvl in promos_levels.items()
+        }
 
         promos_context = dict(
             selected_game=promos_selected_game,
             game_packages=promos_game_packages,
             levels=promos_levels,
+            level_delivery=promos_level_delivery,
             accumulated_sort_order=promos_accumulated_sort_order,
             raffle_config=promos_raffle_config,
             guess_config=promos_guess_config,
@@ -3899,6 +4000,7 @@ def minigames():
         counter_cards=counter_cards,
         winners=winners,
         accumulated_winners=accumulated_winners,
+        accumulated_overview=get_accumulated_safety_overview(),
         minigame_dev_mode=is_minigame_dev_mode(),
         raffle_participation=raffle_participation,
         guess_participation=guess_participation,
@@ -4182,7 +4284,43 @@ def promos_accumulated_save():
         flash(f'Recarga Acumulada actualizada para {game.name} ({len(new_levels)} nivel(es)).', 'success')
     else:
         flash(f'Recarga Acumulada desactivada para {game.name} (sin niveles completos).', 'warning')
-    return redirect(url_for('admin_bp.minigames', game_id=game.id))
+    return redirect(url_for('admin_bp.minigames', game_id=game.id, _anchor='recarga-acumulada'))
+
+
+@admin_bp.route('/promos/accumulated/toggle', methods=['POST'])
+@login_required
+def promos_accumulated_toggle():
+    """Interruptor general: apaga la promo en toda la tienda sin borrar los
+    niveles configurados (antes la única forma era vaciarlos)."""
+    enable = request.form.get('enabled') == '1'
+    _upsert_setting(ACC_ENABLED_KEY, '1' if enable else '0')
+    db.session.commit()
+    if enable:
+        flash('Recarga Acumulada ENCENDIDA: vuelve a verse en la tienda y las compras suman a la barra.', 'success')
+    else:
+        flash('Recarga Acumulada APAGADA: ya no se ve en la tienda, las compras no suman y no se entrega ningún premio.', 'warning')
+    return redirect(url_for('admin_bp.minigames', game_id=request.form.get('game_id', type=int), _anchor='recarga-acumulada'))
+
+
+@admin_bp.route('/promos/accumulated/limits', methods=['POST'])
+@login_required
+def promos_accumulated_limits():
+    """Topes de premios automáticos por día. Lo que pase de un tope no se
+    pierde: queda RETENIDO en Órdenes para aprobarlo o rechazarlo a mano."""
+    def _read_limit(name, default):
+        try:
+            return max(0, int(float(request.form.get(name, ''))))
+        except (TypeError, ValueError):
+            return default
+
+    per_id = _read_limit('max_per_id_day', ACC_DEFAULT_MAX_PRIZES_PER_ID_PER_DAY)
+    per_day = _read_limit('max_per_day', ACC_DEFAULT_MAX_PRIZES_PER_DAY)
+    _upsert_setting(ACC_MAX_PRIZES_PER_ID_PER_DAY_KEY, str(per_id))
+    _upsert_setting(ACC_MAX_PRIZES_PER_DAY_KEY, str(per_day))
+    db.session.commit()
+    flash(f'Seguros guardados: {per_id} premio(s) por ID al día y {per_day} en toda la tienda al día. '
+          'Lo que pase de ahí queda retenido para revisión.', 'success')
+    return redirect(url_for('admin_bp.minigames', game_id=request.form.get('game_id', type=int), _anchor='recarga-acumulada'))
 
 
 @admin_bp.route('/promos/raffle', methods=['POST'])
