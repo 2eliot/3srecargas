@@ -745,14 +745,24 @@ def _poll_step(order, auto_resp, steps, step_index, step, force, label):
     reference = step.get('reference_code') or step['remote_order_id']
     step['remote_status'] = str(remote.get('status') or step.get('remote_status') or '')
 
-    if outcome in ('delivered', 'refunded'):
+    if outcome == 'refunded':
+        # Central One devolvió el importe: lo más probable es que NO entregó
+        # (los pedidos fallidos no se cobran), pero no se puede asegurar. Ni se
+        # da por entregado, ni se reintenta, ni se pasa al respaldo: lo decide
+        # el admin con el portal del proveedor a la vista.
+        step['refunded'] = True
+        _note(order, f'{label} Central One marcó el pedido {reference} como "refunded" (importe devuelto). '
+                     'No se sabe con certeza si la recarga llegó: revísalo en el portal del proveedor antes de reintentar.')
+        blocked = _blocked(order, auto_resp, steps, step_index, step, 'refunded',
+                           f'el pedido {reference} terminó en "refunded" (importe devuelto)', label)
+        blocked['definitive_rejection'] = False
+        blocked['safe_to_switch'] = False
+        return blocked
+
+    if outcome == 'delivered':
         step.update({'success': True, 'pending_verification': False, 'error': '', 'blocked_cause': '',
                      'next_check_at': '', 'retry_after': ''})
-        if outcome == 'refunded':
-            step['refunded'] = True
-            _note(order, f'{label} Pedido {reference} entregado pero Central One devolvió el importe después. Revísalo con el proveedor.')
-        else:
-            _note(order, f'{label} Pedido {reference} completado en Central One.')
+        _note(order, f'{label} Pedido {reference} completado en Central One.')
         lines = remote.get('items') if isinstance(remote.get('items'), list) else []
         delivered_codes = int((lines[0] or {}).get('delivered_count') or 0) if lines and isinstance(lines[0], dict) else 0
         if delivered_codes:

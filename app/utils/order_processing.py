@@ -178,6 +178,12 @@ def _rev_step_was_ambiguous(step):
         return False
     if 'ambiguous_attempt' in step:
         return bool(step.get('ambiguous_attempt'))
+    # Paso guardado antes de existir la marca: si Revendedores respondió un
+    # rechazo definitivo (ID inválido, paquete de baja, 'fallida'), esa
+    # respuesta fue síncrona y explícita: no hay duda, y el admin tiene que
+    # poder corregir el ID como siempre pudo.
+    if step.get('blocked_cause'):
+        return False
     attempts = int(step.get('rev_attempt') or 0)
     return attempts > int(step.get('transient_failures') or 0) and not step.get('success')
 
@@ -917,6 +923,21 @@ def _fallback_allowed(result):
     )
 
 
+def _provider_configured(provider):
+    """Si el respaldo no tiene llave, saltar a él solo deja la orden parada en
+    un proveedor muerto (y, con un 'sin saldo' de Revendedores, corta el
+    reintento cada 5 min que hoy la mantiene viva hasta que se recargue saldo)."""
+    try:
+        if provider == PROVIDER_CENTRALONE:
+            from .central_one import get_centralone_env
+            base_url, api_key = get_centralone_env()
+            return bool(base_url and api_key)
+        base_url, api_key, _, _ = get_revendedores_env()
+        return bool(base_url and api_key)
+    except Exception:
+        return False
+
+
 def _switch_provider(order, old, new, result, force):
     """Pasa la orden del proveedor `old` al de respaldo `new` y lo intenta ya.
 
@@ -1027,7 +1048,7 @@ def process_order_delivery(order, base_state=None, force=False):
 
         tried = {provider} | {h.get('provider') for h in state.get('history') or [] if isinstance(h, dict)}
         remaining = [code for code in routes[routes.index(provider) + 1:] if code not in tried] if provider in routes else []
-        if remaining and _fallback_allowed(result):
+        if remaining and _fallback_allowed(result) and _provider_configured(remaining[0]):
             return _switch_provider(order, provider, remaining[0], result, force)
         return result
     finally:
