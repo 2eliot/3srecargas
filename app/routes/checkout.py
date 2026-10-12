@@ -3,10 +3,11 @@ from datetime import datetime, timedelta
 import hashlib
 import json
 import os
+import time
 from uuid import uuid4
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, flash, session, abort, current_app, jsonify
+    url_for, flash, session, abort, current_app, jsonify, after_this_request
 )
 from flask_login import current_user, login_user, logout_user
 from sqlalchemy import or_
@@ -888,15 +889,39 @@ def checkout(package_id):
             return redirect(url_for('checkout_bp.checkout', package_id=package_id))
 
         # Paso 2: confirmación (solo capture) -> crea la orden
+        # Desde el chat de soporte (ajax=1) este paso responde en JSON; en la tienda
+        # sigue igual que siempre: mensaje y vuelta a la pantalla de pago / de la orden.
+        confirm_warnings = []
+
+        def _confirm_fail(message, category='danger', code=''):
+            if wants_json:
+                return jsonify({'ok': False, 'message': message, 'code': code}), 400
+            flash(message, category)
+            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+
+        def _confirm_ok(order_number, message='', category='info'):
+            if wants_json:
+                return jsonify({
+                    'ok': True,
+                    'order_number': order_number,
+                    'order_url': url_for('checkout_bp.order_status', order_number=order_number),
+                    'message': message,
+                    'warnings': confirm_warnings,
+                })
+            if message:
+                flash(message, category)
+            return redirect(url_for('checkout_bp.order_status', order_number=order_number))
+
         submitted_confirm_token = (request.form.get('confirm_token') or '').strip()
         expected_confirm_token = (checkout_confirm_tokens.get(pkg_key) or '').strip()
         if not submitted_confirm_token or not expected_confirm_token or submitted_confirm_token != expected_confirm_token:
-            flash('La confirmación de pago expiró o ya fue usada. Recarga la página e intenta de nuevo.', 'danger')
-            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+            return _confirm_fail('La confirmación de pago expiró o ya fue usada. Recarga la página e intenta de nuevo.', code='token_expired')
 
         data = checkout_data.get(pkg_key) or {}
         payment_method = (data.get('payment_method') or '').strip()
         if not payment_method:
+            if wants_json:
+                return _confirm_fail('Tu sesión expiró. Por favor repite el proceso desde la tienda.', code='session_expired')
             flash('Tu sesión expiró. Por favor repite el proceso desde la tienda.', 'danger')
             return redirect(url_for('main_bp.index'))
         # Segunda barrera antes de crear la orden (usa la caché del paso 1, no reconsulta).
@@ -904,8 +929,7 @@ def checkout(package_id):
             from .verify import require_verified_player, VERIFIED_PLAYER_ERRORS
             _ver_estado, _ver_nick = require_verified_player(game.id, data.get('player_id'))
             if _ver_estado in VERIFIED_PLAYER_ERRORS:
-                flash(VERIFIED_PLAYER_ERRORS[_ver_estado], 'danger')
-                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                return _confirm_fail(VERIFIED_PLAYER_ERRORS[_ver_estado], 'danger')
             if _ver_estado == 'ok':
                 data['player_nickname'] = _ver_nick
 
@@ -932,8 +956,7 @@ def checkout(package_id):
                 or (request.form.get('payment_reference') or '').strip().upper()
             )
             if not payment_reference_input or not is_binance_auto_reference(payment_reference_input):
-                flash('Código Binance inválido. Por favor recarga la página e intenta de nuevo.', 'danger')
-                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                return _confirm_fail('Código Binance inválido. Por favor recarga la página e intenta de nuevo.', 'danger')
 
             # El comprobante es opcional en Binance, pero si el cliente lo
             # adjunta se guarda igual: sirve de respaldo para que el admin
@@ -945,17 +968,14 @@ def checkout(package_id):
         else:
             capture_file = request.files.get('payment_capture')
             if not capture_file or not capture_file.filename:
-                flash('Debes adjuntar el comprobante de pago antes de confirmar la orden.', 'danger')
-                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                return _confirm_fail('Debes adjuntar el comprobante de pago antes de confirmar la orden.', 'danger')
 
             if not is_allowed_capture_file(capture_file.filename):
-                flash('El comprobante debe ser una imagen valida (png, jpg, jpeg, gif o webp).', 'danger')
-                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                return _confirm_fail('El comprobante debe ser una imagen valida (png, jpg, jpeg, gif o webp).', 'danger')
 
             capture_path = save_capture(capture_file)
             if not capture_path:
-                flash('Hubo un problema al subir el comprobante. Intenta nuevamente.', 'danger')
-                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                return _confirm_fail('Hubo un problema al subir el comprobante. Intenta nuevamente.', 'danger')
 
             if uses_payer_identity_verification:
                 payer_dni_type = (request.form.get('payer_dni_type') or 'V').strip().upper()[:2]
@@ -966,19 +986,16 @@ def checkout(package_id):
                 manual_payment_reference = (request.form.get('payment_reference') or '').strip()
 
                 if len(payer_phone) < 10:
-                    flash('Debes ingresar el telefono del cliente para validar el pago.', 'danger')
-                    return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                    return _confirm_fail('Debes ingresar el telefono del cliente para validar el pago.', 'danger')
 
                 if not payer_dni_number:
-                    flash('Debes ingresar la cedula del cliente para validar el pago.', 'danger')
-                    return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                    return _confirm_fail('Debes ingresar la cedula del cliente para validar el pago.', 'danger')
 
                 payment_reference_input = manual_payment_reference
             else:
                 payment_reference_input = (request.form.get('payment_reference') or '').strip()
                 if not payment_reference_input:
-                    flash('Debes ingresar la referencia del pago.', 'danger')
-                    return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                    return _confirm_fail('Debes ingresar la referencia del pago.', 'danger')
 
         ai_extracted_reference = ''
         if not _binance_auto and capture_path:
@@ -986,6 +1003,29 @@ def checkout(package_id):
             ai_extracted_reference = str(extraction_result.get('reference') or '').strip()[:255]
             if not ai_extracted_reference:
                 ai_extracted_reference = str(request.form.get('ai_extracted_reference') or '').strip()[:255]
+
+        # Dos envíos del MISMO pago a la vez (dos pestañas, un doble toque, o alguien probando) pasaban
+        # los dos la revisión de "referencia repetida" antes de que cualquiera guardara su orden, y un solo
+        # pago abría varias órdenes. Se atiende de uno en uno por referencia: el segundo espera a que el
+        # primero termine y entonces ya ve su orden (misma llave -> la devuelve; otra llave -> "referencia
+        # ya registrada"). El candado se suelta al terminar la petición; si algo falla, caduca solo.
+        reference_lock_key = normalize_reference_key(payment_reference_input)
+        if reference_lock_key:
+            reference_lock = f'checkout_ref:{reference_lock_key}'[:100]
+            reference_holder = uuid4().hex
+            for _attempt in range(30):
+                if acquire_lock(reference_lock, 30, reference_holder):
+                    break
+                time.sleep(0.15)
+            else:
+                return _confirm_fail(
+                    'Tu pago se está registrando en este momento. Espera unos segundos y revisa tus notificaciones antes de intentar de nuevo.',
+                    'warning', code='busy')
+
+            @after_this_request
+            def _release_reference_lock(response):
+                release_lock(reference_lock, reference_holder)
+                return response
 
         existing_by_token = Order.query.filter_by(idempotency_key=submitted_confirm_token).first()
         if existing_by_token:
@@ -998,12 +1038,11 @@ def checkout(package_id):
                 is_wallet=is_wallet,
             ):
                 remember_own_order(existing_by_token.order_number)
-                return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
+                return _confirm_ok(existing_by_token.order_number)
 
             checkout_confirm_tokens.pop(pkg_key, None)
             session['checkout_confirm_tokens'] = checkout_confirm_tokens
-            flash('La confirmación anterior ya fue usada para otra orden. Recarga la página y confirma nuevamente para generar una orden nueva.', 'warning')
-            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+            return _confirm_fail('La confirmación anterior ya fue usada para otra orden. Recarga la página y confirma nuevamente para generar una orden nueva.', 'warning')
 
         if not uses_payer_identity_verification:
             existing_ref = find_reference_conflict(
@@ -1012,8 +1051,7 @@ def checkout(package_id):
                 statuses=['pending', 'approved', 'completed'],
             )
             if existing_ref:
-                flash('Esta referencia ya fue registrada en otra orden activa o ya aprobada. Verifica tu pago e intenta nuevamente.', 'danger')
-                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                return _confirm_fail('Esta referencia ya fue registrada en otra orden activa o ya aprobada. Verifica tu pago e intenta nuevamente.', code='reference_in_use')
 
         aff_code = (data.get('affiliate_code') or '').strip()
         if not aff_code:
@@ -1045,8 +1083,7 @@ def checkout(package_id):
             email=player_id_value if is_wallet else (data.get('email') or '').strip(),
         )
         if existing_pending:
-            flash('Ya tienes una orden pendiente para esta compra. Te llevamos a su estado.', 'info')
-            return redirect(url_for('checkout_bp.order_status', order_number=existing_pending.order_number))
+            return _confirm_ok(existing_pending.order_number, 'Ya tienes una orden pendiente para esta compra. Te llevamos a su estado.', 'info')
 
         # Procesar descuento si hay código (descuento explícito o código de afiliado)
         discount_code = ((data.get('affiliate_code') or aff_code or '').strip()).upper()
@@ -1080,7 +1117,10 @@ def checkout(package_id):
             discount = None
             affiliate = None
             discount_amount = 0.0
-            flash(f"{discount_result['error']} Tu orden se registró sin descuento.", 'warning')
+            if wants_json:
+                confirm_warnings.append(f"{discount_result['error']} Tu orden se registró sin descuento.")
+            else:
+                flash(f"{discount_result['error']} Tu orden se registró sin descuento.", 'warning')
 
         if discount:
             discount.used_count = int(discount.used_count or 0) + 1
@@ -1147,14 +1187,12 @@ def checkout(package_id):
                     is_wallet=is_wallet,
                 ):
                     remember_own_order(existing_by_token.order_number)
-                    return redirect(url_for('checkout_bp.order_status', order_number=existing_by_token.order_number))
+                    return _confirm_ok(existing_by_token.order_number)
 
                 checkout_confirm_tokens.pop(pkg_key, None)
                 session['checkout_confirm_tokens'] = checkout_confirm_tokens
-                flash('La confirmación anterior ya fue usada para otra orden. Recarga la página y confirma nuevamente para generar una orden nueva.', 'warning')
-                return redirect(url_for('checkout_bp.checkout', package_id=package_id))
-            flash('No se pudo confirmar la orden. Intenta nuevamente.', 'danger')
-            return redirect(url_for('checkout_bp.checkout', package_id=package_id))
+                return _confirm_fail('La confirmación anterior ya fue usada para otra orden. Recarga la página y confirma nuevamente para generar una orden nueva.', 'warning')
+            return _confirm_fail('No se pudo confirmar la orden. Intenta nuevamente.', 'danger')
 
         try:
             notify_order_created(order, package, game)
@@ -1189,7 +1227,7 @@ def checkout(package_id):
         session['checkout_confirm_tokens'] = checkout_confirm_tokens
         session.pop('affiliate_code', None)
         remember_own_order(order.order_number)
-        return redirect(url_for('checkout_bp.order_status', order_number=order.order_number))
+        return _confirm_ok(order.order_number)
 
     db_methods = PaymentMethod.query.filter_by(is_active=True).order_by(PaymentMethod.sort_order).all()
     if db_methods:
@@ -1459,6 +1497,8 @@ def order_status(order_number):
         payment_method_details=method,
         pin_unlocked=pin_unlocked,
         pin_unlock_error=pin_unlock_error,
+        # La campana del header solo sigue las órdenes hechas en este navegador.
+        is_own_order=is_own_order(order.order_number),
     )
 
 

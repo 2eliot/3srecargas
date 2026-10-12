@@ -1214,6 +1214,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% if is_own_order %}<script>window.OWN_ORDER_NUMBER = {{ order.order_number|tojson }};</script>{% endif %}
 <script>
     // Si el cliente activa notificaciones desde esta pantalla, la
     // suscripción queda ligada a esta orden para avisarle cuando esté lista.

@@ -536,6 +536,9 @@
 <script>
     window.ACTIVE_CATEGORY = "{{ active_category.slug }}";
     window.PRESELECT_GAME = {{ (preselect_game_slug or '')|tojson }};
+    window.PRESELECT_PACKAGE = {{ preselect_package_id|tojson }};
+    window.PRESELECT_PLAYER_ID = {{ (preselect_player_id or '')|tojson }};
+    window.PRESELECT_ZONE_ID = {{ (preselect_zone_id or '')|tojson }};
     window.USD_RATE_BS = {{ usd_rate|default(0)|safe }};
     window.DEFAULT_PACKAGE_ID = {{ default_package_id if default_package_id is not none else 'null'|safe }};
     window.NX_BINANCE_AUTO = {{ 'true' if binance_auto_enabled else 'false' }};

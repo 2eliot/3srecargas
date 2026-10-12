@@ -185,7 +185,8 @@ class Order(db.Model):
     affiliate_code = db.Column(db.String(50))
     affiliate_id = db.Column(db.Integer, db.ForeignKey('affiliates.id'), nullable=True)
     pin_id = db.Column(db.Integer, db.ForeignKey('pins.id'), nullable=True)
-    pin_delivered = db.Column(db.String(255))
+    # Código entregado al cliente (uno por línea si la orden trae varios).
+    pin_delivered = db.Column(db.Text)
     automation_response = db.Column(db.Text)
     payment_verification_id = db.Column(db.String(100))
     payment_verified_at = db.Column(db.DateTime)
@@ -903,6 +904,31 @@ class PointsRedeemLog(db.Model):
     game = db.relationship('Game')
     package = db.relationship('Package')
     prize_order = db.relationship('Order')
+
+
+class SiteNotification(db.Model):
+    """Novedad que el admin publica: sale en la campana de la tienda para todos
+    los visitantes, la más nueva primero."""
+    __tablename__ = 'site_notifications'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(120), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    url = db.Column(db.String(300))
+    is_active = db.Column(db.Boolean, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+class OrderNotification(db.Model):
+    """Mensaje que el admin le manda a UNA orden: lo ve en su campana quien hizo
+    esa compra en ese navegador ("Sobre tu orden #...")."""
+    __tablename__ = 'order_notifications'
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id', ondelete='CASCADE'), nullable=False, index=True)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    order = db.relationship('Order', backref=db.backref(
+        'order_notifications', cascade='all, delete-orphan', order_by='OrderNotification.created_at.desc()'))
 
 
 class PushSubscription(db.Model):

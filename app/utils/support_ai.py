@@ -1,10 +1,12 @@
-"""Asistente de IA (DeepSeek) para el chat de soporte.
+"""Asistente de IA (Gemini, DeepSeek u otra compatible) para el chat de soporte.
 
-Atiende las consultas fáciles sobre pedidos: en qué estado está, si falta
-dinero, si la referencia todavía no aparece en el banco, si el ID fue
-rechazado, o qué hacer si la recarga salió completada y no se ve. Todo lo
-que dice sobre una orden sale de la base de datos (herramientas), nunca de
-lo que "se imagina" el modelo.
+Solo resuelve preguntas, no vende: atiende las consultas sobre pedidos (en
+qué estado está, si falta dinero, si la referencia todavía no aparece en el
+banco, si el ID fue rechazado, o qué hacer si la recarga salió completada y
+no se ve) y sobre la tienda (juegos, paquetes y precios, métodos de pago).
+Para comprar, el cliente usa el botón "Comprar recarga" del chat. Todo lo
+que dice sale de la base de datos (herramientas), nunca de lo que "se
+imagina" el modelo.
 
 Seguridad:
 - El link de una orden solo se envía si el cliente demostró que es suya:
@@ -13,6 +15,10 @@ Seguridad:
   es público) se le dice el estado, pero no se le manda el link, porque la
   página de la orden muestra el correo del cliente.
 - Nunca se le pasan al modelo correos, teléfonos ni notas internas.
+- Un comprobante lo lee el servidor (ver receipt_check.py): referencia, monto, si ese
+  pago ya está en una orden y si se pagó a los datos de la tienda. Si NO está en el
+  sistema y SÍ es a nuestros datos, el servidor (no el modelo) adjunta el botón para
+  crear la orden en el chat con ese comprobante.
 
 Cuando no puede resolver (lo pide el cliente, ID inválido, orden rechazada,
 o varios intentos sin encontrar su pedido) pasa el chat a un humano: se
@@ -29,13 +35,23 @@ import requests
 from flask import current_app
 
 from ..models import Order, Setting, SupportChat, SupportMessage, SupportTag, db
+from . import receipt_check
 from .locks import acquire_lock, release_lock
+from .support import DEFAULT_CLIENT_NAME
 from .timezone import format_ve
 
 DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions'
+# Gemini habla el mismo formato (OpenAI) por esta dirección: así el asistente usa la
+# MISMA llave que la tienda ya tiene para leer comprobantes (GEMINI_API_KEY).
+GEMINI_OPENAI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
 DEFAULT_MODEL = 'deepseek-chat'
+PROVIDERS = ('gemini', 'deepseek', 'custom')
+PROVIDER_NAMES = {'gemini': 'Gemini', 'deepseek': 'DeepSeek', 'custom': 'la IA'}
 DEFAULT_MAX_FAILED = 3
 HISTORY_MESSAGES = 16
+# Tope de respuestas automáticas por chat y por hora: cada una cuesta una llamada a la IA y sin tope
+# alguien podría escribir sin parar para inflar la cuenta. Pasado el tope atiende una persona.
+MAX_AI_REPLIES_PER_CHAT_PER_HOUR = 30
 MAX_TOOL_ROUNDS = 4
 REQUEST_TIMEOUT = 45
 TYPING_SECONDS = 90
@@ -43,22 +59,51 @@ REFERENCE_MIN_DIGITS = 6
 
 SETTING_KEYS = {
     'enabled': 'support_ai_enabled',
+    'provider': 'support_ai_provider',
+    # Cada proveedor tiene SU llave, para que una nunca viaje al servicio de otro:
+    # DeepSeek usa `api_key`, la IA propia usa `custom_api_key` y Gemini no guarda
+    # ninguna (usa la del servidor, la de los comprobantes).
     'api_key': 'support_ai_api_key',
+    'custom_api_key': 'support_ai_custom_api_key',
     'model': 'support_ai_model',
     'handoff_tag_id': 'support_ai_handoff_tag_id',
     'max_failed': 'support_ai_max_failed',
     'instructions': 'support_ai_instructions',
-    # Por defecto la API de DeepSeek. Se puede apuntar a cualquier servicio
-    # compatible (p. ej. Ollama en una PC propia: http://IP:11434/v1/chat/completions).
+    # Solo para la opción "otra IA" (p. ej. Ollama en una PC propia:
+    # http://IP:11434/v1/chat/completions).
     'base_url': 'support_ai_base_url',
 }
 
 
-# ─── Configuración (admin → Configuración) ──────────────────────────────────
+# ─── Configuración (admin → Soporte → Asistente IA) ─────────────────────────
 
 def _setting(key, default=''):
     row = Setting.query.filter_by(key=SETTING_KEYS[key]).first()
     return (row.value or '').strip() if row and row.value is not None else default
+
+
+def _gemini_key():
+    """La llave de Gemini del servidor: la misma que lee los comprobantes."""
+    return str(current_app.config.get('GEMINI_API_KEY') or '').strip()
+
+
+def gemini_key_configured():
+    return bool(_gemini_key())
+
+
+def _gemini_models():
+    from .reference_extraction import GEMINI_MODEL_CANDIDATES
+    return list(GEMINI_MODEL_CANDIDATES)
+
+
+def _infer_provider(saved_url):
+    """Para ajustes guardados antes de existir el selector de proveedor."""
+    saved_url = (saved_url or '').strip()
+    if saved_url.startswith('https://api.deepseek.com'):
+        return 'deepseek'
+    if not saved_url or saved_url.startswith('https://generativelanguage.googleapis.com'):
+        return 'gemini'
+    return 'custom'
 
 
 def get_ai_settings():
@@ -67,14 +112,42 @@ def get_ai_settings():
     except ValueError:
         max_failed = DEFAULT_MAX_FAILED
     tag_id = _setting('handoff_tag_id')
+    saved_url = _setting('base_url')
+    provider = _setting('provider')
+    if provider not in PROVIDERS:
+        provider = _infer_provider(saved_url)
+    saved_key = _setting('api_key')
+    custom_key = _setting('custom_api_key')
+    # Ajustes de antes del selector: una IA propia con llave la guardaba en `api_key`.
+    if provider == 'custom' and not custom_key and not _setting('provider'):
+        custom_key = saved_key
+    model = _setting('model')
+
+    if provider == 'gemini':
+        base_url, api_key = GEMINI_OPENAI_URL, _gemini_key()
+        # Un modelo de otro proveedor guardado de antes no sirve aquí.
+        if not model.lower().startswith('gemini'):
+            model = ''
+    elif provider == 'deepseek':
+        base_url, api_key = DEEPSEEK_URL, saved_key
+        if not model or model.lower().startswith('gemini'):
+            model = DEFAULT_MODEL
+    else:
+        base_url, api_key = saved_url or DEEPSEEK_URL, custom_key
+        model = model or DEFAULT_MODEL
+
     return {
         'enabled': _setting('enabled') == '1',
-        'api_key': _setting('api_key'),
-        'model': _setting('model') or DEFAULT_MODEL,
+        'provider': provider,
+        'api_key': api_key,              # la que se usa de verdad
+        'saved_api_key': saved_key,      # la de DeepSeek guardada en el panel
+        'saved_custom_key': custom_key,  # la de la IA propia guardada en el panel
+        'model': model or _gemini_models()[0],
+        'model_is_default': not model if provider == 'gemini' else False,
         'handoff_tag_id': int(tag_id) if tag_id.isdigit() else None,
         'max_failed': max(1, min(max_failed, 10)),
         'instructions': _setting('instructions'),
-        'base_url': _setting('base_url') or DEEPSEEK_URL,
+        'base_url': base_url,
     }
 
 
@@ -91,22 +164,41 @@ def normalize_base_url(url):
 
 
 def uses_deepseek(settings):
-    return settings['base_url'].startswith('https://api.deepseek.com')
+    return settings['provider'] == 'deepseek'
 
 
-def save_ai_settings(enabled, api_key, model, handoff_tag_id, max_failed, instructions, base_url=None):
+def save_ai_settings(enabled, api_key, model, handoff_tag_id, max_failed, instructions, base_url=None, provider=None,
+                     custom_api_key=None):
+    if provider not in PROVIDERS:
+        # Sin proveedor (llamadas de antes del selector): DeepSeek salvo que traigan otra URL.
+        provider = _infer_provider(base_url) if (base_url or '').strip() else 'deepseek'
+    model = (model or '').strip()[:60]
+    # Modelo de otro proveedor (se queda en el campo al cambiar de opción): se descarta.
+    if (provider == 'gemini' and not model.lower().startswith('gemini')) or \
+            (provider == 'deepseek' and model.lower().startswith('gemini')):
+        model = ''
     values = {
-        'enabled': '1' if enabled else '',
-        'model': (model or DEFAULT_MODEL).strip()[:60],
+        'provider': provider,
+        'model': model,
         'handoff_tag_id': str(handoff_tag_id or ''),
         'max_failed': str(max_failed or DEFAULT_MAX_FAILED),
         'instructions': (instructions or '').strip()[:3000],
-        'base_url': normalize_base_url(base_url),
+        'enabled': '1' if enabled else '',
+        'base_url': (normalize_base_url(base_url) if provider == 'custom'
+                     else GEMINI_OPENAI_URL if provider == 'gemini' else DEEPSEEK_URL),
     }
     # La clave solo se cambia si escribieron una nueva: el campo se muestra
-    # vacío para no dejarla a la vista en el panel.
-    if api_key and api_key.strip():
-        values['api_key'] = api_key.strip()[:200]
+    # vacío para no dejarla a la vista en el panel. Cada proveedor guarda la suya
+    # y Gemini ninguna. (Sin `custom_api_key`, una llamada de antes con IA propia
+    # trae su llave en `api_key`.)
+    if provider == 'deepseek':
+        typed, key_name = api_key, 'api_key'
+    elif provider == 'custom':
+        typed, key_name = (custom_api_key if custom_api_key is not None else api_key), 'custom_api_key'
+    else:
+        typed, key_name = '', ''
+    if typed and typed.strip():
+        values[key_name] = typed.strip()[:200]
     for key, value in values.items():
         row = Setting.query.filter_by(key=SETTING_KEYS[key]).first()
         if row:
@@ -117,8 +209,8 @@ def save_ai_settings(enabled, api_key, model, handoff_tag_id, max_failed, instru
 
 
 def _has_credentials(s):
-    # DeepSeek exige clave; un servidor propio (Ollama) normalmente no.
-    return bool(s['api_key']) or not uses_deepseek(s)
+    # DeepSeek y Gemini exigen llave; una IA propia (Ollama) normalmente no.
+    return bool(s['api_key']) or s['provider'] == 'custom'
 
 
 def is_ai_available():
@@ -268,14 +360,8 @@ def search_orders_for_chat(chat, order_number=None, reference=None, player_id=No
 
     ref = _digits(reference)
     if len(ref) >= REFERENCE_MIN_DIGITS:
-        from sqlalchemy import or_
-        rows = (Order.query
-                .filter(Order.created_at >= since,
-                        or_(Order.payment_reference.like(f'%{ref}'),
-                            Order.ai_extracted_reference.like(f'%{ref}'),
-                            Order.remainder_reference.like(f'%{ref}')))
-                .order_by(Order.created_at.desc()).limit(3).all())
-        for order in rows:
+        # La misma regla de la tienda para "es la misma operación": iguales, o una es el final de la otra.
+        for order in receipt_check.reference_orders(ref, limit=3, since=since):
             if order not in found:
                 found.append(order)
             proven.append(order)
@@ -362,7 +448,72 @@ def hand_off_to_human(chat, reason=''):
             pass
 
 
-# ─── Conversación con DeepSeek ──────────────────────────────────────────────
+# ─── Catálogo para el asistente ─────────────────────────────────────────────
+
+MAX_CATALOG_PACKAGES = 40
+
+
+def _norm(text):
+    return re.sub(r'[^a-z0-9]+', ' ', str(text or '').lower()).strip()
+
+
+def catalog_for_ai(game_query=None):
+    """Lo que ve el asistente cuando pregunta por precios. Usa las mismas
+    funciones que el menú de botones del chat (y por lo tanto la misma
+    fuente que la tienda), así que no puede dar un precio distinto."""
+    from . import support_bot
+
+    games = support_bot.list_games()
+    wanted = _norm(game_query)
+    matches = []
+    if wanted:
+        matches = [g for g in games if _norm(g['name']) == wanted or _norm(g['slug']) == wanted]
+        if not matches:
+            matches = [g for g in games if wanted in _norm(g['name']) or _norm(g['name']) in wanted]
+    if len(matches) != 1:
+        return {
+            'juegos': [{'nombre': g['name'], 'categoria': g['category']} for g in games],
+            'nota': ('Estos son los juegos que se venden. Para ver precios, llama otra vez con el nombre '
+                     'exacto de uno.' if games else 'Ahora mismo no hay juegos disponibles.'),
+        }
+
+    data = support_bot.game_packages(matches[0]['id'])
+    if not data or data.get('error'):
+        return {'error': (data or {}).get('error') or 'No se pudo consultar el juego.'}
+    # Solo las monedas en que se puede pagar ahora (según los métodos de pago activos);
+    # si un paquete no tiene precio en ellas, se da el que tenga.
+    currencies = data.get('currencies') or {'usd': True, 'bs': True}
+    packages = []
+    for p in data['packages'][:MAX_CATALOG_PACKAGES]:
+        item = {'nombre': p['name'], 'disponible': p['available'], 'nota': p['note']}
+        if currencies['usd'] and p['usd'] is not None:
+            item['precio_usd'] = p['usd']
+        if currencies['bs'] and p['bs'] is not None:
+            item['precio_bs'] = p['bs']
+        if 'precio_usd' not in item and 'precio_bs' not in item:
+            if p['usd'] is not None:
+                item['precio_usd'] = p['usd']
+            elif p['bs'] is not None:
+                item['precio_bs'] = p['bs']
+        packages.append(item)
+    accepted = ' y '.join(name for key, name in (('usd', 'dólares ($)'), ('bs', 'bolívares (Bs)')) if currencies[key])
+    return {
+        'juego': data['game']['name'],
+        'paquetes': packages,
+        'nota': f'Se paga en {accepted}. Los montos en Bs usan la tasa de hoy: el total exacto se ve al pagar.',
+    }
+
+
+def payment_methods_for_ai():
+    from . import support_bot
+    methods = support_bot.payment_methods()
+    return {
+        'metodos': methods,
+        'nota': 'Los datos para pagar (cuenta, teléfono...) se muestran al cliente en la tienda al pagar: no los des tú.',
+    } if methods else {'metodos': [], 'nota': 'Ahora mismo no hay métodos de pago disponibles.'}
+
+
+# ─── Conversación con la IA ─────────────────────────────────────────────────
 
 TOOLS = [
     {
@@ -398,6 +549,27 @@ TOOLS = [
     {
         'type': 'function',
         'function': {
+            'name': 'consultar_catalogo',
+            'description': ('Precios y paquetes de la tienda, en vivo. Sin argumentos devuelve los juegos que se '
+                            'venden; con el nombre de un juego devuelve sus paquetes con precio en USD y en Bs '
+                            'y si están disponibles.'),
+            'parameters': {
+                'type': 'object',
+                'properties': {'juego': {'type': 'string', 'description': 'Nombre del juego (ej. Free Fire)'}},
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'metodos_de_pago',
+            'description': 'Métodos de pago que acepta la tienda ahora mismo (nombre y moneda).',
+            'parameters': {'type': 'object', 'properties': {}},
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
             'name': 'pasar_a_humano',
             'description': 'Pasa el chat a un agente humano del equipo. Después de llamarla, despídete avisando que un agente lo atenderá.',
             'parameters': {
@@ -411,7 +583,9 @@ TOOLS = [
 
 
 def _system_prompt(chat, settings, known_orders):
+    from . import support_bot
     schedule = _support_schedule()
+    buy_in_chat = support_bot.public_bot_config()['enabled']
     parts = [
         'Eres el asistente virtual de soporte de 3S Recargas, una tienda venezolana de recargas de juegos '
         '(diamantes de Free Fire, Blood Strike y otros). Hablas con un cliente por el chat de la web.',
@@ -437,8 +611,29 @@ def _system_prompt(chat, settings, known_orders):
         'puedes resolver con los datos, o si ya intentaste varias veces sin encontrar su pedido.',
         '- No prometas reembolsos ni cambios, no pidas contraseñas ni datos bancarios, y nunca des datos de '
         'pedidos que no sean de quien escribe.',
+        '- Puedes responder precios y paquetes con consultar_catalogo y métodos de pago con metodos_de_pago. '
+        'NUNCA inventes precios ni paquetes: di solo lo que devuelven. Los montos en Bs dependen de la tasa '
+        'del día, avísalo. Si un paquete sale no disponible, dilo.',
+        '- Tú solo resuelves preguntas: no tomas pedidos ni pagos por el chat. Si el cliente quiere comprar, '
+        'dile que toque el botón "Comprar recarga" que está abajo del chat (o entre a la tienda) y ahí elige '
+        'su paquete y paga. No des datos de cuentas de pago: se ven al pagar.',
+        '- Cuando el cliente manda la foto de un comprobante, el sistema la lee y te lo cuenta entre paréntesis '
+        '("Lectura automática del comprobante"): referencia, monto, si ya hay una orden con ese pago y si fue '
+        'pagado a los datos de la tienda. Usa SOLO eso: no adivines nada más de la imagen.',
+        '- Comprobante con "ya hay una orden: SÍ": usa buscar_ordenes con esa referencia y dile el estado como siempre. '
+        'Si dice que es una orden de hace más de 60 días, llama pasar_a_humano.',
+        ('- Comprobante con "ya hay una orden: NO" y "pagado a los datos de la tienda: SÍ": dile que ese pago todavía '
+         'no tiene una orden y que puede crearla aquí mismo con ese comprobante; el sistema le pone debajo de tu '
+         'mensaje el botón "Crear mi orden con este comprobante". No uses buscar_ordenes ni le pidas más datos: '
+         'solo invítalo a tocar el botón.' if buy_in_chat else
+         '- Comprobante con "ya hay una orden: NO" y "pagado a los datos de la tienda: SÍ": dile que ese pago todavía '
+         'no tiene una orden y que la haga en la tienda adjuntando ese comprobante.'),
+        '- Comprobante pagado a otros datos, o que no se pudo comprobar a quién se pagó: NO lo invites a crear la '
+        'orden. Dile en una frase que no puedes confirmar ese pago y llama pasar_a_humano para que el equipo lo revise.',
+        '- Si no se pudo leer el comprobante, pídele una foto más clara o que escriba la referencia.',
         '- Si te pregunta algo general de la tienda que no sabes, dilo y ofrece pasarlo con un agente.',
-        f'El cliente se llama {chat.client_name}.',
+        (f'El cliente se llama {chat.client_name}.' if chat.client_name != DEFAULT_CLIENT_NAME
+         else 'No sabemos cómo se llama el cliente: no lo llames por ningún nombre.'),
     ]
     if schedule:
         parts.append(f'Horario de atención del equipo humano: {schedule}.')
@@ -462,7 +657,7 @@ def _history(chat):
         if m.attachment:
             text += '\n[Adjuntó una imagen]'
             if m.ai_note:
-                text += f' {m.ai_note}'
+                text += f' {receipt_check.note_for_model(m.ai_note)}'
         if m.sender == 'client':
             messages.append({'role': 'user', 'content': text.strip() or '(mensaje vacío)'})
         else:
@@ -470,30 +665,49 @@ def _history(chat):
     return messages
 
 
-def _call_deepseek(settings, messages):
-    response = requests.post(
-        settings['base_url'],
-        headers=_headers(settings['api_key']),
-        json={
-            'model': settings['model'],
-            'messages': messages,
-            'tools': TOOLS,
-            'temperature': 0.3,
-            'max_tokens': 500,
-        },
-        timeout=REQUEST_TIMEOUT,
-    )
+def _post_chat(settings, api_key, body):
+    """POST al servicio de IA. Con Gemini y el modelo por defecto, si Google retira
+    o no ofrece un modelo se prueba el siguiente de la lista (igual que el lector
+    de comprobantes). Devuelve la última respuesta."""
+    from .reference_extraction import _should_retry_with_fallback
+
+    models = [settings['model']]
+    if settings['provider'] == 'gemini' and settings.get('model_is_default'):
+        models = _gemini_models()
+    response = None
+    for index, model in enumerate(models):
+        response = requests.post(
+            settings['base_url'], headers=_headers(api_key),
+            json={**body, 'model': model}, timeout=REQUEST_TIMEOUT,
+        )
+        if response.status_code < 400 or index == len(models) - 1:
+            break
+        if not _should_retry_with_fallback(response.status_code, response.text):
+            break
+    return response
+
+
+def _call_ai(settings, messages):
+    # Los modelos "con pensamiento" de Gemini gastan parte del límite pensando.
+    response = _post_chat(settings, settings['api_key'], {
+        'messages': messages,
+        'tools': TOOLS,
+        'temperature': 0.3,
+        'max_tokens': 1500 if settings['provider'] == 'gemini' else 500,
+    })
     if response.status_code >= 400:
         raise RuntimeError(f'La IA respondió {response.status_code}: {response.text[:200]}')
     return response.json()['choices'][0]['message']
 
 
-def _read_pending_attachments(chat):
-    """Si el cliente mandó una foto (comprobante), se lee la referencia con
-    el lector de comprobantes que ya usa la tienda y se guarda como nota
-    interna del mensaje para que el asistente la use."""
+def _read_pending_attachments(chat, instructions=''):
+    """Si el cliente mandó una foto (comprobante), se lee con el lector de
+    comprobantes que ya usa la tienda (referencia, monto y a quién se pagó), se
+    comprueba si ese pago ya está en una orden y si es a los datos de la tienda,
+    y el resultado se guarda como nota interna del mensaje (ver receipt_check)."""
     import os
-    from .reference_extraction import extract_reference_from_image_path
+    from . import receipt_check
+    from .reference_extraction import extract_receipt_details_from_image_path
     from .support import is_video_attachment
 
     pending = (SupportMessage.query
@@ -505,14 +719,49 @@ def _read_pending_attachments(chat):
             m.ai_note = '(es un video, no se puede leer)'
             continue
         try:
-            result = extract_reference_from_image_path(
+            result = extract_receipt_details_from_image_path(
                 os.path.join(current_app.config['UPLOAD_FOLDER'], m.attachment))
+            if not (result or {}).get('ok'):
+                # El motivo real (llave sin configurar, servicio caído...) es del admin: al cliente solo se le pide otra foto.
+                current_app.logger.warning('[SupportAI] no se pudo leer un comprobante: %s', (result or {}).get('message'))
+            note = receipt_check.analyze(result, instructions)
         except Exception:
-            result = {}
-        ref = (result or {}).get('reference') or ''
-        m.ai_note = (f'(El sistema leyó en el comprobante la referencia: {ref})' if ref
-                     else '(No se pudo leer una referencia en la imagen)')
+            current_app.logger.exception('[SupportAI] no se pudo analizar un comprobante')
+            note = {'v': receipt_check.NOTE_VERSION, 'read': False}
+        m.ai_note = receipt_check.encode_note(note)
     db.session.commit()
+
+
+RECEIPT_BUTTON_PREFIX = '#comprar:'
+RECEIPT_BUTTON_LABEL = 'Crear mi orden con este comprobante'
+RECEIPT_INVITE_TEXT = ('Ese pago todavía no tiene una orden en nuestro sistema y sí fue hecho a nuestros datos. '
+                       'Puedes crear tu orden aquí mismo con ese comprobante: toca el botón de abajo.')
+
+
+def _receipt_invitation(chat):
+    """(url, etiqueta) del botón para crear la orden con el comprobante que el
+    cliente acaba de mandar, o None. La decide el servidor con la nota guardada,
+    no el modelo: hace falta que el comprobante se haya leído, que su referencia
+    no esté en ninguna orden y que el pago sea a los datos de la tienda."""
+    from . import receipt_check, support_bot
+
+    if not support_bot.public_bot_config()['enabled']:
+        return None    # la compra en el chat va con el menú de botones
+    last = (SupportMessage.query
+            .filter(SupportMessage.chat_id == chat.id, SupportMessage.sender == 'client',
+                    SupportMessage.attachment.isnot(None))
+            .order_by(SupportMessage.id.desc()).first())
+    if not last or last.is_deleted or not last.ai_note:
+        return None
+    if last.created_at and last.created_at < datetime.utcnow() - timedelta(minutes=receipt_check.INVITE_MAX_AGE_MINUTES):
+        return None
+    note = receipt_check.decode_note(last.ai_note)
+    if not receipt_check.can_invite(note) or receipt_check.reference_orders(note['reference']):
+        return None
+    url = f'{RECEIPT_BUTTON_PREFIX}{last.id}'
+    if SupportMessage.query.filter_by(chat_id=chat.id, action_url=url).first():
+        return None    # ya se le ofreció con este comprobante
+    return url, RECEIPT_BUTTON_LABEL
 
 
 def generate_reply(chat_id):
@@ -523,7 +772,7 @@ def generate_reply(chat_id):
     if not chat or chat.is_blocked or not chat.ai_active or not (settings['enabled'] and _has_credentials(settings)):
         return False
 
-    _read_pending_attachments(chat)
+    _read_pending_attachments(chat, settings['instructions'])
     known = orders_already_known(chat)
     messages = [{'role': 'system', 'content': _system_prompt(chat, settings, known)}] + _history(chat)
 
@@ -533,8 +782,13 @@ def generate_reply(chat_id):
     reply_text = ''
 
     for _round in range(MAX_TOOL_ROUNDS):
-        answer = _call_deepseek(settings, messages)
+        answer = _call_ai(settings, messages)
         calls = answer.get('tool_calls') or []
+        # Algunos servicios (Gemini) no numeran las llamadas: se numeran aquí para
+        # que cada resultado se pueda emparejar con la suya.
+        for index, call in enumerate(calls):
+            if not call.get('id'):
+                call['id'] = f'call_{_round}_{index}'
         if not calls:
             reply_text = (answer.get('content') or '').strip()
             break
@@ -560,6 +814,10 @@ def generate_reply(chat_id):
                     result = {'ok': True, 'nota': 'El botón con el link se adjuntará a tu respuesta.'}
                 else:
                     result = {'ok': False, 'nota': 'No puedes enviar ese link: pide la referencia del pago o el número de orden.'}
+            elif name == 'consultar_catalogo':
+                result = catalog_for_ai(args.get('juego'))
+            elif name == 'metodos_de_pago':
+                result = payment_methods_for_ai()
             elif name == 'pasar_a_humano':
                 handoff_reason = (args.get('motivo') or 'Solicitado por el asistente')[:150]
                 result = {'ok': True}
@@ -569,12 +827,18 @@ def generate_reply(chat_id):
                              'content': json.dumps(result, ensure_ascii=False)})
         db.session.commit()
 
-    if searched_without_results:
+    # Un comprobante pagado a nuestros datos que todavía no tiene orden no es un
+    # "intento fallido": no hay pedido que encontrar, hay que ofrecerle crearlo.
+    invite = None if handoff_reason else _receipt_invitation(chat)
+    if searched_without_results and not invite:
         chat.ai_failed = (chat.ai_failed or 0) + 1
-    if not handoff_reason and (chat.ai_failed or 0) >= settings['max_failed']:
+    if not handoff_reason and not invite and (chat.ai_failed or 0) >= settings['max_failed']:
         handoff_reason = f'{chat.ai_failed} intentos sin encontrar el pedido'
         reply_text = ('No logro encontrar tu pedido con esos datos. Te paso con un agente de nuestro equipo '
                       'para que lo revise, en breve te responden por aquí.')
+    if invite and not action:
+        action = invite
+        reply_text = reply_text or RECEIPT_INVITE_TEXT
 
     if not reply_text and handoff_reason:
         reply_text = 'Te paso con un agente de nuestro equipo, en breve te responden por aquí.'
@@ -640,6 +904,12 @@ def schedule_reply(chat):
     instante y la respuesta aparece sola en el chat (con 'escribiendo...')."""
     if not should_handle(chat):
         return False
+    recent = (SupportMessage.query
+              .filter(SupportMessage.chat_id == chat.id, SupportMessage.is_ai.is_(True),
+                      SupportMessage.created_at >= datetime.utcnow() - timedelta(hours=1))
+              .count())
+    if recent >= MAX_AI_REPLIES_PER_CHAT_PER_HOUR:
+        return False   # el que llama avisa al equipo, como cuando la IA está apagada
     chat.ai_typing_at = datetime.utcnow()
     db.session.commit()
     app = current_app._get_current_object()
@@ -654,24 +924,33 @@ def is_typing(chat):
 def test_connection(api_key=None, model=None):
     """Prueba rápida desde el admin: una pregunta corta a la IA configurada."""
     settings = get_ai_settings()
-    key = (api_key or '').strip() or settings['api_key']
-    name = 'DeepSeek' if uses_deepseek(settings) else 'la IA'
-    if uses_deepseek(settings) and not key:
-        return False, 'Falta la API key de DeepSeek.'
+    provider = settings['provider']
+    name = PROVIDER_NAMES[provider]
+    if provider == 'gemini':
+        key = settings['api_key']
+        if not key:
+            return False, ('Falta la llave de Gemini en el servidor (GEMINI_API_KEY): es la misma que usa '
+                           'la tienda para leer comprobantes.')
+    else:
+        key = (api_key or '').strip() or settings['api_key']
+        if provider == 'deepseek' and not key:
+            return False, 'Falta la API key de DeepSeek.'
+    if model and provider != 'gemini':
+        settings = {**settings, 'model': model}
     try:
-        response = requests.post(
-            settings['base_url'],
-            headers=_headers(key),
-            json={'model': model or settings['model'], 'max_tokens': 10,
-                  'messages': [{'role': 'user', 'content': 'Responde solo: ok'}]},
-            timeout=30,
-        )
+        response = _post_chat(settings, key, {
+            'max_tokens': 200 if provider == 'gemini' else 10,
+            'messages': [{'role': 'user', 'content': 'Responde solo: ok'}],
+        })
     except requests.RequestException as exc:
         return False, f'No se pudo conectar con {name} ({settings["base_url"]}): {exc}'
-    if response.status_code == 401:
-        return False, 'La API key no es válida.'
+    if response.status_code in (401, 403):
+        return False, ('La llave de Gemini no es válida o no tiene permiso.' if provider == 'gemini'
+                       else 'La API key no es válida.')
     if response.status_code == 402:
-        return False, 'La cuenta de DeepSeek no tiene saldo.'
+        return False, f'La cuenta de {name} no tiene saldo.'
+    if response.status_code == 429:
+        return False, f'{name} dice que se pasó el límite de uso por ahora. Intenta en unos minutos.'
     if response.status_code == 404:
         return False, f'{name} respondió 404: revisa la URL y que el modelo "{settings["model"]}" exista.'
     if response.status_code >= 400:

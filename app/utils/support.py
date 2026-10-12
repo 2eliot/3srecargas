@@ -46,6 +46,9 @@ MAX_ATTACHMENT_BYTES = 16 * 1024 * 1024
 
 MAX_NAME_LENGTH = 40
 MIN_NAME_LENGTH = 2
+# El chat ya no pide el nombre: quien no lo da queda como "Cliente" y el
+# código (#ABCD) es lo que lo distingue en la bandeja.
+DEFAULT_CLIENT_NAME = 'Cliente'
 MAX_BODY_LENGTH = 2000
 MAX_NEW_CHATS_PER_IP_PER_HOUR = 3
 MAX_MESSAGES_PER_CHAT_PER_MINUTE = 10
@@ -96,12 +99,13 @@ def clean_email(raw):
 
 
 def clean_name(raw):
+    """Nombre opcional: si no viene (o es muy corto) queda "Cliente"."""
     # Se sustituye por espacio, no por nada: quitando el salto a secas,
     # un nombre con salto de linea quedaba pegado sin separacion.
     name = _INVISIBLE_CHARS.sub(' ', str(raw or ''))
     name = _WHITESPACE_RUN.sub(' ', name).strip()
     if len(name) < MIN_NAME_LENGTH:
-        raise SupportError('Escribe tu nombre para iniciar el chat.')
+        return DEFAULT_CLIENT_NAME
     return name[:MAX_NAME_LENGTH]
 
 
@@ -297,9 +301,9 @@ def _count_recent_chats_from_ip(client_ip):
             .count())
 
 
-def start_chat(name, context=None, client_ip=None, user_agent=None, user_id=None,
+def start_chat(name=None, context=None, client_ip=None, user_agent=None, user_id=None,
                email=None):
-    """Abre el chat. El nombre es lo único obligatorio."""
+    """Abre el chat. No se pide nada: el nombre y el correo son opcionales."""
     name = clean_name(name)
 
     if _count_recent_chats_from_ip(client_ip) >= MAX_NEW_CHATS_PER_IP_PER_HOUR:
@@ -323,12 +327,14 @@ def start_chat(name, context=None, client_ip=None, user_agent=None, user_id=None
     apply_context(chat, context)
     apply_auto_tags(chat)
 
-    add_system_message(chat, f'{name} inició un chat de soporte.')
+    # Sin nombre, "Cliente inició…" suena raro: el aviso lo ve el cliente en su chat.
+    add_system_message(chat, 'Chat de soporte iniciado.' if name == DEFAULT_CLIENT_NAME
+                       else f'{name} inició un chat de soporte.')
     db.session.commit()
     return chat
 
 
-def reopen_or_start(token, name, context=None, client_ip=None, user_agent=None,
+def reopen_or_start(token, name=None, context=None, client_ip=None, user_agent=None,
                     user_id=None, email=None):
     """Un navegador tiene un solo chat vivo: si ya lo tiene, se reabre en
     vez de crear otro. Sin esto, cerrar y volver a abrir el modal llenaría

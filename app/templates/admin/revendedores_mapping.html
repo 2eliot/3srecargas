@@ -31,6 +31,7 @@
     <button id="btn-rev-refresh" class="map-btn">Refrescar</button>
     <span id="co-balance" class="map-chip" style="display:none;"></span>
   </div>
+  <div id="co-perm" class="map-note" style="display:none; margin:-8px 0 16px 0; line-height:1.5;"></div>
 
   <!-- Paso 1: juego -->
   <div style="margin-bottom:16px;">
@@ -222,7 +223,8 @@
     items.forEach(it => {
       const price = it.price != null ? ` ($${provider === 'centralone' ? Number(it.price).toFixed(4) : Number(it.price).toFixed(2)})` : '';
       const stock = (provider === 'centralone' && !it.in_stock) ? ' · SIN STOCK' : '';
-      row._pkg.appendChild(option(it.catalog_id, `${it.name}${price}${stock}`));
+      const code = (provider === 'centralone' && it.delivers_code) ? ' · entrega CÓDIGO' : '';
+      row._pkg.appendChild(option(it.catalog_id, `${it.name}${price}${code}${stock}`));
     });
     row._pkg.disabled = !items.length;
     if (selectedId) row._pkg.value = selectedId;
@@ -240,6 +242,23 @@
       const hint = document.createElement('span');
       hint.textContent = 'Datos que pide: ' + item.fields.join(', ');
       row._extra.appendChild(hint);
+    }
+    // ¿Encaja el producto con el tipo de paquete? (códigos vs. recarga al ID)
+    const store = (mappingData.store_packages || []).find(p => String(p.id) === String(packageSelect.value));
+    if (store) {
+      const note = document.createElement('div');
+      note.style.cssText = 'flex-basis:100%; font-size:12px; line-height:1.5;';
+      if (item.delivers_code && store.is_code_section) {
+        note.style.color = '#34d399';
+        note.textContent = '✓ Este producto entrega un código: se guarda en la orden, se le muestra al cliente y le llega por correo.';
+      } else if (item.delivers_code) {
+        note.style.color = '#fbbf24';
+        note.textContent = '⚠ Este producto entrega un CÓDIGO, pero este paquete no está en la sección de códigos de tu web: el cliente no lo vería y la orden quedaría para que la resuelvas tú. Pasa el juego a la sección de códigos o elige un producto que pida el ID del jugador.';
+      } else if (store.is_code_section) {
+        note.style.color = '#fbbf24';
+        note.textContent = '⚠ Este producto es una recarga directa (pide el ID del jugador), pero este paquete es de la sección de códigos y no pide ID.';
+      }
+      if (note.textContent) row._extra.appendChild(note);
     }
     (item.selects || []).forEach(sel => {
       const wrap = document.createElement('label');
@@ -381,10 +400,17 @@
     balanceChip.style.display = '';
     balanceChip.textContent = 'Saldo Central One: consultando…';
     try {
-      const res = await fetch('/admin/centralone/balance');
+      const res = await fetch('/admin/centralone/balance?check_codes=1');
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'sin respuesta');
       balanceChip.textContent = `Saldo Central One: ${data.currency} ${Number(data.available).toFixed(2)} disponible · ${Number(data.held).toFixed(2)} retenido`;
+      const perm = $('co-perm');
+      if (data.codes_permission === false) {
+        perm.style.display = '';
+        perm.textContent = '⚠ La llave de Central One NO tiene el permiso «ver códigos» (codes:read): los productos que entregan código no llegarán al cliente. Crea una llave nueva con ese permiso y ponla en el .env del servidor.';
+      } else {
+        perm.style.display = 'none';
+      }
     } catch (e) {
       balanceChip.textContent = 'Saldo Central One: no se pudo consultar (' + e.message + ')';
     }

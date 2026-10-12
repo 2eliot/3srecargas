@@ -14,6 +14,11 @@ importan para no recargar dos veces ni perder dinero:
   no se creó ningún pedido, así que el siguiente intento usa una llave nueva.
   Un error de red o un 5xx NO garantiza nada: se reintenta con la misma llave.
 
+* Los productos de CÓDIGO (gift cards, PINs) entregan el código aparte:
+  `GET /orders/{id}/codes`, que exige el permiso `codes:read` de la llave. El
+  código se guarda en la orden (`pin_delivered`, como tus PINs propios) y la
+  orden no se completa hasta tenerlo.
+
 Todo lo que entra por aquí pasa por `order_processing.process_order_delivery`,
 que es quien decide si, tras un rechazo definitivo, la orden pasa al proveedor
 de respaldo.
@@ -22,6 +27,7 @@ import hashlib
 import json
 import re
 import time
+from uuid import uuid4
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -29,6 +35,7 @@ import requests
 from flask import current_app
 
 from ..models import CentralOneCatalogItem, db
+from .locks import acquire_lock, release_lock
 from .minigames import ensure_minigame_opportunity
 from .notifications import notify_order_completed
 from .order_processing import get_order_centralone_items, process_affiliate_commission
@@ -59,7 +66,15 @@ _HINTS = {
     'player': 'Verifica el ID o el servidor del jugador con el cliente antes de reintentar.',
     'config': 'Revisa la llave de Central One (CENTRALONE_API_KEY) y que tenga permiso para crear pedidos. Luego dale Aprobar.',
     'rejected': 'Central One no pudo entregar la recarga y no cobró nada. Dale Aprobar para reintentar.',
+    'code_missing': ('Central One entregó el pedido pero no devolvió el código. Revísalo en su portal y dale '
+                     'Aprobar para volver a pedirlo.'),
+    'code_hidden': ('Este paquete no está en la sección de códigos de tu web, así que el cliente no ve el código. '
+                    'Está en el detalle de la orden: canjéalo tú y dale Aprobar, o pasa el juego a la sección de códigos.'),
 }
+
+# Bloqueos de una orden que Central One YA entregó: nunca se pasa al respaldo
+# (el proveedor sí recargó/entregó), solo se resuelven a mano.
+_DELIVERED_BLOCKS = ('code_missing', 'code_hidden')
 
 _ZONE_KEY_RE = re.compile(r'zone|server|region|area|world|realm', re.I)
 
@@ -152,6 +167,47 @@ def create_order(product_id, target_payload, idempotency_key, note=''):
 
 def fetch_order(remote_order_id):
     return _request('GET', f'/orders/{remote_order_id}').get('order') or {}
+
+
+def fetch_order_codes(remote_order_id):
+    """Códigos de un pedido ya entregado. Necesita el permiso `codes:read`."""
+    return _request('GET', f'/orders/{remote_order_id}/codes').get('order') or {}
+
+
+def probe_codes_permission():
+    """¿La llave tiene el permiso `codes:read`? Se pregunta por un pedido que no
+    existe: sin el permiso responde 403 (insufficient_scope) y con él 404. Es
+    una lectura, no gasta nada. Devuelve True, False o None si no se pudo saber."""
+    try:
+        _request('GET', '/orders/00000000-0000-0000-0000-000000000000/codes')
+    except CentralOneError as exc:
+        if exc.code == 'insufficient_scope':
+            return False
+        return True
+    except CentralOneUnknown:
+        return None
+    return True
+
+
+def extract_pin(code):
+    """Central One puede mandar "PIN - SERIAL": el cliente canjea solo el PIN
+    (la primera parte); el serial es el número de control del proveedor."""
+    return str(code or '').split(' - ', 1)[0].strip()
+
+
+def is_code_section(order):
+    """La orden es de la sección de códigos de la web (categoría 'tarjetas'),
+    donde el cliente recibe el código en su orden y por correo."""
+    category = order.game.category if order.game else None
+    return bool(category and (category.slug or '').lower() == 'tarjetas')
+
+
+def _append_codes(order, pins):
+    current = [c for c in (order.pin_delivered or '').split('\n') if c.strip()]
+    for pin in pins:
+        if pin and pin not in current:
+            current.append(pin)
+    order.pin_delivered = '\n'.join(current)
 
 
 # ─── Catálogo ────────────────────────────────────────────────────────────────
@@ -404,6 +460,9 @@ def _load_state(order, items, base_state=None):
             'retry_after': cur.get('retry_after') or '',
             'first_transient_at': cur.get('first_transient_at') or '',
             'previous_orders': cur.get('previous_orders') or [],
+            'awaiting_codes': bool(cur.get('awaiting_codes')),
+            'codes_expected': int(cur.get('codes_expected') or 0),
+            'codes_saved': bool(cur.get('codes_saved')),
         })
     auto_resp['source'] = 'centralone_api'
     auto_resp['provider'] = 'centralone'
@@ -452,18 +511,26 @@ def _blocked(order, auto_resp, steps, step_index, step, cause, error, label, cle
         step['idempotency_key'] = ''
     auto_resp['last_error'] = error
     hint = _HINTS.get(cause, '')
-    _note(order, f'{label} Central One rechazó la recarga: {error}. No se reintenta automáticamente.' + (f' {hint}' if hint else ''))
+    if cause in _DELIVERED_BLOCKS:
+        note = f'{label} {error}. {hint}'
+        message = f'{error}. {hint}'
+    else:
+        note = f'{label} Central One rechazó la recarga: {error}. No se reintenta automáticamente.' + (f' {hint}' if hint else '')
+        message = f'Central One rechazó la recarga en el paso {step_index + 1}: {error}. {hint}'.strip()
+    _note(order, note)
     _persist(order, auto_resp, steps)
-    return {
+    result = {
         'ok': False,
         'changed': False,
         'pending_verification': False,
         'current_step_index': step_index,
         'blocked_cause': cause,
-        'message': f'Central One rechazó la recarga en el paso {step_index + 1}: {error}. {hint}'.strip(),
+        'message': message,
         'category': 'danger',
-        **_rejection_flags(steps, step_index, cause),
     }
+    if cause not in _DELIVERED_BLOCKS:
+        result.update(_rejection_flags(steps, step_index, cause))
+    return result
 
 
 # ─── Cola de recargas ────────────────────────────────────────────────────────
@@ -524,7 +591,9 @@ def process_centralone_queue(order, base_state=None, force=False):
     process_affiliate_commission(order)
     db.session.commit()
     try:
-        notify_order_completed(order, order.package, order.game)
+        # En la sección de códigos el aviso lleva el código (igual que con tus PINs).
+        notify_order_completed(order, order.package, order.game,
+                               pin_code=(order.pin_delivered or None) if is_code_section(order) else None)
     except Exception:
         pass
     return {
@@ -543,6 +612,13 @@ def _advance_step(order, auto_resp, steps, step_index, step, item, defaults, for
     label = f'[Central One][Paso {step_index + 1}]'
 
     blocked = step.get('blocked_cause') or ''
+    if blocked == 'code_hidden' and force:
+        # El admin ya vio el código en el detalle de la orden y lo canjeó él.
+        step.update({'success': True, 'pending_verification': False, 'blocked_cause': '', 'error': ''})
+        auto_resp['blocked_cause'] = ''
+        _note(order, f'{label} Aprobación manual: se da por entregado el código de Central One (canjeado por el admin).')
+        _persist(order, auto_resp, steps)
+        return None
     if blocked:
         if force and blocked != 'player':
             # Se arreglan sin tocar la orden (llave, mapeo, un fallo ajeno):
@@ -553,6 +629,16 @@ def _advance_step(order, auto_resp, steps, step_index, step, item, defaults, for
             _note(order, f'{label} Reintento manual (intento {int(step.get("attempt") or 0) + 1}) tras un bloqueo por "{blocked}".')
         else:
             hint = _HINTS.get(blocked, '')
+            if blocked in _DELIVERED_BLOCKS:
+                return {
+                    'ok': False,
+                    'changed': False,
+                    'pending_verification': False,
+                    'current_step_index': step_index,
+                    'blocked_cause': blocked,
+                    'message': f"{step.get('error') or 'Central One ya entregó el pedido'}. {hint}".strip(),
+                    'category': 'danger',
+                }
             return {
                 'ok': False,
                 'changed': False,
@@ -718,6 +804,9 @@ def _remote_outcome(remote):
 def _poll_step(order, auto_resp, steps, step_index, step, force, label):
     """Consulta el pedido de Central One de este paso. Devuelve None si ya se
     entregó (se sigue con el siguiente paso) o el resultado que detiene la cola."""
+    if step.get('awaiting_codes') and not step.get('codes_saved'):
+        # Ya entregado: solo falta traer el código.
+        return _collect_codes(order, auto_resp, steps, step_index, step, force, label)
     if not force and _is_future(step.get('next_check_at')):
         return _pending(step_index, 'Central One está procesando la recarga; se verifica sola.')
 
@@ -746,8 +835,7 @@ def _poll_step(order, auto_resp, steps, step_index, step, force, label):
     step['remote_status'] = str(remote.get('status') or step.get('remote_status') or '')
 
     if outcome in ('delivered', 'refunded'):
-        step.update({'success': True, 'pending_verification': False, 'error': '', 'blocked_cause': '',
-                     'next_check_at': '', 'retry_after': ''})
+        step.update({'error': '', 'blocked_cause': '', 'next_check_at': '', 'retry_after': ''})
         if outcome == 'refunded':
             step['refunded'] = True
             _note(order, f'{label} Pedido {reference} entregado pero Central One devolvió el importe después. Revísalo con el proveedor.')
@@ -755,8 +843,16 @@ def _poll_step(order, auto_resp, steps, step_index, step, force, label):
             _note(order, f'{label} Pedido {reference} completado en Central One.')
         lines = remote.get('items') if isinstance(remote.get('items'), list) else []
         delivered_codes = int((lines[0] or {}).get('delivered_count') or 0) if lines and isinstance(lines[0], dict) else 0
-        if delivered_codes:
-            _note(order, f'{label} Central One entregó {delivered_codes} código(s); se ven en su portal (esta llave no pide verlos).')
+
+        if delivered_codes or is_code_section(order):
+            # Producto de CÓDIGO: la orden no se completa hasta traer el código.
+            # (En la sección de códigos se intenta aunque Central One no cuente
+            # ninguno, para no dar por entregada una orden sin código.)
+            step.update({'awaiting_codes': True, 'codes_expected': delivered_codes, 'pending_verification': True})
+            _persist(order, auto_resp, steps)
+            return _collect_codes(order, auto_resp, steps, step_index, step, True, label)
+
+        step.update({'success': True, 'pending_verification': False})
         _persist(order, auto_resp, steps)
         return None
 
@@ -782,6 +878,123 @@ def _poll_step(order, auto_resp, steps, step_index, step, force, label):
     _persist(order, auto_resp, steps)
     return _pending(step_index, (f'El pedido {reference} lleva más de {CO_STUCK_HOURS} h en proceso en Central One: revísalo con su soporte.'
                                  if stuck else 'Central One está procesando la recarga; se verifica sola.'))
+
+
+def _collect_codes(order, auto_resp, steps, step_index, step, force, label):
+    """Trae de Central One el código de un pedido YA entregado y lo guarda en la
+    orden. Devuelve None si el paso quedó completo o el resultado que detiene la
+    cola. Aquí nunca se abre el respaldo: Central One sí entregó."""
+    reference = step.get('reference_code') or step['remote_order_id']
+    if not force and _is_future(step.get('retry_after')):
+        return _pending(step_index, 'Central One entregó el pedido; se está trayendo el código.')
+
+    try:
+        remote = fetch_order_codes(step['remote_order_id'])
+    except CentralOneUnknown as exc:
+        step['retry_after'] = _later(CO_UNKNOWN_RETRY_SECONDS)
+        step['error'] = str(exc)
+        _persist(order, auto_resp, steps)
+        return _pending(step_index, f'No se pudo pedir el código a Central One ({exc}). Se reintentará sola.')
+    except CentralOneError as exc:
+        wait = max(5, exc.retry_after or 30) if exc.code == 'rate_limited' else CO_RETRY_SECONDS
+        step['retry_after'] = _later(wait)
+        step['error'] = exc.message
+        if exc.code == 'insufficient_scope':
+            step['error'] = "La llave de Central One no tiene el permiso «ver códigos» (codes:read)."
+            _note(order, (f'{label} Central One YA entregó el pedido {reference}, pero la llave no tiene el permiso «ver códigos» '
+                          '(codes:read): el código no puede llegar al cliente. Crea una llave nueva con ese permiso, ponla en el '
+                          '.env del servidor y la orden lo trae sola (o dale Aprobar).'))
+        else:
+            _note(order, f'{label} No se pudo pedir el código del pedido {reference} ({exc.code}): {exc.message}')
+        _persist(order, auto_resp, steps)
+        return _pending(step_index, step['error'] + ' La orden espera; no se recargará dos veces.')
+
+    pins = [pin for line in (remote.get('items') or []) if isinstance(line, dict)
+            for pin in (extract_pin(code) for code in (line.get('codes') or [])) if pin]
+
+    if not pins:
+        if int(step.get('codes_expected') or 0) > 0:
+            # Central One cuenta un código pero todavía no lo devuelve.
+            step['retry_after'] = _later(CO_UNKNOWN_RETRY_SECONDS)
+            step['error'] = 'Central One aún no devuelve el código.'
+            _persist(order, auto_resp, steps)
+            return _pending(step_index, 'Central One entregó el pedido pero aún no devuelve el código; se reintentará sola.')
+        return _blocked(order, auto_resp, steps, step_index, step, 'code_missing',
+                        f'Central One entregó el pedido {reference} pero no devolvió ningún código', label, clear_key=False)
+
+    _append_codes(order, pins)
+    step.update({'codes_saved': True, 'awaiting_codes': False, 'error': '', 'retry_after': ''})
+    if not is_code_section(order):
+        # El código queda guardado (el admin lo ve), pero a este cliente no se
+        # le muestra: no es la sección de códigos. Se deja para el admin.
+        return _blocked(order, auto_resp, steps, step_index, step, 'code_hidden',
+                        f'Central One entregó el código del pedido {reference}', label, clear_key=False)
+
+    step.update({'success': True, 'pending_verification': False, 'blocked_cause': ''})
+    _note(order, f'{label} Código del pedido {reference} recibido y guardado en la orden.')
+    _persist(order, auto_resp, steps)
+    return None
+
+
+def attach_delivered_codes(order):
+    """Trae los códigos de pedidos que Central One YA entregó pero cuyo código
+    nunca llegó a la orden (órdenes de antes de que la tienda los pidiera, o
+    que se completaron con una llave sin el permiso «ver códigos»). Si la orden
+    ya está completada y es de la sección de códigos, avisa al cliente.
+
+    Devuelve {'ok', 'message', 'count'}."""
+    lock_key = f'order_delivery:{order.id}'
+    holder = uuid4().hex
+    if not acquire_lock(lock_key, 120, holder):
+        return {'ok': False, 'count': 0, 'message': 'Esta orden se está procesando en este momento. Intenta de nuevo en unos segundos.'}
+    try:
+        db.session.refresh(order)
+        try:
+            state = json.loads(order.automation_response or '{}')
+        except (TypeError, ValueError):
+            state = {}
+        steps = state.get('steps') if isinstance(state, dict) and state.get('source') == 'centralone_api' else None
+        targets = [s for s in (steps or []) if isinstance(s, dict) and s.get('remote_order_id') and not s.get('codes_saved')]
+        if not targets:
+            return {'ok': False, 'count': 0, 'message': 'Esta orden no tiene pedidos de Central One con códigos pendientes de traer.'}
+
+        pins = []
+        for step in targets:
+            try:
+                remote = fetch_order_codes(step['remote_order_id'])
+            except CentralOneError as exc:
+                text = ('La llave de Central One no tiene el permiso «ver códigos» (codes:read). Crea una llave nueva con '
+                        'ese permiso y ponla en el .env.' if exc.code == 'insufficient_scope' else exc.message)
+                return {'ok': False, 'count': 0, 'message': f'No se pudo pedir el código: {text}'}
+            except CentralOneUnknown as exc:
+                return {'ok': False, 'count': 0, 'message': f'No se pudo pedir el código: {exc}'}
+            found = [pin for line in (remote.get('items') or []) if isinstance(line, dict)
+                     for pin in (extract_pin(code) for code in (line.get('codes') or [])) if pin]
+            if found:
+                pins.extend(found)
+                step['codes_saved'] = True
+                step['awaiting_codes'] = False
+        if not pins:
+            return {'ok': False, 'count': 0, 'message': 'Central One no tiene códigos para esta orden (fue una recarga directa).'}
+
+        _append_codes(order, pins)
+        _note(order, f'[Admin] Se trajeron {len(pins)} código(s) de Central One y se guardaron en la orden.')
+        _persist(order, state, steps)
+        notified = False
+        if order.status == 'completed' and is_code_section(order):
+            try:
+                notify_order_completed(order, order.package, order.game, pin_code=order.pin_delivered)
+                notified = True
+            except Exception:
+                pass
+        return {
+            'ok': True,
+            'count': len(pins),
+            'message': (f'Se trajeron {len(pins)} código(s) y quedaron en la orden'
+                        + (' (se avisó al cliente por correo y notificación).' if notified else '.')),
+        }
+    finally:
+        release_lock(lock_key, holder)
 
 
 def _next_check_at(step, now):

@@ -3,6 +3,8 @@ Constructores de plantillas HTML de correo para 3S Recargas.
 Plantillas: orden_creada, orden_aprobada, orden_completada (con PIN/código), orden_rechazada, nueva_orden_admin.
 """
 
+from html import escape as _esc
+
 from app.utils.email import get_setting
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -135,12 +137,16 @@ def _wrap_html(title, body_content):
 
 
 def _detail_row(label, value, value_color=None):
-    """Fila de detalle individual para tablas de información de orden."""
+    """Fila de detalle individual para tablas de información de orden.
+
+    Todo lo que llega aquí es texto (y mucho lo escribe el cliente: ID, referencia,
+    apodo...), así que se escapa: sin eso, un cliente podía meter HTML y links en el
+    correo que la tienda manda a su dirección o a la del admin."""
     s = _base_style()
     vc = value_color or s['white']
     return f"""<tr>
-<td style="padding:8px 0; color:{s['muted']}; font-size:14px; border-bottom:1px solid {s['border']}; width:40%;">{label}</td>
-<td style="padding:8px 0; color:{vc}; font-size:14px; font-weight:600; border-bottom:1px solid {s['border']}; text-align:right;">{value}</td>
+<td style="padding:8px 0; color:{s['muted']}; font-size:14px; border-bottom:1px solid {s['border']}; width:40%;">{_esc(str(label))}</td>
+<td style="padding:8px 0; color:{vc}; font-size:14px; font-weight:600; border-bottom:1px solid {s['border']}; text-align:right;">{_esc(str(value))}</td>
 </tr>"""
 
 
@@ -292,12 +298,14 @@ def build_order_completed_pin_email(order, package, game, pin_code=None):
     code = pin_code or ''
     game_description = _game_description(game)
 
+    # Un pedido puede traer varios códigos (uno por línea): se escapan y se separan con salto de línea.
+    code_safe = _esc(code).replace('\n', '<br>')
     code_html = ''
     if code:
         code_html = f"""
 <div style="margin:24px 0; padding:20px; background-color:#0f0f0f; border:2px dashed {s['accent']}; border-radius:10px; text-align:center;">
     <p style="margin:0 0 8px 0; font-size:13px; color:{s['muted']}; text-transform:uppercase; letter-spacing:1px;">Tu código</p>
-    <p style="margin:0; font-size:28px; font-weight:700; color:{s['accent_light']}; letter-spacing:2px; font-family:monospace;">{code}</p>
+    <p style="margin:0; font-size:28px; font-weight:700; color:{s['accent_light']}; letter-spacing:2px; font-family:monospace;">{code_safe}</p>
     <p style="margin:8px 0 0 0; font-size:12px; color:{s['muted']};">Copia este código y canjéalo en la plataforma correspondiente</p>
 </div>
 """
@@ -363,7 +371,7 @@ def build_order_rejected_email(order, package, game, reason=None):
         reason_html = f"""
 <div style="margin:20px 0; padding:16px; background-color:rgba(239,68,68,0.1); border-left:4px solid {s['danger']}; border-radius:6px;">
     <p style="margin:0 0 4px 0; font-size:12px; color:{s['danger']}; text-transform:uppercase; letter-spacing:0.5px; font-weight:600;">Motivo</p>
-    <p style="margin:0; font-size:14px; color:{s['text']}; line-height:1.5;">{reason_text}</p>
+    <p style="margin:0; font-size:14px; color:{s['text']}; line-height:1.5;">{_esc(reason_text)}</p>
 </div>
 """
 

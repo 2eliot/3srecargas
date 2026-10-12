@@ -13,17 +13,6 @@
 
     var TOKEN_KEY = 'store:support-token';
 
-    var startBox = document.getElementById('scStart');
-    var startForm = document.getElementById('scStartForm');
-    var nameInput = document.getElementById('scName');
-    var firstMessage = document.getElementById('scFirstMessage');
-    var emailInput = document.getElementById('scEmail');
-    var trap = document.getElementById('scWebsite');
-    var errorEl = document.getElementById('scError');
-    var startFileInput = document.getElementById('scStartFile');
-    var startFileNameEl = document.getElementById('scStartFileName');
-
-    var chatBox = document.getElementById('scChat');
     var thread = document.getElementById('scThread');
     var codeEl = document.getElementById('scCode');
     var presenceEl = document.getElementById('scPresence');
@@ -34,10 +23,13 @@
     var attachBtn = document.getElementById('scAttach');
     var fileInput = document.getElementById('scFile');
 
-    if (!startForm || !thread) return;
+    if (!thread || !composer) return;
 
     var state = {
         token: '',
+        // El chat existe en el servidor desde el primer mensaje; antes de eso
+        // la pantalla es solo la caja para escribir.
+        hasChat: !!window.SUPPORT_HAS_CHAT,
         lastId: parseInt(window.SUPPORT_LAST_ID || 0, 10) || 0,
         sending: false,
         timer: null
@@ -63,12 +55,6 @@
         var h = extra || {};
         if (state.token) h['X-Support-Token'] = state.token;
         return h;
-    }
-
-    function showError(message) {
-        if (!errorEl) return;
-        errorEl.textContent = message || '';
-        errorEl.hidden = !message;
     }
 
     function scrollDown() { thread.scrollTop = thread.scrollHeight; }
@@ -122,14 +108,22 @@
             el.appendChild(body);
         }
 
-        // Botón del asistente (link de la orden). Solo rutas internas de
-        // órdenes: nunca un link a otro sitio.
+        // Botón del asistente. Solo dos clases, nunca un link a otro sitio: el link de
+        // una orden de la tienda, o "crear mi orden con este comprobante" (#comprar:<id
+        // del mensaje con la foto>), que abre la compra dentro del chat (support-buy.js).
         if (message.action_url && /^\/order\/\d+$/.test(message.action_url)) {
             var action = document.createElement('a');
             action.className = 'sc-action-btn';
             action.href = message.action_url;
             action.textContent = message.action_label || 'Ver mi orden';
             el.appendChild(action);
+        } else if (message.action_url && /^#comprar:\d+$/.test(message.action_url)) {
+            var buy = document.createElement('button');
+            buy.type = 'button';
+            buy.className = 'sc-action-btn';
+            buy.dataset.buyReceipt = message.action_url.split(':')[1];
+            buy.textContent = message.action_label || 'Crear mi orden con este comprobante';
+            el.appendChild(buy);
         }
 
         if (message.attachment) {
@@ -210,9 +204,8 @@
         if (presenceEl && isClosed) presenceEl.textContent = 'Chat cerrado';
     }
 
-    function enterChat() {
-        if (startBox) startBox.hidden = true;
-        if (chatBox) chatBox.hidden = false;
+    // Deja el hilo al final y el cursor listo para escribir.
+    function readyToType() {
         scrollDown();
         if (input) input.focus();
     }
@@ -258,94 +251,55 @@
         });
     }
 
-    // ── Comprobante opcional al abrir el chat ───────────────────────────
-
-    if (startFileInput && startFileNameEl) {
-        startFileInput.addEventListener('change', function () {
-            var file = startFileInput.files && startFileInput.files[0];
-            if (!file) { startFileNameEl.hidden = true; return; }
-            if (file.size > 15 * 1024 * 1024) {
-                alert('El archivo es muy pesado. Envía uno de menos de 15 MB.');
-                startFileInput.value = '';
-                startFileNameEl.hidden = true;
-                return;
-            }
-            startFileNameEl.textContent = '✓ ' + file.name;
-            startFileNameEl.hidden = false;
-        });
-    }
-
-    function uploadStartAttachment() {
-        var file = startFileInput && startFileInput.files && startFileInput.files[0];
-        if (!file) return;
-
-        var payload = new FormData();
-        payload.append('file', file);
-
-        fetch('/soporte/adjunto', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: headers(),
-            body: payload
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (data && data.ok) { render(data.message); applyChat(data.chat); }
-            })
-            .catch(function () {});
-    }
-
     // ── Abrir el chat ────────────────────────────────────────────────────
+    //
+    // No hay formulario: la pantalla es un chat normal y el hilo se crea en
+    // el servidor con el primer mensaje (o el primer adjunto). Asi abrir
+    // "Soporte" sin escribir nada no deja chats vacios en la bandeja.
 
-    startForm.addEventListener('submit', function (evt) {
-        evt.preventDefault();
-        showError('');
+    // Error con texto listo para mostrarle al cliente (el que mando el
+    // servidor), para distinguirlo de un corte de red.
+    function failure(message) {
+        var err = new Error(message);
+        err.fromServer = true;
+        return err;
+    }
 
-        var name = nameInput ? String(nameInput.value || '').trim() : '';
-        if (name.length < 2) {
-            showError('Escribe tu nombre para iniciar el chat.');
-            return;
+    function startChat(message, hasAttachment) {
+        var payload = {
+            message: message,
+            context: collectContext(),
+            // Si trae adjunto, el asistente espera a que suba para leerlo
+            // en vez de responder dos veces.
+            has_attachment: !!hasAttachment
+        };
+        // Solo el flujo "Olvide mi contrasena" trae el correo (y de el, el nombre).
+        var autoEmail = window.SUPPORT_AUTO_EMAIL || '';
+        if (autoEmail) {
+            payload.email = autoEmail;
+            payload.name = autoEmail.split('@')[0] || 'Mini';
         }
 
-        var btn = startForm.querySelector('.sc-start-btn');
-        if (btn) btn.disabled = true;
-
-        fetch('/soporte/iniciar', {
+        return fetch('/soporte/iniciar', {
             method: 'POST',
             credentials: 'same-origin',
             headers: headers({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({
-                name: name,
-                message: firstMessage ? firstMessage.value : '',
-                email: emailInput ? emailInput.value : '',
-                website: trap ? trap.value : '',
-                context: collectContext(),
-                // Si trae comprobante, el asistente espera a que suba para
-                // leerlo en vez de responder dos veces.
-                has_attachment: !!(startFileInput && startFileInput.files && startFileInput.files[0])
-            })
+            body: JSON.stringify(payload)
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (btn) btn.disabled = false;
                 if (!data || !data.ok) {
-                    showError((data && data.error) || 'No pudimos abrir el chat. Intenta de nuevo.');
-                    return;
+                    throw failure((data && data.error) || 'No pudimos abrir el chat. Intenta de nuevo.');
                 }
                 writeToken(data.token);
+                state.hasChat = true;
                 state.lastId = 0;
-                thread.innerHTML = '';
+                thread.innerHTML = '';  // quita el saludo y lo que se haya consultado en el menú
                 (data.messages || []).forEach(render);
                 applyChat(data.chat);
-                uploadStartAttachment();
-                enterChat();
                 startPolling();
-            })
-            .catch(function () {
-                if (btn) btn.disabled = false;
-                showError('Sin conexión. Revisa tu internet e intenta de nuevo.');
             });
-    });
+    }
 
     function collectContext() {
         var context = { page: location.pathname.slice(0, 255) };
@@ -368,45 +322,48 @@
 
     // ── Escribir ─────────────────────────────────────────────────────────
 
-    if (composer) {
-        composer.addEventListener('submit', function (evt) {
-            evt.preventDefault();
-            if (state.sending) return;
-
-            var body = input ? String(input.value || '').trim() : '';
-            if (!body) return;
-
-            state.sending = true;
-            if (input) { input.value = ''; input.style.height = ''; }
-
-            fetch('/soporte/mensaje', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: headers({ 'Content-Type': 'application/json' }),
-                body: JSON.stringify({ body: body })
-            })
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    state.sending = false;
-                    if (data && data.ok) {
-                        render(data.message);
-                        applyChat(data.chat);
-                        // Escribir reabre el hilo cerrado por inactividad.
-                        if (closedEl) closedEl.hidden = true;
-                    } else if (input) {
-                        // Devolver el texto: perder lo que alguien acaba de
-                        // escribir por un fallo de red es la peor forma de
-                        // recibir a quien ya viene molesto.
-                        input.value = body;
-                        alert((data && data.error) || 'No se pudo enviar el mensaje.');
-                    }
-                })
-                .catch(function () {
-                    state.sending = false;
-                    if (input) input.value = body;
-                });
-        });
+    function sendMessage(body) {
+        return fetch('/soporte/mensaje', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: headers({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ body: body })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) throw failure((data && data.error) || 'No se pudo enviar el mensaje.');
+                render(data.message);
+                applyChat(data.chat);
+            });
     }
+
+    composer.addEventListener('submit', function (evt) {
+        evt.preventDefault();
+        if (state.sending) return;
+
+        var body = input ? String(input.value || '').trim() : '';
+        if (!body) return;
+
+        state.sending = true;
+        if (input) { input.value = ''; input.style.height = ''; }
+
+        // Sin chat todavia, el primer mensaje lo crea.
+        var request = state.hasChat ? sendMessage(body) : startChat(body, false);
+        request
+            .then(function () {
+                state.sending = false;
+                // Escribir reabre el hilo cerrado por inactividad.
+                if (closedEl) closedEl.hidden = true;
+            })
+            .catch(function (err) {
+                state.sending = false;
+                // Devolver el texto: perder lo que alguien acaba de
+                // escribir por un fallo de red es la peor forma de
+                // recibir a quien ya viene molesto.
+                if (input) input.value = body;
+                if (err && err.fromServer) alert(err.message);
+            });
+    });
 
     if (input) {
         // Enter envia, Shift+Enter salta de linea.
@@ -441,69 +398,76 @@
                 return;
             }
 
-            var payload = new FormData();
-            payload.append('file', file);
-            payload.append('body', input ? input.value : '');
-
             attachBtn.disabled = true;
-            fetch('/soporte/adjunto', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: headers(),
-                body: payload
-            })
+
+            // Sin chat todavia, el adjunto tambien lo crea.
+            var ready = state.hasChat ? Promise.resolve() : startChat('', true);
+            ready
+                .then(function () {
+                    var payload = new FormData();
+                    payload.append('file', file);
+                    payload.append('body', input ? input.value : '');
+                    return fetch('/soporte/adjunto', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: headers(),
+                        body: payload
+                    });
+                })
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
-                    attachBtn.disabled = false;
-                    fileInput.value = '';
-                    if (data && data.ok) {
-                        if (input) input.value = '';
-                        render(data.message);
-                        applyChat(data.chat);
-                    } else {
-                        alert((data && data.error) || 'No se pudo enviar la imagen.');
-                    }
+                    if (!data || !data.ok) throw failure((data && data.error) || 'No se pudo enviar la imagen.');
+                    if (input) input.value = '';
+                    render(data.message);
+                    applyChat(data.chat);
                 })
-                .catch(function () {
+                .catch(function (err) {
+                    alert(err && err.fromServer ? err.message : 'No se pudo enviar la imagen.');
+                })
+                .then(function () {
                     attachBtn.disabled = false;
                     fileInput.value = '';
-                    alert('No se pudo enviar la imagen.');
                 });
         });
     }
 
     // ── Arranque ─────────────────────────────────────────────────────────
 
+    // Manda solo el mensaje que ya trae la pagina (flujo "Olvide mi
+    // contrasena"): el mini ya dio su correo antes de llegar, asi que no
+    // tiene que escribir nada ni tocar enviar.
+    function sendAutoMessage() {
+        if (!window.SUPPORT_AUTO_MESSAGE || !input) return;
+        input.value = window.SUPPORT_AUTO_MESSAGE;
+        if (composer.requestSubmit) composer.requestSubmit();
+        else composer.dispatchEvent(new Event('submit', { cancelable: true }));
+    }
+
     state.token = readToken();
 
+    // Con ?orden= el mensaje del pedido llega escrito: se ajusta el alto de
+    // la caja para que se lea y el cliente solo lo envia.
+    if (input && input.value) input.dispatchEvent(new Event('input'));
+
     if (window.SUPPORT_AUTO_START && !window.SUPPORT_HAS_CHAT) {
-        // Viene de "Olvidé mi contraseña": ya pidió el correo antes de
-        // llegar, así que el chat se manda solo, sin que el mini tenga que
-        // escribir su nombre ni tocar "Iniciar chat" de nuevo.
-        var autoEmail = window.SUPPORT_AUTO_EMAIL || '';
-        if (nameInput) nameInput.value = (autoEmail.split('@')[0] || 'Mini');
-        if (emailInput && autoEmail) emailInput.value = autoEmail;
-        if (startForm.requestSubmit) startForm.requestSubmit();
-        else startForm.dispatchEvent(new Event('submit', { cancelable: true }));
+        sendAutoMessage();
     } else if (window.SUPPORT_HAS_CHAT && window.SUPPORT_AUTO_SEND) {
-        // Mismo caso, pero el navegador ya tenía un chat abierto (uno por
-        // navegador): el mensaje se agrega ahí en vez de perderse. Se
-        // manda una sola vez por pestaña para que recargar la página no
+        // Mismo caso, pero el navegador ya tenia un chat abierto (uno por
+        // navegador): el mensaje se agrega ahi en vez de perderse. Se
+        // manda una sola vez por pestana para que recargar la pagina no
         // lo repita.
-        enterChat();
+        readyToType();
         startPolling();
         var yaEnviado = false;
         try { yaEnviado = sessionStorage.getItem('store:support-forgot-sent') === '1'; } catch (_) {}
-        if (!yaEnviado && window.SUPPORT_AUTO_MESSAGE && composer && input) {
+        if (!yaEnviado) {
             try { sessionStorage.setItem('store:support-forgot-sent', '1'); } catch (_) {}
-            input.value = window.SUPPORT_AUTO_MESSAGE;
-            if (composer.requestSubmit) composer.requestSubmit();
-            else composer.dispatchEvent(new Event('submit', { cancelable: true }));
+            sendAutoMessage();
         }
     } else if (window.SUPPORT_HAS_CHAT) {
         // El servidor ya pinto el hilo (reconocio la cookie). Solo falta
         // ponerse a sondear.
-        enterChat();
+        readyToType();
         startPolling();
     } else if (state.token) {
         // Hay token guardado pero el servidor no lo vio: la cookie se
@@ -517,13 +481,14 @@
                 if (!data || !data.ok) { writeToken(''); return; }
                 thread.innerHTML = '';
                 state.lastId = 0;
+                state.hasChat = true;
                 (data.messages || []).forEach(render);
                 applyChat(data.chat);
-                enterChat();
+                readyToType();
                 startPolling();
             })
             .catch(function () {});
-    } else if (nameInput) {
-        nameInput.focus();
+    } else if (input) {
+        input.focus();
     }
 })();

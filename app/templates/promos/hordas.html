@@ -658,10 +658,11 @@ const ctx = canvas.getContext('2d');
 const IS_MOBILE = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
     && (navigator.maxTouchPoints > 0 || 'ontouchstart' in window);
 const isPortrait = () => window.innerHeight >= window.innerWidth;
-const LOW_END = (navigator.hardwareConcurrency || 4) <= 4;
+// Muchos teléfonos baratos declaran 8 núcleos y son lentos, así que además de
+// contar núcleos y memoria se mide la velocidad real (ver "Calidad de dibujo").
+const LOW_END = (navigator.hardwareConcurrency || 4) <= 4 || (navigator.deviceMemory || 4) <= 2;
 const MAX_ENEMIES = LOW_END ? 60 : 90;
 const MAX_GEMS = 180;
-const MAX_PARTICLES = LOW_END ? 60 : 160;
 const FOLLOW_SPEED_MULT = 5;
 
 let W = 0, H = 0;
@@ -683,8 +684,46 @@ function joyZoneHeight() {
     return Math.round(Math.min(180, window.innerHeight * 0.24));
 }
 
+// ─── Calidad de dibujo ──────────────────────────────────────────────────────
+// Solo cambia cómo se DIBUJA, nunca la simulación: una partida se repite igual
+// con cualquier calidad. 0 = completa, 1 = reducida (lienzo sin retina, estela
+// corta, sin rayos del aura), 2 = mínima (sin estelas, sin partículas).
+// Se sube sola cuando el teléfono no llega a ~40 cuadros por segundo de forma
+// sostenida (lo más pesado son las balas con mezcla de brillo) y se recuerda
+// la reducida para la próxima vez; la mínima solo vale para esta partida.
+let quality = REPLAY_MODE ? 0 : Math.max(LOW_END ? 1 : 0, Math.min(1, Number(storageGet('hordas_quality')) || 0));
+let slowFrames = 0;
+let qualityCooldownMs = 0;
+let frameEmaMs = 1000 / 60;
+
+function particleCap() {
+    return quality >= 2 ? 0 : (LOW_END || quality >= 1 ? 60 : 160);
+}
+
+function setQuality(level) {
+    quality = level;
+    slowFrames = 0;
+    qualityCooldownMs = 4000;   // esperar a ver si mejora antes de bajar otro nivel
+    frameEmaMs = 1000 / 60;
+    storageSet('hordas_quality', String(Math.min(1, level)));
+    resizeCanvas();             // el lienzo cambia de resolución
+}
+
+function adaptQuality(gapMs) {
+    if (REPLAY_MODE || !game || game.state !== 'play' || game.tick < 180) return;  // sin contar el arranque
+    if (!(gapMs > 0) || gapMs > 250) return;                                      // pausa o cambio de app: no es lentitud
+    frameEmaMs += (gapMs - frameEmaMs) * 0.08;
+    if (qualityCooldownMs > 0) { qualityCooldownMs -= gapMs; return; }
+    if (quality < 2 && frameEmaMs > 25) {
+        slowFrames += 1;
+        if (slowFrames > 75) setQuality(quality + 1);   // ~1,5 s seguidos yendo lento
+    } else {
+        slowFrames = 0;
+    }
+}
+
 function resizeCanvas() {
-    const dpr = LOW_END ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = (LOW_END || quality >= 1) ? 1 : Math.min(window.devicePixelRatio || 1, 2);
     // En la repetición se usa el tamaño grabado (las partidas viejas
     // pueden tener otro); en vivo, siempre el campo fijo.
     if (!REPLAY_MODE) { W = FIELD_W; H = FIELD_H; }
@@ -789,7 +828,10 @@ const touch = { active: false, id: null, x: 0, y: 0 };
 //      de ir a donde está el dedo: así el dedo no tapa al personaje.
 //   4: la vida se llena al 100% al empezar cada oleada (y por eso ya no se
 //      ofrece la mejora "Curación").
-const RULES_VERSION = 4;
+//   5: ya no se ofrece la mejora "Robo de vida" (daba demasiada ventaja). Sigue
+//      en la lista UPGRADES porque las grabaciones guardan la mejora por su
+//      posición en ella: quitarla movería todas las demás.
+const RULES_VERSION = 5;
 const JOY_MAX_SPEED = 270;  // velocidad con el joystick a fondo (unidades del campo por segundo)
 const JOY_RADIUS = 52;      // cuánto hay que arrastrar el pulgar para ir a fondo (px de pantalla)
 const JOY_DEADZONE = 0.12;  // un toque mínimo no mueve al personaje
@@ -1032,7 +1074,7 @@ function releasePower(e, minions) {
 }
 
 function addParticles(x, y, color, count) {
-    for (let i = 0; i < count && game.particles.length < MAX_PARTICLES; i++) {
+    for (let i = 0; i < count && game.particles.length < particleCap(); i++) {
         const a = Math.random() * Math.PI * 2;
         const s = 60 + Math.random() * 140;
         game.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.45, max: 0.45, color });
@@ -1056,7 +1098,7 @@ function killEnemy(index) {
     game.kills += 1;
     const p = game.player;
     if (p.lifesteal) p.hp = Math.min(p.maxHp, p.hp + 1.5 * p.lifesteal);
-    addParticles(e.x, e.y, e.color, LOW_END ? 3 : (e.type === 'boss' ? 16 : 6));
+    addParticles(e.x, e.y, e.color, (LOW_END || quality >= 1) ? 3 : (e.type === 'boss' ? 16 : 6));
     dropGems(e.x, e.y, e.drop);
     game.enemies.splice(index, 1);
 }
@@ -1558,9 +1600,10 @@ function drawPlayerAura(p) {
     const now = performance.now();
     const t = now / 1000;
     const pulse = 0.5 + 0.5 * Math.sin(t * (2 + level * 4));
+    if (quality >= 2) return;
 
     // Los rayos cambian de forma cada 60-110ms: se ven chisporrotear.
-    if (now - auraBoltsAt > 110 - level * 50) {
+    if (quality < 1 && now - auraBoltsAt > 110 - level * 50) {
         auraBolts = buildAuraBolts(level);
         auraBoltsAt = now;
     }
@@ -1570,6 +1613,7 @@ function drawPlayerAura(p) {
     const size = 50 + level * 45 + pulse * (4 + level * 10);
     ctx.globalAlpha = 0.25 + level * 0.35 + pulse * 0.08;
     ctx.drawImage(AURA_GLOW, p.x - size / 2, p.y - size / 2, size, size);
+    if (quality >= 1) { ctx.restore(); return; }   // sin los rayos
 
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -1586,9 +1630,9 @@ function drawPlayerAura(p) {
 
 function emitAuraSparks(p, dt) {
     const wave = game.wave || 1;
-    if (wave < 5 || LOW_END) return;
+    if (wave < 5 || LOW_END || quality >= 1) return;
     game.sparkTimer = (game.sparkTimer || 0) - dt;
-    if (game.sparkTimer > 0 || game.particles.length >= MAX_PARTICLES) return;
+    if (game.sparkTimer > 0 || game.particles.length >= particleCap()) return;
     game.sparkTimer = Math.max(0.03, 0.14 - (wave - 5) * 0.01);
     const color = wave >= 10 ? '#ff4d4d' : '#f87171';
     game.particles.push({
@@ -1606,7 +1650,7 @@ function updateWalk(p, speed, dt) {
     p.walkAmount = (p.walkAmount || 0) + (target - (p.walkAmount || 0)) * Math.min(1, dt * 12);
     p.walkPhase = (p.walkPhase || 0) + dt * (4 + p.walkAmount * 10);
     p.dustTimer = (p.dustTimer || 0) - dt;
-    if (p.walkAmount > 0.25 && p.dustTimer <= 0 && game.particles.length < MAX_PARTICLES) {
+    if (p.walkAmount > 0.25 && p.dustTimer <= 0 && game.particles.length < particleCap()) {
         p.dustTimer = 0.09;
         game.particles.push({
             x: p.x + (Math.random() - 0.5) * 12, y: p.y + PLAYER_SPRITE_SIZE * 0.34,
@@ -1897,31 +1941,51 @@ const gemSprite = (() => {
 
 // Franja de fuego en el borde (reglas 2, oleada 6+): roja y pulsante, más
 // intensa si el jugador está dentro, para que se entienda por qué pierde vida.
-function drawEdgeZone(p) {
-    const t = performance.now() / 1000;
-    const pulse = 0.5 + 0.5 * Math.sin(t * 5);
-    const inside = Math.min(p.x, W - p.x, p.y - 48, H - p.y) < EDGE_BAND;
-    const alpha = (inside ? 0.38 : 0.2) + pulse * 0.12;
-    const top = 48;
-    ctx.save();
-    const bands = [
+const EDGE_TOP = 48;
+const EDGE_DASH = [10, 8];
+let edgeBands = null;
+
+// Los degradados no cambian entre cuadros (solo su intensidad): se crean una
+// vez, opacos, y la intensidad se aplica con globalAlpha. Antes se creaban 4
+// degradados y 4 textos de color en cada cuadro de las oleadas 6+.
+function getEdgeBands() {
+    if (edgeBands && edgeBands.W === W && edgeBands.H === H) return edgeBands.list;
+    const top = EDGE_TOP;
+    const defs = [
         [0, top, W, EDGE_BAND, 0, top, 0, top + EDGE_BAND],
         [0, H - EDGE_BAND, W, EDGE_BAND, 0, H, 0, H - EDGE_BAND],
         [0, top, EDGE_BAND, H - top, 0, 0, EDGE_BAND, 0],
         [W - EDGE_BAND, top, EDGE_BAND, H - top, W, 0, W - EDGE_BAND, 0],
     ];
-    for (const [x, y, w, h, gx0, gy0, gx1, gy1] of bands) {
+    const list = defs.map(([x, y, w, h, gx0, gy0, gx1, gy1]) => {
         const grad = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
-        grad.addColorStop(0, `rgba(255,40,20,${alpha})`);
+        grad.addColorStop(0, 'rgba(255,40,20,1)');
         grad.addColorStop(1, 'rgba(255,40,20,0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(x, y, w, h);
+        return { x, y, w, h, grad };
+    });
+    edgeBands = { W, H, list };
+    return list;
+}
+
+function drawEdgeZone(p) {
+    const t = performance.now() / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+    const inside = Math.min(p.x, W - p.x, p.y - EDGE_TOP, H - p.y) < EDGE_BAND;
+    const alpha = (inside ? 0.38 : 0.2) + pulse * 0.12;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    for (const b of getEdgeBands()) {
+        ctx.fillStyle = b.grad;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
     }
+    ctx.globalAlpha = 1;
     ctx.strokeStyle = `rgba(255,90,40,${0.45 + pulse * 0.35})`;
     ctx.lineWidth = 2;
-    ctx.setLineDash([10, 8]);
-    ctx.lineDashOffset = -t * 40;
-    ctx.strokeRect(EDGE_BAND, top + EDGE_BAND, W - EDGE_BAND * 2, H - top - EDGE_BAND * 2);
+    if (quality < 1) {
+        ctx.setLineDash(EDGE_DASH);
+        ctx.lineDashOffset = -t * 40;
+    }
+    ctx.strokeRect(EDGE_BAND, EDGE_TOP + EDGE_BAND, W - EDGE_BAND * 2, H - EDGE_TOP - EDGE_BAND * 2);
     ctx.restore();
 }
 
@@ -1996,17 +2060,25 @@ function draw() {
     // Bolas de fuego: núcleo brillante + estela que se desvanece hacia atrás.
     ctx.globalCompositeOperation = 'lighter';
     const flicker = performance.now() / 45;
+    // Cada bala con estela cuesta 4 dibujos con mezcla de brillo: con 250 balas
+    // son 1.000 por cuadro, lo que más le pesa a un teléfono flojo. Con muchas
+    // balas la estela ni se distingue, así que se acorta según cuántas hay.
+    const bulletCount = game.bullets.length;
+    const trail = quality >= 2 || bulletCount > 160 ? 0 : (quality >= 1 || bulletCount > 70 ? 1 : 3);
     for (const b of game.bullets) {
-        const speed = Math.hypot(b.vx, b.vy) || 1;
-        const ux = b.vx / speed, uy = b.vy / speed;
-        for (let k = 3; k >= 1; k--) {
-            const s = FIRE_SIZE * (1 - k * 0.2) * (0.9 + 0.1 * Math.sin(flicker + k + b.x * 0.05));
-            ctx.globalAlpha = 0.55 - k * 0.13;
-            ctx.drawImage(fireSprite, b.x - ux * k * 5 - s / 2, b.y - uy * k * 5 - s / 2, s, s);
+        if (trail) {
+            const speed = Math.hypot(b.vx, b.vy) || 1;
+            const ux = b.vx / speed, uy = b.vy / speed;
+            for (let k = trail; k >= 1; k--) {
+                const s = FIRE_SIZE * (1 - k * 0.2) * (0.9 + 0.1 * Math.sin(flicker + k + b.x * 0.05));
+                ctx.globalAlpha = 0.55 - k * 0.13;
+                ctx.drawImage(fireSprite, b.x - ux * k * 5 - s / 2, b.y - uy * k * 5 - s / 2, s, s);
+            }
+            ctx.globalAlpha = 1;
         }
-        ctx.globalAlpha = 1;
         ctx.drawImage(fireSprite, b.x - FIRE_SIZE / 2, b.y - FIRE_SIZE / 2, FIRE_SIZE, FIRE_SIZE);
     }
+    ctx.globalAlpha = 1;
     if (p.orbs) {
         for (let k = 0; k < p.orbs; k++) {
             const a = p.orbAngle + (k / p.orbs) * Math.PI * 2;
@@ -2190,7 +2262,8 @@ function replayPayload() {
 }
 
 function frame(t) {
-    const dt = Math.min(0.1, Math.max(0, (t - lastFrame) / 1000 || 0));
+    const gapMs = t - lastFrame;
+    const dt = Math.min(0.1, Math.max(0, gapMs / 1000 || 0));
     lastFrame = t;
     if (REPLAY_MODE) {
         replayAdvance(dt);
@@ -2204,6 +2277,7 @@ function frame(t) {
         }
         if (n === MAX_STEPS_PER_FRAME) stepAcc = 0; // teléfono muy lento: el juego va más lento, no se salta pasos
     }
+    adaptQuality(gapMs);
     draw();
     updateHud();
     rafId = requestAnimationFrame(frame);
@@ -2213,7 +2287,9 @@ function showUpgrades() {
     game.state = 'upgrade';
     const pool = UPGRADES.filter((u) => (!u.max || (game.upgradeCounts[u.id] || 0) < u.max)
         // Con la vida llena en cada oleada (reglas 4), curarse no sirve.
-        && !(game.rules >= 4 && u.id === 'heal'));
+        && !(game.rules >= 4 && u.id === 'heal')
+        // Reglas 5: sin robo de vida.
+        && !(game.rules >= 5 && u.id === 'lifesteal'));
     const options = [];
     while (options.length < 3 && pool.length) {
         options.push(pool.splice(Math.floor(R() * pool.length), 1)[0]);

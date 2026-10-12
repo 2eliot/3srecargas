@@ -1079,7 +1079,7 @@ HORDE_FIELD_H = 800
 # Versión de reglas vigente (RULES_VERSION en el juego). Una partida nueva
 # con reglas viejas (más fáciles, o moviéndose con el dedo en vez del
 # joystick) no suma: sería un juego modificado.
-HORDE_RULES_VERSION = 4
+HORDE_RULES_VERSION = 5
 HORDE_HARD_FROM_WAVE = 6   # desde aquí los monstruos salen más seguido (reglas 2)
 HORDE_DROPS = {'grunt': 1, 'runner': 1, 'tank': 3, 'boss': 10, 'shooter': 2}
 HORDE_BOSS_MAX_SUMMONS = 4      # cada invocación son 3 esbirros de 1 💎

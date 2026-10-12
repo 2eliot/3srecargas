@@ -1,0 +1,229 @@
+{% extends 'admin/base.html' %}
+{% block title %}Asistente de soporte{% endblock %}
+{% block page_title %}Asistente de soporte{% endblock %}
+
+{% block extra_css %}
+<style>
+.as-wrap{max-width:900px}
+.as-section{padding:0 20px 20px}
+.as-buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:700px){.as-buttons{grid-template-columns:1fr}}
+.as-btn-opt{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;
+    border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);cursor:pointer}
+.as-btn-opt input{margin-top:3px;flex:none}
+.as-btn-opt strong{display:block;font-size:.92rem}
+.as-btn-opt small{display:block;color:#94a3b8;line-height:1.45;margin-top:2px}
+.as-know{margin:6px 0 0;padding-left:18px;color:#cbd5e1;line-height:1.7;font-size:.9rem}
+.as-counter{text-align:right;font-size:.75rem;color:#94a3b8;margin-top:4px}
+.as-advanced summary{cursor:pointer;color:#94a3b8;font-size:.88rem;margin:6px 0 10px}
+.as-status{display:inline-block;padding:3px 10px;border-radius:999px;font-size:.78rem;font-weight:700}
+.as-status.on{background:rgba(34,197,94,.15);color:#4ade80}
+.as-status.warn{background:rgba(250,204,21,.15);color:#fde047}
+.as-status.off{background:rgba(148,163,184,.15);color:#94a3b8}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="as-wrap">
+<form method="POST" action="{{ url_for('admin_support_bp.assistant_save') }}">
+
+    <!-- ── Botones y saludo ─────────────────────────────────────────────── -->
+    <div class="admin-card" style="margin-bottom:18px">
+        <div class="card-header">
+            <h2>💬 Botones y saludo del chat</h2>
+            <p class="form-hint">
+                Es lo primero que ve el cliente al abrir Soporte: un saludo y unos botones para consultar sin
+                esperar. <strong>No usa IA y no necesita nada de DeepSeek</strong>: los precios y paquetes
+                salen de la tienda en vivo (siempre iguales a los de la página), y consultar no crea chats
+                vacíos en tu bandeja.
+            </p>
+        </div>
+        <div class="as-section">
+            <label class="check-label" style="margin-bottom:14px">
+                <input type="checkbox" name="bot_enabled" value="1" {% if bot.enabled %}checked{% endif %}>
+                Mostrar el saludo y los botones en el chat de soporte
+            </label>
+
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="bot_name">Nombre del asistente</label>
+                    <input type="text" id="bot_name" name="bot_name" maxlength="40" value="{{ bot.name }}"
+                           placeholder="Asistente 3S">
+                    <p class="form-hint">Sale en pequeño arriba de cada mensaje del menú.</p>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="bot_greeting">Mensaje de saludo</label>
+                <textarea id="bot_greeting" name="bot_greeting" rows="3" maxlength="400">{{ bot.greeting }}</textarea>
+                <p class="form-hint">Es el primer mensaje que aparece en el chat vacío. Puedes usar emojis.</p>
+            </div>
+
+            <label style="display:block;font-weight:600;margin:6px 0 8px">Botones que se muestran</label>
+            <div class="as-buttons">
+                {% set hints = {
+                    'comprar': 'Elige juego (ve los paquetes con su precio) y hace la compra completa por el chat: ID, método de pago, código de descuento, datos para pagar y comprobante. Es una orden normal.',
+                    'estado': 'El cliente escribe su número de orden o la referencia del pago, o adjunta la foto del comprobante (la IA la lee), y ve en qué estado va.'
+                } %}
+                {% for key, label in bot_buttons %}
+                <label class="as-btn-opt">
+                    <input type="checkbox" name="bot_buttons" value="{{ key }}" {% if key in bot.buttons %}checked{% endif %}>
+                    <span><strong>{{ label }}</strong><small>{{ hints[key] }}</small></span>
+                </label>
+                {% endfor %}
+            </div>
+            <p class="form-hint" style="margin-top:10px">
+                Comprar por el chat usa el mismo sistema que la tienda: la orden sale en Órdenes como cualquier otra,
+                da puntos a ese ID, avisa por la campanita y verifica el pago igual (incluidos pagos incompletos y
+                métodos que piden cédula y teléfono). El cliente solo envía su comprobante. Si algo falla, el chat le
+                ofrece terminar la compra en la tienda.
+            </p>
+        </div>
+    </div>
+
+    <!-- ── IA ───────────────────────────────────────────────────────────── -->
+    <div class="admin-card" style="margin-bottom:18px" id="ia">
+        <div class="card-header">
+            <h2>🤖 Asistente de IA</h2>
+            <p class="form-hint">
+                Responde las preguntas que los clientes escriben en el chat. <strong>Solo resuelve dudas, no vende ni
+                toma pedidos</strong> (para comprar usan el botón "Comprar recarga"). Sabe, en vivo y sin que se lo
+                expliques:
+            </p>
+            <ul class="as-know">
+                <li>Qué juegos y paquetes se venden, con precios en $ y en Bs y si están disponibles.</li>
+                <li>Qué métodos de pago aceptas (si el cliente lo pregunta).</li>
+                <li>En qué estado está un pedido (con el número de orden o la referencia del pago): si falta dinero,
+                    si el pago aún no aparece, si salió completada, si el ID fue rechazado.</li>
+                <li>Todo lo que le escribas abajo en las instrucciones.</li>
+            </ul>
+            <p class="form-hint" style="margin-top:10px">
+                Si no puede resolver algo, o el cliente pide hablar con una persona, pasa el chat a tu equipo con la
+                etiqueta que elijas. Cuando tú respondes en un chat, la IA deja de responder ahí.
+            </p>
+        </div>
+        <div class="as-section">
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="check-label" style="margin-top:30px;">
+                        <input type="checkbox" name="enabled" value="1" {% if support_ai.enabled %}checked{% endif %}>
+                        Activar la IA en el chat de soporte
+                    </label>
+                    <p class="form-hint">
+                        {% if support_ai.enabled and (support_ai.api_key or support_ai.provider == 'custom') %}
+                        <span class="as-status on">Activa</span> atiende los chats nuevos.
+                        {% elif support_ai.enabled %}
+                        <span class="as-status warn">Falta la llave</span> está activada pero no responderá.
+                        {% else %}
+                        <span class="as-status off">Apagada</span> los chats los atiende solo tu equipo.
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label for="support_ai_provider">¿Qué IA usar?</label>
+                    <select id="support_ai_provider" name="provider">
+                        <option value="gemini" {{ 'selected' if support_ai.provider == 'gemini' }}>Gemini — la misma llave de los comprobantes (recomendado)</option>
+                        <option value="deepseek" {{ 'selected' if support_ai.provider == 'deepseek' }}>DeepSeek — con su propia llave</option>
+                        <option value="custom" {{ 'selected' if support_ai.provider == 'custom' }}>Otra IA (Ollama u otra compatible)</option>
+                    </select>
+                    <p class="form-hint" data-show="gemini">
+                        {% if gemini_key_ok %}
+                        ✅ Usa la llave de Gemini que ya tiene el servidor para leer los comprobantes: no tienes que poner otra.
+                        {% else %}
+                        ⚠️ El servidor no tiene la llave de Gemini (<code>GEMINI_API_KEY</code> en el archivo .env, la misma
+                        que usa el checkout para leer comprobantes). Sin ella la IA no responde.
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="form-group" data-show="deepseek">
+                    <label for="support_ai_api_key">API key de DeepSeek</label>
+                    <input type="password" id="support_ai_api_key" name="api_key" autocomplete="off"
+                           placeholder="{{ 'Guardada (••••' ~ support_ai.saved_api_key[-4:] ~ ') — escribe otra para cambiarla' if support_ai.saved_api_key else 'sk-...' }}">
+                    <p class="form-hint">Se obtiene en platform.deepseek.com → API keys. Déjala vacía para conservar la actual.</p>
+                </div>
+                <div class="form-group" data-show="custom">
+                    <label for="support_ai_base_url">URL de la IA</label>
+                    <input type="text" id="support_ai_base_url" name="base_url" value="{{ support_ai.base_url if support_ai.provider == 'custom' else '' }}"
+                           placeholder="http://TU-IP:11434/v1/chat/completions">
+                    <p class="form-hint">Para una IA en tu propia PC con Ollama (la PC debe estar prendida y accesible desde el servidor).</p>
+                </div>
+                <div class="form-group" data-show="custom">
+                    <label for="support_ai_custom_api_key">API key de esa IA (opcional)</label>
+                    <input type="password" id="support_ai_custom_api_key" name="custom_api_key" autocomplete="off"
+                           placeholder="{{ 'Guardada (••••' ~ support_ai.saved_custom_key[-4:] ~ ') — escribe otra para cambiarla' if support_ai.saved_custom_key else 'Ollama normalmente no la pide' }}">
+                    <p class="form-hint">Solo si esa IA la pide. Déjala vacía para conservar la actual.</p>
+                </div>
+                <div class="form-group">
+                    <label for="support_ai_tag">Etiqueta al pasar a una persona</label>
+                    <select id="support_ai_tag" name="handoff_tag_id">
+                        <option value="">— Sin etiqueta —</option>
+                        {% for tag in support_tags %}
+                        <option value="{{ tag.id }}" {{ 'selected' if support_ai.handoff_tag_id == tag.id }}>{{ tag.name }} ({{ tag.kind_label }})</option>
+                        {% endfor %}
+                    </select>
+                    <p class="form-hint">Se le pone al chat para que lo encuentres rápido. Las etiquetas se crean en Soporte → Etiquetas.</p>
+                </div>
+                <div class="form-group">
+                    <label for="support_ai_max_failed">Intentos fallidos antes de pasar a una persona</label>
+                    <input type="number" id="support_ai_max_failed" name="max_failed" min="1" max="10" value="{{ support_ai.max_failed }}">
+                    <p class="form-hint">Veces que busca un pedido sin encontrarlo antes de pasar el chat a tu equipo.</p>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="support_ai_instructions">Instrucciones para la IA</label>
+                <textarea id="support_ai_instructions" name="instructions" rows="10" maxlength="3000"
+                          placeholder="Ejemplos:&#10;- Las recargas manuales se hacen todos los días de 8am a 10pm (hora de Venezuela).&#10;- El Pago Móvil se verifica solo en unos minutos; Binance Pay, igual.&#10;- Si preguntan por promociones, que entren a Promos en el menú de la tienda.&#10;- Háblale siempre de tú y con amabilidad. Si no sabes algo, dilo y ofrece pasarlo con una persona.&#10;- Nunca prometas reembolsos.&#10;- Nuestros datos de pago: Pago Móvil 0414-1234567, cédula V-12345678. Zelle: pagos@mitienda.com.">{{ support_ai.instructions }}</textarea>
+                <div class="as-counter"><span id="iaCount">{{ support_ai.instructions|length }}</span> / 3000</div>
+                <p class="form-hint">
+                    Aquí le explicas cómo quieres que hable y le das la información de tu negocio que no está en la
+                    tienda: horarios, normas, promociones, respuestas a preguntas frecuentes. Escríbelo como si le
+                    hablaras a un empleado nuevo. <strong>No pongas claves ni datos privados.</strong>
+                </p>
+                <p class="form-hint">
+                    <strong>Tus datos de pago:</strong> escribe aquí los teléfonos, cédulas o RIF, correos de Zelle, Pay ID
+                    y números de cuenta a los que te pagan (los de los métodos de pago activos ya los toma solo).
+                    Cuando un cliente manda un comprobante, la IA lo lee, comprueba si ese pago ya está en una orden y si
+                    se hizo a tus datos; si no está en el sistema y sí es a tus datos, le ofrece crear la orden en el chat
+                    con ese comprobante. Si el pago fue a otros datos, lo pasa a una persona.
+                </p>
+            </div>
+
+            <details class="as-advanced">
+                <summary>Opciones avanzadas</summary>
+                <div class="form-group" style="max-width:420px">
+                    <label for="support_ai_model">Modelo</label>
+                    <input type="text" id="support_ai_model" name="model"
+                           value="{{ '' if support_ai.model_is_default else support_ai.model }}"
+                           placeholder="{{ 'Automático (' ~ support_ai.model ~ ')' if support_ai.model_is_default else support_ai.model }}">
+                    <p class="form-hint">Déjalo vacío para que se elija solo. Con Gemini se prueba el siguiente modelo si Google retira alguno.
+                        Con Ollama: el nombre del modelo instalado (ej. <code>qwen2.5:7b</code>).</p>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <div class="modal-actions" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:30px">
+        <button type="submit" class="btn-primary">Guardar todo</button>
+        <button type="submit" class="btn-secondary" name="test" value="1">🔌 Guardar y probar la IA</button>
+    </div>
+</form>
+</div>
+
+<script>
+(function () {
+    var box = document.getElementById('support_ai_instructions');
+    var count = document.getElementById('iaCount');
+    if (box && count) box.addEventListener('input', function () { count.textContent = box.value.length; });
+
+    // Cada proveedor muestra solo lo suyo: Gemini no pide llave (usa la del servidor).
+    var provider = document.getElementById('support_ai_provider');
+    function syncProvider() {
+        Array.prototype.forEach.call(document.querySelectorAll('[data-show]'), function (node) {
+            node.style.display = node.getAttribute('data-show').split(' ').indexOf(provider.value) >= 0 ? '' : 'none';
+        });
+    }
+    if (provider) { provider.addEventListener('change', syncProvider); syncProvider(); }
+})();
+</script>
+{% endblock %}

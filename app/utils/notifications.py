@@ -5,10 +5,12 @@ Llamar estas funciones después de eventos del ciclo de vida de la orden.
 
 import logging
 import os
+from html import escape as _esc
 
 from flask import current_app, url_for
 
 from app.utils.email import send_email_async, get_setting
+from app.utils.support import DEFAULT_CLIENT_NAME
 from app.utils.email_templates import (
     build_order_created_email,
     build_order_approved_email,
@@ -153,11 +155,11 @@ def notify_support_chat_opened(chat):
 
     link = _support_admin_url(chat)
     context = _support_context_lines(chat)
-    context_html = ''.join(f'<li>{line}</li>' for line in context) or '<li>Sin contexto: llegó desde la portada.</li>'
+    context_html = ''.join(f'<li>{_esc(line)}</li>' for line in context) or '<li>Sin contexto: llegó desde la portada.</li>'
 
     subject = f'Nuevo chat de soporte {chat.display_code} — {chat.client_name}'
     html = (
-        f'<p><strong>{chat.client_name}</strong> abrió el chat {chat.display_code}.</p>'
+        f'<p><strong>{_esc(chat.client_name)}</strong> abrió el chat {chat.display_code}.</p>'
         f'<ul>{context_html}</ul>'
         f'<p><a href="{link}">Abrir el chat en el panel</a></p>'
     )
@@ -183,7 +185,7 @@ def notify_support_client_message(chat, message):
     body = (message.body or '(imagen adjunta)')[:400]
     link = _support_admin_url(chat)
     subject = f'Mensaje de soporte {chat.display_code} — {chat.client_name}'
-    html = f'<p><strong>{chat.client_name}</strong> escribió:</p><blockquote>{body}</blockquote><p><a href="{link}">Responder</a></p>'
+    html = f'<p><strong>{_esc(chat.client_name)}</strong> escribió:</p><blockquote>{_esc(body)}</blockquote><p><a href="{link}">Responder</a></p>'
     text = f'{chat.client_name} escribió:\n{body}\n\n{link}'
 
     send_email_async(_app(), admin_email, subject, html, text)
@@ -210,10 +212,12 @@ def notify_support_admin_reply(chat, message):
         return
 
     subject = f'Soporte 3S Recargas respondió tu chat {chat.display_code}'
+    # Sin nombre ("Cliente") el saludo suena mejor sin él.
+    hello = 'Hola' if chat.client_name == DEFAULT_CLIENT_NAME else f'Hola {chat.client_name}'
     html = (
-        f'<p>Hola {chat.client_name}, respondimos tu consulta:</p>'
-        f'<blockquote>{body}</blockquote>'
+        f'<p>{_esc(hello)}, respondimos tu consulta:</p>'
+        f'<blockquote>{_esc(body)}</blockquote>'
         '<p>Entra a la tienda y abre el chat de soporte para continuar.</p>'
     )
-    text = f'Hola {chat.client_name}, respondimos tu consulta:\n{body}'
+    text = f'{hello}, respondimos tu consulta:\n{body}'
     send_email_async(app, email, subject, html, text)

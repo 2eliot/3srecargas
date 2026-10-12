@@ -12,8 +12,12 @@
   <div class="sc-window">
 
     <header class="sc-head">
-      <a class="sc-back" href="{{ url_for('main_bp.index') }}" aria-label="Volver a la tienda">‹</a>
-      <div class="sc-avatar" aria-hidden="true">3S</div>
+      <a class="sc-back" href="{{ url_for('main_bp.index') }}" aria-label="Volver a la tienda">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </a>
+      {#- La foto la sube el admin en Configuracion. Si falla al cargar se quita sola
+          y queda el "3S" de debajo. -#}
+      <div class="sc-avatar" aria-hidden="true">3S{% if SUPPORT_AVATAR %}<img src="{{ url_for('static', filename='uploads/' ~ SUPPORT_AVATAR) }}" alt="" onerror="this.remove()">{% endif %}</div>
       <div class="sc-who">
         <strong>Soporte 3S Recargas</strong>
         <span id="scPresence">{{ SUPPORT_SCHEDULE or 'Te respondemos lo antes posible' }}</span>
@@ -32,42 +36,21 @@
     </a>
     {% endif %}
 
-    <!-- Paso 1: lo unico que se pide es el nombre. -->
-    <div class="sc-body" id="scStart" {% if chat %}hidden{% endif %}>
-      <div class="sc-intro">
-        <div class="sc-intro-icon">💬</div>
-        <h1>¿Cómo te llamas?</h1>
-        <p>Con tu nombre basta para empezar. Ya tenemos los datos de tu pedido.</p>
-      </div>
-      <form id="scStartForm" class="sc-start-form">
-        <input type="text" id="scName" placeholder="Tu nombre" maxlength="40"
-               autocomplete="given-name" required>
-        <input type="email" id="scEmail" maxlength="255" autocomplete="email"
-               placeholder="Tu correo (opcional)">
-        <p class="sc-field-hint">
-          Si lo dejas, te avisamos por correo cuando respondamos y no tendrás
-          que estar pendiente de esta pestaña.
-        </p>
-        <textarea id="scFirstMessage" rows="4" maxlength="2000"
-                  placeholder="¿En qué te ayudamos?">{{ suggested_message }}</textarea>
-
-        <label class="sc-start-file-label" for="scStartFile">
-          📎 Adjuntar comprobante de pago (opcional)
-        </label>
-        <input type="file" id="scStartFile" accept="image/*,video/*">
-        <p class="sc-start-file-name" id="scStartFileName" hidden></p>
-
-        <!-- Campo trampa: oculto, una persona nunca lo rellena. -->
-        <input type="text" id="scWebsite" name="website" tabindex="-1" autocomplete="off"
-               aria-hidden="true" class="sc-trap">
-        <button type="submit" class="sc-start-btn">INICIAR CHAT</button>
-        <p class="sc-error" id="scError" hidden></p>
-      </form>
-    </div>
-
-    <!-- Paso 2: el hilo. -->
-    <div class="sc-body sc-thread-body" id="scChat" {% if not chat %}hidden{% endif %}>
+    <!-- Un chat normal: se escribe y listo. El hilo se crea con el primer
+         mensaje, asi que abrir esta pantalla no deja chats vacios. -->
+    <div class="sc-body sc-thread-body" id="scChat">
       <div class="sc-thread" id="scThread" aria-live="polite">
+        {% if not messages %}
+        {#- Saludo del asistente: solo existe en pantalla (el chat se crea al escribir). -#}
+        {% if bot.enabled %}
+        <div class="sc-msg admin bot" id="scGreeting">
+          <span class="sc-bot-label">{{ bot.name }}</span>
+          <span class="sc-msg-body">{{ bot.greeting }}</span>
+        </div>
+        {% else %}
+        <p class="sc-empty">Escríbenos tu consulta aquí abajo y te respondemos en este mismo chat.</p>
+        {% endif %}
+        {% endif %}
         {% for m in messages %}
         <div class="sc-msg {{ m.sender }}{% if m.is_ai %} ai{% endif %}{% if m.is_deleted %} deleted{% endif %}" data-id="{{ m.id }}">
           {% if m.is_deleted %}
@@ -77,6 +60,8 @@
           {%- if m.body %}<span class="sc-msg-body">{{ m.body }}</span>{% endif -%}
           {% if m.action_url and m.action_url.startswith('/order/') %}
           <a class="sc-action-btn" href="{{ m.action_url }}">{{ m.action_label or 'Ver mi orden' }}</a>
+          {% elif m.action_url and m.action_url.startswith('#comprar:') and bot.enabled %}
+          <button type="button" class="sc-action-btn" data-buy-receipt="{{ m.action_url.split(':')[1] }}">{{ m.action_label or 'Crear mi orden con este comprobante' }}</button>
           {% endif %}
           {% if m.attachment %}
           {% if m.is_video %}
@@ -101,11 +86,33 @@
         Este chat se cerró por inactividad. Escribe abajo y lo reabrimos.
       </div>
 
+      {#- Botones del menu (los elige el admin en Soporte > Asistente). -#}
+      {% if bot.enabled %}
+      {% set icons = {
+        'comprar': '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+        'estado': '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'
+      } %}
+      <div class="sc-quick" id="scQuick">
+        {% for b in bot.buttons %}
+        <button type="button" class="sc-quick-btn" data-bot="{{ b.key }}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icons[b.key]|safe }}</svg>
+          {{ b.label }}
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+
       <form class="sc-composer" id="scComposer">
         <input type="file" id="scFile" accept="image/*,video/*" hidden>
-        <button type="button" id="scAttach" class="sc-attach" aria-label="Adjuntar imagen">📎</button>
-        <textarea id="scInput" rows="1" maxlength="2000" placeholder="Escribe un mensaje"></textarea>
-        <button type="submit" class="sc-send" aria-label="Enviar">➤</button>
+        <button type="button" id="scAttach" class="sc-attach" aria-label="Adjuntar imagen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        {#- Con ?orden= llega el mensaje del pedido ya escrito; el cliente solo lo envia.
+            El flujo de "Olvide mi contrasena" se manda solo, asi que no se precarga. -#}
+        <textarea id="scInput" rows="1" maxlength="2000" placeholder="Escribe un mensaje">{% if not (auto_start or auto_send) %}{{ suggested_message }}{% endif %}</textarea>
+        <button type="submit" class="sc-send" aria-label="Enviar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+        </button>
       </form>
     </div>
 
@@ -131,6 +138,9 @@
   window.SUPPORT_AUTO_EMAIL = {{ auto_start_email|tojson }};
   window.SUPPORT_AUTO_SEND = {{ 'true' if auto_send else 'false' }};
   window.SUPPORT_AUTO_MESSAGE = {{ suggested_message|tojson }};
+  window.SUPPORT_BOT = {{ bot|tojson }};
 </script>
 <script src="{{ static_v('js/support-chat.js') }}"></script>
+<script src="{{ static_v('js/support-bot.js') }}"></script>
+<script src="{{ static_v('js/support-buy.js') }}"></script>
 {% endblock %}

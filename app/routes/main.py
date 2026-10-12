@@ -25,8 +25,31 @@ from ..utils.timezone import now_ve, ve_day_start_utc_naive, today_ve_str
 from ..utils.catalog_version import site_version
 from ..utils.locks import acquire_lock, check_rate_limit, client_ip, release_lock
 from ..utils.push_notifications import get_vapid_public_key, subscribe as push_subscribe, unsubscribe as push_unsubscribe
+from ..utils.site_notifications import build_feed
 
 main_bp = Blueprint('main_bp', __name__)
+
+NOTIF_FEED_PER_MINUTE = 30
+
+
+@main_bp.route('/api/notificaciones', methods=['POST'])
+def notifications_feed():
+    """Avisos de la campana del header: las novedades del admin para todos y,
+    para las órdenes que ese navegador dice haber hecho, el estado de cada una
+    y los mensajes del admin. Solo lectura y con la entrada acotada (hasta 15
+    números de orden); responde siempre sin caché."""
+    if request.content_length and request.content_length > 4096:
+        return jsonify({'ok': False, 'items': []}), 413
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        payload = {}
+    # El número de orden es la "llave" de la orden: quien lo manda consulta su estado. Sin tope, alguien podría
+    # probar números en cadena (15 por petición). Un navegador normal pregunta una vez por minuto.
+    if payload.get('orders') and not check_rate_limit(f'notif_feed:{client_ip()}', NOTIF_FEED_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'items': []}), 429
+    response = jsonify({'ok': True, 'items': build_feed(payload.get('orders'))})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 def _get_setting_val(key, default=''):
@@ -551,6 +574,20 @@ def index():
         if preselect_game and preselect_game.category:
             category = preselect_game.category
 
+    # Enlace de compra desde el chat de soporte: /?juego=<slug>&paquete=<id>
+    # &jugador=<id>&zona=<zona> deja el paquete elegido y el ID escrito. Todo
+    # llega por la URL, así que se valida: el paquete debe ser activo y de ese
+    # juego, y los IDs solo pueden llevar caracteres de un ID normal.
+    preselect_package_id = None
+    preselect_player_id = ''
+    preselect_zone_id = ''
+    if preselect_game:
+        package_id = request.args.get('paquete', type=int)
+        if package_id and Package.query.filter_by(id=package_id, game_id=preselect_game.id, is_active=True).first():
+            preselect_package_id = package_id
+            preselect_player_id = _clean_link_id(request.args.get('jugador'))
+            preselect_zone_id = _clean_link_id(request.args.get('zona'))
+
     games = _get_games_for_category(category)
     categories = Category.query.all()
     payment_methods = (
@@ -621,7 +658,18 @@ def index():
         community_popup_interval_hours=community_popup_interval_hours,
         community_popup_whatsapp_url=community_popup_whatsapp_url,
         preselect_game_slug=(preselect_game.slug if preselect_game else ''),
+        preselect_package_id=preselect_package_id,
+        preselect_player_id=preselect_player_id,
+        preselect_zone_id=preselect_zone_id,
     )
+
+
+_LINK_ID_RE = re.compile(r'^[A-Za-z0-9_.@+-]{1,100}$')
+
+
+def _clean_link_id(raw):
+    value = (raw or '').strip()
+    return value if _LINK_ID_RE.match(value) else ''
 
 
 def page_day_expired():

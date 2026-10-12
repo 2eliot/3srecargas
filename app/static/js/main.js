@@ -1558,6 +1558,7 @@
                 if (previousPackageId) {
                     reselectPackage(previousPackageId, previousTotal);
                 }
+                applyDeepLink();
                 if (data.game && data.game.requires_manual_login_popup) {
                     openManualInfoPopup();
                 } else {
@@ -1589,6 +1590,24 @@
     /* Tras refrescar el catálogo, vuelve a dejar marcado el paquete que el
        cliente tenía elegido (el click real hace que index.html repinte
        método, datos de pago y monto) y avisa si el total cambió. */
+    /* Enlace de compra del chat de soporte (/?juego=…&paquete=…&jugador=…):
+       elige el paquete y escribe el ID, una sola vez. Los valores ya vienen
+       validados del servidor. El ID se pone aunque haya uno recordado: es el
+       que el cliente acaba de escribir en el chat. */
+    function applyDeepLink() {
+        var packageId = window.PRESELECT_PACKAGE;
+        if (!packageId) return;
+        window.PRESELECT_PACKAGE = null;   // solo la primera vez: después manda el cliente
+        var item = document.querySelector('.package-item[data-package-id="' + packageId + '"]');
+        if (item && !item.disabled) item.click();
+        [['playerId', window.PRESELECT_PLAYER_ID], ['zoneId', window.PRESELECT_ZONE_ID]].forEach(function (pair) {
+            var input = document.getElementById(pair[0]);
+            if (!input || !pair[1]) return;
+            input.value = pair[1];
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
     function reselectPackage(packageId, previousTotal) {
         var item = document.querySelector('.package-item[data-package-id="' + packageId + '"]');
         if (!item || item.disabled) {
@@ -2978,7 +2997,6 @@
             closeDiscountInfoPopup();
             closeGameSelectionPopup();
             closeRankingModal();
-            closeSupportModal();
         }
     });
 

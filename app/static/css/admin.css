@@ -1347,7 +1347,7 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
 .detail-row:last-child { border-bottom: none; }
 .detail-label { color: var(--text-muted); }
 .detail-value { font-weight: 600; text-align: right; }
-.pin-code-display { font-size: 20px; font-weight: 800; letter-spacing: 2px; color: var(--accent); background: var(--bg-secondary); padding: 14px; border-radius: var(--radius-sm); text-align: center; }
+.pin-code-display { font-size: 20px; font-weight: 800; letter-spacing: 2px; color: var(--accent); background: var(--bg-secondary); padding: 14px; border-radius: var(--radius-sm); text-align: center; white-space: pre-line; }
 .link-sm { color: var(--accent); font-size: 12px; }
 .text-success { color: var(--success); }
 
@@ -1882,3 +1882,9 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
 .proof-drop-filled { display: flex; align-items: center; gap: 12px; }
 .proof-drop-filled img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); }
 .proof-drop-name { flex: 1; min-width: 0; font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Página incrustada (el chat de soporte dentro de la bandeja) ───────────
+   Sin menú ni barra superior: solo el contenido, a todo el alto del panel. */
+body.is-embed .admin-main { margin-left: 0; padding-top: 0; min-height: 0; }
+body.is-embed .admin-content { padding: 0; max-width: none; }
+body.is-embed .admin-flashes { top: 8px; right: 8px; }

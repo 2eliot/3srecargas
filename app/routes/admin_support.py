@@ -5,25 +5,32 @@ líneas. Cuelga de `/admin/soporte` con su propio guardián de acceso: el
 `before_request` de `admin_bp` solo protege a su blueprint, no a este.
 """
 
+import hashlib
+import json
 from datetime import datetime
 
 from flask import (
     Blueprint, flash, jsonify, redirect, render_template, request, url_for
 )
 from flask_login import current_user, login_required
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
 from ..models import db, Order, SupportChat, SupportChatTag, SupportMessage, SupportQuickReply, SupportTag
 from ..utils import support as support_service
+from ..utils import support_bot
 from ..utils.support import SupportError
+from ..utils.support_ai import (
+    gemini_key_configured, get_ai_settings, save_ai_settings, test_connection as test_support_ai
+)
 from ..utils.notifications import notify_support_admin_reply
-from ..utils.timezone import format_ve
+from ..utils.timezone import format_ve, now_ve, to_ve
 from .admin import delete_uploaded_file
 
 admin_support_bp = Blueprint('admin_support_bp', __name__, url_prefix='/admin/soporte')
 
-PAGE_SIZE = 25
+INBOX_PAGE_SIZE = 40
+INBOX_MAX_LIMIT = 200
 
 
 @admin_support_bp.before_request
@@ -49,14 +56,19 @@ def _slugify(value):
 
 # ─── Bandeja ─────────────────────────────────────────────────────────────────
 
-@admin_support_bp.route('/')
-@login_required
-def inbox():
-    status = (request.args.get('status') or 'active').strip()
-    tag_slug = (request.args.get('tag') or '').strip()
-    term = (request.args.get('q') or '').strip()
-    page = request.args.get('page', type=int) or 1
+def _is_embed():
+    """El chat se muestra dentro de la bandeja (iframe) sin el menú ni la
+    barra del admin. Los navegadores avisan `Sec-Fetch-Dest: iframe` en cada
+    paso, incluidas las redirecciones, así que no se pierde al guardar algo."""
+    return request.args.get('embed') == '1' or request.headers.get('Sec-Fetch-Dest', '').lower() == 'iframe'
 
+
+# Pestañas de la bandeja: "En atención" es donde te toca contestar, "En espera"
+# donde ya contestaste y falta el cliente, "Resueltos" los cerrados.
+INBOX_TABS = ('open', 'waiting_client', 'closed')
+
+
+def _filtered_chats(status, tag_slug, term, only_unread=False):
     query = SupportChat.query.options(
         joinedload(SupportChat.tag_links).joinedload(SupportChatTag.tag)
     )
@@ -65,8 +77,10 @@ def inbox():
         query = query.filter(SupportChat.status.in_(support_service.OPEN_STATUSES))
     elif status == 'unread':
         query = query.filter(SupportChat.unread_admin > 0)
-    elif status in ('open', 'waiting_client', 'closed'):
+    elif status in INBOX_TABS:
         query = query.filter(SupportChat.status == status)
+    if only_unread:
+        query = query.filter(SupportChat.unread_admin > 0)
 
     if tag_slug:
         tag = support_service.get_tag(tag_slug)
@@ -83,31 +97,155 @@ def inbox():
             SupportChat.context_player_id.ilike(like),
             SupportChat.admin_note.ilike(like),
         ))
+    return query
 
-    # Antes ordenaba primero por "no leídos": un chat que acababas de
-    # responder (unread_admin=0) se hundía debajo de cualquier otro con
-    # mensajes sin leer, aunque fuera el más reciente de todos. Ahora es
-    # puramente por hora del último mensaje, más recientes arriba.
-    pagination = (query
-                  .order_by(SupportChat.last_message_at.desc())
-                  .paginate(page=page, per_page=PAGE_SIZE, error_out=False))
+
+def _last_messages(chat_ids):
+    """Último mensaje de cada chat con dos consultas (no una por chat)."""
+    if not chat_ids:
+        return {}
+    latest_ids = [row[0] for row in (
+        db.session.query(func.max(SupportMessage.id))
+        .filter(SupportMessage.chat_id.in_(chat_ids))
+        .group_by(SupportMessage.chat_id).all())]
+    messages = SupportMessage.query.filter(SupportMessage.id.in_(latest_ids)).all() if latest_ids else []
+    return {m.chat_id: m for m in messages}
+
+
+def _preview(message):
+    """Texto de una línea para la lista, con quién habló al principio."""
+    if message is None:
+        return ''
+    if message.is_deleted:
+        text = '🚫 Mensaje eliminado'
+    elif message.body:
+        text = ' '.join(message.body.split())
+    elif message.attachment:
+        text = '🎥 Video' if support_service.is_video_attachment(message.attachment) else '📷 Foto'
+    else:
+        text = ''
+    text = text[:100]
+    if message.sender == 'admin' and message.is_ai:
+        return '🤖 ' + text
+    if message.sender == 'admin':
+        return 'Tú: ' + text
+    return text
+
+
+def _row_time(moment):
+    """Hora si fue hoy, "Ayer" o día/mes (horario de Venezuela)."""
+    local = to_ve(moment)
+    if not local:
+        return ''
+    days = (now_ve().date() - local.date()).days
+    if days <= 0:
+        return local.strftime('%H:%M')
+    if days == 1:
+        return 'Ayer'
+    return local.strftime('%d/%m')
+
+
+def _chat_row(chat, last_message):
+    return {
+        'id': chat.id,
+        'name': chat.client_name,
+        'code': chat.display_code,
+        'preview': _preview(last_message),
+        'unread': int(chat.unread_admin or 0),
+        'status': chat.status,
+        'time': _row_time(chat.last_message_at),
+        'at': (chat.last_message_at.isoformat() + 'Z') if chat.last_message_at else '',
+        'tags': [{'name': t.name, 'color': t.color} for t in chat.tags],
+        'order': chat.order.order_number if chat.order else '',
+        'has_note': bool(chat.admin_note),
+        'blocked': bool(chat.is_blocked),
+        'ai': bool(chat.ai_active) and chat.status in support_service.OPEN_STATUSES,
+        'url': url_for('admin_support_bp.detail', chat_id=chat.id),
+    }
+
+
+def _tab_counts():
+    rows = dict(db.session.query(SupportChat.status, func.count(SupportChat.id)).group_by(SupportChat.status).all())
+    return {
+        'open': int(rows.get('open', 0)),
+        'waiting_client': int(rows.get('waiting_client', 0)),
+        'closed': int(rows.get('closed', 0)),
+    }
+
+
+def _inbox_payload(status, tag_slug, term, only_unread, limit):
+    query = _filtered_chats(status, tag_slug, term, only_unread)
+    total = query.count()
+    # Más recientes arriba, por la hora del último mensaje: un chat que acabas
+    # de responder no se hunde debajo de otros solo por tener menos sin leer.
+    chats = query.order_by(SupportChat.last_message_at.desc(), SupportChat.id.desc()).limit(limit).all()
+    last = _last_messages([c.id for c in chats])
+    return {
+        'ok': True,
+        'chats': [_chat_row(c, last.get(c.id)) for c in chats],
+        'total': total,
+        'has_more': total > len(chats),
+        'counts': _tab_counts(),
+        'pending': support_service.pending_chats_count(),
+    }
+
+
+def _inbox_filters():
+    status = (request.args.get('status') or 'open').strip()
+    if status not in INBOX_TABS + ('active', 'unread', 'all'):
+        status = 'open'
+    limit = min(max(request.args.get('limit', type=int) or INBOX_PAGE_SIZE, 10), INBOX_MAX_LIMIT)
+    return (
+        status,
+        (request.args.get('tag') or '').strip(),
+        (request.args.get('q') or '').strip(),
+        request.args.get('unread') == '1',
+        limit,
+    )
+
+
+@admin_support_bp.route('/')
+@login_required
+def inbox():
+    """Bandeja a la izquierda y el chat a la derecha. La lista se vuelve a
+    pedir sola (bandeja.json) para que los chats lleguen en vivo."""
+    status, tag_slug, term, only_unread, limit = _inbox_filters()
+    selected = request.args.get('chat', type=int)
+    if selected and not SupportChat.query.get(selected):
+        selected = None
 
     return render_template(
         'admin/support.html',
-        chats=pagination.items,
-        pagination=pagination,
         status=status,
         tag_slug=tag_slug,
         term=term,
+        only_unread=only_unread,
+        selected_chat=selected,
+        initial=_inbox_payload(status, tag_slug, term, only_unread, limit),
         tags=SupportTag.query.filter_by(is_active=True)
                       .order_by(SupportTag.kind, SupportTag.sort_order).all(),
-        counts={
-            'active': SupportChat.query.filter(
-                SupportChat.status.in_(support_service.OPEN_STATUSES)).count(),
-            'unread': support_service.pending_chats_count(),
-            'closed': SupportChat.query.filter_by(status='closed').count(),
-        },
     )
+
+
+@admin_support_bp.route('/bandeja.json')
+@login_required
+def inbox_json():
+    """Sondeo de la bandeja. Si nada cambió desde la última vez (`v` es la
+    huella que devolvió) responde casi vacío, así pedirla cada pocos segundos
+    cuesta poco."""
+    payload = _inbox_payload(*_inbox_filters())
+    version = hashlib.md5(json.dumps(payload, sort_keys=True).encode('utf-8')).hexdigest()
+    if request.args.get('v') == version:
+        return jsonify({'ok': True, 'unchanged': True, 'version': version})
+    payload['version'] = version
+    return jsonify(payload)
+
+
+@admin_support_bp.route('/panel-vacio')
+@login_required
+def empty_pane():
+    """Lo que se ve a la derecha mientras no hay un chat elegido."""
+    return render_template('admin/support_empty.html', embed=True)
 
 
 # ─── Hilo ────────────────────────────────────────────────────────────────────
@@ -121,6 +259,7 @@ def detail(chat_id):
     return render_template(
         'admin/support_detail.html',
         chat=chat,
+        embed=_is_embed(),
         messages=[support_service.serialize_message(m) for m in chat.messages],
         suggested_orders=support_service.find_matching_orders(chat),
         recent_orders=(Order.query
@@ -355,11 +494,66 @@ def set_status(chat_id):
     # Reabrir/desbloquear sí se quedan en el hilo, porque lo lógico es
     # seguir trabajando ahí mismo.
     if action in ('cerrar', 'bloquear'):
-        return redirect(url_for('admin_support_bp.inbox'))
+        # Dentro de la bandeja, el panel del chat queda vacío (la lista ya
+        # está al lado); abierto solo, vuelve a la bandeja.
+        return redirect(url_for('admin_support_bp.empty_pane') if _is_embed() else url_for('admin_support_bp.inbox'))
     return redirect(url_for('admin_support_bp.detail', chat_id=chat.id))
 
 
 # ─── Catálogo de etiquetas ───────────────────────────────────────────────────
+
+@admin_support_bp.route('/asistente', methods=['GET'])
+@login_required
+def assistant():
+    """Botones y saludo del chat + asistente de IA (con sus instrucciones)."""
+    return render_template(
+        'admin/support_assistant.html',
+        support_ai=get_ai_settings(),
+        gemini_key_ok=gemini_key_configured(),
+        bot=support_bot.get_bot_settings(),
+        bot_buttons=support_bot.BOT_BUTTONS,
+        support_tags=SupportTag.query.filter_by(is_active=True).order_by(SupportTag.sort_order, SupportTag.name).all(),
+    )
+
+
+@admin_support_bp.route('/asistente/guardar', methods=['POST'])
+@login_required
+def assistant_save():
+    tag_id = request.form.get('handoff_tag_id', type=int)
+    if tag_id and not SupportTag.query.get(tag_id):
+        tag_id = None
+    provider = request.form.get('provider')
+    api_key = request.form.get('api_key') or ''
+    custom_key = request.form.get('custom_api_key') or ''
+    try:
+        save_ai_settings(
+            enabled=request.form.get('enabled') == '1',
+            api_key=api_key,
+            model=request.form.get('model'),
+            handoff_tag_id=tag_id,
+            max_failed=request.form.get('max_failed', type=int),
+            instructions=request.form.get('instructions'),
+            base_url=request.form.get('base_url'),
+            provider=provider,
+            custom_api_key=custom_key,
+        )
+    except ValueError as exc:
+        # URL de la IA inválida: no se guarda nada, ni siquiera los botones.
+        flash(str(exc), 'danger')
+        return redirect(url_for('admin_support_bp.assistant'))
+    support_bot.save_bot_settings(
+        enabled=request.form.get('bot_enabled') == '1',
+        name=request.form.get('bot_name'),
+        greeting=request.form.get('bot_greeting'),
+        buttons=request.form.getlist('bot_buttons'),
+    )
+    if request.form.get('test'):
+        ok, message = test_support_ai(api_key=custom_key if provider == 'custom' else api_key)
+        flash(('✅ ' if ok else '❌ ') + message, 'success' if ok else 'danger')
+    else:
+        flash('Asistente de soporte guardado.', 'success')
+    return redirect(url_for('admin_support_bp.assistant'))
+
 
 @admin_support_bp.route('/etiquetas', methods=['GET'])
 @login_required

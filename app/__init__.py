@@ -255,6 +255,9 @@ def create_app(config_class=Config):
         """
         if response.mimetype == 'text/html':
             response.headers.setdefault('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        # Páginas y respuestas JSON: el navegador no debe "adivinar" que un texto es HTML o un script.
+        if response.mimetype in ('text/html', 'application/json'):
+            response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         return response
 
     @app.context_processor
@@ -273,7 +276,7 @@ def create_app(config_class=Config):
             'drawer_bg_canjear', 'drawer_bg_mini',
         ]
         wanted_keys = (
-            ['site_logo', 'site_background_image', 'support_email', 'support_whatsapp', 'support_schedule', 'support_location']
+            ['site_logo', 'support_avatar', 'site_background_image', 'support_email', 'support_whatsapp', 'support_schedule', 'support_location']
             + ['site_tutorial_video_file', 'site_tutorial_video_title']
             + social_keys
             + ranking_keys
@@ -285,6 +288,7 @@ def create_app(config_class=Config):
         }
 
         site_logo = values.get('site_logo') or None
+        support_avatar = values.get('support_avatar') or None
         site_background_image = values.get('site_background_image') or None
         social_links = {key.upper(): values.get(key) or '' for key in social_keys}
         support_email = values.get('support_email') or '3srecargas@gmail.com'
@@ -311,6 +315,7 @@ def create_app(config_class=Config):
 
         return {
             'SITE_LOGO': site_logo,
+            'SUPPORT_AVATAR': support_avatar,
             'SITE_BACKGROUND_IMAGE': site_background_image,
             'SOCIAL_LINKS': social_links,
             'SUPPORT_EMAIL': support_email,
@@ -374,6 +379,7 @@ def create_app(config_class=Config):
         _ensure_promo_accumulated_columns()
         _ensure_raffle_draw_minute_column()
         _ensure_setting_value_text_column()
+        _ensure_pin_delivered_text_column()
         _ensure_guess_winner_nick_column()
         _ensure_support_delete_columns()
         _init_default_data(app)
@@ -1180,6 +1186,18 @@ def _ensure_setting_value_text_column():
     try:
         if db.engine.dialect.name == 'postgresql':
             db.session.execute(text('ALTER TABLE settings ALTER COLUMN value TYPE TEXT'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_pin_delivered_text_column():
+    """`orders.pin_delivered` guardaba un solo código en VARCHAR(255). Con los
+    códigos de Central One una orden puede traer varios (uno por línea), y en
+    Postgres el límite de 255 es duro. Se pasa a TEXT; en SQLite no cambia nada."""
+    try:
+        if db.engine.dialect.name == 'postgresql':
+            db.session.execute(text('ALTER TABLE orders ALTER COLUMN pin_delivered TYPE TEXT'))
             db.session.commit()
     except Exception:
         db.session.rollback()

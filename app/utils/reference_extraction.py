@@ -287,3 +287,139 @@ def extract_reference_from_image_path(file_path):
             mime_type=_guess_mime_type(file_path),
             filename=file_path,
         )
+
+
+# ─── Datos completos del comprobante (para el chat de soporte) ───────────────
+#
+# `extract_reference_from_image_bytes` solo saca la referencia y es el camino del
+# checkout: no se toca. Esto es aparte: además de la referencia lee a QUIÉN se
+# pagó (teléfono, cédula, banco) y cuánto, para que el soporte pueda comprobar
+# que el pago es a los datos de la tienda antes de proponer una orden.
+
+RECEIPT_DETAILS_PROMPT = (
+    'Analiza este comprobante de pago (Pago Móvil, transferencia, Zelle, Binance u otro) y devuelve SOLO un JSON '
+    'con esta forma exacta: '
+    '{"found":true,"reference":"123456","amount":123.45,"currency":"bs","payee_phone":"04141234567",'
+    '"payee_id":"V12345678","payee_bank":"Banesco","payee_name":"Nombre","payee_account":"correo, Pay ID o cuenta",'
+    '"date":"2026-10-12","kind":"pago_movil"}. '
+    'Reglas: "reference" es la referencia u operación del pago (en los comprobantes del Banco de Venezuela el número '
+    'a veces continúa en una segunda línea con 1 o 2 dígitos sueltos: concaténalos al final). '
+    '"amount" es solo el número del monto pagado y "currency" es "bs" o "usd". '
+    'Los campos "payee_*" son los datos de QUIEN RECIBE el pago (destinatario, beneficiario, receptor): su teléfono, '
+    'su cédula o RIF, su banco, su nombre y, si es Zelle/Binance/otro, su correo, Pay ID o número de cuenta en '
+    '"payee_account". NO pongas ahí los datos de quien paga. '
+    '"kind" es "pago_movil", "transferencia", "zelle", "binance" u "otro". '
+    'Si no puedes ver un dato con claridad, déjalo vacío. Nunca inventes nada.'
+)
+
+
+def _gemini_json_from_image(prompt, image_bytes, mime_type):
+    """Le pide a Gemini un JSON sobre una imagen, con el mismo respaldo de modelos
+    que el lector de referencias. Devuelve (parsed, raw_text, error_message)."""
+    api_key = _get_gemini_api_key()
+    if not api_key:
+        return None, '', 'La API key de Gemini no está configurada.'
+
+    payload = {
+        'contents': [{'parts': [
+            {'text': prompt},
+            {'inline_data': {'mime_type': mime_type, 'data': base64.b64encode(image_bytes).decode('ascii')}},
+        ]}],
+        'generationConfig': {'temperature': 0, 'response_mime_type': 'application/json'},
+    }
+    timeout = current_app.config.get('GEMINI_REFERENCE_TIMEOUT', 25)
+    response = None
+    data = {}
+    remote_message = ''
+    candidates = _build_gemini_model_candidates()
+    for candidate_model in candidates:
+        try:
+            response = _post_gemini_generate_content(candidate_model, api_key, payload, timeout)
+        except requests.exceptions.Timeout:
+            return None, '', 'Gemini no respondió a tiempo.'
+        except requests.exceptions.ConnectionError:
+            return None, '', 'No se pudo conectar con Gemini.'
+        except Exception as exc:
+            return None, '', f'Error consultando Gemini: {exc}'
+        try:
+            data = response.json()
+        except Exception:
+            data = {}
+        if response.status_code < 400:
+            break
+        remote_message = _extract_gemini_remote_error(data)
+        if _should_retry_with_fallback(response.status_code, remote_message) and candidate_model != candidates[-1]:
+            continue
+        return None, '', _build_gemini_error_message(response.status_code, remote_message)
+
+    if not response or response.status_code >= 400:
+        return None, '', _build_gemini_error_message(getattr(response, 'status_code', 500), remote_message)
+
+    raw_text = _extract_text_from_gemini_response(data)
+    parsed = _extract_json_block(raw_text)
+    return (parsed if isinstance(parsed, dict) else {}), raw_text, ''
+
+
+def _parse_amount(value):
+    """Monto leído del comprobante como número. Entiende "1.234,56" (formato
+    venezolano) y "1,234.56"; una sola coma se toma como decimal."""
+    if isinstance(value, (int, float)):
+        return float(value) if value == value and value >= 0 else None
+    text = re.sub(r'[^0-9.,]', '', str(value or ''))
+    if not text:
+        return None
+    if ',' in text and '.' in text:
+        if text.rfind(',') > text.rfind('.'):
+            text = text.replace('.', '').replace(',', '.')
+        else:
+            text = text.replace(',', '')
+    elif ',' in text:
+        text = text.replace(',', '.')
+    try:
+        amount = float(text)
+    except ValueError:
+        return None
+    return amount if amount >= 0 else None
+
+
+def _clean_text(value, limit):
+    return re.sub(r'\s+', ' ', str(value or '')).strip()[:limit]
+
+
+def extract_receipt_details_from_image_bytes(image_bytes, mime_type='image/jpeg', filename='capture.jpg'):
+    """Referencia + monto + a quién se pagó. Devuelve {ok, reference, details, message}."""
+    if not image_bytes:
+        return {'ok': False, 'reference': '', 'details': {}, 'message': 'No se recibieron bytes del comprobante.'}
+
+    parsed, raw_text, error = _gemini_json_from_image(RECEIPT_DETAILS_PROMPT, image_bytes, mime_type)
+    if error:
+        return {'ok': False, 'reference': '', 'details': {}, 'message': error}
+
+    parsed = parsed or {}
+    reference = _normalize_reference_value(parsed.get('reference')) or _extract_reference_from_text(raw_text)
+    currency = str(parsed.get('currency') or '').strip().lower()
+    details = {
+        'reference': reference,
+        'amount': _parse_amount(parsed.get('amount')),
+        'currency': 'usd' if currency in ('usd', '$', 'dolar', 'dolares', 'dólares') else 'bs' if currency in ('bs', 'bs.', 'ves', 'bolivares', 'bolívares') else '',
+        'payee_phone': re.sub(r'\D', '', str(parsed.get('payee_phone') or ''))[:15],
+        'payee_id': re.sub(r'[^0-9A-Za-z]', '', str(parsed.get('payee_id') or '')).upper()[:20],
+        'payee_bank': _clean_text(parsed.get('payee_bank'), 60),
+        'payee_name': _clean_text(parsed.get('payee_name'), 80),
+        'payee_account': _clean_text(parsed.get('payee_account'), 120),
+        'date': _clean_text(parsed.get('date'), 20),
+        'kind': _clean_text(parsed.get('kind'), 20).lower(),
+    }
+    return {'ok': True, 'reference': reference, 'details': details, 'message': str(parsed.get('reason') or '').strip()}
+
+
+def extract_receipt_details_from_image_path(file_path):
+    if not file_path or not os.path.exists(file_path):
+        return {'ok': False, 'reference': '', 'details': {}, 'message': 'El archivo del comprobante no existe.'}
+
+    with open(file_path, 'rb') as capture_file:
+        return extract_receipt_details_from_image_bytes(
+            capture_file.read(),
+            mime_type=_guess_mime_type(file_path),
+            filename=file_path,
+        )

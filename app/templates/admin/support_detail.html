@@ -183,6 +183,58 @@ video.sup-media{object-fit:contain;max-height:240px}
 }
 .sup-qr-edit:hover{color:#93c5fd;border-color:rgba(99,102,241,.4);background:rgba(99,102,241,.1)}
 .sup-qr-del:hover{color:#fca5a5;border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.1)}
+
+/* ── Dentro de la bandeja (iframe) ─────────────────────────────────────────
+   El chat llena todo el panel. Con espacio de sobra, los datos del caso van
+   al lado; si el panel es angosto pasan a un cajón que se abre con la "i". */
+.sup-bar-info{
+    flex:none;display:none;align-items:center;justify-content:center;width:34px;height:34px;
+    border-radius:9px;border:1px solid transparent;background:none;color:#94a3b8;font-size:1rem;cursor:pointer;
+}
+.sup-bar-info:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e2e8f0}
+body.is-embed .sup-app{height:100vh;height:100dvh;min-height:0;gap:0;grid-template-columns:1fr 330px}
+body.is-embed .sup-chat{height:100%;border-radius:0;border:0}
+body.is-embed .sup-side{height:100%;padding:12px;border-left:1px solid rgba(255,255,255,.09);background:var(--bg-primary)}
+body.is-embed .sup-bar-back{display:none}
+.sup-side-head,.sup-scrim{display:none}
+@media (max-width:1000px){
+    body.is-embed .sup-app{grid-template-columns:1fr;position:relative}
+    body.is-embed .sup-chat{height:100%}
+    body.is-embed .sup-side{
+        position:absolute;top:0;right:0;bottom:0;width:min(340px,92%);z-index:40;
+        transform:translateX(105%);transition:transform .22s ease;box-shadow:-12px 0 30px rgba(0,0,0,.5);
+    }
+    body.is-embed .sup-side.is-open{transform:none}
+    body.is-embed .sup-bar-info{display:flex}
+    /* Cabecera fija con la X: siempre a la vista aunque el cajón tenga scroll. */
+    body.is-embed .sup-side-head{
+        display:flex;align-items:center;justify-content:space-between;gap:10px;
+        position:sticky;top:-12px;z-index:2;margin:-12px -12px 12px;padding:10px 12px;
+        background:var(--bg-primary);border-bottom:1px solid rgba(255,255,255,.09);
+    }
+    .sup-side-head strong{font-size:.95rem;color:#e2e8f0}
+    .sup-side-close{
+        flex:none;display:flex;align-items:center;justify-content:center;width:36px;height:36px;
+        border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);
+        color:#e2e8f0;font-size:1.05rem;line-height:1;cursor:pointer;
+    }
+    .sup-side-close:hover{background:rgba(255,255,255,.12)}
+    /* Fondo oscuro detrás del cajón: tocar fuera lo cierra. */
+    body.is-embed .sup-scrim{
+        display:block;position:absolute;inset:0;z-index:39;background:rgba(0,0,0,.5);
+        opacity:0;pointer-events:none;transition:opacity .22s ease;
+    }
+    body.is-embed .sup-scrim.is-open{opacity:1;pointer-events:auto}
+}
+@media (max-width:760px){body.is-embed .sup-bar-back{display:flex}}
+@media (max-width:480px){
+    /* Teléfono: sin la fotito ni textos de más, para que el nombre se lea entero. */
+    body.is-embed .sup-bar{gap:6px;padding:10px}
+    body.is-embed .sup-bar-avatar{display:none}
+    body.is-embed .sup-bar-tags{max-width:34%}
+    body.is-embed .sup-bar-who strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+@media (prefers-reduced-motion:reduce){body.is-embed .sup-side,body.is-embed .sup-scrim{transition:none}}
 </style>
 {% endblock %}
 
@@ -231,6 +283,7 @@ video.sup-media{object-fit:contain;max-height:240px}
           <a href="{{ url_for('admin_support_bp.tags') }}" class="sup-tag-panel-link">Crear o editar etiquetas ›</a>
         </div>
       </div>
+      <button type="button" class="sup-bar-info" id="supInfoBtn" aria-label="Datos del caso" aria-expanded="false" title="Datos del caso">ℹ️</button>
       <div class="sup-bar-actions">
         <button type="button" class="sup-bar-actions-btn" id="supActionsBtn" aria-label="Acciones del chat">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
@@ -269,7 +322,8 @@ video.sup-media{object-fit:contain;max-height:240px}
         {% else %}
         {% if m.is_ai %}<span class="sup-ai-label">🤖 Asistente IA</span>{% endif %}
         {%- if m.body %}<span class="sup-msg-body">{{ m.body }}</span>{% endif -%}
-        {% if m.action_url %}<a class="sup-ai-action" href="{{ m.action_url }}" target="_blank">🔗 {{ m.action_label or m.action_url }}</a>{% endif %}
+        {% if m.action_url and m.action_url.startswith('#comprar:') %}<span class="sup-ai-action">🧾 Botón para el cliente: {{ m.action_label or 'Crear mi orden con este comprobante' }}</span>
+        {% elif m.action_url %}<a class="sup-ai-action" href="{{ m.action_url }}" target="_blank">🔗 {{ m.action_label or m.action_url }}</a>{% endif %}
         {% if m.attachment %}
           {% if m.attachment.rsplit('.', 1)[-1]|lower in ['mp4','webm','mov','m4v'] %}
           <video class="sup-media" controls preload="metadata"
@@ -307,7 +361,13 @@ video.sup-media{object-fit:contain;max-height:240px}
     {% endif %}
   </div>
 
-  <div class="sup-side">
+  <div class="sup-scrim" id="supScrim" aria-hidden="true"></div>
+
+  <div class="sup-side" id="supSide">
+    <div class="sup-side-head">
+      <strong>Datos del caso</strong>
+      <button type="button" class="sup-side-close" id="supSideClose" aria-label="Cerrar datos del caso" title="Cerrar">✕</button>
+    </div>
     <div class="admin-card">
       <h3>Quién es</h3>
       <div class="sup-kv">
@@ -329,7 +389,7 @@ video.sup-media{object-fit:contain;max-height:240px}
       </div>
       {% else %}
       <p class="form-hint" style="margin-top:10px">
-        Sin identificar. El cliente solo dio su nombre — busca su orden abajo.
+        Sin identificar. No sabemos de quién es este chat — busca su orden abajo.
       </p>
       {% endif %}
     </div>
@@ -555,6 +615,12 @@ video.sup-media{object-fit:contain;max-height:240px}
             action.target = '_blank';
             action.textContent = '🔗 ' + (m.action_label || m.action_url);
             el.appendChild(action);
+        } else if (m.action_url && /^#comprar:\d+$/.test(m.action_url)) {
+            // No es un link: es el botón que le sale al cliente para crear su orden en el chat.
+            var buy = document.createElement('span');
+            buy.className = 'sup-ai-action';
+            buy.textContent = '🧾 Botón para el cliente: ' + (m.action_label || 'Crear mi orden con este comprobante');
+            el.appendChild(buy);
         }
 
         if (m.attachment) {
@@ -1081,6 +1147,40 @@ video.sup-media{object-fit:contain;max-height:240px}
                     })
                     .catch(function () {});
             }, 300);
+        });
+    }
+
+    // Dentro de la bandeja: volver, datos del caso y enlaces a otras pantallas.
+    if (document.body.classList.contains('is-embed')) {
+        var side = document.getElementById('supSide');
+        var scrim = document.getElementById('supScrim');
+        var infoBtn = document.getElementById('supInfoBtn');
+        var closeBtn = document.getElementById('supSideClose');
+        var setInfo = function (open) {
+            side.classList.toggle('is-open', open);
+            if (scrim) scrim.classList.toggle('is-open', open);
+            if (infoBtn) infoBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        };
+        if (infoBtn && side) {
+            infoBtn.addEventListener('click', function () { setInfo(!side.classList.contains('is-open')); });
+            // La X, tocar fuera del cajón o Escape lo cierran.
+            if (closeBtn) closeBtn.addEventListener('click', function () { setInfo(false); infoBtn.focus(); });
+            if (scrim) scrim.addEventListener('click', function () { setInfo(false); });
+            document.addEventListener('keydown', function (evt) {
+                if (evt.key === 'Escape' && side.classList.contains('is-open')) setInfo(false);
+            });
+        }
+        var backLink = document.querySelector('.sup-bar-back');
+        if (backLink) {
+            backLink.addEventListener('click', function (evt) {
+                evt.preventDefault();
+                window.parent.postMessage({ type: 'support-back' }, window.location.origin);
+            });
+        }
+        // Etiquetas, órdenes...: aquí dentro se verían con todo el menú del
+        // admin, así que se abren en otra pestaña.
+        Array.prototype.forEach.call(document.querySelectorAll('a[href]'), function (a) {
+            if (a !== backLink && !a.target) { a.target = '_blank'; a.rel = 'noopener'; }
         });
     }
 

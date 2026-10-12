@@ -216,13 +216,22 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     margin: 0 auto;
     padding: 0 12px 10px !important;
     display: grid !important;
-    grid-template-columns: 38px 1fr 38px;
+    /* hueco | logo | campana + menú (38px + 6px + 38px) */
+    grid-template-columns: 82px 1fr 82px;
     align-items: center;
     gap: 8px;
     border-bottom: 1px solid rgba(255,255,255,.25);
 }
 
 .header-spacer { display: block; }
+.header-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    position: relative;
+    justify-self: end;
+}
 
 .header-inner .logo-link {
     justify-self: center;
@@ -3030,6 +3039,7 @@ body.drawer-open { overflow: hidden; }
     cursor: pointer;
     user-select: all;
     overflow-wrap: anywhere;
+    white-space: pre-line; /* varios códigos: uno por línea */
     transition: color .2s ease;
 }
 .nx-pin-code:hover { color: #ff6b6b; }
@@ -4100,6 +4110,7 @@ body.drawer-open { overflow: hidden; }
 }
 .nx-chat-float:hover { transform: scale(1.05); filter: brightness(1.1); }
 .nx-chat-float svg { width: 15px; height: 15px; flex: none; }
+.nx-chat-float--raised { bottom: 68px; }
 
 .nx-chat-float-dot {
     position: absolute;
@@ -4113,13 +4124,15 @@ body.drawer-open { overflow: hidden; }
 
 @media (max-width: 480px) {
     .nx-chat-float { bottom: 16px; right: 14px; padding: 8px 13px; font-size: 11px; }
+    .nx-chat-float--raised { bottom: 58px; }
     .nx-chat-float svg { width: 14px; height: 14px; }
 }
 
-/* Botón "Tutorial": flota justo arriba de la burbuja de soporte. */
+/* Botón "Tutorial": abajo del todo, en la esquina. Si existe, el botón de
+   Soporte (.nx-chat-float--raised) se apila justo arriba de él. */
 .nx-tutorial-float {
     position: fixed;
-    bottom: 68px; right: 20px;
+    bottom: 20px; right: 20px;
     z-index: 900;
     display: inline-flex;
     align-items: center;
@@ -4141,7 +4154,7 @@ body.drawer-open { overflow: hidden; }
 .nx-tutorial-float svg { width: 15px; height: 15px; flex: none; }
 
 @media (max-width: 480px) {
-    .nx-tutorial-float { bottom: 58px; right: 14px; padding: 8px 13px; font-size: 11px; }
+    .nx-tutorial-float { bottom: 16px; right: 14px; padding: 8px 13px; font-size: 11px; }
 }
 
 .nx-tutorial-modal {
@@ -4213,3 +4226,121 @@ body.drawer-open { overflow: hidden; }
 }
 .support-attach-btn:hover{border-color:var(--neon-primary,#7c3aed);color:#fff}
 .support-attach-btn:disabled{opacity:.45;cursor:default}
+
+/* ── Campana de notificaciones (junto a la hamburguesa) ─────────────── */
+.notif-toggle { position: relative; color: #fff; }
+.notif-bell {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transform-origin: 50% 0;
+}
+.notif-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--nx-red);
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 0 0 2px #000, 0 0 10px rgba(255,0,0,.6);
+    pointer-events: none;
+}
+.notif-badge[hidden] { display: none; }
+.notif-toggle.has-unread .notif-bell { animation: notif-ring 3s ease-in-out infinite; }
+@keyframes notif-ring {
+    0%, 86%, 100% { transform: rotate(0); }
+    89% { transform: rotate(14deg); }
+    92% { transform: rotate(-12deg); }
+    95% { transform: rotate(8deg); }
+    98% { transform: rotate(-4deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .notif-toggle.has-unread .notif-bell { animation: none; }
+}
+
+.notif-panel {
+    position: absolute;
+    top: calc(100% + 12px);
+    right: 0;
+    width: min(350px, calc(100vw - 24px));
+    max-height: min(72vh, 480px);
+    display: flex;
+    flex-direction: column;
+    background: rgba(12,12,14,.97);
+    border: 1px solid rgba(255,0,0,.35);
+    border-radius: 16px;
+    box-shadow: 0 18px 44px rgba(0,0,0,.65), 0 0 24px rgba(255,0,0,.12);
+    backdrop-filter: blur(10px);
+    z-index: 1160;
+    overflow: hidden;
+    /* Misma fuente que los títulos de la tienda ("Selecciona tu paquete"). */
+    font-family: var(--nx-font-display);
+}
+.notif-panel[hidden] { display: none; }
+.notif-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    color: #fff;
+}
+.notif-head strong { font-weight: 800; }
+.notif-close {
+    background: none;
+    border: 0;
+    color: #94a3b8;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 8px;
+}
+.notif-close:hover { color: #fff; background: rgba(255,255,255,.08); }
+.notif-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; }
+.notif-item {
+    display: flex;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+    color: #e5e7eb;
+    text-decoration: none;
+}
+a.notif-item { cursor: pointer; }
+a.notif-item:hover { background: rgba(255,255,255,.05); }
+a.notif-item:active { background: rgba(255,0,0,.12); }
+.notif-go { margin: 6px 0 0; font-size: 11.5px; font-weight: 800; letter-spacing: .03em; color: var(--nx-red); }
+.notif-item.is-unread { background: rgba(255,0,0,.07); box-shadow: inset 3px 0 0 var(--nx-red); }
+.notif-icon {
+    flex: 0 0 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    background: rgba(255,255,255,.06);
+}
+.notif-item.lvl-success .notif-icon { background: rgba(34,197,94,.16); }
+.notif-item.lvl-warning .notif-icon { background: rgba(245,158,11,.18); }
+.notif-item.lvl-danger .notif-icon { background: rgba(239,68,68,.18); }
+.notif-text { min-width: 0; flex: 1; }
+.notif-title { font-weight: 800; font-size: 13px; letter-spacing: .02em; color: #fff; margin: 0 0 2px; }
+.notif-body { font-size: 12.5px; font-weight: 600; line-height: 1.45; color: #cbd5e1; margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.notif-time { font-size: 11px; font-weight: 600; color: #94a3b8; margin: 4px 0 0; }
+.notif-empty { padding: 26px 18px; text-align: center; color: #94a3b8; font-size: 13px; font-weight: 600; }
+.notif-foot { margin: 0; padding: 9px 14px; font-size: 11px; font-weight: 600; color: #94a3b8; border-top: 1px solid rgba(255,255,255,.08); }

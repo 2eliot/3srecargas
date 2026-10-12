@@ -11,12 +11,15 @@ cliente que está esperando respuesta. Cuando la cookie no llega, el JS
 manda el token por cabecera `X-Support-Token`.
 """
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request
 from flask_login import current_user
 
 from ..models import Order, SupportMessage
 from ..utils import support as support_service
 from ..utils import support_ai
+from ..utils import support_bot
+from ..utils.locks import check_rate_limit
+from ..utils.reference_extraction import extract_reference_from_image_bytes
 from ..utils.support import SupportError
 from ..utils.notifications import notify_support_chat_opened, notify_support_client_message
 
@@ -25,6 +28,19 @@ support_bp = Blueprint('support_bp', __name__, url_prefix='/soporte')
 TOKEN_COOKIE = 'support_token'
 TOKEN_HEADER = 'X-Support-Token'
 COOKIE_MAX_AGE = 90 * 24 * 3600
+
+# Consultas del menú de botones, por IP. El estado de un pedido se limita mucho
+# más: se busca por número de orden o referencia y no debe poder adivinarse.
+BOT_CATALOG_PER_MINUTE = 60
+BOT_STATUS_PER_MINUTE = 8
+BOT_STATUS_PER_HOUR = 40
+# Leer un comprobante llama a un servicio de IA que cobra por imagen: tope bajo.
+BOT_RECEIPT_PER_MINUTE = 5
+BOT_RECEIPT_PER_HOUR = 20
+BOT_RECEIPT_MAX_BYTES = 8 * 1024 * 1024
+# Cada foto del chat la lee la IA (cuesta): un cliente normal manda 1 o 2.
+CHAT_ATTACHMENTS_PER_HOUR = 20
+RECEIPT_MIME = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp', 'gif': 'image/gif'}
 
 
 def _request_token():
@@ -152,19 +168,25 @@ def page():
         auto_start_email=auto_start_email,
         auto_send=auto_send,
         idle_minutes=support_service.get_idle_close_minutes(),
+        bot=support_bot.public_bot_config(),
     )
 
 
 @support_bp.route('/iniciar', methods=['POST'])
 def start():
+    """Crea el chat con el primer mensaje (o el primer adjunto).
+
+    La pantalla es un chat normal, sin formulario: el hilo no existe hasta
+    que el cliente escribe, así que abrir "Soporte" sin mandar nada no deja
+    chats vacíos en la bandeja. `name` y `email` son opcionales; solo los
+    manda el flujo de "Olvidé mi contraseña" de los minis.
+    """
     data = request.get_json(silent=True) or {}
 
-    # Campo trampa: está oculto por CSS, una persona nunca lo rellena. Se
-    # responde 200 con un chat falso a propósito — devolver un error le
-    # diría al bot exactamente qué campo delatarlo.
-    if str(data.get('website') or '').strip():
-        return jsonify({'ok': True, 'token': '', 'chat': {'code': '#0000', 'status': 'open'},
-                        'messages': []})
+    # Se valida antes de crear nada: sin mensaje ni adjunto no hay chat.
+    first_message = support_service.clean_body(
+        data.get('message'), allow_empty=bool(data.get('has_attachment'))
+    )
 
     chat, is_new = support_service.reopen_or_start(
         token=_request_token(),
@@ -176,7 +198,6 @@ def start():
         email=data.get('email'),
     )
 
-    first_message = support_service.clean_body(data.get('message'), allow_empty=True)
     if first_message:
         support_service.add_client_message(chat, first_message)
 
@@ -244,6 +265,8 @@ def send_message():
 @support_bp.route('/adjunto', methods=['POST'])
 def send_attachment():
     chat = _load_chat_or_error()
+    if not check_rate_limit(f'support_attach:{_client_ip()}', CHAT_ATTACHMENTS_PER_HOUR, 3600):
+        raise SupportError('Enviaste muchas imágenes seguidas. Espera un rato o cuéntanos con texto.', status=429)
 
     attachment = support_service.save_attachment(request.files.get('file'))
     if not attachment:
@@ -268,3 +291,105 @@ def close():
     chat = _load_chat_or_error()
     support_service.close_chat(chat)
     return jsonify({'ok': True, 'chat': support_service.serialize_chat_for_client(chat)})
+
+
+# ─── Menú de botones (precios, comprar, estado de la recarga) ───────────────
+#
+# Consultas sueltas, sin chat: no crean ningún hilo ni necesitan cookie.
+
+def _bot_json(payload, status=200):
+    response = jsonify(payload)
+    response.status_code = status
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+def _bot_guard():
+    """Devuelve una respuesta de error si el menú está apagado o la IP se pasó."""
+    if not support_bot.public_bot_config()['enabled']:
+        return _bot_json({'ok': False, 'error': 'El menú no está disponible.'}, 404)
+    if not check_rate_limit(f'support_bot:{_client_ip()}', BOT_CATALOG_PER_MINUTE, 60):
+        return _bot_json({'ok': False, 'error': 'Demasiadas consultas seguidas. Espera un momento.'}, 429)
+    return None
+
+
+@support_bp.route('/bot/juegos')
+def bot_games():
+    blocked = _bot_guard()
+    if blocked:
+        return blocked
+    return _bot_json({'ok': True, 'games': support_bot.list_games()})
+
+
+@support_bp.route('/bot/paquetes/<int:game_id>')
+def bot_packages(game_id):
+    blocked = _bot_guard()
+    if blocked:
+        return blocked
+    data = support_bot.game_packages(game_id)
+    if data is None:
+        return _bot_json({'ok': False, 'error': 'No encontramos ese juego.'}, 404)
+    if data.get('error'):
+        return _bot_json({'ok': False, 'error': data['error']}, 503)
+    return _bot_json({'ok': True, **data})
+
+
+@support_bp.route('/bot/pago/metodos')
+def bot_payment_methods():
+    blocked = _bot_guard()
+    if blocked:
+        return blocked
+    return _bot_json({'ok': True, 'methods': support_bot.payment_method_cards()})
+
+
+@support_bp.route('/bot/estado', methods=['POST'])
+def bot_status():
+    blocked = _bot_guard()
+    if blocked:
+        return blocked
+    ip = _client_ip()
+    if (not check_rate_limit(f'support_bot_status:{ip}', BOT_STATUS_PER_MINUTE, 60)
+            or not check_rate_limit(f'support_bot_status_h:{ip}', BOT_STATUS_PER_HOUR, 3600)):
+        return _bot_json({'ok': False, 'error': 'Demasiadas consultas seguidas. Espera un momento.'}, 429)
+
+    data = request.get_json(silent=True)
+    query = data.get('query') if isinstance(data, dict) else ''
+    digits = ''.join(ch for ch in str(query or '') if ch.isdigit())
+    if len(digits) < support_bot.REFERENCE_MIN_DIGITS:
+        return _bot_json({'ok': False, 'error': 'Escribe tu número de orden (12 dígitos) o la referencia de tu pago.'}, 400)
+    orders = support_bot.find_orders(digits)
+    return _bot_json({'ok': True, 'orders': [support_bot.order_card(o) for o in orders]})
+
+
+@support_bp.route('/bot/comprobante', methods=['POST'])
+def bot_receipt():
+    """Estado de un pedido a partir de la FOTO del comprobante: la IA de lectura
+    de comprobantes de la tienda saca la referencia y con ella se busca el
+    pedido. La imagen se lee en memoria y no se guarda."""
+    blocked = _bot_guard()
+    if blocked:
+        return blocked
+    ip = _client_ip()
+    if (not check_rate_limit(f'support_bot_ocr:{ip}', BOT_RECEIPT_PER_MINUTE, 60)
+            or not check_rate_limit(f'support_bot_ocr_h:{ip}', BOT_RECEIPT_PER_HOUR, 3600)):
+        return _bot_json({'ok': False, 'error': 'Demasiadas fotos seguidas. Espera un momento o escribe tu referencia.'}, 429)
+
+    upload = request.files.get('file')
+    if not upload or not upload.filename:
+        return _bot_json({'ok': False, 'error': 'Adjunta la foto de tu comprobante.'}, 400)
+    extension = upload.filename.rsplit('.', 1)[-1].lower() if '.' in upload.filename else ''
+    if extension not in RECEIPT_MIME:
+        return _bot_json({'ok': False, 'error': 'Solo se aceptan fotos (JPG, PNG, WEBP o GIF).'}, 400)
+    image = upload.read(BOT_RECEIPT_MAX_BYTES + 1)
+    if len(image) > BOT_RECEIPT_MAX_BYTES:
+        return _bot_json({'ok': False, 'error': 'La foto pesa demasiado (máximo 8 MB).'}, 400)
+
+    result = extract_reference_from_image_bytes(image, mime_type=RECEIPT_MIME[extension], filename=upload.filename)
+    if not result.get('ok'):
+        # El motivo real (llave sin configurar, servicio caído...) es del admin, no del cliente.
+        current_app.logger.warning('[SupportBot] no se pudo leer un comprobante: %s', result.get('message'))
+        return _bot_json({'ok': False, 'error': 'No pude leer la foto ahora. Escribe tu número de orden o la referencia del pago.'}, 503)
+
+    reference = result.get('reference') or ''
+    orders = support_bot.find_orders(reference) if reference else []
+    return _bot_json({'ok': True, 'reference': reference, 'orders': [support_bot.order_card(o) for o in orders]})

@@ -26,10 +26,9 @@ from ..models import (
     PromoAccumulatedAward, PromoAccumulatedLevel, PromoAccumulatedOrderLog,
     PromoRaffleConfig, PromoRaffleWinner, PromoRaffleEntry,
     PromoGuessConfig, PromoGuessRound, PromoGuessWinner, PromoGuessAttempt,
-    PromoHordeConfig, PromoHordeWinner, SupportTag,
+    PromoHordeConfig, PromoHordeWinner, SiteNotification, OrderNotification,
 )
 from ..utils.availability import format_hour, get_manual_schedule
-from ..utils.support_ai import get_ai_settings, save_ai_settings, test_connection as test_support_ai
 from ..utils.locks import check_rate_limit, client_ip
 from ..utils.promos import (
     ACC_DEFAULT_MAX_PRIZES_PER_DAY, ACC_DEFAULT_MAX_PRIZES_PER_ID_PER_DAY, ACC_ENABLED_KEY,
@@ -65,11 +64,12 @@ from ..utils.order_processing import (
     process_affiliate_commission, process_order_delivery,
 )
 from ..utils.central_one import (
-    CentralOneError, CentralOneUnknown, fetch_balance as fetch_central_one_balance, get_centralone_env,
-    sync_catalog as sync_central_one_catalog,
+    CentralOneError, CentralOneUnknown, attach_delivered_codes, fetch_balance as fetch_central_one_balance,
+    get_centralone_env, probe_codes_permission, sync_catalog as sync_central_one_catalog,
 )
 from ..models import PushSubscription
-from ..utils.push_notifications import is_push_configured, send_push_broadcast
+from ..utils.push_notifications import is_push_configured, send_push_broadcast, send_push_to_order_subscribers_async
+from ..utils.site_notifications import BODY_MAX, TITLE_MAX, clean_link
 from ..utils.points import (
     DEFAULT_POINTS_PER_DOLLAR,
     DEFAULT_POINTS_SPIN_COST,
@@ -166,9 +166,11 @@ def delete_uploaded_file(relative_path):
 
 
 MAX_IMAGE_DIMENSION = 1920
+# La foto de soporte se ve en un circulo pequeno: 512px sobra y pesa una fraccion.
+AVATAR_IMAGE_DIMENSION = 512
 
 
-def _compress_and_save_image(file, dest_path, ext):
+def _compress_and_save_image(file, dest_path, ext, max_dimension=MAX_IMAGE_DIMENSION):
     """Redimensiona y comprime antes de guardar. Estas imágenes (logo, fondo,
     banners, juegos) se sirven a todos los visitantes, así que una foto de
     celular sin comprimir (3-8 MB) hace lenta la primera carga. GIF se guarda
@@ -183,8 +185,8 @@ def _compress_and_save_image(file, dest_path, ext):
 
         image = Image.open(file.stream)
         image = ImageOps.exif_transpose(image)
-        if max(image.size) > MAX_IMAGE_DIMENSION:
-            image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION), Image.LANCZOS)
+        if max(image.size) > max_dimension:
+            image.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
 
         if ext in ('jpg', 'jpeg'):
             if image.mode not in ('RGB', 'L'):
@@ -201,7 +203,7 @@ def _compress_and_save_image(file, dest_path, ext):
         file.save(dest_path)
 
 
-def save_image(file, subfolder=''):
+def save_image(file, subfolder='', max_dimension=MAX_IMAGE_DIMENSION):
     if not file or not allowed_file(file.filename):
         return None
     filename = secure_filename(file.filename)
@@ -212,7 +214,7 @@ def save_image(file, subfolder=''):
     if subfolder:
         folder = os.path.join(folder, subfolder)
     os.makedirs(folder, exist_ok=True)
-    _compress_and_save_image(file, os.path.join(folder, filename), ext)
+    _compress_and_save_image(file, os.path.join(folder, filename), ext, max_dimension)
     return (subfolder + '/' + filename) if subfolder else filename
 
 
@@ -1247,6 +1249,17 @@ def order_detail(order_id):
             'cost': str(sum(costs, Decimal('0')).quantize(Decimal('0.0001'))) if costs else '',
         }
 
+    # Central One ya entregó pero el código nunca llegó a la orden (llave sin el
+    # permiso «ver códigos», o una orden de antes de que la tienda los pidiera).
+    can_fetch_codes = bool(
+        delivery_code == 'centralone'
+        and any(
+            isinstance(s, dict) and s.get('remote_order_id') and not s.get('codes_saved')
+            and (s.get('awaiting_codes') or 'código(s)' in (order.notes or ''))
+            for s in delivery_state.get('steps') or []
+        )
+    )
+
     # Órdenes de antes del arreglo: un "pago restante" que en realidad era el
     # mismo primer pago se sumó dos veces. Se calcula lo que de verdad pagó.
     remainder_repeats = remainders_matching_first_payment(order, remainder_refs)
@@ -1271,6 +1284,9 @@ def order_detail(order_id):
         can_send_delivery_proof=order_supports_delivery_proof(order),
         can_upload_delivery_proof=order.status != 'rejected',
         delivery_info=delivery_info,
+        can_fetch_codes=can_fetch_codes,
+        order_messages=order.order_notifications[:10],
+        push_available=is_push_configured(),
         remainder_refs=remainder_refs,
         remainder_missing=remainder_missing,
         remainder_repeats=remainder_repeats,
@@ -1694,6 +1710,30 @@ def order_add_note(order_id):
     order.updated_at = datetime.utcnow()
     db.session.commit()
     flash('Nota guardada.', 'success')
+    return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
+
+@admin_bp.route('/orders/<int:order_id>/notify', methods=['POST'])
+@login_required
+def order_notify(order_id):
+    """Mensaje del admin para esta orden: sale en la campana de quien hizo la
+    compra en ese navegador como "Sobre tu orden #..."."""
+    order = Order.query.get_or_404(order_id)
+    body = (request.form.get('body') or '').strip()[:BODY_MAX]
+    if not body:
+        flash('Escribe el mensaje que quieres mandarle al cliente.', 'warning')
+        return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
+    db.session.add(OrderNotification(order_id=order.id, body=body))
+    db.session.commit()
+    pushed = False
+    if request.form.get('as_push') == '1' and is_push_configured():
+        send_push_to_order_subscribers_async(
+            current_app._get_current_object(), order.id,
+            f'Sobre tu orden #{order.order_number}', body[:180], url=f'/order/{order.order_number}',
+        )
+        pushed = True
+    flash('Notificación enviada: el cliente la verá en la campana de la tienda' + (' y por push.' if pushed else '.'), 'success')
     return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
 
@@ -3165,6 +3205,8 @@ def settings():
     default_auto_package_id = default_pkg_setting.value if default_pkg_setting else ''
     site_logo_setting = Setting.query.filter_by(key='site_logo').first()
     site_logo_value = site_logo_setting.value if site_logo_setting else ''
+    support_avatar_setting = Setting.query.filter_by(key='support_avatar').first()
+    support_avatar_value = support_avatar_setting.value if support_avatar_setting else ''
     site_background_setting = Setting.query.filter_by(key='site_background_image').first()
     site_background_value = site_background_setting.value if site_background_setting else ''
     order_status_image_setting = Setting.query.filter_by(key='order_status_image').first()
@@ -3306,6 +3348,8 @@ def settings():
         default_pkg = request.form.get('default_auto_package_id', '').strip()
         remove_logo = request.form.get('remove_logo')
         logo_file = request.files.get('site_logo')
+        remove_support_avatar = request.form.get('remove_support_avatar')
+        support_avatar_file = request.files.get('support_avatar')
         remove_site_background = request.form.get('remove_site_background')
         site_background_file = request.files.get('site_background_image')
         remove_order_status_image = request.form.get('remove_order_status_image')
@@ -3411,6 +3455,25 @@ def settings():
                     db.session.add(site_logo_setting)
                 else:
                     site_logo_setting.value = saved_logo
+
+        if remove_support_avatar and support_avatar_setting:
+            delete_uploaded_file(support_avatar_setting.value)
+            support_avatar_setting.value = ''
+
+        if support_avatar_file and support_avatar_file.filename:
+            saved_support_avatar = save_image(support_avatar_file, 'branding', AVATAR_IMAGE_DIMENSION)
+            if saved_support_avatar:
+                if support_avatar_setting and support_avatar_setting.value:
+                    delete_uploaded_file(support_avatar_setting.value)
+                if not support_avatar_setting:
+                    support_avatar_setting = Setting(
+                        key='support_avatar',
+                        value=saved_support_avatar,
+                        description='Foto del soporte en la cabecera del chat'
+                    )
+                    db.session.add(support_avatar_setting)
+                else:
+                    support_avatar_setting.value = saved_support_avatar
 
         if remove_site_background and site_background_setting:
             delete_uploaded_file(site_background_setting.value)
@@ -3691,11 +3754,10 @@ def settings():
 
     return render_template(
         'admin/settings.html',
-        support_ai=get_ai_settings(),
-        support_tags=SupportTag.query.filter_by(is_active=True).order_by(SupportTag.sort_order, SupportTag.name).all(),
         usd_rate=usd_rate,
         default_package_id=default_auto_package_id,
         site_logo=site_logo_value,
+        support_avatar=support_avatar_value,
         site_background_image=site_background_value,
         order_status_image=order_status_image_value,
         promo_banner_image=promo_banner_image_value,
@@ -4514,34 +4576,6 @@ def promos_horde_image_save():
 
 # ─── Asistente de IA del soporte ──────────────────────────────────────────────
 
-@admin_bp.route('/settings/support-ai', methods=['POST'])
-@login_required
-def support_ai_settings_save():
-    tag_id = request.form.get('handoff_tag_id', type=int)
-    if tag_id and not SupportTag.query.get(tag_id):
-        tag_id = None
-    api_key = request.form.get('api_key') or ''
-    try:
-        save_ai_settings(
-            enabled=request.form.get('enabled') == '1',
-            api_key=api_key,
-            model=request.form.get('model'),
-            handoff_tag_id=tag_id,
-            max_failed=request.form.get('max_failed', type=int),
-            instructions=request.form.get('instructions'),
-            base_url=request.form.get('base_url'),
-        )
-    except ValueError as exc:
-        flash(str(exc), 'danger')
-        return redirect(url_for('admin_bp.settings', ai=1) + '#support-ai')
-    if request.form.get('test'):
-        ok, message = test_support_ai(api_key=api_key)
-        flash(('✅ ' if ok else '❌ ') + message, 'success' if ok else 'danger')
-    else:
-        flash('Asistente de IA del soporte guardado.', 'success')
-    return redirect(url_for('admin_bp.settings', ai=1) + '#support-ai')
-
-
 # ─── Bloqueo de IDs en Hordas de Diamantes ────────────────────────────────────
 
 def _horde_back(game_id):
@@ -4746,37 +4780,77 @@ def promos_horde_replay_verdict(run_id):
     return jsonify({'ok': True})
 
 
-# ─── Notificaciones push ──────────────────────────────────────────────────────
+# ─── Notificaciones (campana de la tienda + push) ─────────────────────────────
 
 @admin_bp.route('/notifications', methods=['GET', 'POST'])
 @login_required
 def notifications():
     if request.method == 'POST':
-        title = (request.form.get('title') or '').strip()
-        body = (request.form.get('body') or '').strip()
-        url_link = (request.form.get('url') or '').strip()
+        title = (request.form.get('title') or '').strip()[:TITLE_MAX]
+        body = (request.form.get('body') or '').strip()[:BODY_MAX]
+        link = clean_link(request.form.get('url'))
+        in_bell = request.form.get('in_bell') == '1'
+        as_push = request.form.get('as_push') == '1'
 
         if not title or not body:
             flash('Título y mensaje son obligatorios.', 'danger')
             return redirect(url_for('admin_bp.notifications'))
-
-        if not is_push_configured():
-            flash('Las notificaciones push todavía no están listas en el servidor.', 'danger')
+        if link is None:
+            flash('El link tiene que ser una página de la tienda (empieza con /) o una dirección https://.', 'danger')
+            return redirect(url_for('admin_bp.notifications'))
+        if not in_bell and not as_push:
+            flash('Elige dónde mostrarla: en la campana de la tienda, por push, o en las dos.', 'danger')
             return redirect(url_for('admin_bp.notifications'))
 
-        result = send_push_broadcast(title, body, url=url_link or None)
-        flash(
-            f'Notificación enviada: {result["sent"]} entregada(s), {result["failed"]} fallida(s).',
-            'success' if result['sent'] else 'warning',
-        )
+        if in_bell:
+            db.session.add(SiteNotification(title=title, body=body, url=link or None))
+            db.session.commit()
+            flash('Notificación publicada en la campana de la tienda: la verán todos.', 'success')
+        if as_push:
+            if not is_push_configured():
+                flash('Las notificaciones push todavía no están listas en el servidor.', 'danger')
+            else:
+                result = send_push_broadcast(title[:60], body[:180], url=link or None)
+                flash(
+                    f'Push enviado: {result["sent"]} entregada(s), {result["failed"]} fallida(s).',
+                    'success' if result['sent'] else 'warning',
+                )
         return redirect(url_for('admin_bp.notifications'))
 
-    subscriber_count = PushSubscription.query.count()
+    published = (
+        SiteNotification.query
+        .order_by(SiteNotification.created_at.desc(), SiteNotification.id.desc())
+        .limit(100)
+        .all()
+    )
     return render_template(
         'admin/notifications.html',
-        subscriber_count=subscriber_count,
+        subscriber_count=PushSubscription.query.count(),
         push_configured=is_push_configured(),
+        published=published,
+        title_max=TITLE_MAX,
+        body_max=BODY_MAX,
     )
+
+
+@admin_bp.route('/notifications/<int:notification_id>/toggle', methods=['POST'])
+@login_required
+def notification_toggle(notification_id):
+    row = SiteNotification.query.get_or_404(notification_id)
+    row.is_active = not row.is_active
+    db.session.commit()
+    flash('Notificación visible en la campana.' if row.is_active else 'Notificación oculta: ya no sale en la campana.', 'success')
+    return redirect(url_for('admin_bp.notifications'))
+
+
+@admin_bp.route('/notifications/<int:notification_id>/delete', methods=['POST'])
+@login_required
+def notification_delete(notification_id):
+    row = SiteNotification.query.get_or_404(notification_id)
+    db.session.delete(row)
+    db.session.commit()
+    flash('Notificación eliminada.', 'success')
+    return redirect(url_for('admin_bp.notifications'))
 
 
 # ─── Revendedores Whitelabel API ─────────────────────────────────────────────
@@ -4951,13 +5025,17 @@ def centralone_balance():
         balance = fetch_central_one_balance()
     except (CentralOneError, CentralOneUnknown) as exc:
         return jsonify({'ok': False, 'error': _central_one_error_text(exc)}), 502
-    return jsonify({
+    payload = {
         'ok': True,
         'available': balance.get('available_balance'),
         'held': balance.get('held_balance'),
         'total': balance.get('total_balance'),
         'currency': balance.get('currency') or 'USD',
-    })
+    }
+    if request.args.get('check_codes'):
+        # False = la llave NO puede ver códigos: los productos de código no llegarían al cliente.
+        payload['codes_permission'] = probe_codes_permission()
+    return jsonify(payload)
 
 
 def _json_dict(text):
@@ -5027,6 +5105,8 @@ def revendedores_mapping_data():
             'in_stock': bool(r.in_stock),
             'available_stock': r.available_stock,
             'fields': fields,
+            # Sin datos de jugador = producto de CÓDIGO (gift card / PIN), no recarga directa.
+            'delivers_code': not r.requires_target and not fields,
             # Campos de lista (servidor): la tienda necesita saber su valor.
             'selects': [
                 {'key': f.get('key'), 'label': f.get('label') or f.get('key'), 'options': f.get('options') or []}
@@ -5079,6 +5159,8 @@ def revendedores_mapping_data():
                 'name': p.name,
                 'price': str(p.price),
                 'game_name': p.game.name if p.game else '',
+                # Sección de códigos de la web: el cliente recibe el código en su orden.
+                'is_code_section': bool(p.game and p.game.category and (p.game.category.slug or '').lower() == 'tarjetas'),
             }
             for p in store_packages
         ],
@@ -5294,6 +5376,17 @@ def revendedores_mappings_bulk():
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
     return jsonify({'ok': True, 'saved': saved, 'removed': removed})
+
+
+@admin_bp.route('/orders/<int:order_id>/centralone-codes', methods=['POST'])
+@login_required
+def order_fetch_centralone_codes(order_id):
+    """Trae el código de un pedido que Central One ya entregó y lo guarda en la
+    orden (y avisa al cliente si es de la sección de códigos)."""
+    order = Order.query.get_or_404(order_id)
+    result = attach_delivered_codes(order)
+    flash(result['message'], 'success' if result['ok'] else 'danger')
+    return redirect(url_for('admin_bp.order_detail', order_id=order.id))
 
 
 @admin_bp.route('/orders/<int:order_id>/verify-recharge', methods=['POST'])

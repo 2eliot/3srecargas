@@ -1,13 +1,13 @@
 /* ── Pantalla de soporte ──────────────────────────────────────────────────
    Chat a pagina completa, con el reparto que la gente ya tiene aprendido de
-   WhatsApp: cabecera fija con quien esta al otro lado, hilo que crece hacia
-   abajo, y la caja de escribir pegada al pie.
+   las apps de mensajeria: cabecera con quien esta al otro lado, hilo que
+   crece hacia abajo, y la caja de escribir flotando al pie.
 
-   Se separa de neon.css porque solo la carga esta pagina: son ~250 lineas
+   Se separa de neon.css porque solo la carga esta pagina: son ~300 lineas
    que no tiene por que descargar quien solo entra a comprar. */
 
 .sc-wrap {
-    max-width: 720px;
+    max-width: 760px;
     margin: 0 auto;
     padding: 14px 12px 24px;
     /* Misma fuente "display" (Outfit) que usa el resto de la tienda —
@@ -16,19 +16,24 @@
     font-family: var(--nx-font-display);
 }
 
+/* Tarjeta con borde de luz (rojo arriba a la izquierda, casi invisible al
+   resto) y un resplandor suave desde arriba. Todas las capas son opacas a
+   proposito: en movil la ventana va fija encima de la tienda, y con
+   transparencia se leia el pie de pagina por detras de los mensajes. */
 .sc-window {
     display: flex;
     flex-direction: column;
     height: calc(100vh - 190px);
+    height: calc(100dvh - 190px);
     min-height: 460px;
-    border-radius: 16px;
+    border-radius: 28px;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, .1);
-    /* Opaco a proposito: en movil la ventana va fija encima de la
-       tienda, y con transparencia se leia el pie de pagina por detras
-       de los mensajes. */
-    background: #0a0a12;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+    border: 1px solid transparent;
+    background:
+        radial-gradient(120% 50% at 50% -10%, rgba(255, 30, 60, .17), transparent 62%) padding-box,
+        linear-gradient(180deg, #10101b 0%, #08080f 100%) padding-box,
+        linear-gradient(155deg, rgba(255, 70, 80, .55), rgba(255, 255, 255, .09) 38%, rgba(255, 255, 255, .04)) border-box;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .55), 0 0 60px rgba(255, 0, 40, .07);
 }
 
 /* ── Cabecera ─────────────────────────────────────────────────────────── */
@@ -37,52 +42,77 @@
     flex: none;
     display: flex;
     align-items: center;
-    gap: 11px;
-    padding: 11px 14px;
-    background: rgba(255, 255, 255, .05);
-    border-bottom: 1px solid rgba(255, 255, 255, .08);
+    gap: 12px;
+    padding: 14px 18px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .015));
+    border-bottom: 1px solid rgba(255, 255, 255, .07);
 }
 
 .sc-back {
     display: none;
-    font-size: 26px;
-    line-height: 1;
+    flex: none;
+    width: 38px;
+    height: 38px;
+    margin-left: -6px;
+    border-radius: 50%;
+    place-items: center;
     color: #fff;
     text-decoration: none;
-    padding: 0 4px 3px 0;
 }
+.sc-back svg { width: 22px; height: 22px; }
+.sc-back:active { background: rgba(255, 255, 255, .1); }
 
 .sc-avatar {
     flex: none;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: var(--nx-red, #FF0000);
+    background: linear-gradient(145deg, #ff2d3d, #a30e1c);
     color: #fff;
     font-weight: 900;
-    font-size: 14px;
+    font-size: 15px;
     letter-spacing: .02em;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, .06), 0 6px 18px rgba(255, 0, 40, .35);
+    position: relative;
+    overflow: hidden;
+}
+/* Foto de soporte (la sube el admin): cubre el "3S", que queda debajo por si
+   la imagen no carga. */
+.sc-avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
 }
 
 .sc-who { flex: 1; min-width: 0; line-height: 1.3; }
-.sc-who strong { display: block; font-size: 14px; color: #fff; }
+.sc-who strong { display: block; font-size: 15.5px; font-weight: 700; color: #fff; }
 .sc-who span {
     display: block;
-    font-size: 11.5px;
+    font-size: 12px;
     color: rgba(255, 255, 255, .5);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
+/* El codigo del chat, como una etiqueta discreta; vacio no se pinta. */
 .sc-code {
     flex: none;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .1);
+    background: rgba(255, 255, 255, .05);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px;
-    color: rgba(255, 255, 255, .35);
+    letter-spacing: .03em;
+    color: rgba(255, 255, 255, .55);
 }
+.sc-code:empty { display: none; }
 
 /* ── Tarjeta del pedido ───────────────────────────────────────────────── */
 
@@ -90,29 +120,34 @@
     flex: none;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-    background: rgba(255, 0, 0, .07);
-    border-bottom: 1px solid rgba(255, 0, 0, .18);
+    gap: 12px;
+    margin: 12px 14px 0;
+    padding: 11px 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 60, 70, .25);
+    background: linear-gradient(135deg, rgba(255, 0, 40, .12), rgba(255, 0, 40, .04));
     color: #e9e9f0;
     text-decoration: none;
-    font-size: 12px;
+    font-size: 12.5px;
     line-height: 1.45;
+    transition: border-color .15s, background .15s;
 }
-.sc-order:hover { background: rgba(255, 0, 0, .12); }
+.sc-order:hover { border-color: rgba(255, 90, 100, .5); background: linear-gradient(135deg, rgba(255, 0, 40, .18), rgba(255, 0, 40, .07)); }
 .sc-order strong { color: #fff; }
 .sc-order-dot {
     flex: none;
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
-    background: var(--nx-red, #FF0000);
+    background: #ff3b4a;
+    box-shadow: 0 0 0 4px rgba(255, 59, 74, .2);
 }
 .sc-order-go {
     flex: none;
     margin-left: auto;
-    font-size: 11px;
-    color: rgba(255, 255, 255, .55);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, .6);
     white-space: nowrap;
 }
 
@@ -125,100 +160,15 @@
     flex-direction: column;
 }
 
-/* `display:flex` gana al `display:none` que el navegador aplica por
-   defecto a [hidden], asi que los dos pasos —el formulario del nombre y el
-   hilo— se pintaban uno encima del otro. Es el motivo de que en el movil
-   se vieran los mensajes atravesados sobre el formulario. */
-.sc-body[hidden] { display: none !important; }
-
-.sc-intro { text-align: center; padding: 30px 22px 14px; }
-.sc-intro-icon { font-size: 38px; margin-bottom: 8px; }
-.sc-intro h1 {
-    margin: 0 0 6px;
-    font-size: 19px;
-    color: #fff;
-}
-.sc-intro p {
-    margin: 0;
-    font-size: 13px;
-    color: rgba(255, 255, 255, .55);
-    line-height: 1.5;
-}
-
-.sc-start-form {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 6px 22px 22px;
-}
-.sc-start-form input[type=text],
-.sc-start-form textarea {
-    width: 100%;
-    padding: 12px 14px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, .14);
-    background: rgba(255, 255, 255, .05);
-    color: #fff;
-    font: inherit;
+/* Sin saludo del asistente (menu apagado): una linea y listo. */
+.sc-empty {
+    margin: auto;
+    max-width: 280px;
+    text-align: center;
     font-size: 14px;
-    resize: vertical;
+    line-height: 1.55;
+    color: rgba(255, 255, 255, .5);
 }
-.sc-start-form input[type=text]:focus,
-.sc-start-form textarea:focus {
-    outline: none;
-    border-color: var(--nx-red, #FF0000);
-}
-.sc-start-form input[type=email] { font-size: 14px; }
-.sc-start-form textarea { min-height: 96px; line-height: 1.5; }
-
-.sc-field-hint {
-    margin: -4px 2px 0;
-    font-size: 11.5px;
-    line-height: 1.45;
-    color: rgba(255, 255, 255, .42);
-}
-
-.sc-start-file-label {
-    margin: -2px 2px 0;
-    font-size: 12.5px;
-    font-weight: 700;
-    color: rgba(255, 255, 255, .75);
-    cursor: pointer;
-}
-.sc-start-form input[type=file] {
-    width: 100%;
-    padding: 10px 12px;
-    border-radius: 12px;
-    border: 1px dashed rgba(255, 255, 255, .2);
-    background: rgba(255, 255, 255, .03);
-    color: rgba(255, 255, 255, .75);
-    font-size: 12.5px;
-}
-.sc-start-file-name {
-    margin: -2px 2px 0;
-    font-size: 11.5px;
-    color: #4ade80;
-    font-weight: 600;
-}
-
-.sc-trap { position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; }
-
-.sc-start-btn {
-    padding: 13px 0;
-    border: 1px solid rgba(255, 0, 0, .45);
-    border-radius: 12px;
-    background: linear-gradient(90deg, #dc2626, #991b1b);
-    color: #fff;
-    font-weight: 800;
-    letter-spacing: .04em;
-    font-size: 13px;
-    cursor: pointer;
-    transition: filter .15s;
-}
-.sc-start-btn:hover { filter: brightness(1.12); }
-.sc-start-btn:disabled { opacity: .5; cursor: default; }
-
-.sc-error { margin: 0; font-size: 13px; color: #fca5a5; text-align: center; }
 
 /* ── Hilo ─────────────────────────────────────────────────────────────── */
 
@@ -226,22 +176,29 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 16px 14px;
+    padding: 18px 18px 8px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, .18) transparent;
 }
 
 .sc-msg {
-    max-width: 78%;
-    padding: 8px 12px 6px;
-    border-radius: 12px;
-    font-size: 14px;
+    max-width: 76%;
+    padding: 9px 14px 7px;
+    border-radius: 20px;
+    font-size: 14.5px;
     line-height: 1.45;
     word-break: break-word;
     position: relative;
+    animation: sc-pop .22s ease-out both;
 }
+/* El "escribiendo..." se vuelve a colocar al final en cada consulta; sin
+   esto la animacion de entrada se repetiria cada vez. */
+.sc-msg.sc-typing { animation: none; }
+
+@keyframes sc-pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
 
 /* `pre-wrap` va SOLO en el texto del mensaje, nunca en la burbuja.
    Puesto en la burbuja conservaba tambien los saltos de linea y la
@@ -258,10 +215,10 @@
 .sc-media {
     display: block;
     width: 100%;
-    max-width: 200px;
-    max-height: 200px;
+    max-width: 220px;
+    max-height: 220px;
     object-fit: cover;
-    border-radius: 10px;
+    border-radius: 14px;
     margin-top: 6px;
     background: rgba(0, 0, 0, .3);
 }
@@ -270,10 +227,10 @@ video.sc-media { object-fit: contain; max-height: 240px; }
 .sc-media-link { display: inline-block; position: relative; text-decoration: none; }
 .sc-media-open {
     position: absolute;
-    right: 6px;
-    bottom: 10px;
-    padding: 2px 7px;
-    border-radius: 6px;
+    right: 8px;
+    bottom: 12px;
+    padding: 2px 8px;
+    border-radius: 999px;
     background: rgba(0, 0, 0, .62);
     color: #fff;
     font-size: 10px;
@@ -285,35 +242,38 @@ video.sc-media { object-fit: contain; max-height: 240px; }
     display: block;
     text-align: right;
     font-size: 10.5px;
-    opacity: .55;
+    opacity: .6;
     margin-top: 2px;
 }
 
 /* El cliente a la derecha, soporte a la izquierda: al reves se lee mal
-   porque todo el mundo trae de WhatsApp que lo propio va a la derecha. */
+   porque todo el mundo trae de las apps de mensajeria que lo propio va a
+   la derecha. La esquina que apunta a quien habla queda mas cerrada. */
 .sc-msg.client {
     align-self: flex-end;
-    background: linear-gradient(135deg, #dc2626, #991b1b);
+    background: linear-gradient(135deg, #f01e2c, #b30f1c);
     color: #fff;
-    border-bottom-right-radius: 3px;
+    border-bottom-right-radius: 6px;
+    box-shadow: 0 6px 18px rgba(240, 30, 44, .22);
 }
 .sc-msg.admin {
     align-self: flex-start;
-    background: rgba(255, 255, 255, .09);
-    border: 1px solid rgba(255, 255, 255, .1);
-    color: #e9e9f0;
-    border-bottom-left-radius: 3px;
+    background: rgba(255, 255, 255, .07);
+    border: 1px solid rgba(255, 255, 255, .09);
+    color: #ececf4;
+    border-bottom-left-radius: 6px;
 }
 .sc-msg.system {
     align-self: center;
     max-width: 92%;
-    background: rgba(255, 255, 255, .04);
-    color: rgba(255, 255, 255, .45);
+    margin: 6px 0;
+    background: rgba(255, 255, 255, .05);
+    color: rgba(255, 255, 255, .5);
     font-size: 11.5px;
-    font-style: italic;
     text-align: center;
-    padding: 5px 12px;
-    border-radius: 8px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    box-shadow: none;
 }
 /* Asistente de IA: misma burbuja de soporte, con un toque morado. */
 .sc-msg.admin.ai { border-color: rgba(168, 85, 247, .45); background: rgba(168, 85, 247, .1); }
@@ -321,16 +281,17 @@ video.sc-media { object-fit: contain; max-height: 240px; }
 .sc-action-btn {
     display: inline-block;
     margin-top: 8px;
-    padding: 8px 14px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #dc2626, #991b1b);
-    border: 1px solid rgba(255, 255, 255, .3);
+    padding: 9px 16px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #f01e2c, #b30f1c);
+    border: 1px solid rgba(255, 255, 255, .25);
     color: #fff;
-    font-weight: 800;
+    font-weight: 700;
     font-size: 13px;
     text-decoration: none;
 }
 .sc-action-btn:hover { filter: brightness(1.12); }
+button.sc-action-btn { font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; text-align: left; max-width: 100%; }
 .sc-typing { padding-bottom: 10px; }
 .sc-dots { display: inline-flex; gap: 4px; padding-top: 4px; }
 .sc-dots i { width: 7px; height: 7px; border-radius: 50%; background: #c4b5fd; opacity: .35; animation: sc-dot 1.2s infinite; }
@@ -342,9 +303,11 @@ video.sc-media { object-fit: contain; max-height: 240px; }
 
 .sc-closed {
     flex: none;
+    margin: 4px 14px 0;
     padding: 9px 14px;
+    border-radius: 14px;
     background: rgba(255, 193, 7, .1);
-    border-top: 1px solid rgba(255, 193, 7, .28);
+    border: 1px solid rgba(255, 193, 7, .25);
     color: #fde68a;
     font-size: 12px;
     text-align: center;
@@ -352,58 +315,73 @@ video.sc-media { object-fit: contain; max-height: 240px; }
 
 /* ── Caja de escribir ─────────────────────────────────────────────────── */
 
+/* Una sola pastilla flotante que lo contiene todo: clip, texto y enviar. */
 .sc-composer {
     flex: none;
     display: flex;
     align-items: flex-end;
-    gap: 8px;
-    padding: 10px 12px;
-    background: rgba(255, 255, 255, .04);
-    border-top: 1px solid rgba(255, 255, 255, .08);
+    gap: 4px;
+    margin: 10px 14px 14px;
+    padding: 6px;
+    border-radius: 28px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: rgba(255, 255, 255, .06);
+    transition: border-color .15s, box-shadow .15s;
+}
+.sc-composer:focus-within {
+    border-color: rgba(255, 70, 80, .65);
+    box-shadow: 0 0 0 4px rgba(255, 0, 40, .1);
 }
 
 .sc-composer textarea {
     flex: 1;
-    min-height: 42px;
+    min-width: 0;
+    min-height: 40px;
     max-height: 130px;
     resize: none;
-    padding: 11px 14px;
-    border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, .13);
-    background: rgba(255, 255, 255, .06);
+    padding: 10px 6px;
+    border: none;
+    background: transparent;
     color: #fff;
     font: inherit;
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1.4;
 }
-.sc-composer textarea:focus {
-    outline: none;
-    border-color: var(--nx-red, #FF0000);
-}
+/* main.css le pone un anillo propio a todo campo enfocado; aqui el brillo
+   lo da la pastilla entera (.sc-composer:focus-within). */
+.sc-composer textarea:focus { outline: none; box-shadow: none; border: none; }
+.sc-composer textarea::placeholder { color: rgba(255, 255, 255, .4); }
 
 .sc-attach,
 .sc-send {
     flex: none;
-    width: 42px;
-    height: 42px;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
     border-radius: 50%;
     cursor: pointer;
-    font-size: 16px;
-    transition: filter .15s, transform .12s;
+    transition: filter .15s, transform .12s, opacity .15s, background .15s;
 }
+.sc-attach svg, .sc-send svg { width: 20px; height: 20px; }
 .sc-attach {
-    border: 1px solid rgba(255, 255, 255, .13);
-    background: rgba(255, 255, 255, .06);
-    color: rgba(255, 255, 255, .7);
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, .6);
 }
-.sc-attach:hover { color: #fff; }
+.sc-attach:hover { color: #fff; background: rgba(255, 255, 255, .08); }
 .sc-send {
     border: none;
-    background: linear-gradient(135deg, #dc2626, #991b1b);
+    background: linear-gradient(135deg, #f01e2c, #b30f1c);
     color: #fff;
+    box-shadow: 0 4px 14px rgba(240, 30, 44, .35);
 }
 .sc-send:hover { filter: brightness(1.15); }
-.sc-send:active { transform: scale(.93); }
+.sc-send:active { transform: scale(.92); }
+/* Apagado mientras no hay nada escrito (los navegadores sin :has lo ven
+   siempre encendido, que tambien esta bien). */
+.sc-composer:has(textarea:placeholder-shown) .sc-send { opacity: .5; box-shadow: none; }
 .sc-attach:disabled, .sc-send:disabled { opacity: .45; cursor: default; }
 
 .sc-foot {
@@ -412,6 +390,262 @@ video.sc-media { object-fit: contain; max-height: 240px; }
     color: rgba(255, 255, 255, .38);
     text-align: center;
     line-height: 1.5;
+}
+
+/* ── Menu de botones y burbujas del asistente ────────────────────────── */
+
+.sc-quick {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 14px 0;
+}
+.sc-quick-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 14px;
+    border-radius: 999px;
+    /* Borde rojo que brilla (por fuera y un poco por dentro), letra blanca en negrita. */
+    border: 1.5px solid #ff2a3d;
+    background: rgba(255, 0, 40, .07);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(255, 30, 60, .55), inset 0 0 8px rgba(255, 30, 60, .18);
+    transition: box-shadow .15s, background .15s, transform .15s;
+}
+.sc-quick-btn svg { width: 16px; height: 16px; flex: none; color: #ff5a66; }
+.sc-quick-btn:hover {
+    background: rgba(255, 0, 40, .16);
+    box-shadow: 0 0 16px rgba(255, 30, 60, .85), inset 0 0 10px rgba(255, 30, 60, .3);
+    transform: translateY(-1px);
+}
+.sc-quick-btn:active { transform: scale(.97); }
+
+/* El asistente del menu: burbuja de soporte con su nombre arriba. Mas ancha
+   que una normal porque lleva botones, listas y tarjetas. */
+.sc-msg.bot { max-width: min(92%, 440px); }
+/* Con la cuadricula de paquetes: justo el ancho de los 3 cuadros (300px + relleno). */
+.sc-msg.bot.narrow { max-width: min(332px, 92%); }
+.sc-bot-label { display: block; font-size: 11px; font-weight: 800; letter-spacing: .02em; color: #ff7a85; margin-bottom: 2px; }
+.sc-bot-note { display: block; margin-top: 8px; font-size: 11.5px; line-height: 1.45; color: rgba(255, 255, 255, .45); }
+
+.sc-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; margin-top: 10px; }
+.sc-choice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: rgba(255, 255, 255, .06);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+}
+.sc-choice img { width: 30px; height: 30px; flex: none; border-radius: 9px; object-fit: cover; }
+.sc-choice span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sc-choice:hover:not(:disabled) { border-color: rgba(255, 80, 90, .6); background: rgba(255, 0, 40, .13); }
+
+/* Paquetes: cuadros de 3 en fila, con el nombre arriba y el precio abajo ($ en
+   grande, Bs debajo), chicos a proposito. El ancho es fijo para que sean 3 por fila sin ensanchar
+   la burbuja. */
+.sc-pkgs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+    width: min(300px, calc(100vw - 80px));
+}
+.sc-pkg {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    padding: 6px 4px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, .13);
+    background: rgba(255, 255, 255, .06);
+    color: #fff;
+    font: inherit;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+}
+.sc-pkg-name { font-size: 11.5px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.sc-pkg-price { display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.sc-pkg-price b { font-size: 12px; font-weight: 800; color: #ff8a93; }
+.sc-pkg-price small { font-size: 10px; font-weight: 600; color: rgba(255, 255, 255, .55); }
+.sc-pkg:hover:not(:disabled) { border-color: rgba(255, 80, 90, .6); background: rgba(255, 0, 40, .13); }
+.sc-pkg.off .sc-pkg-price { font-size: 10.5px; font-weight: 600; color: rgba(255, 255, 255, .4); }
+
+/* Lo ya elegido queda marcado y el resto del grupo se apaga. */
+.sc-choice:disabled, .sc-pkg:disabled { opacity: .5; cursor: default; }
+.sc-choice.chosen:disabled, .sc-pkg.chosen:disabled { opacity: 1; border-color: rgba(255, 80, 90, .7); background: rgba(255, 0, 40, .16); }
+
+/* Campo para escribir un dato dentro de la burbuja (ID, referencia...). */
+.sc-inline { display: flex; gap: 6px; margin-top: 10px; }
+.sc-inline .sc-inline-input {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    background: rgba(0, 0, 0, .25);
+    color: #fff;
+    font-size: 16px;
+}
+.sc-inline .sc-inline-input:focus { border-color: rgba(255, 70, 80, .7); box-shadow: none; }
+.sc-inline-send {
+    flex: none;
+    padding: 0 16px;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #f01e2c, #b30f1c);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.sc-inline-send:disabled, .sc-inline .sc-inline-input:disabled { opacity: .5; cursor: default; }
+.sc-inline-error { display: block; margin-top: 6px; font-size: 12px; color: #fca5a5; }
+
+.sc-card {
+    margin-top: 10px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: rgba(0, 0, 0, .22);
+}
+.sc-card-row { display: flex; justify-content: space-between; gap: 14px; padding: 4px 0; font-size: 13px; }
+.sc-card-row + .sc-card-row { border-top: 1px solid rgba(255, 255, 255, .06); }
+.sc-card-k { color: rgba(255, 255, 255, .55); }
+.sc-card-v { text-align: right; word-break: break-word; }
+.sc-card-row:last-child .sc-card-v { color: #ff8a93; }
+.sc-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+.sc-card-text { margin: 8px 0 6px; font-size: 13px; line-height: 1.5; color: #e6e6ee; }
+.sc-card-meta { display: block; font-size: 11px; color: rgba(255, 255, 255, .42); }
+.sc-status { padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+.sc-status.tone-ok { background: rgba(34, 197, 94, .16); color: #4ade80; }
+.sc-status.tone-info { background: rgba(96, 165, 250, .16); color: #93c5fd; }
+.sc-status.tone-warn { background: rgba(250, 204, 21, .16); color: #fde047; }
+.sc-status.tone-bad { background: rgba(239, 68, 68, .18); color: #fca5a5; }
+
+.sc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.sc-act {
+    display: inline-block;
+    padding: 9px 15px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    background: rgba(255, 255, 255, .06);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+.sc-act:hover { border-color: rgba(255, 80, 90, .6); }
+.sc-act.primary { border-color: rgba(255, 255, 255, .25); background: linear-gradient(135deg, #f01e2c, #b30f1c); }
+.sc-act:disabled { opacity: .5; cursor: default; }
+.sc-attach-receipt { display: inline-flex; align-items: center; gap: 7px; }
+.sc-attach-receipt svg { width: 16px; height: 16px; flex: none; color: #ff7a85; }
+
+/* ── Comprar dentro del chat: datos para pagar, formularios y estado ───── */
+
+.sc-choice small.sc-choice-tag {
+    margin-left: auto;
+    flex: none;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(255, 0, 40, .18);
+    color: #ff8a93;
+    font-size: 10.5px;
+    font-weight: 800;
+}
+
+/* Datos para pagar: compactos, cada dato con su boton de copiar y uno para copiar todo. */
+.sc-pay { padding: 2px 10px; }
+.sc-pay-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; }
+.sc-pay-row + .sc-pay-row { border-top: 1px solid rgba(255, 255, 255, .07); }
+.sc-pay-text { min-width: 0; display: flex; flex-direction: column; gap: 0; line-height: 1.25; }
+.sc-pay-text small { font-size: 9.5px; color: rgba(255, 255, 255, .5); }
+.sc-pay-text strong { font-size: 12.5px; word-break: break-all; }
+.sc-pay-amount .sc-pay-text strong { font-size: 14px; color: #ff8a93; }
+.sc-copy {
+    flex: none;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid #ff2a3d;
+    background: rgba(255, 0, 40, .1);
+    color: #fff;
+    font: inherit;
+    font-size: 10.5px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 0 7px rgba(255, 30, 60, .4);
+}
+.sc-copy:hover { box-shadow: 0 0 12px rgba(255, 30, 60, .75); }
+.sc-copy-all {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1.5px solid #ff2a3d;
+    background: rgba(255, 0, 40, .12);
+    color: #fff;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(255, 30, 60, .5);
+}
+.sc-copy-all:hover { box-shadow: 0 0 16px rgba(255, 30, 60, .85); }
+.sc-rules { margin: 7px 0 0; padding-left: 16px; font-size: 11px; line-height: 1.45; color: rgba(255, 255, 255, .7); }
+
+/* Codigo de descuento / correo (opcionales). */
+.sc-extras { display: flex; flex-wrap: wrap; gap: 6px; }
+.sc-extras:not(:empty) { margin-top: 8px; }
+.sc-chip-on { padding: 4px 10px; border-radius: 999px; background: rgba(34, 197, 94, .15); color: #4ade80; font-size: 11.5px; font-weight: 700; }
+
+/* Formulario de la referencia (y datos de quien pago). */
+.sc-form { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.sc-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, .62); }
+.sc-field input, .sc-field select {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    background: rgba(0, 0, 0, .25);
+    color: #fff;
+    font-size: 16px;
+}
+.sc-field input:focus, .sc-field select:focus { border-color: rgba(255, 70, 80, .7); box-shadow: none; outline: none; }
+.sc-field select option { background: #10101b; }
+.sc-dni { display: flex; gap: 8px; }
+.sc-dni select { width: 76px; flex: none; }
+.sc-dni input { flex: 1; min-width: 0; }
+.sc-form-send { padding: 11px 16px; font-size: 14px; }
+.sc-form input:disabled, .sc-form select:disabled, .sc-form-send:disabled { opacity: .5; cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+    .sc-msg { animation: none; }
+    .sc-quick-btn { transition: none; }
 }
 
 /* ── Movil: la pestana ocupa toda la pantalla, como una app ───────────── */
@@ -433,12 +667,19 @@ video.sc-media { object-fit: contain; max-height: 240px; }
         border-radius: 0;
         box-shadow: none;
     }
-    .sc-back { display: block; }
+    .sc-head { padding: 12px 14px; }
+    /* La campanita vive en el header de la tienda, que aqui queda tapado por el
+       chat. Con su panel abierto (body.notif-open) el chat baja un nivel, por
+       debajo del header, para que el panel se vea encima. */
+    body.notif-open .sc-window { z-index: 90; }
+    .sc-back { display: grid; }
     .sc-back-desktop { display: none; }
-    .sc-msg { max-width: 86%; }
+    .sc-thread { padding: 14px 12px 6px; }
+    .sc-msg { max-width: 84%; }
+    .sc-composer { margin: 8px 10px calc(10px + env(safe-area-inset-bottom)); }
     .sc-foot { display: none; }
-    .sc-intro { padding: 22px 18px 10px; }
-    .sc-intro-icon { font-size: 30px; }
-    .sc-intro h1 { font-size: 17px; }
-    .sc-start-form { padding: 6px 18px 18px; }
+    /* El menu va en una sola fila que se desliza, para no comerse la pantalla. */
+    .sc-quick { flex-wrap: nowrap; overflow-x: auto; padding: 6px 10px 0; scrollbar-width: none; }
+    .sc-quick::-webkit-scrollbar { display: none; }
+    .sc-msg.bot { max-width: 92%; }
 }

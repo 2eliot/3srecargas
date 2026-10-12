@@ -38,7 +38,8 @@ class Config:
     REVENDEDORES_API_KEY = os.environ.get('REVENDEDORES_API_KEY', '')
     # Central One (segundo proveedor de recargas). La llave vive SOLO aquí, en el
     # servidor: nunca va al navegador. Permisos que necesita: catalog:read,
-    # balance:read, orders:read y orders:write.
+    # balance:read, orders:read y orders:write, más codes:read para los productos
+    # que entregan un código (no viene marcado por defecto al crear la llave).
     CENTRALONE_BASE_URL = os.environ.get('CENTRALONE_BASE_URL', 'https://portal.centraloneglobal.com/api/v1').strip()
     CENTRALONE_API_KEY = os.environ.get('CENTRALONE_API_KEY', '').strip()
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '').strip()
