@@ -301,18 +301,6 @@ button.sc-action-btn { font: inherit; font-size: 13px; font-weight: 700; cursor:
 .sc-msg.deleted { opacity: .6; }
 .sc-msg-deleted-text { font-style: italic; color: inherit; opacity: .85; }
 
-.sc-closed {
-    flex: none;
-    margin: 4px 14px 0;
-    padding: 9px 14px;
-    border-radius: 14px;
-    background: rgba(255, 193, 7, .1);
-    border: 1px solid rgba(255, 193, 7, .25);
-    color: #fde68a;
-    font-size: 12px;
-    text-align: center;
-}
-
 /* ── Caja de escribir ─────────────────────────────────────────────────── */
 
 /* Una sola pastilla flotante que lo contiene todo: clip, texto y enviar. */

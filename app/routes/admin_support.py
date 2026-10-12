@@ -259,6 +259,8 @@ def detail(chat_id):
     return render_template(
         'admin/support_detail.html',
         chat=chat,
+        client_expired=support_service.client_view_expired(chat),
+        client_visible_hours=support_service.CLIENT_VISIBLE_HOURS,
         embed=_is_embed(),
         messages=[support_service.serialize_message(m) for m in chat.messages],
         suggested_orders=support_service.find_matching_orders(chat),

@@ -51,6 +51,9 @@ MIN_NAME_LENGTH = 2
 DEFAULT_CLIENT_NAME = 'Cliente'
 MAX_BODY_LENGTH = 2000
 MAX_NEW_CHATS_PER_IP_PER_HOUR = 3
+# El cliente ve su conversación hasta 24 h después del último mensaje; pasado ese tiempo desaparece
+# de SU navegador (el equipo conserva el chat completo en el panel).
+CLIENT_VISIBLE_HOURS = 24
 MAX_MESSAGES_PER_CHAT_PER_MINUTE = 10
 CLOSED_CHAT_RETENTION_DAYS = 90
 
@@ -291,6 +294,22 @@ def get_chat_by_token(token):
     return SupportChat.query.filter_by(public_token=token).first()
 
 
+def client_view_expired(chat):
+    """True si ya pasaron 24 h desde el último mensaje (del cliente, del equipo o de la IA;
+    los avisos del sistema no cuentan) y el cliente ya no debe ver este chat."""
+    last = chat.last_message_at or chat.created_at
+    return bool(last and datetime.utcnow() - last > timedelta(hours=CLIENT_VISIBLE_HOURS))
+
+
+def get_client_chat(token):
+    """El chat que un navegador puede ver con su token: el de siempre, salvo que ya haya
+    pasado el tiempo de `CLIENT_VISIBLE_HOURS`. Devuelve (chat, expirado)."""
+    chat = get_chat_by_token(token)
+    if chat and client_view_expired(chat):
+        return None, True
+    return chat, False
+
+
 def _count_recent_chats_from_ip(client_ip):
     if not client_ip:
         return 0
@@ -339,7 +358,7 @@ def reopen_or_start(token, name=None, context=None, client_ip=None, user_agent=N
     """Un navegador tiene un solo chat vivo: si ya lo tiene, se reabre en
     vez de crear otro. Sin esto, cerrar y volver a abrir el modal llenaría
     la bandeja de hilos vacíos del mismo cliente."""
-    chat = get_chat_by_token(token)
+    chat, _expired = get_client_chat(token)
     if chat and not chat.is_blocked and chat.status in OPEN_STATUSES:
         # Si antes no dejo correo y ahora si, se aprovecha.
         nuevo = clean_email(email)
@@ -595,8 +614,7 @@ def close_idle_chats(minutes=None):
         chat.unread_admin = 0
         add_system_message(
             chat,
-            f'Chat cerrado tras {minutes} minutos sin respuesta. '
-            'Escribe de nuevo cuando quieras y lo reabrimos.'
+            f'Chat cerrado tras {minutes} minutos sin respuesta.'
         )
 
     if stale:

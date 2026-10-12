@@ -220,7 +220,6 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     grid-template-columns: 82px 1fr 82px;
     align-items: center;
     gap: 8px;
-    border-bottom: 1px solid rgba(255,255,255,.25);
 }
 
 .header-spacer { display: block; }

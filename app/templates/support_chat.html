@@ -82,10 +82,6 @@
         {% endfor %}
       </div>
 
-      <div class="sc-closed" id="scClosed" hidden>
-        Este chat se cerró por inactividad. Escribe abajo y lo reabrimos.
-      </div>
-
       {#- Botones del menu (los elige el admin en Soporte > Asistente). -#}
       {% if bot.enabled %}
       {% set icons = {
@@ -119,12 +115,7 @@
   </div>
 
   <p class="sc-foot">
-    {% if idle_minutes %}
-    El chat se cierra solo tras {{ idle_minutes }} minutos sin respuesta tuya, pero
-    puedes reabrirlo escribiendo de nuevo.
-    {% else %}
-    Puedes cerrar esta pestaña y volver: la conversación se guarda.
-    {% endif %}
+    Tu conversación se guarda en este navegador y se borra {{ visible_hours }} horas después del último mensaje.
   </p>
 </div>
 {% endblock %}
@@ -133,6 +124,7 @@
 <script>
   window.SUPPORT_IDLE_MINUTES = {{ idle_minutes|tojson }};
   window.SUPPORT_HAS_CHAT = {{ 'true' if chat else 'false' }};
+  window.SUPPORT_RESET_TOKEN = {{ 'true' if reset_token else 'false' }};
   window.SUPPORT_LAST_ID = {{ (messages|map(attribute='id')|max) if messages else 0 }};
   window.SUPPORT_AUTO_START = {{ 'true' if auto_start else 'false' }};
   window.SUPPORT_AUTO_EMAIL = {{ auto_start_email|tojson }};

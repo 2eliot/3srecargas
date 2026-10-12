@@ -954,8 +954,8 @@ def push_subscribe_route():
     chat_id = None
     support_token = (payload.get('support_token') or '').strip()
     if support_token:
-        from ..utils.support import get_chat_by_token
-        chat = get_chat_by_token(support_token)
+        from ..utils.support import get_client_chat
+        chat, _expired = get_client_chat(support_token)
         if chat:
             chat_id = chat.id
 

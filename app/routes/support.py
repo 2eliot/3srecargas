@@ -11,7 +11,7 @@ cliente que está esperando respuesta. Cuando la cookie no llega, el JS
 manda el token por cabecera `X-Support-Token`.
 """
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, make_response, render_template, request
 from flask_login import current_user
 
 from ..models import Order, SupportMessage
@@ -72,7 +72,10 @@ def _attach_token(response, token):
 
 
 def _load_chat_or_error():
-    chat = support_service.get_chat_by_token(_request_token())
+    chat, expired = support_service.get_client_chat(_request_token())
+    if expired:
+        # Pasaron 24 h desde el último mensaje: ese chat ya no existe para este navegador.
+        raise SupportError('Esta conversación ya no está disponible. Escribe de nuevo para empezar otra.', status=410)
     if not chat:
         raise SupportError('No encontramos tu chat. Vuelve a abrirlo.', status=404)
     if chat.is_blocked:
@@ -90,7 +93,12 @@ def _messages_payload(chat, after_id=0):
 
 @support_bp.errorhandler(SupportError)
 def _handle_support_error(error):
-    return jsonify({'ok': False, 'error': error.message}), error.status
+    response = jsonify({'ok': False, 'error': error.message, 'expired': error.status == 410})
+    response.status_code = error.status
+    if error.status == 410:
+        # Se borra también la cookie: el navegador se queda sin rastro del chat.
+        response.delete_cookie(TOKEN_COOKIE, path='/', samesite='Lax', secure=request.is_secure, httponly=True)
+    return response
 
 
 @support_bp.route('/')
@@ -103,7 +111,7 @@ def page():
     segundo plano, compartir por su URL y recargar sin perder nada;
     un modal se cierra sin querer con un toque fuera.
     """
-    chat = support_service.get_chat_by_token(_request_token())
+    chat, chat_expired = support_service.get_client_chat(_request_token())
 
     # `?orden=` llega desde el checkout de un pedido manual. Los datos se
     # buscan aqui y no se aceptan del navegador: el mensaje que se le
@@ -158,8 +166,9 @@ def page():
     if chat and not chat.is_blocked:
         support_service.mark_read_by_client(chat)
 
-    return render_template(
+    response = make_response(render_template(
         'support_chat.html',
+        reset_token=chat_expired,
         chat=chat if (chat and not chat.is_blocked) else None,
         messages=messages,
         order=order,
@@ -169,7 +178,13 @@ def page():
         auto_send=auto_send,
         idle_minutes=support_service.get_idle_close_minutes(),
         bot=support_bot.public_bot_config(),
-    )
+        visible_hours=support_service.CLIENT_VISIBLE_HOURS,
+    ))
+    if chat_expired:
+        # Pasaron 24 h desde el último mensaje: el navegador olvida el chat (cookie y, con
+        # `reset_token`, también el respaldo del almacenamiento local).
+        response.delete_cookie(TOKEN_COOKIE, path='/', samesite='Lax', secure=request.is_secure, httponly=True)
+    return response
 
 
 @support_bp.route('/iniciar', methods=['POST'])

@@ -16,7 +16,6 @@
     var thread = document.getElementById('scThread');
     var codeEl = document.getElementById('scCode');
     var presenceEl = document.getElementById('scPresence');
-    var closedEl = document.getElementById('scClosed');
 
     var composer = document.getElementById('scComposer');
     var input = document.getElementById('scInput');
@@ -199,9 +198,7 @@
         if (!chat) return;
         applyTyping(!!chat.ai_typing);
         if (codeEl) codeEl.textContent = chat.code || '';
-        var isClosed = chat.status === 'closed';
-        if (closedEl) closedEl.hidden = !isClosed;
-        if (presenceEl && isClosed) presenceEl.textContent = 'Chat cerrado';
+        if (presenceEl && chat.status === 'closed') presenceEl.textContent = 'Chat cerrado';
     }
 
     // Deja el hilo al final y el cursor listo para escribir.
@@ -223,13 +220,26 @@
         el.appendChild(deletedText);
     }
 
+    // Pasadas 24 h desde el último mensaje el servidor ya no reconoce el chat (410): este
+    // navegador lo olvida (token y cookie) y vuelve a la pantalla de bienvenida.
+    function chatExpired() {
+        clearInterval(state.timer);
+        state.timer = null;
+        writeToken('');
+        state.hasChat = false;
+        location.reload();
+    }
+
     function poll() {
         if (!state.token) return;
         fetch('/soporte/hilo?after_id=' + state.lastId, {
             credentials: 'same-origin',
             headers: headers()
         })
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                if (r.status === 410) { chatExpired(); return null; }
+                return r.json();
+            })
             .then(function (data) {
                 if (!data || !data.ok) return;
                 (data.messages || []).forEach(render);
@@ -329,8 +339,15 @@
             headers: headers({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ body: body })
         })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
+            .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+            .then(function (res) {
+                var data = res.data;
+                if (res.status === 410) {
+                    // La pestaña seguía abierta pasadas 24 h: ese chat ya no existe, se empieza uno nuevo con este mensaje.
+                    writeToken('');
+                    state.hasChat = false;
+                    return startChat(body, false);
+                }
                 if (!data || !data.ok) throw failure((data && data.error) || 'No se pudo enviar el mensaje.');
                 render(data.message);
                 applyChat(data.chat);
@@ -352,8 +369,6 @@
         request
             .then(function () {
                 state.sending = false;
-                // Escribir reabre el hilo cerrado por inactividad.
-                if (closedEl) closedEl.hidden = true;
             })
             .catch(function (err) {
                 state.sending = false;
@@ -400,21 +415,33 @@
 
             attachBtn.disabled = true;
 
-            // Sin chat todavia, el adjunto tambien lo crea.
-            var ready = state.hasChat ? Promise.resolve() : startChat('', true);
-            ready
-                .then(function () {
-                    var payload = new FormData();
-                    payload.append('file', file);
-                    payload.append('body', input ? input.value : '');
-                    return fetch('/soporte/adjunto', {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: headers(),
-                        body: payload
+            // Sin chat todavia, el adjunto tambien lo crea. Si el chat ya expiro (24 h), se abre
+            // uno nuevo y se reintenta una sola vez.
+            function upload(retried) {
+                var ready = state.hasChat ? Promise.resolve() : startChat('', true);
+                return ready
+                    .then(function () {
+                        var payload = new FormData();
+                        payload.append('file', file);
+                        payload.append('body', input ? input.value : '');
+                        return fetch('/soporte/adjunto', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: headers(),
+                            body: payload
+                        });
+                    })
+                    .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+                    .then(function (res) {
+                        if (res.status === 410 && !retried) {
+                            writeToken('');
+                            state.hasChat = false;
+                            return upload(true);
+                        }
+                        return res.data;
                     });
-                })
-                .then(function (r) { return r.json(); })
+            }
+            upload(false)
                 .then(function (data) {
                     if (!data || !data.ok) throw failure((data && data.error) || 'No se pudo enviar la imagen.');
                     if (input) input.value = '';
@@ -444,6 +471,8 @@
     }
 
     state.token = readToken();
+    // El servidor dijo que el chat de este navegador ya expiró (24 h): se olvida el respaldo del token.
+    if (window.SUPPORT_RESET_TOKEN) writeToken('');
 
     // Con ?orden= el mensaje del pedido llega escrito: se ajusta el alto de
     // la caja para que se lea y el cliente solo lo envia.

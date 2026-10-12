@@ -351,6 +351,12 @@ body.is-embed .sup-bar-back{display:none}
       Chat bloqueado. Desbloquéalo para poder responder.
     </div>
     {% else %}
+    {% if client_expired %}
+    <div style="padding:8px 14px;color:#fde68a;font-size:.78rem;text-align:center;background:rgba(255,193,7,.08);border-top:1px solid rgba(255,193,7,.2)">
+      Pasaron más de {{ client_visible_hours }} h desde el último mensaje: es posible que el cliente ya no vea este chat en su navegador.
+      Si le respondes, solo le llegará por correo o notificación si dejó datos.
+    </div>
+    {% endif %}
     <form class="sup-composer" id="supReplyForm">
       <input type="file" id="supFile" accept="image/*,video/*" hidden>
       <button type="button" class="sup-attach" id="supAttach" aria-label="Adjuntar imagen o video">📎</button>
