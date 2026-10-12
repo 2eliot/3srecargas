@@ -930,6 +930,38 @@ def service_worker():
     return response
 
 
+@main_bp.route('/manifest.webmanifest')
+def web_manifest():
+    """Datos de la web instalable como app (nombre, íconos, colores, cómo se abre).
+    Se sirve desde la raíz para que el alcance sea todo el sitio."""
+    def icon(name, size, purpose='any'):
+        return {'src': url_for('static', filename=f'pwa/{name}'), 'sizes': f'{size}x{size}',
+                'type': 'image/png', 'purpose': purpose}
+
+    response = jsonify({
+        'id': '/',
+        'name': '3S Recargas',
+        'short_name': '3S Recargas',
+        'description': 'Recargas de juegos, tarjetas y wallets en segundos.',
+        'lang': 'es',
+        'start_url': '/',
+        'scope': '/',
+        'display': 'standalone',
+        'orientation': 'portrait',
+        'background_color': '#000000',
+        'theme_color': '#000000',
+        'categories': ['shopping', 'games'],
+        'icons': [
+            icon('icon-192.png', 192),
+            icon('icon-512.png', 512),
+            icon('icon-maskable-512.png', 512, 'maskable'),
+        ],
+    })
+    response.mimetype = 'application/manifest+json'
+    response.headers['Cache-Control'] = 'public, max-age=3600'
+    return response
+
+
 @main_bp.route('/push/vapid-public-key')
 def push_vapid_public_key():
     return jsonify({'ok': True, 'publicKey': get_vapid_public_key()})

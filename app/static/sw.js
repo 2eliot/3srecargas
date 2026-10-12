@@ -1,4 +1,4 @@
-/* Service worker de 3S Recargas — solo maneja notificaciones push.
+/* Service worker de 3S Recargas — notificaciones push y requisito para instalar la web como app.
    No cachea nada (evita servir versiones viejas de la tienda). */
 
 self.addEventListener('install', function (event) {
@@ -8,6 +8,11 @@ self.addEventListener('install', function (event) {
 self.addEventListener('activate', function (event) {
     event.waitUntil(self.clients.claim());
 });
+
+// Vacío a propósito: no toca ni cachea ninguna petición (el navegador las atiende como siempre).
+// Algunos navegadores exigen que el service worker tenga un manejador "fetch" para ofrecer
+// instalar la web como app.
+self.addEventListener('fetch', function () {});
 
 self.addEventListener('push', function (event) {
     var payload = { title: '3S Recargas', body: 'Tienes una notificación nueva.' };

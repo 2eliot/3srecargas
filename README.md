@@ -137,6 +137,10 @@ En el header de la tienda, junto al menú, hay una campana con el número de avi
 
 La campana consulta `POST /api/notificaciones` (solo lectura) al cargar la página y cada minuto. Todo el texto se pinta como texto, nunca como HTML, y los links solo pueden ser rutas de la tienda o `https://`.
 
+## App instalable (botón "Instalar app")
+
+La tienda se puede instalar en la pantalla de inicio del celular (PWA). Piezas: `/manifest.webmanifest` (ruta en `main.py`: nombre, colores, pantalla completa, íconos), íconos en `static/pwa/` (192, 512, 512 *maskable* y el de iPhone de 180, generados del logo `favicon.png` sobre fondo negro), las etiquetas del `<head>` de `base.html`, el service worker `sw.js` (con un manejador `fetch` vacío que no cachea nada) y `static/js/pwa-install.js`. Hay dos botones con `data-pwa-install`: uno **en medio de la campanita y el menú** del header y otro dentro del **menú desplegable** ("Instalar app"). Salen ocultos y solo aparecen donde se puede instalar: en Android/Chrome/Edge cuando el navegador manda `beforeinstallprompt` (un toque abre el cuadro de instalación del propio navegador) y en iPhone/iPad siempre (Apple no deja instalar con un botón: se muestra una ventanita con los pasos *Compartir → Añadir a pantalla de inicio*). Si la web ya está instalada (abierta como app) o el navegador no puede instalarla, no se muestra nada. Para instalar hace falta HTTPS (en local solo funciona en `localhost`). Si cambias el logo, vuelve a generar los íconos de `static/pwa/`.
+
 ## Servicio de Recarga Automática (Bot VPS)
 
 Cuando se aprueba una orden de un paquete **Automatizado ⚡**, la web envía el PIN del stock + el Player ID al bot de scraping que corre en el VPS. El bot ejecuta Playwright + captcha y redime el PIN en la cuenta del jugador.

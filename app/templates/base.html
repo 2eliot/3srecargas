@@ -6,7 +6,14 @@
     <title>{% block title %}3S Recargas{% endblock %}</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='pwa/apple-touch-icon.png') }}">
+    <!-- Web instalable como app (botón "Instalar app": static/js/pwa-install.js) -->
+    <link rel="manifest" href="{{ url_for('main_bp.web_manifest') }}">
+    <meta name="theme-color" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="3S Recargas">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -76,6 +83,11 @@
                     </svg>
                     <span class="notif-badge" id="notifBadge" hidden>0</span>
                 </button>
+                <!-- Instalar la web como app: solo se muestra donde se puede (pwa-install.js). -->
+                <button type="button" class="nav-toggle pwa-install-toggle" data-pwa-install hidden
+                        aria-label="Instalar la app" title="Instalar la app">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+                </button>
                 <button type="button" class="nav-toggle" id="navToggle"
                         aria-label="Abrir menú" aria-expanded="false" aria-controls="siteDrawer">
                     <span class="nav-toggle-bars" aria-hidden="true"><span></span><span></span><span></span></span>
@@ -113,6 +125,16 @@
                     <small>Habla con nosotros por chat</small>
                 </span>
             </a>
+
+            <button type="button" class="drawer-item" data-pwa-install hidden>
+                <span class="drawer-item-icon drawer-icon-support">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/></svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Instalar app</strong>
+                    <small>Ábrela como app desde tu celular</small>
+                </span>
+            </button>
 
             {% if HAS_ACTIVE_RANKING %}
             <button type="button" class="drawer-item" id="openRankingModalBtn">
@@ -592,6 +614,7 @@
 
     {% block extra_js %}{% endblock %}
     <script src="{{ static_v('js/notifications.js') }}" defer></script>
+    <script src="{{ static_v('js/pwa-install.js') }}" defer></script>
     <script>
       window.SUPPORT_WHATSAPP_URL = {{ SUPPORT_WHATSAPP_URL|tojson }};
       window.HAS_ACTIVE_RANKING = {{ 'true' if HAS_ACTIVE_RANKING else 'false' }};

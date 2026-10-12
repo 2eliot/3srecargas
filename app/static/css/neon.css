@@ -216,8 +216,9 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     margin: 0 auto;
     padding: 0 12px 10px !important;
     display: grid !important;
-    /* hueco | logo | campana + menú (38px + 6px + 38px) */
-    grid-template-columns: 82px 1fr 82px;
+    /* hueco | logo | campana (+ instalar) + menú. El logo queda centrado y las columnas de los lados
+       crecen lo que necesite el grupo de botones. */
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 8px;
 }
@@ -4343,3 +4344,55 @@ a.notif-item:active { background: rgba(255,0,0,.12); }
 .notif-time { font-size: 11px; font-weight: 600; color: #94a3b8; margin: 4px 0 0; }
 .notif-empty { padding: 26px 18px; text-align: center; color: #94a3b8; font-size: 13px; font-weight: 600; }
 .notif-foot { margin: 0; padding: 9px 14px; font-size: 11px; font-weight: 600; color: #94a3b8; border-top: 1px solid rgba(255,255,255,.08); }
+
+/* ── Instalar la web como app ─────────────────────────────── */
+.pwa-install-toggle { color: #fff; }
+.pwa-install-toggle svg { width: 18px; height: 18px; }
+.pwa-install-toggle[hidden],
+.drawer-item[data-pwa-install][hidden] { display: none; }
+.pwa-install-toggle { animation: pwa-glow 2.6s ease-in-out infinite; }
+@keyframes pwa-glow {
+    0%, 100% { box-shadow: 0 1px 6px rgba(0,0,0,.35); }
+    50% { box-shadow: 0 0 12px rgba(255,0,0,.55); }
+}
+/* Con tres botones en el header se achican un poco para que quepan en pantallas angostas. */
+.header-right.has-install { gap: 5px; }
+.header-right.has-install .nav-toggle { width: 34px; height: 34px; border-radius: 11px; }
+.header-right.has-install .nav-toggle-bars { width: 15px; gap: 3px; }
+@media (prefers-reduced-motion: reduce) { .pwa-install-toggle { animation: none; } }
+
+/* Pasos para instalar en iPhone */
+.pwa-help {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(0,0,0,.72);
+    backdrop-filter: blur(4px);
+}
+.pwa-help-card {
+    width: min(380px, 100%);
+    padding: 20px 18px 16px;
+    border-radius: 18px;
+    background: linear-gradient(160deg, #1a0b0e, #0b0b10);
+    border: 1px solid rgba(255,0,0,.45);
+    box-shadow: 0 0 28px rgba(255,0,0,.25);
+    color: #fff;
+}
+.pwa-help-title { margin: 0 0 6px; font-family: var(--nx-font-display); font-weight: 900; font-size: 17px; }
+.pwa-help-lead { margin: 0 0 10px; font-size: 13px; color: rgba(255,255,255,.7); }
+.pwa-help-steps { margin: 0 0 14px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.45; }
+.pwa-help-ok {
+    width: 100%;
+    padding: 11px 14px;
+    border-radius: 999px;
+    border: 1px solid #ff2a3d;
+    background: linear-gradient(135deg, #f01e2c, #b30f1c);
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+}
