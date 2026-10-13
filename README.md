@@ -111,6 +111,8 @@ Abre `http://localhost:5000`
 - El chat abierto ya tenía su propio refresco de mensajes; dentro de la bandeja se abre con `?embed=1` (o el encabezado `Sec-Fetch-Dest: iframe`), que oculta el menú del admin.
 - Es *polling*, no websockets: detrás de nginx + gunicorn funciona sin configuración extra. Si nginx manda `X-Frame-Options: DENY`, el panel derecho quedaría en blanco; debe ser `SAMEORIGIN` (o no enviarse).
 
+**Diseño del chat del admin** (`admin/support_detail.html` y `admin/support.html`): contenedores de **cristal** (fondo translúcido, `backdrop-filter`, borde luminoso arriba/izquierda y un resplandor violeta/rojo detrás, igual que los paneles de la tienda); las burbujas son **cápsulas con la foto metida en una punta** (claras las del cliente con su inicial, oscuras las del equipo con la foto de soporte de Configuración o el logo, y el robot en las de la IA), cada una con nombre y hora arriba. Las **respuestas rápidas** son una fila de botones pegada arriba de la caja de escribir (un clic las manda); el botón *Editar* abre una ventana para crear, editar o borrar (los datos van en atributos `data-*`, no en un `onclick`). Junto al texto hay un **selector de emojis** propio (sin librerías: pestañas, "recientes" guardados en el navegador y se inserta donde está el cursor). Los mensajes dejan pasar el unidor de emojis U+200D (👩‍💻 ya no se parte en dos).
+
 ### Chat de soporte del cliente: menú de botones y asistente de IA
 
 `/soporte` es un chat normal: el hilo se crea en el servidor con el primer mensaje (o el primer adjunto), así que abrirlo sin escribir nada no deja chats vacíos. Se configura en **Admin → Asistente IA** (`/admin/soporte/asistente`).

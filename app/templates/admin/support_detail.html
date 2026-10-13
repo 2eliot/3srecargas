@@ -4,111 +4,170 @@
 
 {% block extra_css %}
 <style>
-/* Chat a pantalla completa con el reparto de WhatsApp Web: la conversación
-   manda y los datos del caso van en una columna al lado. Antes el hilo era
-   una caja de 58vh dentro de la página, o sea scroll dentro de otro scroll. */
+/* ── Chat del admin ─────────────────────────────────────────────────────────
+   Pantalla completa con la conversación al centro y los datos del caso a un
+   lado. Respuestas rápidas y emojis van pegados a la caja de escribir. */
 .sup-app{
+    --s-line:rgba(255,255,255,.08);
+    --s-soft:rgba(255,255,255,.045);
+    --s-muted:#94a3b8;
+    --s-text:#e2e8f0;
+    --s-violet:#8b5cf6;
+    --s-indigo:#6366f1;
+    /* Cristal, igual que los paneles de la tienda: casi transparente, borde luminoso arriba y a la izquierda,
+       brillo interior y un resplandor suave detrás. */
+    --glass-bg:linear-gradient(135deg,rgba(255,255,255,.085) 0%,rgba(255,255,255,.028) 55%,rgba(255,255,255,.05) 100%);
+    --glass-line:rgba(255,255,255,.15);
+    --glass-top:rgba(255,255,255,.32);
+    --glass-shadow:0 18px 50px rgba(0,0,0,.45),inset 0 1px 1px rgba(255,255,255,.22),inset 0 -1px 2px rgba(0,0,0,.25),0 0 40px rgba(139,92,246,.10);
+    --glass-pop:rgba(16,16,38,.78);
     display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:stretch;
     height:calc(100vh - 190px);min-height:520px;
 }
 @media (max-width:1100px){.sup-app{grid-template-columns:1fr;height:auto}}
 
 .sup-chat{
-    display:flex;flex-direction:column;min-height:0;overflow:hidden;
-    border-radius:14px;border:1px solid rgba(255,255,255,.09);
-    background:rgba(255,255,255,.025);
+    position:relative;display:flex;flex-direction:column;min-height:0;overflow:hidden;
+    border-radius:26px;border:1px solid var(--glass-line);border-top-color:var(--glass-top);
+    background:var(--glass-bg);box-shadow:var(--glass-shadow);
+    -webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
 }
 @media (max-width:1100px){.sup-chat{height:68vh}}
 
+/* Botones redondos de iconos (cabecera). */
+.sup-icon-btn{
+    flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;
+    border-radius:50%;border:1px solid transparent;background:transparent;color:var(--s-muted);
+    cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;
+}
+.sup-icon-btn:hover,.sup-icon-btn[aria-expanded="true"]{background:var(--s-soft);color:#fff;border-color:var(--s-line)}
+.sup-icon-btn svg{width:18px;height:18px}
+
+/* ── Cabecera ── */
 .sup-bar{
-    flex:none;display:flex;align-items:center;gap:10px;padding:11px 14px;
-    background:rgba(255,255,255,.05);border-bottom:1px solid rgba(255,255,255,.08);
+    flex:none;display:flex;align-items:center;gap:10px;padding:12px 16px;
+    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.015));
+    border-bottom:1px solid var(--glass-line);box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
 }
-.sup-bar-back{
-    flex:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;
-    border-radius:9px;border:1px solid transparent;color:#94a3b8;
-}
-.sup-bar-back:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e2e8f0}
 .sup-bar-avatar{
-    flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
-    background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:700;
+    position:relative;flex:none;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
+    background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;font-weight:800;font-size:1rem;
+    box-shadow:0 4px 14px rgba(99,102,241,.35);
 }
-.sup-bar-who{flex:1;min-width:0;line-height:1.3}
-.sup-bar-who strong{display:block;color:#f1f5f9;font-size:.92rem}
-.sup-bar-who span{display:block;font-size:.74rem;color:#94a3b8;
+/* Puntito de estado: verde = te toca responder, ámbar = esperando al cliente, gris = cerrado. */
+.sup-presence{
+    position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;
+    background:#64748b;border:2px solid #14142a;
+}
+.sup-bar-avatar[data-status="open"] .sup-presence{background:#22c55e}
+.sup-bar-avatar[data-status="waiting_client"] .sup-presence{background:#f59e0b}
+.sup-bar-who{flex:1;min-width:0;line-height:1.25}
+.sup-bar-line{display:flex;align-items:center;gap:8px;min-width:0}
+.sup-bar-line strong{color:#f8fafc;font-size:.98rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sup-bar-sub{display:block;margin-top:2px;font-size:.74rem;color:var(--s-muted);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sup-bar-tags{position:relative;flex:none;max-width:45%}
+.sup-ai-chip{
+    flex:none;display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;
+    font-size:.66rem;font-weight:800;letter-spacing:.01em;
+    background:rgba(148,163,184,.14);color:#cbd5e1;
+}
+.sup-ai-chip.on{background:rgba(168,85,247,.2);color:#d8b4fe}
+
+.sup-bar-tags{position:relative;flex:none;max-width:42%}
 .sup-tag-picker-btn{
     display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;
-    max-width:100%;padding:5px 8px;border-radius:9px;border:1px solid transparent;
-    background:none;cursor:pointer;
+    max-width:100%;padding:5px 9px;border-radius:99px;border:1px solid var(--s-line);
+    background:var(--s-soft);cursor:pointer;transition:border-color .15s ease,background .15s ease;
 }
-.sup-tag-picker-btn:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04)}
-.sup-tag-picker-btn svg{flex:none;color:#94a3b8}
-.sup-tag-empty{background:rgba(255,255,255,.08)!important;color:#94a3b8}
-.sup-tag-panel{
-    position:absolute;top:calc(100% + 6px);right:0;z-index:20;width:260px;
-    background:#0f172a;border:1px solid rgba(255,255,255,.12);border-radius:12px;
-    padding:14px;box-shadow:0 12px 30px rgba(0,0,0,.45);
+.sup-tag-picker-btn:hover{border-color:rgba(139,92,246,.5);background:rgba(139,92,246,.08)}
+.sup-tag-picker-btn svg{flex:none;color:var(--s-muted)}
+.sup-tag{font-size:.68rem;font-weight:600;padding:2px 9px;border-radius:999px;color:#fff;white-space:nowrap}
+.sup-tag-empty{background:rgba(255,255,255,.08)!important;color:var(--s-muted)}
+
+/* Paneles flotantes (etiquetas y acciones). */
+.sup-tag-panel,.sup-actions-panel{
+    position:absolute;top:calc(100% + 8px);right:0;z-index:30;
+    background:var(--glass-pop);border:1px solid var(--glass-line);border-top-color:var(--glass-top);border-radius:20px;
+    box-shadow:0 22px 54px rgba(0,0,0,.6),inset 0 1px 1px rgba(255,255,255,.18);
+    -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
 }
-.sup-tag-panel h4{margin:0 0 8px;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8}
+.sup-tag-panel{width:270px;padding:14px}
+.sup-tag-panel h4{margin:0 0 8px;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--s-muted)}
 .sup-tag-panel-section+.sup-tag-panel-section{margin-top:14px}
-.sup-tag-panel-link{display:block;margin-top:12px;font-size:.72rem;color:#94a3b8;text-align:right}
+.sup-tag-panel-link{display:block;margin-top:12px;font-size:.74rem;color:var(--s-muted);text-align:right}
 .sup-tag-panel-link:hover{color:#c7d2fe}
+.sup-tagrow{display:flex;flex-wrap:wrap;gap:6px}
+.sup-tagbtn{cursor:pointer;font-size:.74rem;padding:5px 11px;border-radius:999px;
+    border:1px solid var(--s-line);background:var(--s-soft);color:var(--s-muted);transition:.15s}
+.sup-tagbtn:hover{color:#fff;border-color:rgba(255,255,255,.25)}
+.sup-tagbtn.on{color:#fff;font-weight:600;border-color:transparent}
 
-.sup-bar-actions{position:relative;flex:none;margin-left:6px}
-.sup-bar-actions-btn{
-    display:flex;align-items:center;justify-content:center;width:34px;height:34px;
-    border-radius:9px;border:1px solid transparent;background:none;color:#94a3b8;cursor:pointer;
-}
-.sup-bar-actions-btn:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e2e8f0}
-.sup-actions-panel{
-    position:absolute;top:calc(100% + 6px);right:0;z-index:20;min-width:170px;
-    background:#0f172a;border:1px solid rgba(255,255,255,.12);border-radius:12px;
-    padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.45);
-    display:flex;flex-direction:column;gap:8px;
-}
-/* El `display:flex` de arriba le gana al `display:none` que el navegador
-   le pone a [hidden] por defecto (una regla de author siempre gana a la
-   del user-agent, sin importar la especificidad) — sin esto, el atributo
-   `hidden` dejaba de ocultar el panel y quedaba pegado en pantalla. */
+.sup-bar-actions{position:relative;flex:none}
+.sup-actions-panel{min-width:230px;padding:6px;display:flex;flex-direction:column;gap:2px}
+/* El `display:flex` le gana al `display:none` que el navegador le pone a [hidden]. */
 .sup-actions-panel[hidden]{display:none}
-.sup-actions-panel form{display:block}
-.sup-actions-panel button{width:100%}
+.sup-actions-panel form{display:block;margin:0}
+.sup-menu-item{
+    width:100%;display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:11px;
+    border:0;background:transparent;color:var(--s-text);font:inherit;font-size:.84rem;
+    text-align:left;cursor:pointer;transition:background .12s ease;
+}
+.sup-menu-item svg{flex:none;width:17px;height:17px;color:var(--s-muted)}
+.sup-menu-item:hover{background:rgba(255,255,255,.07)}
+.sup-menu-item:hover svg{color:#c7d2fe}
+.sup-menu-item.danger{color:#fca5a5}
+.sup-menu-item.danger svg{color:#f87171}
+.sup-menu-item.danger:hover{background:rgba(239,68,68,.14)}
+.sup-menu-sep{height:1px;margin:4px 6px;background:var(--s-line)}
 
+/* ── Conversación ── */
 .sup-thread{
-    flex:1;min-height:0;overflow-y:auto;padding:16px;
-    display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;
+    flex:1;min-height:0;overflow-y:auto;padding:26px 26px 14px;
+    display:flex;flex-direction:column;gap:16px;scrollbar-width:thin;
 }
+/* Cápsulas con la foto metida en una punta: claras las del cliente y oscuras las del equipo. */
 .sup-msg{
-    max-width:74%;padding:8px 12px 6px;border-radius:12px;font-size:.88rem;
-    line-height:1.45;word-break:break-word;
+    position:relative;flex:none;max-width:min(74%,560px);min-height:56px;padding:10px 24px 11px;
+    font-size:.88rem;line-height:1.45;word-break:break-word;
+    box-shadow:0 12px 26px rgba(0,0,0,.4),inset 0 1px 1px rgba(255,255,255,.35);
 }
-/* pre-wrap solo en el texto: en la burbuja conservaba la sangria de la
-   plantilla y estiraba cada mensaje corto a media pantalla. */
+/* pre-wrap solo en el texto: en la burbuja conservaba la sangria de la plantilla. */
 .sup-msg-body{display:block;white-space:pre-wrap}
-.sup-msg.ai{border:1px solid rgba(168,85,247,.45)!important;background:rgba(168,85,247,.12)!important}
-.sup-ai-label{display:block;font-size:.68rem;font-weight:800;color:#c4b5fd;margin-bottom:2px}
+.sup-msg.ai{background:linear-gradient(180deg,#43307a 0%,#1a1232 100%)!important;border:1px solid rgba(168,85,247,.55)!important}
+.sup-ai-label{display:block;font-size:.66rem;font-weight:800;color:#c4b5fd;margin-bottom:2px;letter-spacing:.02em}
 .sup-ai-action{display:inline-block;margin-top:6px;font-size:.78rem;font-weight:700;color:#fca5a5}
-.sup-ai-chip{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:99px;font-size:.68rem;font-weight:800;background:rgba(148,163,184,.15);color:#cbd5e1}
-.sup-ai-chip.on{background:rgba(168,85,247,.2);color:#d8b4fe}
-.sup-msg.client{align-self:flex-start;background:rgba(255,255,255,.08);
-    border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:3px}
-.sup-msg.admin{align-self:flex-end;background:linear-gradient(135deg,#6366f1,#8b5cf6);
-    color:#fff;border-bottom-right-radius:3px}
-.sup-msg.system{align-self:center;max-width:92%;background:rgba(255,255,255,.03);
-    color:#64748b;font-size:.74rem;font-style:italic;text-align:center;
-    padding:5px 12px;border-radius:8px}
-.sup-t{display:block;text-align:right;font-size:.66rem;opacity:.55;margin-top:2px}
+.sup-msg.client{
+    align-self:flex-start;margin-left:32px;padding-left:46px;color:#1d2030;
+    background:linear-gradient(180deg,#fbfbfd 0%,#e3e6ee 100%);border-radius:46px 30px 30px 46px;
+}
+.sup-msg.admin{
+    align-self:flex-end;margin-right:32px;padding-right:46px;color:#f1f5f9;
+    background:linear-gradient(180deg,#3b3e4b 0%,#15161d 100%);border-radius:30px 46px 46px 30px;
+    border:1px solid rgba(255,255,255,.09);
+}
+/* Foto dentro de la burbuja, asomando por la punta redonda. */
+.sup-av{
+    position:absolute;top:50%;width:58px;height:58px;margin-top:-29px;border-radius:50%;
+    object-fit:cover;display:grid;place-items:center;font-weight:800;font-size:1.25rem;color:#fff;
+    background:#fff;box-shadow:0 8px 18px rgba(0,0,0,.5);
+}
+.sup-msg.client .sup-av{left:-32px;border:3px solid #fff}
+.sup-msg.admin .sup-av{right:-32px;border:3px solid #2d2f3a}
+.sup-av-client{background:linear-gradient(135deg,#6366f1,#a855f7)}
+.sup-av-ai{background:linear-gradient(135deg,#7c3aed,#c026d3);font-size:1.5rem}
+.sup-msg-head{display:flex;align-items:baseline;gap:8px;margin-bottom:2px;font-size:.68rem;font-weight:800}
+.sup-msg-head b{font-weight:800}
+.sup-msg.system{align-self:center;max-width:92%;min-height:0;background:rgba(255,255,255,.05);
+    color:#8794ad;font-size:.72rem;text-align:center;padding:5px 15px;border-radius:99px;box-shadow:none;
+    border:1px solid rgba(255,255,255,.08);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.sup-t{font-size:.64rem;font-weight:500;opacity:.6}
 
-/* Botón "eliminar para todos": solo en las burbujas propias (admin), y
-   solo visible al pasar el mouse para que no ensucie el hilo todo el
-   tiempo — es una acción de arrepentirse, no algo que se use seguido. */
+/* "Eliminar para todos": solo en las burbujas propias y al pasar el mouse. */
 .sup-msg.admin{position:relative}
 .sup-msg-del{
-    position:absolute;top:-8px;left:-8px;width:20px;height:20px;border-radius:50%;
+    position:absolute;top:-6px;left:-6px;width:22px;height:22px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;font-size:.6rem;
-    background:#1e1b3a;border:1px solid rgba(255,255,255,.15);color:#94a3b8;
+    background:#1e1b3a;border:1px solid rgba(255,255,255,.15);color:var(--s-muted);
     opacity:0;transition:opacity .15s ease;cursor:pointer;
 }
 .sup-msg.admin:hover .sup-msg-del{opacity:1}
@@ -116,106 +175,203 @@
 .sup-msg.deleted{opacity:.6}
 .sup-msg-deleted-text{font-style:italic;color:inherit;opacity:.85}
 
-/* Miniatura acotada: a tamaño real una captura de móvil llenaba el hilo y
-   empujaba la conversación fuera de vista. Se acota igual que el
-   comprobante en el detalle de una orden, y el original abre en pestaña. */
-.sup-media{display:block;width:100%;max-width:200px;max-height:200px;
-    object-fit:cover;border-radius:10px;margin-top:6px;background:rgba(0,0,0,.3)}
+/* Miniatura acotada (el original abre en otra pestaña). */
+.sup-media{display:block;width:100%;max-width:220px;max-height:220px;
+    object-fit:cover;border-radius:12px;margin-top:6px;background:rgba(0,0,0,.3)}
 video.sup-media{object-fit:contain;max-height:240px}
 .sup-media-link{display:inline-block;position:relative;text-decoration:none}
 .sup-media-open{position:absolute;right:6px;bottom:10px;padding:2px 7px;border-radius:6px;
     background:rgba(0,0,0,.62);color:#fff;font-size:.62rem}
 .sup-media-link:hover .sup-media-open{background:rgba(0,0,0,.85)}
 
-.sup-composer{
-    flex:none;display:flex;align-items:flex-end;gap:8px;padding:10px 12px;
-    background:rgba(255,255,255,.04);border-top:1px solid rgba(255,255,255,.08);
+/* ── Avisos encima de la caja ── */
+.sup-note{
+    flex:none;display:flex;align-items:flex-start;gap:9px;margin:0 14px 8px;padding:9px 12px;
+    border-radius:12px;font-size:.76rem;line-height:1.4;
+    background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);color:#fde68a;
 }
-.sup-composer textarea{flex:1;resize:none;min-height:42px;max-height:130px;
-    border-radius:20px;padding:11px 14px;font:inherit;font-size:.88rem}
-.sup-attach,.sup-send{flex:none;width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:1rem}
-.sup-attach{border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.06);color:#cbd5e1}
-.sup-send{border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
-.sup-attach:disabled,.sup-send:disabled{opacity:.45;cursor:default}
-.sup-upload-hint{flex:none;margin:0;padding:0 14px 8px;font-size:.72rem;color:#94a3b8}
+.sup-note svg{flex:none;width:16px;height:16px;margin-top:1px}
+.sup-note.blocked{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#fca5a5;margin:12px 14px;align-items:center}
 
+/* ── Respuestas rápidas: fila de botones pegada a la caja de escribir ── */
+.sup-qr-bar{
+    flex:none;display:flex;align-items:center;gap:7px;padding:8px 14px 2px;
+    overflow-x:auto;scrollbar-width:none;
+}
+.sup-qr-bar::-webkit-scrollbar{display:none}
+.sup-qr-label{
+    flex:none;display:inline-flex;align-items:center;gap:5px;font-size:.66rem;font-weight:800;
+    text-transform:uppercase;letter-spacing:.07em;color:var(--s-muted);padding-right:2px;
+}
+.sup-qr-label svg{width:14px;height:14px;color:#fbbf24}
+.sup-qr-insert{
+    flex:none;display:inline-flex;align-items:center;gap:6px;max-width:210px;cursor:pointer;
+    font:inherit;font-size:.78rem;font-weight:600;padding:6px 13px;border-radius:99px;
+    border:1px solid var(--glass-line);border-top-color:var(--glass-top);
+    background:linear-gradient(135deg,rgba(255,255,255,.09),rgba(255,255,255,.03));color:var(--s-text);
+    box-shadow:inset 0 1px 1px rgba(255,255,255,.14);
+    white-space:nowrap;transition:border-color .15s ease,background .15s ease,transform .1s ease;
+}
+.sup-qr-insert .sup-qr-title{overflow:hidden;text-overflow:ellipsis}
+.sup-qr-insert:hover{border-color:rgba(139,92,246,.6);background:rgba(139,92,246,.14);color:#fff}
+.sup-qr-insert:active{transform:scale(.97)}
+.sup-qr-insert:disabled{opacity:.55;cursor:default}
+.sup-qr-manage{
+    flex:none;display:inline-flex;align-items:center;gap:5px;cursor:pointer;font:inherit;font-size:.74rem;
+    font-weight:600;padding:6px 12px;border-radius:99px;border:1px dashed rgba(255,255,255,.2);
+    background:transparent;color:var(--s-muted);transition:.15s;
+}
+.sup-qr-manage svg{width:13px;height:13px}
+.sup-qr-manage:hover{color:#fff;border-color:rgba(139,92,246,.6);background:rgba(139,92,246,.1)}
+
+/* ── Caja de escribir: una sola pastilla con adjuntar, emojis, texto y enviar ── */
+.sup-composer{position:relative;flex:none;padding:8px 14px 14px}
+.sup-composer-box{
+    display:flex;align-items:flex-end;gap:4px;padding:5px;border-radius:30px;
+    background:linear-gradient(135deg,rgba(255,255,255,.09),rgba(255,255,255,.035));
+    border:1px solid var(--glass-line);border-top-color:var(--glass-top);
+    box-shadow:inset 0 1px 1px rgba(255,255,255,.16),0 8px 22px rgba(0,0,0,.28);
+    -webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%);
+    transition:border-color .15s ease,box-shadow .15s ease;
+}
+.sup-composer-box:focus-within{border-color:rgba(139,92,246,.7);box-shadow:0 0 0 3px rgba(139,92,246,.18)}
+.sup-composer-box .sup-icon-btn{width:38px;height:38px}
+.sup-composer-box .sup-icon-btn svg{width:20px;height:20px}
+.sup-composer textarea{
+    flex:1;min-width:0;resize:none;min-height:38px;max-height:130px;margin:0;
+    border:0!important;outline:0!important;box-shadow:none!important;background:transparent!important;
+    padding:9px 6px;font:inherit;font-size:.9rem;line-height:1.4;color:#f1f5f9;
+}
+.sup-send{
+    flex:none;width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;color:#fff;
+    display:inline-flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);box-shadow:0 4px 14px rgba(99,102,241,.4);
+    transition:transform .12s ease,filter .15s ease;
+}
+.sup-send svg{width:18px;height:18px}
+.sup-send:hover{filter:brightness(1.12)}
+.sup-send:active{transform:scale(.94)}
+.sup-icon-btn:disabled,.sup-send:disabled{opacity:.45;cursor:default}
+.sup-upload-hint{flex:none;margin:0;padding:0 18px 10px;font-size:.72rem;color:var(--s-muted)}
+
+/* ── Selector de emojis ── */
+.sup-emoji{
+    position:absolute;left:14px;bottom:calc(100% + 34px);z-index:25;width:min(340px,calc(100% - 28px));
+    display:flex;flex-direction:column;border-radius:22px;overflow:hidden;
+    background:var(--glass-pop);border:1px solid var(--glass-line);border-top-color:var(--glass-top);
+    box-shadow:0 22px 54px rgba(0,0,0,.6),inset 0 1px 1px rgba(255,255,255,.18);
+    -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
+}
+.sup-emoji[hidden]{display:none}
+.sup-emoji-tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid var(--s-line);background:rgba(255,255,255,.03)}
+.sup-emoji-tab{
+    flex:1;padding:8px 0 7px;border:0;border-bottom:2px solid transparent;background:transparent;
+    font-size:1.15rem;line-height:1;cursor:pointer;opacity:.6;transition:opacity .12s ease;
+}
+.sup-emoji-tab:hover{opacity:.95}
+.sup-emoji-tab.is-on{opacity:1;border-bottom-color:var(--s-violet)}
+.sup-emoji-title{margin:0;padding:8px 12px 2px;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--s-muted)}
+.sup-emoji-grid{
+    display:grid;grid-template-columns:repeat(8,1fr);gap:2px;padding:6px 8px 10px;
+    max-height:210px;overflow-y:auto;scrollbar-width:thin;
+}
+.sup-emoji-item{
+    aspect-ratio:1;border:0;border-radius:9px;background:transparent;font-size:1.35rem;line-height:1;
+    cursor:pointer;display:grid;place-items:center;transition:background .1s ease,transform .1s ease;
+}
+.sup-emoji-item:hover{background:rgba(255,255,255,.1);transform:scale(1.15)}
+
+/* ── Datos del caso (columna lateral) ── */
 .sup-side{min-height:0;overflow-y:auto;scrollbar-width:thin;padding-right:2px}
-.sup-side .admin-card{margin-bottom:14px;padding:16px}
-.sup-side h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin:0 0 10px}
-.sup-tagrow{display:flex;flex-wrap:wrap;gap:6px}
-.sup-tagbtn{cursor:pointer;font-size:.74rem;padding:4px 10px;border-radius:999px;
-    border:1px solid transparent;background:rgba(255,255,255,.06);color:#94a3b8;transition:.15s}
-.sup-tagbtn:hover{color:#fff}
-.sup-tagbtn.on{color:#fff;font-weight:600}
-.sup-tag{font-size:.68rem;padding:2px 8px;border-radius:999px;color:#fff;white-space:nowrap}
+.sup-side .admin-card{
+    margin-bottom:12px;padding:16px;border-radius:22px;
+    background:var(--glass-bg);border:1px solid var(--glass-line);border-top-color:var(--glass-top);
+    box-shadow:var(--glass-shadow);
+    -webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
+}
+.sup-side h3{
+    display:flex;align-items:center;gap:8px;font-size:.68rem;font-weight:800;text-transform:uppercase;
+    letter-spacing:.09em;color:#a5b4fc;margin:0 0 12px;
+}
+.sup-who{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.sup-who-avatar{
+    flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;
+    background:linear-gradient(135deg,#6366f1,#a855f7);
+}
+.sup-who strong{display:block;color:#f8fafc;font-size:.95rem}
+.sup-who span{display:block;font-size:.74rem;color:var(--s-muted);margin-top:1px}
+.sup-dl{margin:0;display:flex;flex-direction:column;font-size:.8rem}
+.sup-dl>div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--s-line)}
+.sup-dl dt{color:var(--s-muted);font-weight:500}
+.sup-dl dd{margin:0;color:var(--s-text);text-align:right;word-break:break-word}
 .sup-kv{font-size:.82rem;color:#cbd5e1;line-height:1.7}
-.sup-kv b{color:#94a3b8;font-weight:500}
-.sup-order{display:block;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.04);
-    border:1px solid rgba(255,255,255,.08);margin-bottom:7px;font-size:.8rem;color:#cbd5e1}
-.sup-order:hover{border-color:rgba(99,102,241,.5)}
+.sup-kv b{color:var(--s-muted);font-weight:500}
+.sup-order{display:block;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.04);
+    border:1px solid var(--s-line);margin-bottom:7px;font-size:.8rem;color:#cbd5e1;transition:border-color .15s ease}
+.sup-order:hover{border-color:rgba(99,102,241,.55)}
 .sup-actions{display:flex;flex-wrap:wrap;gap:8px}
 #supOrderResults{margin-top:8px;max-height:230px;overflow-y:auto}
-#supNote{width:100%;resize:vertical;min-height:56px;font:inherit;font-size:.8rem;line-height:1.4}
+#supNote{width:100%;resize:vertical;min-height:64px;font:inherit;font-size:.8rem;line-height:1.4;border-radius:12px}
 .sup-note-foot{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-top:8px}
 #supNoteMeta{font-size:.72rem;color:#64748b;flex:1}
 
-/* <details> nativo: colapsa solo, sin JS, para que la tarjeta no ocupe
-   tanto espacio cuando hay muchas respuestas guardadas. */
-.sup-qr-details summary{
-    cursor:pointer;list-style:none;font-weight:700;font-size:.95rem;
-    display:flex;align-items:center;gap:6px;
+/* ── Administrar respuestas rápidas (ventana) ── */
+.sup-qr-modal-box{max-width:520px;width:calc(100% - 32px);max-height:86vh;overflow-y:auto}
+.sup-qr-modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.sup-qr-modal-head h3{margin:0}
+.sup-qr-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.sup-qr-item{
+    display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;
+    background:rgba(255,255,255,.04);border:1px solid var(--s-line);
 }
-.sup-qr-details summary::-webkit-details-marker{display:none}
-.sup-qr-details summary::before{content:'▸';font-size:.7rem;color:#94a3b8;transition:transform .15s ease}
-.sup-qr-details[open] summary::before{transform:rotate(90deg)}
-.sup-qr-count{font-weight:400;color:#94a3b8;font-size:.8rem}
-.sup-qr-list{display:flex;flex-direction:column;gap:6px;margin-top:12px}
-.sup-qr-item{display:flex;align-items:stretch;gap:6px}
-.sup-qr-insert{
-    flex:1;text-align:left;cursor:pointer;font-size:.8rem;padding:7px 11px;border-radius:9px;
-    border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#e2e8f0;
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:.15s;
-}
-.sup-qr-insert:hover{border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.1)}
+.sup-qr-item-text{flex:1;min-width:0}
+.sup-qr-item-text strong{display:block;font-size:.84rem;color:#f1f5f9}
+.sup-qr-item-text span{display:block;font-size:.74rem;color:var(--s-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sup-qr-edit,.sup-qr-del{
-    flex:none;width:30px;border-radius:9px;cursor:pointer;font-size:.78rem;
-    border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#94a3b8;
+    flex:none;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:.8rem;
+    border:1px solid var(--s-line);background:var(--s-soft);color:var(--s-muted);transition:.15s;
 }
-.sup-qr-edit:hover{color:#93c5fd;border-color:rgba(99,102,241,.4);background:rgba(99,102,241,.1)}
-.sup-qr-del:hover{color:#fca5a5;border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.1)}
+.sup-qr-edit:hover{color:#93c5fd;border-color:rgba(99,102,241,.5);background:rgba(99,102,241,.12)}
+.sup-qr-del:hover{color:#fca5a5;border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.12)}
 
 /* ── Dentro de la bandeja (iframe) ─────────────────────────────────────────
    El chat llena todo el panel. Con espacio de sobra, los datos del caso van
    al lado; si el panel es angosto pasan a un cajón que se abre con la "i". */
-.sup-bar-info{
-    flex:none;display:none;align-items:center;justify-content:center;width:34px;height:34px;
-    border-radius:9px;border:1px solid transparent;background:none;color:#94a3b8;font-size:1rem;cursor:pointer;
+.sup-bar-info{display:none}
+/* El cristal necesita algo brillante detrás para notarse: resplandor violeta arriba y rojo abajo. */
+body.is-embed{
+    background:
+        radial-gradient(760px 520px at 105% -5%,rgba(139,92,246,.34),transparent 62%),
+        radial-gradient(700px 520px at -5% 105%,rgba(255,30,70,.22),transparent 62%),
+        radial-gradient(520px 380px at 50% 45%,rgba(99,102,241,.10),transparent 70%),
+        #07070f!important;
 }
-.sup-bar-info:hover{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e2e8f0}
-body.is-embed .sup-app{height:100vh;height:100dvh;min-height:0;gap:0;grid-template-columns:1fr 330px}
-body.is-embed .sup-chat{height:100%;border-radius:0;border:0}
-body.is-embed .sup-side{height:100%;padding:12px;border-left:1px solid rgba(255,255,255,.09);background:var(--bg-primary)}
+body.is-embed .sup-app{height:100vh;height:100dvh;min-height:0;box-sizing:border-box;padding:12px;gap:12px;grid-template-columns:1fr 330px}
+body.is-embed .sup-chat{height:100%}
+body.is-embed .sup-side{height:100%;padding:0}
 body.is-embed .sup-bar-back{display:none}
 .sup-side-head,.sup-scrim{display:none}
 @media (max-width:1000px){
-    body.is-embed .sup-app{grid-template-columns:1fr;position:relative}
+    body.is-embed .sup-app{grid-template-columns:1fr;position:relative;overflow:hidden}
     body.is-embed .sup-chat{height:100%}
     body.is-embed .sup-side{
-        position:absolute;top:0;right:0;bottom:0;width:min(340px,92%);z-index:40;
+        position:absolute;top:0;right:0;bottom:0;width:min(340px,92%);z-index:40;padding:12px;
+        background:rgba(10,10,26,.86);-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
+        border-left:1px solid var(--glass-line);
         transform:translateX(105%);transition:transform .22s ease;box-shadow:-12px 0 30px rgba(0,0,0,.5);
     }
     body.is-embed .sup-side.is-open{transform:none}
-    body.is-embed .sup-bar-info{display:flex}
+    body.is-embed .sup-bar-info{display:inline-flex}
     /* Cabecera fija con la X: siempre a la vista aunque el cajón tenga scroll. */
     body.is-embed .sup-side-head{
         display:flex;align-items:center;justify-content:space-between;gap:10px;
         position:sticky;top:-12px;z-index:2;margin:-12px -12px 12px;padding:10px 12px;
-        background:var(--bg-primary);border-bottom:1px solid rgba(255,255,255,.09);
+        background:rgba(10,10,26,.9);border-bottom:1px solid var(--glass-line);
     }
     .sup-side-head strong{font-size:.95rem;color:#e2e8f0}
     .sup-side-close{
         flex:none;display:flex;align-items:center;justify-content:center;width:36px;height:36px;
-        border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);
+        border-radius:12px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);
         color:#e2e8f0;font-size:1.05rem;line-height:1;cursor:pointer;
     }
     .sup-side-close:hover{background:rgba(255,255,255,.12)}
@@ -226,15 +382,27 @@ body.is-embed .sup-bar-back{display:none}
     }
     body.is-embed .sup-scrim.is-open{opacity:1;pointer-events:auto}
 }
-@media (max-width:760px){body.is-embed .sup-bar-back{display:flex}}
+@media (max-width:760px){body.is-embed .sup-bar-back{display:inline-flex}}
 @media (max-width:480px){
     /* Teléfono: sin la fotito ni textos de más, para que el nombre se lea entero. */
+    body.is-embed .sup-app{padding:6px;gap:6px}
     body.is-embed .sup-bar{gap:6px;padding:10px}
     body.is-embed .sup-bar-avatar{display:none}
     body.is-embed .sup-bar-tags{max-width:34%}
-    body.is-embed .sup-bar-who strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    body.is-embed .sup-bar-line{flex-direction:column;align-items:flex-start;gap:3px}
+    body.is-embed .sup-msg.system{min-height:0;padding:5px 15px;margin-left:auto;margin-right:auto}
+    body.is-embed .sup-thread{padding:18px 14px 10px}
+    body.is-embed .sup-msg{max-width:84%;padding-left:36px;padding-right:18px;min-height:46px}
+    body.is-embed .sup-msg.client{margin-left:22px;padding-left:38px;padding-right:18px}
+    body.is-embed .sup-msg.admin{margin-right:22px;padding-right:38px;padding-left:18px}
+    body.is-embed .sup-av{width:44px;height:44px;margin-top:-22px;font-size:1rem}
+    body.is-embed .sup-msg.client .sup-av{left:-22px}
+    body.is-embed .sup-msg.admin .sup-av{right:-22px}
+    body.is-embed .sup-emoji-grid{grid-template-columns:repeat(7,1fr)}
 }
-@media (prefers-reduced-motion:reduce){body.is-embed .sup-side,body.is-embed .sup-scrim{transition:none}}
+@media (prefers-reduced-motion:reduce){
+    body.is-embed .sup-side,body.is-embed .sup-scrim,.sup-send,.sup-qr-insert,.sup-emoji-item{transition:none}
+}
 </style>
 {% endblock %}
 
@@ -242,18 +410,20 @@ body.is-embed .sup-bar-back{display:none}
 <div class="sup-app">
 
   <div class="sup-chat">
-    <div class="sup-bar">
-      <a href="{{ url_for('admin_support_bp.inbox') }}" class="sup-bar-back" title="Volver a la bandeja" aria-label="Volver a la bandeja">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    <header class="sup-bar">
+      <a href="{{ url_for('admin_support_bp.inbox') }}" class="sup-bar-back sup-icon-btn" title="Volver a la bandeja" aria-label="Volver a la bandeja">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
       </a>
-      <div class="sup-bar-avatar">{{ chat.client_name[:1]|upper }}</div>
+      <div class="sup-bar-avatar" data-status="{{ chat.status }}">{{ chat.client_name[:1]|upper }}<i class="sup-presence" aria-hidden="true"></i></div>
       <div class="sup-bar-who">
-        <strong>{{ chat.client_name }}</strong>
-        <span id="supBarStatus">{{ chat.status_label }}{% if chat.client_email %} · {{ chat.client_email }}{% endif %}</span>
-        <span class="sup-ai-chip {{ 'on' if chat.ai_active else '' }}">{{ '🤖 Lo atiende la IA' if chat.ai_active else '👤 Atención humana' }}</span>
+        <div class="sup-bar-line">
+          <strong>{{ chat.client_name }}</strong>
+          <span class="sup-ai-chip {{ 'on' if chat.ai_active else '' }}">{{ '🤖 Lo atiende la IA' if chat.ai_active else '👤 Atención humana' }}</span>
+        </div>
+        <span class="sup-bar-sub" id="supBarStatus">{{ chat.status_label }}{% if chat.client_email %} · {{ chat.client_email }}{% endif %}</span>
       </div>
       <div class="sup-bar-tags">
-        <button type="button" class="sup-tag-picker-btn" id="supTagPickerBtn">
+        <button type="button" class="sup-tag-picker-btn" id="supTagPickerBtn" aria-label="Etiquetas del chat">
           <span id="supTagPickerSummary">
             {% for tag in chat.tags %}<span class="sup-tag" style="background:{{ tag.color }}">{{ tag.name }}</span>{% else %}<span class="sup-tag sup-tag-empty">Sin etiqueta</span>{% endfor %}
           </span>
@@ -283,44 +453,72 @@ body.is-embed .sup-bar-back{display:none}
           <a href="{{ url_for('admin_support_bp.tags') }}" class="sup-tag-panel-link">Crear o editar etiquetas ›</a>
         </div>
       </div>
-      <button type="button" class="sup-bar-info" id="supInfoBtn" aria-label="Datos del caso" aria-expanded="false" title="Datos del caso">ℹ️</button>
+      <button type="button" class="sup-icon-btn sup-bar-info" id="supInfoBtn" aria-label="Datos del caso" aria-expanded="false" title="Datos del caso">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+      </button>
       <div class="sup-bar-actions">
-        <button type="button" class="sup-bar-actions-btn" id="supActionsBtn" aria-label="Acciones del chat">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+        <button type="button" class="sup-icon-btn" id="supActionsBtn" aria-label="Acciones del chat" title="Acciones">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
         </button>
         <div class="sup-actions-panel" id="supActionsPanel" hidden>
-          <button type="button" class="btn-secondary" id="supSignatureBtn">Cambiar firma</button>
+          <button type="button" class="sup-menu-item" id="supSignatureBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            Cambiar firma
+          </button>
           <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
             <input type="hidden" name="action" value="{{ 'ia_apagar' if chat.ai_active else 'ia_encender' }}">
-            <button type="submit" class="btn-secondary">{{ '👤 Tomar el chat (apagar IA)' if chat.ai_active else '🤖 Devolver a la IA' }}</button>
+            <button type="submit" class="sup-menu-item">
+              {% if chat.ai_active %}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+              Tomar el chat (apagar IA)
+              {% else %}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="3"/><path d="M12 4v4"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
+              Devolver a la IA
+              {% endif %}
+            </button>
           </form>
           {% if chat.status == 'closed' %}
           <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
             <input type="hidden" name="action" value="reabrir">
-            <button type="submit" class="btn-secondary">Reabrir</button>
+            <button type="submit" class="sup-menu-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+              Reabrir chat
+            </button>
           </form>
           {% else %}
           <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}">
             <input type="hidden" name="action" value="cerrar">
-            <button type="submit" class="btn-secondary">Cerrar chat</button>
+            <button type="submit" class="sup-menu-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/></svg>
+              Cerrar chat
+            </button>
           </form>
           {% endif %}
+          <div class="sup-menu-sep"></div>
           <form method="POST" action="{{ url_for('admin_support_bp.set_status', chat_id=chat.id) }}"
                 onsubmit="return confirm('{% if chat.is_blocked %}¿Desbloquear este chat?{% else %}¿Bloquear? El cliente no podrá escribir más.{% endif %}')">
             <input type="hidden" name="action" value="{% if chat.is_blocked %}desbloquear{% else %}bloquear{% endif %}">
-            <button type="submit" class="btn-danger">{% if chat.is_blocked %}Desbloquear{% else %}Bloquear{% endif %}</button>
+            <button type="submit" class="sup-menu-item danger">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg>
+              {% if chat.is_blocked %}Desbloquear{% else %}Bloquear{% endif %}
+            </button>
           </form>
         </div>
       </div>
-    </div>
+    </header>
 
     <div class="sup-thread" id="supThread">
       {% for m in messages %}
       <div class="sup-msg {{ m.sender }}{% if m.is_ai %} ai{% endif %}{% if m.is_deleted %} deleted{% endif %}" data-id="{{ m.id }}">
+        {% if m.sender != 'system' %}
+        {% if m.sender == 'client' %}<span class="sup-av sup-av-client" aria-hidden="true">{{ chat.client_name[:1]|upper }}</span>
+        {% elif m.is_ai %}<span class="sup-av sup-av-ai" aria-hidden="true">🤖</span>
+        {% else %}<img class="sup-av" alt="" src="{{ support_photo }}">{% endif %}
+        <span class="sup-msg-head"><b>{% if m.sender == 'client' %}{{ chat.client_name }}{% elif m.is_ai %}Asistente IA{% else %}Soporte{% endif %}</b><span class="sup-t">{{ m.time_label }}</span></span>
+        {% endif %}
         {% if m.is_deleted %}
         <span class="sup-msg-body sup-msg-deleted-text">🚫 Mensaje eliminado</span>
         {% else %}
-        {% if m.is_ai %}<span class="sup-ai-label">🤖 Asistente IA</span>{% endif %}
         {%- if m.body %}<span class="sup-msg-body">{{ m.body }}</span>{% endif -%}
         {% if m.action_url and m.action_url.startswith('#comprar:') %}<span class="sup-ai-action">🧾 Botón para el cliente: {{ m.action_label or 'Crear mi orden con este comprobante' }}</span>
         {% elif m.action_url %}<a class="sup-ai-action" href="{{ m.action_url }}" target="_blank">🔗 {{ m.action_label or m.action_url }}</a>{% endif %}
@@ -341,27 +539,56 @@ body.is-embed .sup-bar-back{display:none}
         <button type="button" class="sup-msg-del" title="Eliminar para todos" data-id="{{ m.id }}">✕</button>
         {% endif %}
         {% endif %}
-        {% if m.sender != 'system' %}<span class="sup-t">{{ m.time_label }}</span>{% endif %}
       </div>
       {% endfor %}
     </div>
 
     {% if chat.is_blocked %}
-    <div style="padding:14px;color:#fca5a5;font-size:.85rem;text-align:center">
-      Chat bloqueado. Desbloquéalo para poder responder.
+    <div class="sup-note blocked">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg>
+      <span>Chat bloqueado. Desbloquéalo para poder responder.</span>
     </div>
     {% else %}
     {% if client_expired %}
-    <div style="padding:8px 14px;color:#fde68a;font-size:.78rem;text-align:center;background:rgba(255,193,7,.08);border-top:1px solid rgba(255,193,7,.2)">
-      Pasaron más de {{ client_visible_hours }} h desde el último mensaje: es posible que el cliente ya no vea este chat en su navegador.
-      Si le respondes, solo le llegará por correo o notificación si dejó datos.
+    <div class="sup-note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span>Pasaron más de {{ client_visible_hours }} h desde el último mensaje: es posible que el cliente ya no vea este chat en su navegador.
+      Si le respondes, solo le llegará por correo o notificación si dejó datos.</span>
     </div>
     {% endif %}
+
+    {#- Respuestas rápidas: botones pegados a la caja de escribir. Un clic las manda. -#}
+    <div class="sup-qr-bar" id="supQuickReplies" role="toolbar" aria-label="Respuestas rápidas">
+      <span class="sup-qr-label">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h8l-1 8 10-12h-8Z"/></svg>
+        Rápidas
+      </span>
+      {% for qr in quick_replies %}
+      <button type="button" class="sup-qr-insert" data-reply-id="{{ qr.id }}" title="{{ qr.body }}">
+        <span class="sup-qr-title">{{ qr.title }}</span>{% if qr.attachment %}<span class="sup-qr-attach-icon" title="Incluye adjunto">📎</span>{% endif %}
+      </button>
+      {% endfor %}
+      <button type="button" class="sup-qr-manage" id="supQrManageBtn" title="Crear, editar o borrar respuestas rápidas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        {% if quick_replies %}Editar{% else %}Crear la primera{% endif %}
+      </button>
+    </div>
+
     <form class="sup-composer" id="supReplyForm">
       <input type="file" id="supFile" accept="image/*,video/*" hidden>
-      <button type="button" class="sup-attach" id="supAttach" aria-label="Adjuntar imagen o video">📎</button>
-      <textarea id="supReplyBody" rows="1" placeholder="Escribe tu respuesta…" maxlength="2000"></textarea>
-      <button type="submit" class="sup-send" aria-label="Enviar">➤</button>
+      <div class="sup-composer-box">
+        <button type="button" class="sup-icon-btn sup-attach" id="supAttach" aria-label="Adjuntar imagen o video" title="Adjuntar imagen o video">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+        </button>
+        <button type="button" class="sup-icon-btn" id="supEmojiBtn" aria-label="Emojis" aria-expanded="false" aria-controls="supEmoji" title="Emojis">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
+        </button>
+        <textarea id="supReplyBody" rows="1" placeholder="Escribe tu respuesta…" maxlength="2000"></textarea>
+        <button type="submit" class="sup-send" aria-label="Enviar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+        </button>
+      </div>
+      <div class="sup-emoji" id="supEmoji" role="dialog" aria-label="Elegir emoji" hidden></div>
     </form>
     <p class="sup-upload-hint" id="supUploadHint" hidden></p>
     {% endif %}
@@ -376,13 +603,15 @@ body.is-embed .sup-bar-back{display:none}
     </div>
     <div class="admin-card">
       <h3>Quién es</h3>
-      <div class="sup-kv">
-        <b>Nombre:</b> {{ chat.client_name }}<br>
-        <b>Código:</b> {{ chat.display_code }}<br>
-        {% if chat.client_email %}<b>Correo:</b> {{ chat.client_email }}<br>{% endif %}
-        <b>Estado:</b> {{ chat.status_label }}<br>
-        <b>Abierto:</b> {{ chat.created_at|datetime_ve }}
+      <div class="sup-who">
+        <div class="sup-who-avatar">{{ chat.client_name[:1]|upper }}</div>
+        <div><strong>{{ chat.client_name }}</strong><span>Chat {{ chat.display_code }}</span></div>
       </div>
+      <dl class="sup-dl">
+        <div><dt>Estado</dt><dd>{{ chat.status_label }}</dd></div>
+        {% if chat.client_email %}<div><dt>Correo</dt><dd>{{ chat.client_email }}</dd></div>{% endif %}
+        <div><dt>Abierto</dt><dd>{{ chat.created_at|datetime_ve }}</dd></div>
+      </dl>
 
       {% if chat.order %}
       <div style="margin-top:12px">
@@ -394,49 +623,10 @@ body.is-embed .sup-bar-back{display:none}
         <button type="button" class="btn-secondary" id="supUnlinkBtn">Desvincular</button>
       </div>
       {% else %}
-      <p class="form-hint" style="margin-top:10px">
+      <p class="form-hint" style="margin-top:12px">
         Sin identificar. No sabemos de quién es este chat — busca su orden abajo.
       </p>
       {% endif %}
-    </div>
-
-    <div class="admin-card">
-      <details class="sup-qr-details">
-        <summary>Respuestas rápidas <span class="sup-qr-count">({{ quick_replies|length }})</span></summary>
-        <div class="sup-qr-list" id="supQuickReplies">
-          {% for qr in quick_replies %}
-          <div class="sup-qr-item">
-            <button type="button" class="sup-qr-insert" data-reply-id="{{ qr.id }}" title="{{ qr.body }}">
-              {{ qr.title }}{% if qr.attachment %} <span class="sup-qr-attach-icon" title="Incluye adjunto">📎</span>{% endif %}
-            </button>
-            <button type="button" class="sup-qr-edit" title="Editar"
-                    onclick="openEditQr({{ qr.id }}, '{{ qr.title|e }}', '{{ qr.body|e }}', {{ 1 if qr.attachment else 0 }})">✎</button>
-            <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_delete', reply_id=qr.id) }}" style="display:inline" class="sup-qr-del-form">
-              <button type="button" class="sup-qr-del" title="Borrar">✕</button>
-            </form>
-          </div>
-          {% else %}
-          <p class="form-hint" style="margin:0;">Todavía no hay respuestas guardadas.</p>
-          {% endfor %}
-        </div>
-        <button type="button" class="btn-secondary" id="supQrAddToggle" style="margin-top:10px;">+ Nueva respuesta rápida</button>
-        <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_create') }}" id="supQrAddForm"
-              enctype="multipart/form-data" style="display:none; margin-top:10px;">
-          <div class="form-group">
-            <label>Título del botón</label>
-            <input type="text" name="title" maxlength="60" placeholder="Ej. Horario" required>
-          </div>
-          <div class="form-group">
-            <label>Texto a enviar</label>
-            <textarea name="body" rows="3" maxlength="2000" placeholder="Ej. Atendemos de 10am a 8pm todos los días."></textarea>
-          </div>
-          <div class="form-group">
-            <label>Imagen o video (opcional)</label>
-            <input type="file" name="file" accept="image/*,video/*">
-          </div>
-          <button type="submit" class="btn-primary">Guardar</button>
-        </form>
-      </details>
     </div>
 
     <div class="admin-card">
@@ -456,14 +646,14 @@ body.is-embed .sup-bar-back{display:none}
     {% if chat.context_order_number or chat.context_player_id or chat.context_email or chat.context_phone or chat.context_game or chat.context_package %}
     <div class="admin-card">
       <h3>Contexto de la página</h3>
-      <div class="sup-kv">
-        {% if chat.context_order_number %}<b>Orden:</b> {{ chat.context_order_number }}<br>{% endif %}
-        {% if chat.context_player_id %}<b>ID de jugador:</b> {{ chat.context_player_id }}<br>{% endif %}
-        {% if chat.context_email %}<b>Correo:</b> {{ chat.context_email }}<br>{% endif %}
-        {% if chat.context_phone %}<b>Teléfono:</b> {{ chat.context_phone }}<br>{% endif %}
-        {% if chat.context_game %}<b>Juego:</b> {{ chat.context_game }}<br>{% endif %}
-        {% if chat.context_package %}<b>Paquete:</b> {{ chat.context_package }}<br>{% endif %}
-      </div>
+      <dl class="sup-dl">
+        {% if chat.context_order_number %}<div><dt>Orden</dt><dd>{{ chat.context_order_number }}</dd></div>{% endif %}
+        {% if chat.context_player_id %}<div><dt>ID de jugador</dt><dd>{{ chat.context_player_id }}</dd></div>{% endif %}
+        {% if chat.context_email %}<div><dt>Correo</dt><dd>{{ chat.context_email }}</dd></div>{% endif %}
+        {% if chat.context_phone %}<div><dt>Teléfono</dt><dd>{{ chat.context_phone }}</dd></div>{% endif %}
+        {% if chat.context_game %}<div><dt>Juego</dt><dd>{{ chat.context_game }}</dd></div>{% endif %}
+        {% if chat.context_package %}<div><dt>Paquete</dt><dd>{{ chat.context_package }}</dd></div>{% endif %}
+      </dl>
       <p class="form-hint" style="margin-top:8px;font-size:.72rem">
         Lo aportó el navegador, no el cliente. Orienta, no prueba.
       </p>
@@ -500,6 +690,50 @@ body.is-embed .sup-bar-back{display:none}
         <button type="button" class="btn-secondary" id="supSignatureCancel">Cancelar</button>
         <button type="submit" class="btn-primary">Guardar firma</button>
       </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="supQrManageModal" style="display:none">
+  <div class="modal-box sup-qr-modal-box">
+    <div class="sup-qr-modal-head">
+      <h3>Respuestas rápidas</h3>
+      <button type="button" class="sup-icon-btn" id="supQrManageClose" aria-label="Cerrar" title="Cerrar">✕</button>
+    </div>
+    <p class="form-hint">Salen como botones arriba de la caja de escribir: un clic las manda al cliente.</p>
+    <div class="sup-qr-list" id="supQrManageList">
+      {% for qr in quick_replies %}
+      <div class="sup-qr-item">
+        <div class="sup-qr-item-text">
+          <strong>{{ qr.title }}{% if qr.attachment %} 📎{% endif %}</strong>
+          <span>{{ qr.body }}</span>
+        </div>
+        <button type="button" class="sup-qr-edit" title="Editar" data-qr-id="{{ qr.id }}"
+                data-title="{{ qr.title }}" data-body="{{ qr.body }}" data-has-attach="{{ 1 if qr.attachment else 0 }}">✎</button>
+        <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_delete', reply_id=qr.id) }}" style="display:inline" class="sup-qr-del-form">
+          <button type="button" class="sup-qr-del" title="Borrar">✕</button>
+        </form>
+      </div>
+      {% else %}
+      <p class="form-hint" style="margin:0;">Todavía no hay respuestas guardadas.</p>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn-secondary" id="supQrAddToggle" style="margin-top:12px;">+ Nueva respuesta rápida</button>
+    <form method="POST" action="{{ url_for('admin_support_bp.quick_reply_create') }}" id="supQrAddForm"
+          enctype="multipart/form-data" style="display:none; margin-top:10px;">
+      <div class="form-group">
+        <label>Título del botón</label>
+        <input type="text" name="title" maxlength="60" placeholder="Ej. Horario" required>
+      </div>
+      <div class="form-group">
+        <label>Texto a enviar</label>
+        <textarea name="body" rows="3" maxlength="2000" placeholder="Ej. Atendemos de 10am a 8pm todos los días."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Imagen o video (opcional)</label>
+        <input type="file" name="file" accept="image/*,video/*">
+      </div>
+      <button type="submit" class="btn-primary">Guardar</button>
     </form>
   </div>
 </div>
@@ -557,6 +791,8 @@ body.is-embed .sup-bar-back{display:none}
 <script>
 (function () {
     var CHAT_ID = {{ chat.id }};
+    var CLIENT_NAME = {{ chat.client_name|tojson }};
+    var SUPPORT_PHOTO = {{ support_photo|tojson }};
     var VIDEO_EXT = ['mp4', 'webm', 'mov', 'm4v'];
 
     var thread = document.getElementById('supThread');
@@ -575,37 +811,63 @@ body.is-embed .sup-bar-back{display:none}
         });
     }
 
+    // Foto en la punta de la cápsula: la inicial del cliente, el robot de la IA o la foto de soporte.
+    function buildAvatar(m) {
+        if (m.sender === 'client') {
+            var a = document.createElement('span');
+            a.className = 'sup-av sup-av-client';
+            a.textContent = (CLIENT_NAME || '?').charAt(0).toUpperCase();
+            return a;
+        }
+        if (m.is_ai) {
+            var bot = document.createElement('span');
+            bot.className = 'sup-av sup-av-ai';
+            bot.textContent = '🤖';
+            return bot;
+        }
+        var img = document.createElement('img');
+        img.className = 'sup-av';
+        img.alt = '';
+        img.src = SUPPORT_PHOTO;
+        return img;
+    }
+
+    function buildHead(m) {
+        var head = document.createElement('span');
+        head.className = 'sup-msg-head';
+        var name = document.createElement('b');
+        name.textContent = m.sender === 'client' ? CLIENT_NAME : (m.is_ai ? 'Asistente IA' : 'Soporte');
+        var time = document.createElement('span');
+        time.className = 'sup-t';
+        time.textContent = timeLabel(m);
+        head.appendChild(name);
+        head.appendChild(time);
+        return head;
+    }
+
     // textContent y no innerHTML: el cuerpo lo escribe el cliente y llega
     // por JSON, sin pasar por el autoescape de Jinja.
     function render(m) {
         var el = document.createElement('div');
         el.className = 'sup-msg ' + m.sender + (m.is_deleted ? ' deleted' : '');
         el.dataset.id = m.id;
+        if (m.sender !== 'system') {
+            el.appendChild(buildAvatar(m));
+            el.appendChild(buildHead(m));
+        }
 
         if (m.is_deleted) {
             var deletedText = document.createElement('span');
             deletedText.className = 'sup-msg-body sup-msg-deleted-text';
             deletedText.textContent = '🚫 Mensaje eliminado';
             el.appendChild(deletedText);
-            if (m.sender !== 'system') {
-                var t2 = document.createElement('span');
-                t2.className = 'sup-t';
-                t2.textContent = timeLabel(m);
-                el.appendChild(t2);
-            }
             thread.appendChild(el);
             lastId = Math.max(lastId, m.id);
             scrollDown();
             return;
         }
 
-        if (m.is_ai) {
-            el.classList.add('ai');
-            var who = document.createElement('span');
-            who.className = 'sup-ai-label';
-            who.textContent = '🤖 Asistente IA';
-            el.appendChild(who);
-        }
+        if (m.is_ai) el.classList.add('ai');
 
         if (m.body) {
             var body = document.createElement('span');
@@ -673,13 +935,6 @@ body.is-embed .sup-bar-back{display:none}
             el.appendChild(delBtn);
         }
 
-        if (m.sender !== 'system') {
-            var t = document.createElement('span');
-            t.className = 'sup-t';
-            t.textContent = timeLabel(m);
-            el.appendChild(t);
-        }
-
         thread.appendChild(el);
         lastId = Math.max(lastId, m.id);
         scrollDown();
@@ -693,7 +948,10 @@ body.is-embed .sup-bar-back{display:none}
         var el = thread.querySelector('.sup-msg[data-id="' + id + '"]');
         if (!el || el.classList.contains('deleted')) return;
         el.classList.add('deleted');
-        el.innerHTML = '';
+        // Se queda la foto y el nombre/hora; solo se cambia el contenido.
+        Array.prototype.slice.call(el.children).forEach(function (child) {
+            if (!child.classList.contains('sup-av') && !child.classList.contains('sup-msg-head')) child.remove();
+        });
         var deletedText = document.createElement('span');
         deletedText.className = 'sup-msg-body sup-msg-deleted-text';
         deletedText.textContent = '🚫 Mensaje eliminado';
@@ -949,6 +1207,113 @@ body.is-embed .sup-bar-back{display:none}
         });
     }
 
+    // ── Emojis ───────────────────────────────────────────────────────────
+    // Selector propio (sin librerías): pestañas por tema, "recientes" y se inserta donde está el cursor.
+    var emojiBtn = document.getElementById('supEmojiBtn');
+    var emojiBox = document.getElementById('supEmoji');
+    var EMOJI_RECENT_KEY = 'sup:recent-emojis';
+    var EMOJI_GROUPS = [
+        { icon: '😀', name: 'Caras', list: '😀 😃 😄 😁 😆 😅 😂 🤣 🥲 😊 🙂 😉 😍 🥰 😘 😎 🤩 🤗 🤔 🙄 😬 😴 😮 😢 😭 😡 🤯 😱 🥳 😇 🫡 😌' },
+        { icon: '👍', name: 'Gestos', list: '👍 👎 👏 🙌 🙏 💪 👌 ✌️ 🤞 🤝 👋 🫶 ☝️ 👇 👉 👈 ✋ 🤙 🫰 ✍️' },
+        { icon: '🎮', name: 'Recargas', list: '🎮 🕹️ 💎 💰 💵 💳 🪙 🏆 🥇 🎁 🎉 🎊 🔥 ⚡ ✨ ⭐ 🌟 🚀 📱 💻 📦 🛒 🧾 🎯' },
+        { icon: '✅', name: 'Avisos', list: '✅ ❌ ⚠️ ❗ ❓ ℹ️ 💬 📞 📧 🔒 🔑 ⏰ ⌛ 📅 🔔 📌 🔗 ❤️ 🧡 💛 💚 💙 💜 🖤 🤍' }
+    ];
+
+    function mk(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text) node.textContent = text;
+        return node;
+    }
+
+    function readRecentEmojis() {
+        try {
+            var saved = JSON.parse(localStorage.getItem(EMOJI_RECENT_KEY) || '[]');
+            return Array.isArray(saved) ? saved.filter(function (e) { return typeof e === 'string'; }).slice(0, 16) : [];
+        } catch (_) { return []; }
+    }
+    function saveRecentEmoji(emoji) {
+        try {
+            var list = readRecentEmojis().filter(function (e) { return e !== emoji; });
+            list.unshift(emoji);
+            localStorage.setItem(EMOJI_RECENT_KEY, JSON.stringify(list.slice(0, 16)));
+        } catch (_) { /* sin almacenamiento: no pasa nada */ }
+    }
+
+    function insertEmoji(emoji) {
+        if (!input) return;
+        var start = typeof input.selectionStart === 'number' ? input.selectionStart : input.value.length;
+        var end = typeof input.selectionEnd === 'number' ? input.selectionEnd : start;
+        if (input.value.length - (end - start) + emoji.length > (input.maxLength > 0 ? input.maxLength : 2000)) return;
+        input.value = input.value.slice(0, start) + emoji + input.value.slice(end);
+        var pos = start + emoji.length;
+        input.setSelectionRange(pos, pos);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+        saveRecentEmoji(emoji);
+    }
+
+    function showEmojiGroup(group, tabs, title, grid) {
+        Array.prototype.forEach.call(tabs.children, function (t) { t.classList.toggle('is-on', t.dataset.group === group.name); });
+        title.textContent = group.name;
+        grid.textContent = '';
+        group.list.forEach(function (emoji) {
+            var b = mk('button', 'sup-emoji-item', emoji);
+            b.type = 'button';
+            b.setAttribute('aria-label', emoji);
+            b.addEventListener('click', function () { insertEmoji(emoji); });
+            grid.appendChild(b);
+        });
+    }
+
+    function buildEmojiPicker() {
+        emojiBox.textContent = '';
+        var groups = EMOJI_GROUPS.map(function (g) { return { icon: g.icon, name: g.name, list: g.list.split(' ') }; });
+        var recent = readRecentEmojis();
+        if (recent.length) groups.unshift({ icon: '🕘', name: 'Recientes', list: recent });
+        var tabs = mk('div', 'sup-emoji-tabs');
+        tabs.setAttribute('role', 'tablist');
+        var title = mk('p', 'sup-emoji-title');
+        var grid = mk('div', 'sup-emoji-grid');
+        groups.forEach(function (group) {
+            var tab = mk('button', 'sup-emoji-tab', group.icon);
+            tab.type = 'button';
+            tab.dataset.group = group.name;
+            tab.setAttribute('role', 'tab');
+            tab.setAttribute('aria-label', group.name);
+            tab.title = group.name;
+            tab.addEventListener('click', function () { showEmojiGroup(group, tabs, title, grid); });
+            tabs.appendChild(tab);
+        });
+        emojiBox.appendChild(tabs);
+        emojiBox.appendChild(title);
+        emojiBox.appendChild(grid);
+        showEmojiGroup(groups[0], tabs, title, grid);
+    }
+
+    function setEmoji(open) {
+        if (!emojiBox || !emojiBtn) return;
+        if (open) buildEmojiPicker();
+        emojiBox.hidden = !open;
+        emojiBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    if (emojiBtn && emojiBox) {
+        emojiBtn.addEventListener('click', function (evt) {
+            evt.stopPropagation();
+            setEmoji(emojiBox.hidden);
+        });
+        // Tocar fuera o Escape lo cierran.
+        document.addEventListener('click', function (evt) {
+            if (!emojiBox.hidden && !emojiBox.contains(evt.target) && !emojiBtn.contains(evt.target)) setEmoji(false);
+        });
+    }
+    document.addEventListener('keydown', function (evt) {
+        if (evt.key !== 'Escape') return;
+        if (emojiBox && !emojiBox.hidden) { setEmoji(false); if (input) input.focus(); }
+        else if (manageModal && manageModal.style.display === 'flex') setManage(false);
+    });
+
     // ── Respuestas rápidas: se mandan directo con un clic (no solo
     // rellenan el texto) porque un adjunto no se puede "escribir" en el
     // textarea — así el mismo botón sirve para las que tienen solo texto
@@ -958,8 +1323,8 @@ body.is-embed .sup-bar-back{display:none}
             var replyId = btn.dataset.replyId;
             if (!replyId || btn.disabled) return;
             btn.disabled = true;
-            var prevText = btn.textContent;
-            btn.textContent = 'Enviando…';
+            var prevNodes = Array.prototype.slice.call(btn.childNodes);
+            btn.replaceChildren(document.createTextNode('Enviando…'));
 
             fetch('/admin/soporte/' + CHAT_ID + '/respuestas-rapidas/' + replyId + '/enviar', {
                 method: 'POST', credentials: 'same-origin'
@@ -972,7 +1337,7 @@ body.is-embed .sup-bar-back{display:none}
                 .catch(function () { alert('No se pudo enviar.'); })
                 .finally(function () {
                     btn.disabled = false;
-                    btn.textContent = prevText;
+                    btn.replaceChildren.apply(btn, prevNodes);
                 });
         });
     });
@@ -984,6 +1349,23 @@ body.is-embed .sup-bar-back{display:none}
             qrForm.style.display = qrForm.style.display === 'none' ? 'block' : 'none';
         });
     }
+
+    // ── Administrar las respuestas rápidas (ventana) ──────────────────────
+    var manageModal = document.getElementById('supQrManageModal');
+    var manageBtn = document.getElementById('supQrManageBtn');
+    var manageClose = document.getElementById('supQrManageClose');
+    function setManage(open) { if (manageModal) manageModal.style.display = open ? 'flex' : 'none'; }
+    if (manageBtn) manageBtn.addEventListener('click', function () { setManage(true); });
+    if (manageClose) manageClose.addEventListener('click', function () { setManage(false); });
+    if (manageModal) {
+        manageModal.addEventListener('click', function (evt) { if (evt.target === manageModal) setManage(false); });
+    }
+    // Los datos van en atributos data-* (no pegados a un onclick): un título con comillas no rompe nada.
+    document.querySelectorAll('.sup-qr-edit').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            window.openEditQr(btn.dataset.qrId, btn.dataset.title, btn.dataset.body, btn.dataset.hasAttach === '1');
+        });
+    });
 
     // ── Etiquetas: picker desplegable en la barra superior ─────────────────
     var tagPickerBtn = document.getElementById('supTagPickerBtn');
@@ -1189,6 +1571,15 @@ body.is-embed .sup-bar-back{display:none}
             if (a !== backLink && !a.target) { a.target = '_blank'; a.rel = 'noopener'; }
         });
     }
+
+    // Si la foto de soporte no carga, se usa el logo.
+    thread.addEventListener('error', function (evt) {
+        var t = evt.target;
+        if (t && t.tagName === 'IMG' && t.classList.contains('sup-av') && !t.dataset.fallback) {
+            t.dataset.fallback = '1';
+            t.src = '/static/pwa/icon-192.png';
+        }
+    }, true);
 
     scrollDown();
 })();

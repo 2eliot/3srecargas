@@ -16,7 +16,7 @@ from flask_login import current_user, login_required
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
-from ..models import db, Order, SupportChat, SupportChatTag, SupportMessage, SupportQuickReply, SupportTag
+from ..models import db, Order, Setting, SupportChat, SupportChatTag, SupportMessage, SupportQuickReply, SupportTag
 from ..utils import support as support_service
 from ..utils import support_bot
 from ..utils.support import SupportError
@@ -256,8 +256,14 @@ def detail(chat_id):
     chat = SupportChat.query.get_or_404(chat_id)
     support_service.mark_read_by_admin(chat)
 
+    # La foto del equipo en las burbujas: la de Configuración, o el logo si no hay.
+    avatar_row = Setting.query.filter_by(key='support_avatar').first()
+    support_photo = (url_for('static', filename='uploads/' + avatar_row.value)
+                     if avatar_row and avatar_row.value else url_for('static', filename='pwa/icon-192.png'))
+
     return render_template(
         'admin/support_detail.html',
+        support_photo=support_photo,
         chat=chat,
         client_expired=support_service.client_view_expired(chat),
         client_visible_hours=support_service.CLIENT_VISIBLE_HOURS,

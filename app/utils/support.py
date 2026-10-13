@@ -70,8 +70,12 @@ OPEN_STATUSES = ('open', 'waiting_client')
 _CONTROL_RANGE = '\x00-\x08\x0b\x0c\x0e-\x1f\x7f'
 _BIDI_MARKS = '​-‏‪-‮⁦-⁩'
 
+# En los mensajes (no en los nombres) se deja pasar el "unidor de cero ancho" U+200D: es lo que une varios emojis
+# en uno solo (👩‍💻, 👨‍👩‍👧, ❤️‍🔥). Sin él esos emojis se partían en dos. Todo lo demás de la lista sigue fuera.
+_BIDI_MARKS_BODY = '\u200b\u200c\u200e\u200f\u202a-\u202e\u2066-\u2069'
+
 _INVISIBLE_CHARS = re.compile('[' + _CONTROL_RANGE + '\x09\x0a\x0d' + _BIDI_MARKS + ']')
-_INVISIBLE_CHARS_MULTILINE = re.compile('[' + _CONTROL_RANGE + _BIDI_MARKS + ']')
+_INVISIBLE_CHARS_MULTILINE = re.compile('[' + _CONTROL_RANGE + _BIDI_MARKS_BODY + ']')
 
 # Más de dos saltos seguidos es alguien aporreando Enter, no un párrafo.
 _BLANK_LINE_RUN = re.compile(r'\n{3,}')
