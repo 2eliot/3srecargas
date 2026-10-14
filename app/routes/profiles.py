@@ -25,9 +25,9 @@ from ..utils.profile_social import (
 )
 from ..utils.profile_frames import selected_frame_url, shop_frames, usable_frame
 from ..utils.profiles import (
-    ACCENT_SWATCHES, BACKGROUND_PRESETS, BANNER_COLOR_PRESETS,
+    ACCENT_SWATCHES, BACKGROUND_PRESETS, BACKGROUND_VIDEO_MAX_BYTES, BANNER_COLOR_PRESETS,
     BIO_MAX, DISPLAY_NAME_MAX, MAX_PROFILE_IMAGES, MEDIA_KINDS, MEDIA_LABELS, NAME_FONTS, STATUS_MAX, clean_text, delete_media,
-    get_or_create_profile, get_profile, load_theme, media_url_path, profile_image_count, reset_profile, save_media, theme_attrs,
+    get_or_create_profile, get_profile, is_video_path, load_theme, media_url_path, profile_image_count, reset_profile, save_media, theme_attrs,
     theme_from_form, theme_vars,
 )
 
@@ -159,7 +159,9 @@ def build_view(user, profile, owner_view=False, preview=False, viewer=None):
         'status_text': shown_status,
         'avatar': media_url_path(profile.avatar_path) if profile else '',
         'banner': media_url_path(profile.banner_path) if profile else '',
-        'background': media_url_path(profile.background_path) if profile else '',
+        # el fondo puede ser una imagen o un VIDEO corto: `background` es la imagen (vacía si es video) y `background_video` el video
+        'background': media_url_path(profile.background_path) if profile and not is_video_path(profile.background_path) else '',
+        'background_video': media_url_path(profile.background_path) if profile and is_video_path(profile.background_path) else '',
         'avatar_frame': frame_for_view(profile, user, 'avatar'),
         'banner_frame': frame_for_view(profile, user, 'banner'),
         'owner_view': owner_view,
@@ -307,6 +309,7 @@ def _editor_context(user, profile):
         'swatches': ACCENT_SWATCHES,
         'name_fonts': list(NAME_FONTS),
         'limits_mb': {kind: spec[1] // (1024 * 1024) for kind, spec in MEDIA_KINDS.items()},
+        'background_video_mb': BACKGROUND_VIDEO_MAX_BYTES // (1024 * 1024),
         'status': profile_status(profile),
     }
 

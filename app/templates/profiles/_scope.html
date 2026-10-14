@@ -6,7 +6,7 @@
 {%- set rarity_class = {'Común': 'common', 'Rara': 'rare', 'Épica': 'epic', 'Legendaria': 'legendary'} -%}
 {%- macro thousands(n) -%}{{ '{:,}'.format(n or 0)|replace(',', '.') }}{%- endmacro -%}
 <div class="pf-scope {{ scope_class }}" id="pfScope" style="{{ v.style }}" {% for key, val in v.attrs.items() %}{{ key }}="{{ val }}" {% endfor %}>
-    <div class="pf-bg" aria-hidden="true"><div class="pf-bg-art"></div><div class="pf-bg-dim"></div></div>
+    <div class="pf-bg" aria-hidden="true"><div class="pf-bg-art">{% if v.background_video or preview %}<video class="pf-bg-video" {% if v.background_video %}src="{{ url_for('static', filename=v.background_video) }}"{% else %}hidden{% endif %} autoplay muted loop playsinline preload="auto" disablepictureinpicture disableremoteplayback tabindex="-1"></video>{% endif %}</div><div class="pf-bg-dim"></div></div>
     {% if before_card is defined %}{{ before_card }}{% endif %}
     <article class="pf" id="pfCard">
         <div class="pf-banner" id="pfBanner">

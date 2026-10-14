@@ -16,7 +16,7 @@ from flask import current_app
 from ..models import db, UserProfile
 
 HEX_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
-PROFILE_PATH_RE = re.compile(r'^profiles/\d+/[a-z_]+_[0-9a-f]{12}\.(webp|gif)$')
+PROFILE_PATH_RE = re.compile(r'^profiles/\d+/[a-z_]+_[0-9a-f]{12}\.(webp|gif|mp4|webm)$')
 CONTROL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f​-‏‪-‮⁦-⁩]')
 
 DISPLAY_NAME_MAX = 32
@@ -229,7 +229,7 @@ def theme_vars(theme, media=None, level_key=None):
     media = media or {}
     for var, key in (('--bg-image', 'background'), ('--bn-image', 'banner')):
         path = safe_media_path(media.get(key) or '')
-        if path:
+        if path and not is_video_path(path):
             values[var] = f"url('/static/uploads/{path}')"
     return '; '.join(f'{name}: {value}' for name, value in values.items())
 
@@ -251,8 +251,18 @@ def safe_media_path(path):
     return path if PROFILE_PATH_RE.match(path) else ''
 
 
+def is_video_path(path):
+    """True si lo guardado en el perfil es un VIDEO (el fondo del perfil puede ser un MP4 o WEBM liviano)."""
+    safe = safe_media_path(path)
+    return bool(safe) and safe.rsplit('.', 1)[-1] in VIDEO_EXT
+
+
 # ───────────────────────── Imágenes ─────────────────────────
 ALLOWED_IMAGE_EXT = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
+# El FONDO del perfil también acepta un video corto (MP4 o WEBM) de hasta 1 MB (pedido del dueño). No hay ffmpeg en el servidor para recodificarlo: se comprueba
+# que el archivo sea de verdad un MP4 / WEBM bien formado y se guarda tal cual, con nombre aleatorio.
+VIDEO_EXT = ('mp4', 'webm')
+BACKGROUND_VIDEO_MAX_BYTES = 1 * 1024 * 1024
 MAX_PIXELS = 16_000_000
 MEDIA_KINDS = {
     # tipo: (columna del perfil, tope en bytes, lado máximo en px, recorte cuadrado, conserva transparencia)
@@ -308,7 +318,11 @@ def save_media(file_storage, kind, user_id):
     label = MEDIA_LABELS[kind]
     filename = (getattr(file_storage, 'filename', '') or '').strip()
     ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    if kind == 'background' and ext in VIDEO_EXT:
+        return _save_background_video(file_storage, ext, user_id, label)
     if ext not in ALLOWED_IMAGE_EXT:
+        if kind == 'background':
+            return None, f'{label}: usa una imagen PNG, JPG, WEBP o GIF, o un video MP4 o WEBM de hasta 1 MB.'
         return None, f'{label}: usa una imagen PNG, JPG, WEBP o GIF.'
     data = file_storage.stream.read(max_bytes + 1)
     if not data:
@@ -373,6 +387,57 @@ def save_media(file_storage, kind, user_id):
         return None, f'{label}: ese archivo no es una imagen válida.'
     except Exception:  # cualquier otra falla de Pillow: no se guarda nada
         return None, f'{label}: no se pudo procesar la imagen.'
+
+
+def _valid_mp4(data):
+    """True si `data` es un MP4 bien formado: cajas una tras otra que cubren el archivo entero, empieza con `ftyp` y trae `moov` (los datos del video) y `mdat`
+    (la imagen). No prueba el códec, pero descarta texto, páginas web, ejecutables y archivos cortados disfrazados de video."""
+    pos, total, seen = 0, len(data), []
+    while pos + 8 <= total:
+        size = int.from_bytes(data[pos:pos + 4], 'big')
+        box = data[pos + 4:pos + 8]
+        header = 8
+        if size == 1:
+            if pos + 16 > total:
+                return False
+            size = int.from_bytes(data[pos + 8:pos + 16], 'big')
+            header = 16
+        elif size == 0:
+            size = total - pos
+        if size < header or pos + size > total or not all(32 <= b < 127 or b == 0xA9 for b in box):
+            return False
+        seen.append(box)
+        pos += size
+    return pos == total and bool(seen) and seen[0] == b'ftyp' and b'moov' in seen and b'mdat' in seen
+
+
+def _valid_webm(data):
+    """True si `data` empieza como un WEBM (cabecera EBML de Matroska con el tipo "webm") y trae el segmento con los datos."""
+    return len(data) > 64 and data[:4] == b'\x1a\x45\xdf\xa3' and b'webm' in data[:64] and b'\x18\x53\x80\x67' in data[:4096]
+
+
+def _save_background_video(file_storage, ext, user_id, label):
+    """Guarda el video del fondo del perfil. Devuelve (ruta_relativa, mensaje_de_error). Tope: 1 MB."""
+    data = file_storage.stream.read(BACKGROUND_VIDEO_MAX_BYTES + 1)
+    if not data:
+        return None, f'{label}: el archivo está vacío.'
+    if len(data) > BACKGROUND_VIDEO_MAX_BYTES:
+        return None, f'{label}: el video pesa demasiado, el máximo es 1 MB. Usa uno más corto o más liviano.'
+    # el tipo REAL lo decide el contenido, no la extensión que trae el nombre
+    if len(data) >= 12 and data[4:8] == b'ftyp':
+        real, ok = 'mp4', _valid_mp4(data)
+    elif data[:4] == b'\x1a\x45\xdf\xa3':
+        real, ok = 'webm', _valid_webm(data)
+    else:
+        return None, f'{label}: ese archivo no es un video válido.'
+    if not ok or real != ext:
+        return None, f'{label}: ese archivo no es un video {ext.upper()} válido.'
+    folder_rel = f'profiles/{int(user_id)}'
+    os.makedirs(os.path.join(_upload_root(), *folder_rel.split('/')), exist_ok=True)
+    rel = f'{folder_rel}/background_{secrets.token_hex(6)}.{real}'
+    with open(os.path.join(_upload_root(), *rel.split('/')), 'wb') as handle:
+        handle.write(data)
+    return rel, ''
 
 
 # Límites de una animación que se vuelve a codificar (protegen la memoria del servidor: cada cuadro decodificado pesa ancho × alto × 4 bytes).

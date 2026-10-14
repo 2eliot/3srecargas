@@ -147,16 +147,37 @@
             avatar: avImg ? avImg.getAttribute('src') : '',
             banner: scope.style.getPropertyValue('--bn-image') || '',
             background: scope.style.getPropertyValue('--bg-image') || '',
+            backgroundVideo: (scope.querySelector('.pf-bg-video') || { getAttribute: function () { return ''; } }).getAttribute('src') || '',
             avatar_frame: avWrap ? (avWrap.getAttribute('data-own-url') || '') : '',
             banner_frame: bnWrap ? (bnWrap.getAttribute('data-own-url') || '') : ''
         };
     }
     var orig = originalMedia();
-    KINDS.forEach(function (kind) { media[kind] = { file: '', removed: false }; });
+    KINDS.forEach(function (kind) { media[kind] = { file: '', removed: false, isVideo: false }; });
 
     function effective(kind) {
         if (media[kind].file) return media[kind].file;
-        return media[kind].removed ? '' : orig[kind];
+        if (media[kind].removed) return '';
+        // el fondo puede ser un VIDEO (MP4 o WEBM): se guarda aparte porque no se dibuja como imagen de fondo
+        return orig[kind] || (kind === 'background' ? orig.backgroundVideo : '');
+    }
+    // ¿lo que se ve de fondo es un video? (el recién elegido, o el que ya estaba guardado)
+    function backgroundIsVideo() {
+        if (media.background.file) return media.background.isVideo;
+        return !media.background.removed && !orig.background && !!orig.backgroundVideo;
+    }
+    function setBackgroundVideo(url) {
+        var el = scope.querySelector('.pf-bg-video');
+        if (!el) return;
+        if (url) {
+            if (el.getAttribute('src') !== url) el.setAttribute('src', url);
+            el.hidden = false;
+            try { var p = el.play(); if (p && p.catch) p.catch(function () { /* el navegador no deja reproducir solo */ }); } catch (_) { /* nada */ }
+        } else {
+            try { el.pause(); } catch (_) { /* nada */ }
+            el.hidden = true;
+            el.removeAttribute('src');
+        }
     }
 
     // El marco que se dibuja encima: el de la tienda elegido, el propio, o ninguno.
@@ -209,6 +230,10 @@
         // banner y fondo (variables CSS con url())
         [['banner', '--bn-image'], ['background', '--bg-image']].forEach(function (pair) {
             var url = effective(pair[0]);
+            if (pair[0] === 'background') {
+                if (backgroundIsVideo()) { scope.style.removeProperty(pair[1]); setBackgroundVideo(url); return; }
+                setBackgroundVideo('');
+            }
             if (!url) scope.style.removeProperty(pair[1]);
             else scope.style.setProperty(pair[1], /^url\(/.test(url) ? url : "url('" + url + "')");
         });
@@ -283,12 +308,24 @@
         zone.classList.toggle('has-file', hasNew);
         zone.classList.toggle('is-removed', removed);
         var shown = hasNew ? media[kind].file : orig;
+        var shownIsVideo = hasNew ? !!media[kind].isVideo : zone.getAttribute('data-orig-video') === '1';
         if (thumb) {
             var img = thumb.querySelector('img');
-            if (shown) {
+            var vid = thumb.querySelector('video');
+            if (shown && shownIsVideo) {
+                if (!vid) {
+                    thumb.textContent = '';
+                    vid = document.createElement('video');
+                    vid.muted = true; vid.loop = true; vid.autoplay = true; vid.playsInline = true;
+                    vid.setAttribute('aria-hidden', 'true');
+                    thumb.appendChild(vid);
+                }
+                if (vid.getAttribute('src') !== shown) { vid.setAttribute('src', shown); try { vid.play(); } catch (_) { /* nada */ } }
+            } else if (shown) {
+                if (vid) { thumb.textContent = ''; img = null; }
                 if (!img) { thumb.textContent = ''; img = document.createElement('img'); img.alt = ''; thumb.appendChild(img); }
                 if (img.getAttribute('src') !== shown) img.setAttribute('src', shown);
-            } else if (img || !thumb.querySelector('svg')) {
+            } else if (img || vid || !thumb.querySelector('svg')) {
                 thumb.innerHTML = DROP_ICON;
             }
         }
@@ -324,15 +361,22 @@
             if (errorEl) { errorEl.hidden = true; errorEl.textContent = ''; }
             if (media[kind].file) { try { URL.revokeObjectURL(media[kind].file); } catch (_) { /* nada */ } }
             media[kind].file = '';
+            media[kind].isVideo = false;
             if (file) {
-                if (file.size > max * 1024 * 1024) {
+                var videoMax = parseFloat(wrap.getAttribute('data-video-max-mb')) || 0;
+                var isVideoFile = !!videoMax && (/^video\/(mp4|webm)$/.test(file.type) || /\.(mp4|webm)$/i.test(file.name));
+                if (isVideoFile && file.size > videoMax * 1024 * 1024) {
+                    input.value = '';
+                    if (errorEl) { errorEl.textContent = 'Ese video pesa ' + (file.size / 1048576).toFixed(1) + ' MB: el máximo es ' + videoMax + ' MB. Usa uno más corto o más liviano.'; errorEl.hidden = false; }
+                } else if (!isVideoFile && file.size > max * 1024 * 1024) {
                     input.value = '';
                     if (errorEl) { errorEl.textContent = 'Esa imagen pesa ' + (file.size / 1048576).toFixed(1) + ' MB: el máximo es ' + max + ' MB.'; errorEl.hidden = false; }
-                } else if (!/^image\//.test(file.type)) {
+                } else if (!isVideoFile && !/^image\//.test(file.type)) {
                     input.value = '';
-                    if (errorEl) { errorEl.textContent = 'Ese archivo no es una imagen.'; errorEl.hidden = false; }
+                    if (errorEl) { errorEl.textContent = videoMax ? 'Ese archivo no es una imagen ni un video MP4 o WEBM.' : 'Ese archivo no es una imagen.'; errorEl.hidden = false; }
                 } else {
                     media[kind].file = URL.createObjectURL(file);
+                    media[kind].isVideo = isVideoFile;
                     media[kind].removed = false;
                     var removeBox = wrap.querySelector('[data-live-remove]');
                     if (removeBox) removeBox.checked = false;   // elegir una nueva anula "Quitar la imagen actual"

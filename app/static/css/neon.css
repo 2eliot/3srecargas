@@ -2465,15 +2465,6 @@ a.rk-pod-avatar:focus-visible, a.rk-row-avatar:focus-visible { outline: 2px soli
     outline: none;
 }
 
-/* Ventana que ofrece el modo liviano (static/js/lite-detect.js): mismo cristal que la de la comunidad, pero sus botones son <button>. */
-.lite-offer-btn {
-    cursor: pointer;
-    font-family: var(--nx-font-display);
-    -webkit-tap-highlight-color: transparent;
-}
-.lite-offer-btn:focus-visible { outline: 2px solid rgba(255,255,255,.75); outline-offset: 2px; }
-.lite-offer-card .community-popup-lead { margin-bottom: 6px; }
-
 /* ── Banner de opt-in de notificaciones (paso 1 de 2) ──────── */
 .push-prompt-banner {
     position: fixed;

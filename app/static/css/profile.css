@@ -24,6 +24,12 @@
 .pf-scope[data-bg="image"] .pf-bg-art { background: var(--bg-image, linear-gradient(var(--bg-angle), var(--bg-c1), var(--bg-c2))) center / cover no-repeat; }
 .pf-scope[data-bg="banner"] .pf-bg-art { background: var(--bn-image, linear-gradient(var(--bn-angle), var(--bn-c1), var(--bn-c2))) center / cover no-repeat; }
 .pf-bg-dim { position: absolute; top:0;right:0;bottom:0;left:0; background: rgba(0, 0, 0, var(--bg-dim, .35)); }
+/* Fondo con VIDEO (MP4 o WEBM de hasta 1 MB): solo se ve con el tipo de fondo "Mi imagen o video"; cubre todo como la imagen y recibe el mismo oscurecido y
+   desenfoque. Si no carga o no se puede reproducir, queda debajo el degradado. En modo liviano y con "reducir movimiento" no se muestra (queda el degradado). */
+.pf-bg-video { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.pf-scope[data-bg="image"] .pf-bg-video:not([hidden]) { display: block; }
+html.lite .pf-bg-video { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .pf-bg-video { display: none !important; } }
 
 /* ── Perfil (sin contenedor grande): el banner, la foto, el nombre y las secciones van directo sobre el fondo ────── */
 .pf {

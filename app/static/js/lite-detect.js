@@ -16,11 +16,6 @@
  * - Manda lo que el cliente decida a mano: ?lite=1 / ?lite=0 (guardado en "nx-lite"). ?lite=auto borra todo y vuelve a medir.
  *   El mismo ajuste se hace con el interruptor "Modo liviano" de hasta abajo del menú (base.html, [data-lite-toggle]); ahí también hay
  *   "Volver a automático" ([data-lite-auto]) para quien ya eligió a mano.
- * - OFERTA (pedido del dueño 2026-10-14): a un teléfono que NO llegó a activarse solo pero tiene poca memoria (2 GB o menos) o pocos núcleos (4 o menos)
- *   se le ofrece el modo liviano con una ventana ("Activar modo liviano" / "Ahora no"). Solo en la portada, solo en teléfonos y tabletas (pantalla
- *   táctil), nunca si ya está en modo liviano o el cliente ya eligió a mano, y si dice "Ahora no" no se vuelve a preguntar en 14 días ("nx-lite-offer").
- *   Espera a que termine la prueba de fps y a que no haya otra ventana abierta (la de la comunidad, el ranking, etc.). Si acepta, queda como si lo
- *   hubiera encendido en el menú ("nx-lite" = 1).
  * - Calibración del procesador (Chrome con la CPU frenada, esta PC mide ~6 ms): 1x=6 ms, 2x=13, 3x=20, 4x=27, 6x=42, 8x=60.
  *   SLOW_MS = 45 equivale a un equipo ~7 veces más lento que una PC normal (un teléfono MUY malo). Son cálculos con el frenado de CPU de Chrome,
  *   no teléfonos reales: si en la práctica sale muy sensible o poco, se ajusta SLOW_MS / FPS_MIN.
@@ -35,12 +30,7 @@
     var TTL_SLOW = 3 * 24 * 3600 * 1000;
     var TTL_FAST = 7 * 24 * 3600 * 1000;
     var SAMPLES = 5;
-    var OFFER_KEY = 'nx-lite-offer';
-    var OFFER_COOLDOWN = 14 * 24 * 3600 * 1000;
-    var OFFER_MAX_MEMORY_GB = 2;    // 2 GB o menos = poca memoria
-    var OFFER_MAX_CORES = 4;        // 4 núcleos o menos = pocos núcleos
     var d = document.documentElement;
-    var measuring = false;          // true desde que se planea la prueba hasta que termina (la oferta espera para no estorbarla)
 
     function readJSON(key) {
         try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; }
@@ -179,123 +169,21 @@
         var times = [], n = 0;
         (function next() {
             var ms;
-            try { ms = bench(); } catch (e) { measuring = false; return; }
+            try { ms = bench(); } catch (e) { return; }
             if (ms > 0) { times.push(ms); }
             if (++n < SAMPLES) { setTimeout(next, 250); return; }
             times.sort(function (a, b) { return a - b; });
             var median = times.length ? times[Math.floor(times.length / 2)] : 0;
             finish({ slow: median >= SLOW_MS, ms: median, fps: fps });
-            measuring = false;
         })();
     }
 
     function measure() {
         measureFps(function (fps) {
-            if (fps === null) { measuring = false; return; }                // no se pudo medir: no se decide nada (se reintenta en otra visita)
-            if (fps < FPS_MIN) { finish({ slow: true, ms: 0, fps: fps }); measuring = false; return; }   // pocos fps: modo liviano
+            if (fps === null) { return; }                                   // no se pudo medir: no se decide nada (se reintenta en otra visita)
+            if (fps < FPS_MIN) { finish({ slow: true, ms: 0, fps: fps }); return; }   // pocos fps: modo liviano
             measureCpu(fps);                                                // fps bien: se mira si el procesador es MUY lento
         });
-    }
-
-    // ── Oferta del modo liviano ──────────────────────────────────────────────────
-    function isTouchDevice() {
-        try {
-            if (navigator.maxTouchPoints > 0) { return true; }
-            return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-        } catch (e) { return false; }
-    }
-
-    function lowSpecs() {
-        var mem = navigator.deviceMemory, cores = navigator.hardwareConcurrency;
-        return (mem > 0 && mem <= OFFER_MAX_MEMORY_GB) || (cores > 0 && cores <= OFFER_MAX_CORES);
-    }
-
-    function offerCooledDown() {
-        try {
-            var last = parseInt(localStorage.getItem(OFFER_KEY) || '0', 10);
-            return !last || (Date.now() - last) >= OFFER_COOLDOWN;
-        } catch (e) { return true; }
-    }
-
-    function offerWanted() {
-        if (isLite() || forced() !== null) { return false; }                 // ya está en modo liviano, o el cliente ya eligió
-        if (location.pathname !== '/' || !document.querySelector('[data-lite-toggle]')) { return false; }   // solo la portada de la tienda
-        return isTouchDevice() && lowSpecs() && offerCooledDown();
-    }
-
-    // ¿Hay otra ventana abierta (comunidad, ranking, puntos, avisos...)? Entonces la oferta espera.
-    function otherDialogOpen() {
-        if (document.body && document.body.classList.contains('modal-open')) { return true; }
-        var drawer = document.getElementById('siteDrawer');   // el menú lateral no es un diálogo, pero también es una ventana abierta
-        if (drawer && drawer.getAttribute('aria-hidden') === 'false') { return true; }
-        var dialogs = document.querySelectorAll('[role="dialog"]');
-        for (var i = 0; i < dialogs.length; i++) {
-            if (dialogs[i].classList.contains('lite-offer-card')) { continue; }
-            if (dialogs[i].getClientRects().length > 0) { return true; }   // un diálogo dentro de algo oculto no tiene rectángulos
-        }
-        return false;
-    }
-
-    function showOffer() {
-        var previous = document.activeElement;
-        var overlay = document.createElement('div');
-        overlay.className = 'community-popup-overlay lite-offer';
-        overlay.innerHTML =
-            '<div class="community-popup-card lite-offer-card" role="dialog" aria-modal="true" aria-labelledby="liteOfferTitle" aria-describedby="liteOfferText">' +
-            '<div class="community-popup-icon" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></div>' +
-            '<h3 id="liteOfferTitle">¿Quieres que la web vaya más rápido?</h3>' +
-            '<p class="community-popup-lead" id="liteOfferText">Tu teléfono parece tener poca memoria o un procesador lento. Con el modo liviano la tienda usa menos efectos y se ve más fluida. Puedes quitarlo cuando quieras desde el menú.</p>' +
-            '<button type="button" class="community-popup-join lite-offer-btn" data-lite-offer="accept"><span>Activar modo liviano</span></button>' +
-            '<button type="button" class="community-popup-continue lite-offer-btn" data-lite-offer="decline">Ahora no</button>' +
-            '</div>';
-        var accept = overlay.querySelector('[data-lite-offer="accept"]');
-        var decline = overlay.querySelector('[data-lite-offer="decline"]');
-
-        function close() {
-            document.removeEventListener('keydown', onKey, true);
-            window.removeEventListener('nx-lite-change', onChange);
-            if (overlay.parentNode) { overlay.parentNode.removeChild(overlay); }
-            try { if (previous && previous.focus && document.contains(previous)) { previous.focus(); } } catch (e) { /* sin foco que devolver */ }
-        }
-        function onAccept() {
-            if (!isLite()) { d.className += ' lite'; }
-            try { localStorage.setItem('nx-lite', '1'); } catch (e) { /* sin almacenamiento: vale solo mientras esta página esté abierta */ }
-            applyLiteMedia();
-            try { window.dispatchEvent(new Event('nx-lite-change')); } catch (e) { /* el interruptor se actualiza al abrir otra página */ }
-            close();
-        }
-        function onDecline() {
-            try { localStorage.setItem(OFFER_KEY, String(Date.now())); } catch (e) { /* se volverá a preguntar */ }
-            close();
-        }
-        function onChange() { if (isLite()) { close(); } }   // se activó por otro lado (la prueba de fps, el menú): ya no hace falta preguntar
-        function onKey(e) {
-            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onDecline(); return; }
-            if (e.key === 'Tab') {   // el foco se queda dentro de la ventana
-                var focusOn = document.activeElement;
-                if (e.shiftKey && focusOn === accept) { e.preventDefault(); decline.focus(); }
-                else if (!e.shiftKey && focusOn === decline) { e.preventDefault(); accept.focus(); }
-                else if (focusOn !== accept && focusOn !== decline) { e.preventDefault(); accept.focus(); }
-            }
-        }
-        accept.addEventListener('click', onAccept);
-        decline.addEventListener('click', onDecline);
-        overlay.addEventListener('click', function (e) { if (e.target === overlay) { onDecline(); } });   // tocar fuera = "Ahora no"
-        document.addEventListener('keydown', onKey, true);
-        window.addEventListener('nx-lite-change', onChange);
-        document.body.appendChild(overlay);
-        try { accept.focus(); } catch (e) { /* sin foco */ }
-    }
-
-    // Revisa cada ratito si ya se puede preguntar: la prueba de fps terminó y no hay otra ventana abierta. Se rinde a los 2 minutos (queda para otra visita).
-    function scheduleOffer() {
-        if (!offerWanted()) { return; }
-        var tries = 0;
-        (function check() {
-            if (!offerWanted() || ++tries > 80) { return; }
-            if (measuring || document.hidden || otherDialogOpen()) { setTimeout(check, 1500); return; }
-            showOffer();
-        })();
     }
 
     function whenReady(fn) {
@@ -316,16 +204,10 @@
     applyLiteMedia();
 
     // ¿Hace falta medir? No si el cliente lo fijó a mano, si ya está en modo liviano (teléfono muy malo) o si hay una medición vigente.
-    var needsMeasure = forced() === null && !isLite();
-    if (needsMeasure) {
-        var cached = readJSON(KEY);
-        if (cached && cached.x > Date.now()) { needsMeasure = false; }
-    }
-    if (needsMeasure && (!window.performance || !performance.now)) { needsMeasure = false; }
-    if (needsMeasure) {
-        measuring = true;   // la oferta espera a que termine la prueba (si sale lento, el modo liviano se activa solo y ya no se pregunta)
-        whenReady(measure);
-    }
-    // La oferta empieza a mirar ~3 s después de cargar la página (para no tapar el primer pintado).
-    if (document.readyState === 'complete') { setTimeout(scheduleOffer, 3000); } else { window.addEventListener('load', function () { setTimeout(scheduleOffer, 3000); }); }
+    if (forced() !== null) { return; }
+    if (isLite()) { return; }
+    var cached = readJSON(KEY);
+    if (cached && cached.x > Date.now()) { return; }
+    if (!window.performance || !performance.now) { return; }
+    whenReady(measure);
 })();

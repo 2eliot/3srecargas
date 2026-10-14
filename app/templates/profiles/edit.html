@@ -54,22 +54,23 @@
         {% for key, text in options %}<label><input type="radio" name="{{ name }}" value="{{ key }}" data-live {% if key == value %}checked{% endif %}><span>{{ text }}</span></label>{% endfor %}
     </div>
     {%- endmacro -%}
-    {%- macro file_field(kind, label, hint, current, size=None) -%}
+    {%- macro file_field(kind, label, hint, current, size=None, video=False) -%}
     {%- set cur_url = url_for('static', filename='uploads/' + current) if current else '' -%}
+    {%- set cur_is_video = current and (current.rsplit('.', 1)[-1] in ['mp4', 'webm']) -%}
     {%- set blocked = (not current) and image_count >= max_images -%}
-    <div class="pf-field pf-file" data-file-kind="{{ kind }}" data-max-mb="{{ limits_mb[kind] }}">
+    <div class="pf-field pf-file" data-file-kind="{{ kind }}" data-max-mb="{{ limits_mb[kind] }}"{% if video %} data-video-max-mb="{{ background_video_mb }}"{% endif %}>
         <span class="pf-label">{{ label }}</span>
         {#- Zona para elegir la imagen (tocar o arrastrar), con miniatura; el <input type="file"> de verdad sigue dentro, escondido -#}
-        <label class="pf-drop{{ ' is-disabled' if blocked }}" for="f_{{ kind }}" data-drop data-orig-url="{{ cur_url }}">
-            <input type="file" class="pf-drop-input" name="{{ kind }}" id="f_{{ kind }}" accept="image/png,image/jpeg,image/webp,image/gif" data-live-file {% if blocked %}disabled{% endif %}>
-            <span class="pf-drop-thumb" data-drop-thumb>{% if cur_url %}<img src="{{ cur_url }}" alt="">{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.7"/><path d="m21 15-5-5L5 21"/></svg>{% endif %}</span>
+        <label class="pf-drop{{ ' is-disabled' if blocked }}" for="f_{{ kind }}" data-drop data-orig-url="{{ cur_url }}" data-orig-video="{{ '1' if cur_is_video else '0' }}">
+            <input type="file" class="pf-drop-input" name="{{ kind }}" id="f_{{ kind }}" accept="image/png,image/jpeg,image/webp,image/gif{% if video %},video/mp4,video/webm,.mp4,.webm{% endif %}" data-live-file {% if blocked %}disabled{% endif %}>
+            <span class="pf-drop-thumb" data-drop-thumb>{% if cur_url and cur_is_video %}<video src="{{ cur_url }}" muted loop playsinline autoplay aria-hidden="true"></video>{% elif cur_url %}<img src="{{ cur_url }}" alt="">{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.7"/><path d="m21 15-5-5L5 21"/></svg>{% endif %}</span>
             <span class="pf-drop-text">
                 <strong data-drop-title>{{ 'Cambiar imagen' if current else 'Elegir imagen' }}</strong>
                 <small data-drop-sub>{{ 'Imagen actual · toca o arrastra otra' if current else 'Toca aquí o arrastra tu imagen' }}</small>
             </span>
             <span class="pf-drop-btn" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg></span>
         </label>
-        <p class="pf-hint">{{ hint }} Máximo {{ limits_mb[kind] }} MB.</p>
+        <p class="pf-hint">{{ hint }} {% if video %}Imagen: máximo {{ limits_mb[kind] }} MB · Video: máximo {{ background_video_mb }} MB.{% else %}Máximo {{ limits_mb[kind] }} MB.{% endif %}</p>
         {% if size %}<p class="pf-sizehint"><b>Medida ideal:</b> {{ size }}</p>{% endif %}
         <p class="pf-file-limit" {% if current or image_count < max_images %}hidden{% endif %}>Tu perfil ya tiene {{ max_images }} imágenes, que es el máximo. Quita una para subir esta.</p>
         <p class="pf-file-error" role="alert" hidden></p>
@@ -267,7 +268,7 @@
             {% call pop('pop_bg', 'Fondo de la página') %}
                 <div class="pf-field">
                     <span class="pf-label">Tipo de fondo</span>
-                    {{ radio_group('background_mode', th.background.mode, [('gradient', 'Degradado'), ('color', 'Color liso'), ('image', 'Mi imagen'), ('banner', 'Mi banner difuminado')]) }}
+                    {{ radio_group('background_mode', th.background.mode, [('gradient', 'Degradado'), ('color', 'Color liso'), ('image', 'Mi imagen o video'), ('banner', 'Mi banner difuminado')]) }}
                 </div>
                 <details class="pf-sub">
                     <summary>Colores del fondo</summary>
@@ -283,11 +284,11 @@
                     </div>
                 </details>
                 <details class="pf-sub">
-                    <summary>Imagen de fondo</summary>
+                    <summary>Imagen o video de fondo</summary>
                     <div class="pf-sub-body">
-                        {{ file_field('background', 'Imagen de fondo', 'PNG, JPG o WEBP. Al subirla se pone sola como tipo de fondo "Mi imagen".', profile and profile.background_path) }}
+                        {{ file_field('background', 'Imagen o video de fondo', 'PNG, JPG o WEBP, o un video corto MP4 o WEBM (se ve en movimiento, sin sonido). Al subirlo se pone solo como tipo de fondo "Mi imagen".', profile and profile.background_path, video=True) }}
                         <div class="pf-bghint" id="bgUnusedHint" role="status" hidden>
-                            <span>Tienes una imagen de fondo, pero el tipo de fondo elegido no la usa, por eso no se ve.</span>
+                            <span>Tienes una imagen o video de fondo, pero el tipo de fondo elegido no lo usa, por eso no se ve.</span>
                             <button type="button" class="pf-choice" id="bgUseImage">Usar mi imagen como fondo</button>
                         </div>
                         <hr class="pf-sep">
