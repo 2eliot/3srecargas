@@ -715,7 +715,6 @@ const MAX_GEMS = 180;
 const FOLLOW_SPEED_MULT = 5;
 
 let W = 0, H = 0;
-let gridCanvas = null;
 
 // Campo de juego de tamaño FIJO para todos (forma de un teléfono normal).
 // Antes el campo medía lo que la pantalla: con el navegador alejado (zoom
@@ -726,6 +725,42 @@ let gridCanvas = null;
 const FIELD_W = 400;
 const FIELD_H = 800;
 let viewScale = 1;
+
+// Cámara: SOLO cambia cómo se dibuja, nunca la partida (las reglas, la
+// repetición y el servidor no se enteran). En vivo se ve el campo un poco más
+// cerca (×1,25) y la cámara sigue al personaje sin salirse del campo; en la
+// repetición del admin se ve el campo entero para poder revisarlo.
+const CAMERA_ZOOM = 1.25;
+let renderScale = 1;            // píxeles del lienzo por unidad del campo (sin zoom)
+let camZoom = 1, camX = 0, camY = 0;
+
+function setCamera(p) {
+    camZoom = REPLAY_MODE ? 1 : CAMERA_ZOOM;
+    const vw = W / camZoom, vh = H / camZoom;
+    camX = 0; camY = 0;
+    if (camZoom > 1 && p && isFinite(p.x) && isFinite(p.y)) {
+        camX = Math.min(Math.max(p.x - vw / 2, 0), W - vw);
+        camY = Math.min(Math.max(p.y - vh / 2, 0), H - vh);
+    }
+    const s = renderScale * camZoom;
+    ctx.setTransform(s, 0, 0, s, -camX * s, -camY * s);
+}
+
+// Fondo cuadriculado: se dibuja cada cuadro solo la parte que se ve (unas 26
+// líneas), así no hace falta guardar una imagen del tamaño de la pantalla.
+function drawBackground(p) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#07070a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    setCamera(p);
+    const vw = W / camZoom, vh = H / camZoom;
+    ctx.strokeStyle = 'rgba(239,68,68,0.07)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = Math.floor(camX / 40) * 40; x <= camX + vw; x += 40) { ctx.moveTo(x + .5, camY); ctx.lineTo(x + .5, camY + vh); }
+    for (let y = Math.floor(camY / 40) * 40; y <= camY + vh; y += 40) { ctx.moveTo(camX, y + .5); ctx.lineTo(camX + vw, y + .5); }
+    ctx.stroke();
+}
 
 // Alto de la franja del joystick: 180 px, pero nunca más del 24% de la
 // pantalla (en teléfonos chicos el campo necesita el espacio).
@@ -790,21 +825,8 @@ function resizeCanvas() {
     canvas.style.top = Math.max(0, (availH - H * viewScale) / 2) + 'px';
     canvas.style.right = 'auto';
     canvas.style.bottom = 'auto';
-    ctx.setTransform(dpr * viewScale, 0, 0, dpr * viewScale, 0, 0);
-
-    gridCanvas = document.createElement('canvas');
-    gridCanvas.width = canvas.width;
-    gridCanvas.height = canvas.height;
-    const g = gridCanvas.getContext('2d');
-    g.setTransform(dpr * viewScale, 0, 0, dpr * viewScale, 0, 0);
-    g.fillStyle = '#07070a';
-    g.fillRect(0, 0, W, H);
-    g.strokeStyle = 'rgba(239,68,68,0.07)';
-    g.lineWidth = 1;
-    g.beginPath();
-    for (let x = 0; x <= W; x += 40) { g.moveTo(x + .5, 0); g.lineTo(x + .5, H); }
-    for (let y = 0; y <= H; y += 40) { g.moveTo(0, y + .5); g.lineTo(W, y + .5); }
-    g.stroke();
+    renderScale = dpr * viewScale;
+    setCamera(game ? game.player : null);
     if (!REPLAY_MODE && game && game.player && game.state !== 'over') {
         if (rec && (rec.lastW !== W || rec.lastH !== H)) {
             clampPlayerToScreen();
@@ -1565,20 +1587,96 @@ function applySelectedCharacter() {
     PLAYER_IMAGE_MODE = ch ? ch.mode : 'flip';
 }
 
-for (const ch of CHARACTERS) {
+// Si la imagen no llega (conexión floja, un corte justo en ese momento), antes
+// el personaje se quedaba como un círculo blanco toda la partida. Ahora se
+// vuelve a pedir sola (esperando cada vez más, con un parámetro nuevo para que
+// el teléfono no reuse una respuesta rota) y, apenas llega, aparece en pantalla
+// aunque la partida ya haya empezado.
+const SPRITE_TEX = 192;                                    // lado de la copia reducida
+const SPRITE_RETRY_MS = [700, 1500, 3000, 5000, 8000, 12000];
+const SPRITE_TIMEOUT_MS = 12000;                           // sin respuesta en este tiempo = se reintenta
+const spriteState = {};
+
+function cacheBust(url, n) {
+    return n ? url + (url.indexOf('?') === -1 ? '?' : '&') + 'r=' + n + Date.now().toString(36) : url;
+}
+
+function loadCharacterSprite(ch, attempt) {
+    const st = spriteState[ch.slot] || (spriteState[ch.slot] = { done: false, timer: 0, attempt: 0 });
+    if (st.done) return;
+    clearTimeout(st.timer);
+    st.attempt = attempt;
     const img = new Image();
+    let failed = false;
+    let watchdog = 0;
+    const fail = () => {
+        if (failed || st.done) return;
+        failed = true;
+        clearTimeout(watchdog);
+        if (st.attempt !== attempt) return;                 // ya hay un intento más nuevo en camino
+        if (attempt >= SPRITE_RETRY_MS.length) return;      // se rindió (vuelve a probar si regresa la conexión)
+        st.timer = setTimeout(() => loadCharacterSprite(ch, attempt + 1), SPRITE_RETRY_MS[attempt]);
+    };
+    watchdog = setTimeout(fail, SPRITE_TIMEOUT_MS);
+    img.onerror = fail;
     img.onload = () => {
-        const c = document.createElement('canvas');
-        c.width = 128; c.height = 128;
-        const g = c.getContext('2d');
-        const scale = Math.min(128 / img.width, 128 / img.height);
-        const w = img.width * scale, h = img.height * scale;
-        g.drawImage(img, (128 - w) / 2, (128 - h) / 2, w, h);
-        characterSprites[ch.slot] = c;
+        clearTimeout(watchdog);
+        if (st.done) return;                                  // una respuesta tardía también sirve
+        try {
+            if (!(img.width > 0 && img.height > 0)) throw new Error('imagen vacía');
+            const c = document.createElement('canvas');
+            c.width = SPRITE_TEX; c.height = SPRITE_TEX;
+            const g = c.getContext('2d');
+            const scale = Math.min(SPRITE_TEX / img.width, SPRITE_TEX / img.height);
+            const w = img.width * scale, h = img.height * scale;
+            g.drawImage(img, (SPRITE_TEX - w) / 2, (SPRITE_TEX - h) / 2, w, h);
+            characterSprites[ch.slot] = c;
+            st.done = true;
+            clearTimeout(st.timer);
+        } catch (e) {
+            fail();
+            return;
+        }
         applySelectedCharacter();
     };
-    img.src = ch.url;
+    img.src = cacheBust(ch.url, attempt);
 }
+
+// Reintenta ya (sin esperar) los personajes que aún no cargaron: al volver la
+// conexión, al volver a la pestaña y justo antes de empezar una partida.
+function retrySprites() {
+    for (const ch of CHARACTERS) {
+        const st = spriteState[ch.slot];
+        if (st && !st.done) loadCharacterSprite(ch, Math.min(st.attempt + 1, SPRITE_RETRY_MS.length));
+    }
+}
+
+// Espera (poco) a que cargue el personaje elegido antes de arrancar.
+async function waitForSprite(maxMs) {
+    const t0 = performance.now();
+    while (!playerSprite && CHARACTERS.length && performance.now() - t0 < maxMs) {
+        await new Promise((r) => setTimeout(r, 100));
+    }
+    return !!playerSprite;
+}
+
+for (const ch of CHARACTERS) loadCharacterSprite(ch, 0);
+window.addEventListener('online', retrySprites);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) retrySprites(); });
+
+// Las portadas del selector también se piden de nuevo si fallan.
+function watchCover(img) {
+    let tries = 0;
+    const base = img.getAttribute('src') || '';
+    const again = () => {
+        if (tries >= 3 || !base) return;
+        tries += 1;
+        setTimeout(() => { img.src = cacheBust(base, tries); }, 1200 * tries);
+    };
+    img.addEventListener('error', again);
+    if (img.complete && img.naturalWidth === 0) again();
+}
+document.querySelectorAll('.char-option img').forEach(watchCover);
 
 function selectCharacter(slot) {
     selectedSlot = CHARACTERS.some((c) => c.slot === slot) ? slot : (CHARACTERS[0] ? CHARACTERS[0].slot : null);
@@ -2039,12 +2137,7 @@ function drawEdgeZone(p) {
 }
 
 function draw() {
-    if (gridCanvas) {
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.drawImage(gridCanvas, 0, 0);
-        ctx.restore();
-    }
+    drawBackground(game ? game.player : null);
     if (!game) return;
     const p = game.player;
 
@@ -2188,6 +2281,8 @@ function draw() {
     }
 
     if (game.bannerTimer > 0) {
+        // El aviso de oleada va fijo en la pantalla (no se mueve con la cámara).
+        ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
         ctx.globalAlpha = Math.min(1, game.bannerTimer);
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
@@ -2577,6 +2672,13 @@ async function launchGame(fromOverlay) {
     const againBtn = $('againBtn');
     playBtn.disabled = true; againBtn.disabled = true;
     setPlayMsg('Preparando partida...', 'info');
+    if (!playerSprite && CHARACTERS.length) {
+        // Que el personaje ya esté cargado cuando empiece la partida (máx. ~3,5 s; si no llega, empieza igual y aparece apenas llegue).
+        setPlayMsg('Cargando tu personaje...', 'info');
+        retrySprites();
+        await waitForSprite(3500);
+        setPlayMsg('Preparando partida...', 'info');
+    }
     let data = null;
     try {
         data = await requestRun();
