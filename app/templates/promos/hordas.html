@@ -167,7 +167,8 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
 </head>
 <body class="bg-black text-slate-100 flex justify-center">
 {# Fondo: el propio de Hordas (Admin → Configuración → Fondos de los accesos) o, si no hay, el fondo general de la web #}
-{% set hordas_bg = DRAWER_BG_IMAGES.drawer_bg_hordas or SITE_BACKGROUND_IMAGE %}
+{% set hordas_bg = PAGE_BG_FB.drawer_bg_hordas.image %}
+{{ bg_video_layer(PAGE_BG_FB.drawer_bg_hordas.video) }}
 {% if hordas_bg %}
 <div aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + hordas_bg) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
 {% endif %}

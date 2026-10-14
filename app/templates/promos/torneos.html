@@ -132,7 +132,8 @@ button, input { touch-action: manipulation; }
 </head>
 <body class="bg-black text-slate-100 flex justify-center">
 {# Fondo: el propio de Torneos (Admin → Configuración → Imágenes y fondos → Fondos de pantalla) o, si no hay, el fondo general de la web #}
-{% set torneos_bg = DRAWER_BG_IMAGES.drawer_bg_torneos or SITE_BACKGROUND_IMAGE %}
+{% set torneos_bg = PAGE_BG_FB.drawer_bg_torneos.image %}
+{{ bg_video_layer(PAGE_BG_FB.drawer_bg_torneos.video) }}
 {% if torneos_bg %}
 <div aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + torneos_bg) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
 {% endif %}

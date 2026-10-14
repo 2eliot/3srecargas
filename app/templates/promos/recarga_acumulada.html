@@ -72,6 +72,7 @@
 </style>
 </head>
 <body class="min-h-screen flex flex-col p-3 sm:p-5 relative bg-black selection:bg-red-600 selection:text-white">
+{{ bg_video_layer(DRAWER_BG_VIDEOS.drawer_bg_recarga) }}
 {% if DRAWER_BG_IMAGES.drawer_bg_recarga %}
 <div aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_recarga) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
 {% endif %}

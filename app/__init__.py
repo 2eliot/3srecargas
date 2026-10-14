@@ -393,6 +393,15 @@ def create_app(config_class=Config):
             response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         return response
 
+    @app.template_global('bg_video_layer')
+    def bg_video_layer(path):
+        """Capa fija con el VIDEO de fondo de una página (ver templates/_bg_video.html). Solo rutas de nuestras subidas, con forma de nombre de archivo MP4/WEBM."""
+        from flask import render_template as _render
+        path = (path or '').strip()
+        if not path or '..' in path or not re.match(r'^[\w./-]+\.(mp4|webm)$', path, re.I):
+            return ''
+        return Markup(_render('_bg_video.html', path=path))
+
     @app.context_processor
     def inject_settings():
         # Corre en cada página: una sola consulta para todos los settings
@@ -423,7 +432,17 @@ def create_app(config_class=Config):
         support_location = values.get('support_location') or 'Puerto Ordaz, Bolívar, Venezuela'
         site_tutorial_video_file = values.get('site_tutorial_video_file') or None
         site_tutorial_video_title = values.get('site_tutorial_video_title') or 'Tutorial'
-        drawer_bg_images = {key: values.get(key) or None for key in drawer_bg_keys}
+        # Cada fondo puede ser una imagen o un VIDEO corto (MP4/WEBM, 1 MB): las plantillas que ya dibujaban la imagen siguen igual (solo reciben imágenes) y
+        # el video se dibuja aparte con bg_video_layer(...). PAGE_BG_FB = el fondo propio de la página y, si no tiene, el de toda la web.
+        from .utils.page_bg import split_bg
+        site_img, site_vid = split_bg(site_background_image)
+        own_bg = {key: split_bg(values.get(key)) for key in drawer_bg_keys}
+        drawer_bg_images = {key: own_bg[key][0] or None for key in drawer_bg_keys}
+        drawer_bg_videos = {key: own_bg[key][1] or None for key in drawer_bg_keys}
+        page_bg_fb = {
+            key: ({'image': own_bg[key][0], 'video': own_bg[key][1]} if (own_bg[key][0] or own_bg[key][1]) else {'image': site_img, 'video': site_vid})
+            for key in drawer_bg_keys
+        }
 
         has_active_ranking = has_visible_public_rankings()
 
@@ -442,7 +461,8 @@ def create_app(config_class=Config):
         return {
             'SITE_LOGO': site_logo,
             'SUPPORT_AVATAR': support_avatar,
-            'SITE_BACKGROUND_IMAGE': site_background_image,
+            'SITE_BACKGROUND_IMAGE': site_img or None,
+            'SITE_BACKGROUND_VIDEO': site_vid or None,
             'SOCIAL_LINKS': social_links,
             'SUPPORT_EMAIL': support_email,
             'SUPPORT_WHATSAPP_URL': support_whatsapp_url,
@@ -451,6 +471,8 @@ def create_app(config_class=Config):
             'SITE_TUTORIAL_VIDEO_FILE': site_tutorial_video_file,
             'SITE_TUTORIAL_VIDEO_TITLE': site_tutorial_video_title,
             'DRAWER_BG_IMAGES': drawer_bg_images,
+            'DRAWER_BG_VIDEOS': drawer_bg_videos,
+            'PAGE_BG_FB': page_bg_fb,
             'HAS_ACTIVE_RANKING': has_active_ranking,
             'PROMO_AVAILABILITY': promo_availability,
             'APP_TIMEZONE': 'GMT-4',

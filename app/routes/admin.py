@@ -31,7 +31,7 @@ from ..models import (
 from ..utils.availability import format_hour, get_manual_schedule
 from ..utils import google_login
 from ..utils.profiles import clean_text, delete_media, get_or_create_profile, get_profile, reset_profile, save_media
-from ..utils import account_points, banner_lite
+from ..utils import account_points, banner_lite, page_bg
 from ..utils import profile_social
 from ..utils import profile_xp
 from ..utils.locks import admin_login_locked, check_rate_limit, client_ip, register_admin_login_failure, remember_admin_device
@@ -300,6 +300,16 @@ def save_promo_banner_video(file):
     if len(head) < 12 or head[4:8] != b'ftyp':
         return None, 'Ese archivo no es un MP4 válido.'
     return save_video(file, 'branding'), ''
+
+
+def _save_page_background(file):
+    """Fondo de pantalla (la web o una página especial): una imagen o un VIDEO MP4/WEBM de hasta 1 MB. Devuelve la ruta guardada, o None (y avisa el motivo)."""
+    if page_bg.wants_video(file):
+        saved, error = page_bg.save_background_video(file, 'branding')
+        if error:
+            flash(f'Fondo en video: {error}', 'danger')
+        return saved
+    return save_image(file, 'branding', BACKGROUND_IMAGE_DIMENSION)
 
 
 def order_supports_delivery_proof(order):
@@ -3681,7 +3691,7 @@ def settings():
             site_background_setting.value = ''
 
         if site_background_file and site_background_file.filename:
-            saved_background = save_image(site_background_file, 'branding', BACKGROUND_IMAGE_DIMENSION)
+            saved_background = _save_page_background(site_background_file)
             if saved_background:
                 if site_background_setting and site_background_setting.value:
                     delete_uploaded_file(site_background_setting.value)
@@ -3762,7 +3772,7 @@ def settings():
 
             bg_file = drawer_bg_files.get(key)
             if bg_file and bg_file.filename:
-                saved_bg = save_image(bg_file, 'branding', BACKGROUND_IMAGE_DIMENSION)
+                saved_bg = _save_page_background(bg_file)
                 if saved_bg:
                     if setting and setting.value:
                         delete_uploaded_file(setting.value)

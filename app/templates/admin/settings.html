@@ -47,7 +47,7 @@
                 <div class="logo-preview img-tile-thumb is-{{ shape }}{{ ' is-clip' if is_clip }}">
                     {% if is_clip %}
                     <video src="{{ url_for('static', filename='uploads/' + current) }}#t=0.1" muted playsinline preload="metadata" aria-label="{{ alt }} (primer cuadro)"></video>
-                    {% elif video == True and current.lower().endswith('.mp4') %}
+                    {% elif video == True and current.lower().endswith(('.mp4', '.webm')) %}
                     <video src="{{ url_for('static', filename='uploads/' + current) }}" autoplay muted loop playsinline preload="metadata" aria-label="{{ alt }} (video)"></video>
                     {% else %}
                     <img src="{{ url_for('static', filename='uploads/' + current) }}" alt="{{ alt }}">
@@ -134,7 +134,7 @@
             <details class="img-tips">
                 <summary>Medidas y peso recomendados</summary>
                 <ul>
-                    <li><strong>Fondos de pantalla:</strong> verticales, tipo pantalla de celular, de unos <strong>1080×1920 píxeles</strong>. Todos usan la misma configuración: cubren detrás de todo el contenido (nunca el menú lateral) y llevan un velo oscuro para que el texto se lea.</li>
+                    <li><strong>Fondos de pantalla:</strong> verticales, tipo pantalla de celular, de unos <strong>1080×1920 píxeles</strong>. También puede ser un <strong>video corto MP4 o WEBM de hasta 1 MB</strong> (se ve en bucle y sin sonido; en modo liviano no se muestra). Todos usan la misma configuración: cubren detrás de todo el contenido (nunca el menú lateral) y llevan un velo oscuro para que el texto se lea.</li>
                     <li><strong>Peso:</strong> lo ideal es <strong>150 a 300 KB</strong>. Usa <strong>WEBP</strong> (misma calidad que JPG con la mitad del peso) o JPG con calidad 75–85 %. Evita PNG para fotos: pesa varios MB y la página carga lenta. Tope máximo: 1.5 MB.</li>
                     <li><strong>Banner promocional:</strong> horizontal, proporción 5:1 (por ejemplo 1000×220). También sirve un video MP4 liviano (máx. {{ promo_banner_video_max_mb }} MB).</li>
                 </ul>
@@ -175,9 +175,9 @@
                     <p>Uno para la página principal y uno para cada página especial.</p>
                 </div>
                 <div class="img-grid">
-                    {{ img_tile('site_background_image', 'Fondo de la web (página principal)', 'Fondo a pantalla completa de la tienda.', site_background_image, 'Fondo actual', 'remove_site_background', 'Quitar fondo personalizado', shape='tall') }}
+                    {{ img_tile('site_background_image', 'Fondo de la web (página principal)', 'Fondo a pantalla completa de la tienda. Foto o video corto (máx. 1 MB).', site_background_image, 'Fondo actual', 'remove_site_background', 'Quitar fondo personalizado', shape='tall', video=True, accept='image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,.mp4,.webm', extra_attrs='data-max-video-mb="1"', title='Elegir foto o video', sub='Foto, o video MP4/WEBM (máx. 1 MB)') }}
                     {% for key, label, value in drawer_bg_items %}
-                    {{ img_tile(key, 'Fondo de "' ~ label ~ '"', 'Fondo a pantalla completa de esta página.', value, 'Fondo actual de ' ~ label, 'remove_' ~ key, 'Quitar fondo de "' ~ label ~ '"', shape='tall') }}
+                    {{ img_tile(key, 'Fondo de "' ~ label ~ '"', 'Fondo a pantalla completa de esta página. Foto o video corto (máx. 1 MB).', value, 'Fondo actual de ' ~ label, 'remove_' ~ key, 'Quitar fondo de "' ~ label ~ '"', shape='tall', video=True, accept='image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,.mp4,.webm', extra_attrs='data-max-video-mb="1"', title='Elegir foto o video', sub='Foto, o video MP4/WEBM (máx. 1 MB)') }}
                     {% endfor %}
                 </div>
             </section>
