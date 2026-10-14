@@ -3,161 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Perfil — 3S Recargas</title>
+    <title>{{ 'Mi cuenta' if is_account else 'Mi perfil' }} — 3S Recargas</title>
+    {% include '_head_common.html' %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    <style>
-        .profile-container {
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 0 20px;
-        }
-        .profile-header {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: 24px;
-            margin-bottom: 24px;
-        }
-        .profile-info {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .profile-avatar {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background: var(--accent);
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 32px;
-            font-weight: 700;
-        }
-        .profile-details h1 {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-        .profile-details p {
-            color: var(--text-muted);
-            margin-bottom: 2px;
-        }
-        .orders-section {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: 24px;
-        }
-        .orders-section h2 {
-            font-size: 20px;
-            font-weight: 700;
-            margin-bottom: 16px;
-        }
-        .order-item {
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 16px;
-            margin-bottom: 12px;
-            transition: all var(--transition);
-        }
-        .order-item:hover {
-            border-color: var(--accent);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        .order-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .order-number {
-            font-weight: 600;
-            color: var(--accent);
-        }
-        .order-status {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .status-pending {
-            background: rgba(245,158,11,0.1);
-            color: var(--warning);
-        }
-        .status-approved {
-            background: rgba(34,197,94,0.1);
-            color: var(--success);
-        }
-        .status-completed {
-            background: rgba(244,63,94,0.1);
-            color: var(--accent);
-        }
-        .status-rejected {
-            background: rgba(239,68,68,0.1);
-            color: var(--danger);
-        }
-        .order-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 12px;
-            font-size: 14px;
-        }
-        .order-detail {
-            display: flex;
-            flex-direction: column;
-        }
-        .order-detail-label {
-            color: var(--text-muted);
-            font-size: 12px;
-            margin-bottom: 2px;
-        }
-        .order-detail-value {
-            font-weight: 500;
-        }
-        .empty-orders {
-            text-align: center;
-            padding: 40px;
-            color: var(--text-muted);
-        }
-        .order-view-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-top: 12px;
-            padding: 8px 14px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--accent);
-            color: var(--accent);
-            font-size: 13px;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all var(--transition);
-        }
-        .order-view-btn:hover {
-            background: var(--accent);
-            color: #fff;
-        }
-        .btn-logout {
-            background: var(--danger);
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: var(--radius-sm);
-            font-size: 14px;
-            cursor: pointer;
-            transition: all var(--transition);
-        }
-        .btn-logout:hover {
-            background: #dc2626;
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&family=Archivo+Black&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ static_v('css/main.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/neon.css') }}">
 
     <!-- Meta Pixel Code -->
     <script>
+    (function(){function nxLoadPixel(){
     !function(f,b,e,v,n,t,s)
     {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
     n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -168,6 +23,9 @@
     'https://connect.facebook.net/en_US/fbevents.js');
     fbq('init', '1893616271596771');
     fbq('track', 'PageView');
+    }
+    if(document.readyState==='complete'){setTimeout(nxLoadPixel,2500);}else{window.addEventListener('load',function(){setTimeout(nxLoadPixel,2500);});}
+    })();
     </script>
     <noscript><img height="1" width="1" style="display:none"
     src="https://www.facebook.com/tr?id=1893616271596771&ev=PageView&noscript=1"
@@ -175,82 +33,275 @@
     <!-- End Meta Pixel Code -->
 </head>
 <body>
+    {% if DRAWER_BG_IMAGES.drawer_bg_login %}
+    <div aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_login) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
+    {% endif %}
     <header class="site-header">
         <div class="header-inner">
             <a href="{{ url_for('main_bp.index') }}" class="logo-link">
-                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="3S Recargas" class="logo-img"
-                     onerror="this.style.display='none';document.getElementById('logo-text').style.display='flex'">
-                <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
+                {% if SITE_LOGO %}
+                    <img src="{{ url_for('static', filename='uploads/' + SITE_LOGO) }}" alt="Logo" class="logo-img">
+                {% else %}
+                    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="3S Recargas" class="logo-img"
+                         onerror="this.style.display='none';document.getElementById('logo-text').style.display='flex'">
+                    <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
+                {% endif %}
             </a>
-            <div style="display: flex; align-items: center; gap: 16px;">
-                <span style="color: var(--text-muted);">{{ current_user.scope_name }}</span>
-                <a href="{{ url_for('main_bp.index') }}" class="btn-admin">← Tienda</a>
-                <form method="POST" action="{{ url_for('auth_bp.logout') }}" style="display: inline;">
-                    <button type="submit" class="btn-logout">Cerrar Sesión</button>
-                </form>
-            </div>
         </div>
     </header>
 
-    <main class="profile-container">
-        <div class="profile-header">
-            <div class="profile-info">
-                <div class="profile-avatar">
-                    {{ current_user.avatar_letter }}
-                </div>
-                <div class="profile-details">
-                    <h1>{{ current_user.display_name }}</h1>
-                    <p>🔐 Acceso actual: {{ current_user.scope_name }}</p>
-                    {% if current_user.preferred_contact_email %}
-                    <p>📧 {{ current_user.preferred_contact_email }}</p>
+    {%- macro game_thumb(game) -%}
+    <span class="nx-bubble-thumb">{% if game and game.image %}<img src="{{ url_for('static', filename='uploads/' + game.image) }}" alt="" loading="lazy">{% else %}<b>{{ ((game.name if game else '?') or '?')[0]|upper }}</b>{% endif %}</span>
+    {%- endmacro -%}
+
+    <main class="auth-container nx-store nx-prof">
+        <div class="nx-back-row">
+            <a href="{{ url_for('main_bp.index') }}" class="nx-back-btn" aria-label="Volver a la tienda">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+                <span>Tienda</span>
+            </a>
+        </div>
+        {% if is_account %}<h1 class="nx-prof-pagetitle">Mi cuenta <small>seguridad y datos privados</small></h1>{% endif %}
+
+        {#- Tarjeta de identidad: quién es y cómo entró -#}
+        <section class="glass-panel nx-prof-card" id="profileCard">
+            <div class="nx-prof-id">
+                <span class="nx-prof-avatar" aria-hidden="true">{{ current_user.avatar_letter }}</span>
+                <div class="nx-prof-who">
+                    <h1 class="nx-prof-name">{{ current_user.display_name }}</h1>
+                    {% if is_account %}
+                        <span class="nx-prof-chip {{ 'is-google' if current_user.account_kind == 'google_email' else 'is-account' }}">
+                            {{ 'Cuenta de Google' if current_user.account_kind == 'google_email' else 'Cuenta registrada' }}
+                        </span>
+                    {% else %}
+                        <span class="nx-prof-chip is-readonly">Solo lectura · entraste con tu ID</span>
                     {% endif %}
-                    {% if current_user.phone %}
-                    <p>📱 {{ current_user.phone }}</p>
-                    {% endif %}
-                    <p>📅 Miembro desde {{ current_user.created_at|datetime_ve('%d/%m/%Y') }}</p>
                 </div>
             </div>
-        </div>
-
-        <div class="orders-section">
-            <h2>Mis Órdenes</h2>
-            {% if orders %}
-                {% for order in orders %}
-                <div class="order-item">
-                    <div class="order-header">
-                        <span class="order-number">#{{ order.order_number }}</span>
-                        <span class="order-status status-{{ order.status }}">{{ order.status_label }}</span>
-                    </div>
-                    <div class="order-details">
-                        <div class="order-detail">
-                            <span class="order-detail-label">Juego</span>
-                            <span class="order-detail-value">{{ order.game.name }}</span>
-                        </div>
-                        <div class="order-detail">
-                            <span class="order-detail-label">Paquete</span>
-                            <span class="order-detail-value">{{ order.package.name }}</span>
-                        </div>
-                        <div class="order-detail">
-                            <span class="order-detail-label">Monto</span>
-                            <span class="order-detail-value">${{ order.amount }}</span>
-                        </div>
-                        <div class="order-detail">
-                            <span class="order-detail-label">Fecha</span>
-                            <span class="order-detail-value">{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
-                        </div>
-                    </div>
-                    <a class="order-view-btn" href="{{ url_for('checkout_bp.order_status', order_number=order.order_number) }}">
-                        Ver orden →
-                    </a>
+            <dl class="nx-prof-meta">
+                {% if is_account %}
+                    <div><dt>Correo</dt><dd>{{ current_user.email if current_user.is_registered_account else (current_user.account_identifier or current_user.contact_email or '—') }}</dd></div>
+                {% else %}
+                    <div><dt>{{ current_user.scope_name }}</dt><dd>{{ current_user.account_identifier or '—' }}</dd></div>
+                    {% if current_user.preferred_contact_email and current_user.preferred_contact_email != current_user.account_identifier %}
+                    <div><dt>Correo</dt><dd>{{ current_user.preferred_contact_email }}</dd></div>
+                    {% endif %}
+                {% endif %}
+                <div><dt>Miembro desde</dt><dd>{{ current_user.created_at|datetime_ve('%d/%m/%Y') }}</dd></div>
+            </dl>
+            <div class="nx-prof-bottom">
+                {% if is_account %}<button type="button" class="nx-prof-btn-ghost" id="openAccountData" aria-haspopup="dialog" aria-controls="accountDataModal">Mis datos</button>{% endif %}
+                <form method="POST" action="{{ url_for('auth_bp.logout') }}" class="nx-prof-logout">
+                    <button type="submit" class="nx-prof-btn-ghost">Cerrar sesión</button>
+                </form>
+            </div>
+            {% if is_account %}
+            {#- Tu perfil público (estilo Discord) vive aparte: aquí solo se llega a él. Va DENTRO de la misma tarjeta. -#}
+            <div class="nx-prof-public" id="publicProfileCard">
+                <h2 class="nx-prof-h">Tu perfil público</h2>
+                {% if profile_url %}
+                <p class="nx-prof-text">Es lo que ven los demás: tu foto, banner, fondo y marcos, todo a tu gusto.
+                    {% if profile_status == 'privado' %}<b style="color:#fde68a"> Ahora está privado (solo tú lo ves).</b>{% elif profile_status == 'oculto' %}<b style="color:#fecdd3"> El administrador lo ocultó.</b>{% endif %}</p>
+                <div class="nx-prof-actions">
+                    <a class="rdm-btn red-glow-pill rdm-btn-link" href="{{ url_for('profiles_bp.edit_profile') }}" id="editPublicProfile"><span class="rdm-btn-label">Personalizar mi perfil</span></a>
+                    <a class="nx-prof-btn-ghost" href="{{ profile_url }}" id="viewPublicProfile">Ver mi perfil</a>
                 </div>
+                {% else %}
+                <p class="nx-prof-text">Para tener perfil público elige un <b>nombre de usuario</b> (sale en su dirección). Hazlo en el botón "Mis datos".</p>
+                {% endif %}
+            </div>
+            {% endif %}
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="nx-prof-flashes">
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
                 {% endfor %}
-            {% else %}
-                <div class="empty-orders">
-                    <p>📦 No tienes órdenes aún</p>
-                    <p><a href="{{ url_for('main_bp.index') }}" style="color: var(--accent);">Ir a la tienda</a></p>
                 </div>
             {% endif %}
-        </div>
+        {% endwith %}
+
+        {% if is_account and points_balance %}
+        {#- Puntos de la tienda del perfil: solo llegan por un premio de ranking o porque el administrador se los pone. Se usan pasándolos a un ID. -#}
+        <section class="glass-panel nx-prof-card nx-prof-points" id="profilePoints">
+            <h2 class="nx-prof-h">Puntos de tu perfil</h2>
+            <p class="nx-prof-points-amount"><b>{{ points_balance }}</b> puntos</p>
+            <p class="nx-prof-text">Los puntos de la tienda funcionan por ID: para usarlos, ábrelos en "Canjear puntos" y elige a qué ID (juego + ID) se los vas a recargar. Desde ahí giras la ruleta o los canjeas por paquetes.</p>
+            <div class="nx-prof-actions">
+                <a class="rdm-btn red-glow-pill rdm-btn-link" href="{{ url_for('main_bp.index') }}#puntos"><span class="rdm-btn-label">Usar mis puntos</span></a>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if not is_account %}
+        {#- Solo con el ID: se puede mirar, no editar. Para editar hace falta una cuenta. -#}
+        <section class="glass-panel nx-prof-card nx-prof-callout" id="readonlyNotice">
+            <h2 class="nx-prof-h">Estás viendo tu perfil en modo lectura</h2>
+            <p class="nx-prof-text">Con tu ID puedes ver tus órdenes, pero no editar nada. Crea una cuenta (con tu correo y una contraseña, o con Google) y entra a tu perfil: así queda a tu nombre, puedes cambiar tus datos y las compras que hagas con tu cuenta se guardan en tu historial.</p>
+            <div class="nx-prof-actions">
+                <a class="rdm-btn red-glow-pill rdm-btn-link" href="{{ url_for('auth_bp.register') }}"><span class="rdm-btn-label">Crear mi cuenta</span></a>
+                <a class="nx-prof-btn-ghost" href="{{ url_for('auth_bp.login', tab='cuenta') }}">Ya tengo cuenta</a>
+            </div>
+        </section>
+        {% endif %}
+
+        {#- Órdenes -#}
+        <section class="glass-panel nx-prof-card" id="profileOrders">
+            <h2 class="nx-prof-h">Mis órdenes</h2>
+            {% if orders %}
+            <div class="nx-prof-list">
+                {% for order in orders %}
+                {% set tone = 'st-ok' if order.status in ('approved', 'completed') else ('st-wait' if order.status == 'pending' else ('st-bad' if order.status == 'rejected' else 'st-neutral')) %}
+                <a class="nx-prof-row nx-prof-order" href="{{ url_for('checkout_bp.order_status', order_number=order.order_number) }}">
+                    {{ game_thumb(order.game) }}
+                    <span class="nx-prof-row-main">
+                        <strong>{{ order.game.name if order.game else 'Servicio' }}</strong>
+                        <small>#{{ order.order_number }} · {{ order.package.name if order.package else '' }}{% if order.package %} · {% endif %}{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</small>
+                    </span>
+                    <span class="nx-prof-order-side">
+                        <b>${{ '%.2f'|format(order.amount|float) }}</b>
+                        <em class="nx-prof-status {{ tone }}">{{ order.status_label }}</em>
+                    </span>
+                </a>
+                {% endfor %}
+            </div>
+            {% elif is_account %}
+            <p class="nx-prof-empty">Aún no hay órdenes. Las compras que hagas con tu cuenta aparecerán aquí. <a href="{{ url_for('main_bp.index') }}" class="rdm-link-btn">Ir a la tienda</a></p>
+            {% else %}
+            <p class="nx-prof-empty">Aún no hay órdenes para mostrar. <a href="{{ url_for('main_bp.index') }}" class="rdm-link-btn">Ir a la tienda</a></p>
+            {% endif %}
+        </section>
+
+        {% if is_account %}
+        {#- Datos de la cuenta (se pueden editar) -#}
+        {% endif %}
     </main>
+
+    {% if is_account %}
+    {#- Popup "Mis datos": fuera de las tarjetas (el cristal de una tarjeta rompe el position:fixed de lo que lleva dentro) -#}
+    <div class="nx-prof-modal" id="accountDataModal" role="dialog" aria-modal="true" aria-labelledby="accountDataTitle" hidden>
+        <div class="nx-prof-modal-backdrop" data-close></div>
+        <div class="nx-prof-modal-sheet">
+            <div class="nx-prof-modal-head">
+                <h2 class="nx-prof-h" id="accountDataTitle">Mis datos</h2>
+                <button type="button" class="nx-prof-modal-close" data-close aria-label="Cerrar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+            </div>
+            <div class="nx-prof-modal-flashes" id="accountDataFlashes"></div>
+            <div class="nx-prof-modal-body" id="accountData">
+
+            <details class="nx-prof-details">
+                <summary><span>Nombre de usuario</span><small>{{ current_user.username if current_user.has_chosen_username else 'sin elegir' }}</small></summary>
+                <form method="POST" action="{{ url_for('auth_bp.profile_username') }}" class="rdm-step nx-prof-form">
+                    <div>
+                        <label class="rdm-label" for="p_username">Nuevo nombre de usuario</label>
+                        <input type="text" id="p_username" name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9._\-]{3,20}"
+                               class="glass-input nx-auth-input" autocomplete="username" autocapitalize="none" spellcheck="false"
+                               value="{{ current_user.username if current_user.has_chosen_username else '' }}">
+                        <p class="nx-auth-hint">De 3 a 20 caracteres: letras, números, punto, guion o guion bajo.</p>
+                    </div>
+                    <button type="submit" class="rdm-btn red-glow-pill"><span class="rdm-btn-label">Guardar</span></button>
+                </form>
+            </details>
+
+            {% if current_user.is_registered_account %}
+            <details class="nx-prof-details">
+                <summary><span>Correo</span><small>{{ current_user.email }}</small></summary>
+                <form method="POST" action="{{ url_for('auth_bp.profile_email') }}" class="rdm-step nx-prof-form">
+                    <div>
+                        <label class="rdm-label" for="p_email">Nuevo correo</label>
+                        <input type="email" id="p_email" name="email" required maxlength="120" class="glass-input nx-auth-input"
+                               autocomplete="email" autocapitalize="none" spellcheck="false" value="{{ current_user.email }}">
+                    </div>
+                    <div>
+                        <label class="rdm-label" for="p_email_pw">Tu contraseña actual</label>
+                        <input type="password" id="p_email_pw" name="current_password" required maxlength="128" class="glass-input nx-auth-input" autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="rdm-btn red-glow-pill"><span class="rdm-btn-label">Guardar</span></button>
+                </form>
+            </details>
+
+            <details class="nx-prof-details">
+                <summary><span>Contraseña</span><small>cambiar</small></summary>
+                <form method="POST" action="{{ url_for('auth_bp.profile_password') }}" class="rdm-step nx-prof-form" id="passwordForm">
+                    <div>
+                        <label class="rdm-label" for="p_pw_now">Contraseña actual</label>
+                        <input type="password" id="p_pw_now" name="current_password" required maxlength="128" class="glass-input nx-auth-input" autocomplete="current-password">
+                    </div>
+                    <div>
+                        <label class="rdm-label" for="p_pw_new">Contraseña nueva</label>
+                        <input type="password" id="p_pw_new" name="new_password" required minlength="8" maxlength="128" class="glass-input nx-auth-input" autocomplete="new-password" placeholder="Mínimo 8 caracteres">
+                    </div>
+                    <div>
+                        <label class="rdm-label" for="p_pw_rep">Repetir contraseña nueva</label>
+                        <input type="password" id="p_pw_rep" name="new_password_repeat" required minlength="8" maxlength="128" class="glass-input nx-auth-input" autocomplete="new-password">
+                        <p class="nx-auth-hint nx-auth-error" id="pwMismatch" hidden>Las contraseñas no coinciden.</p>
+                    </div>
+                    <button type="submit" class="rdm-btn red-glow-pill"><span class="rdm-btn-label">Cambiar contraseña</span></button>
+                </form>
+            </details>
+            {% else %}
+            <p class="nx-prof-text" style="margin-top:12px">Tu cuenta entra con Google: tu correo y tu seguridad los maneja Google, por eso no hay contraseña que cambiar aquí.</p>
+            {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% endif %}
+
+    <script>
+        (function () {
+            // Popup ("Mis datos"): se abre con su botón, se cierra con la X, tocando fuera o con Esc. Si el servidor volvió con su ancla (#datos,
+            // después de guardar o de un error), se abre solo y el mensaje se muestra ADENTRO (arriba de la página no se vería).
+            function wirePopup(modal, openBtn, hash, flashSlotId) {
+                if (!modal || !openBtn) return;
+                var lastFocus = null;
+                var open = function () {
+                    lastFocus = document.activeElement;
+                    modal.hidden = false;
+                    document.documentElement.style.overflow = 'hidden';
+                    window.requestAnimationFrame(function () { modal.classList.add('is-open'); });
+                    var sheet = modal.querySelector('.nx-prof-modal-sheet');
+                    if (sheet) { sheet.setAttribute('tabindex', '-1'); sheet.focus({ preventScroll: true }); }
+                };
+                var close = function () {
+                    modal.classList.remove('is-open');
+                    document.documentElement.style.overflow = '';
+                    window.setTimeout(function () { modal.hidden = true; }, 180);
+                    if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
+                    if (window.location.hash === hash && window.history.replaceState) window.history.replaceState(null, '', window.location.pathname + window.location.search);
+                };
+                openBtn.addEventListener('click', open);
+                modal.addEventListener('click', function (evt) { if (evt.target.closest('[data-close]')) close(); });
+                document.addEventListener('keydown', function (evt) { if (evt.key === 'Escape' && !modal.hidden) close(); });
+                if (window.location.hash === hash) {
+                    var fl = document.querySelector('.nx-prof-flashes'), slot = document.getElementById(flashSlotId);
+                    if (fl && slot) slot.appendChild(fl);
+                    open();
+                }
+            }
+            wirePopup(document.getElementById('accountDataModal'), document.getElementById('openAccountData'), '#datos', 'accountDataFlashes');
+            var pwForm = document.getElementById('passwordForm');
+            if (pwForm) {
+                var a = document.getElementById('p_pw_new'), b = document.getElementById('p_pw_rep'), warn = document.getElementById('pwMismatch');
+                function check() {
+                    var bad = !!b.value && a.value !== b.value;
+                    warn.hidden = !bad;
+                    b.setCustomValidity(bad ? 'Las contraseñas no coinciden.' : '');
+                    return !bad;
+                }
+                a.addEventListener('input', check);
+                b.addEventListener('input', check);
+                pwForm.addEventListener('submit', function (evt) { if (!check()) { evt.preventDefault(); b.focus(); } });
+            }
+            // Si el servidor devolvió un mensaje (éxito o error), se deja el aviso a la vista.
+            var flashes = document.querySelector('.nx-prof-flashes');
+            if (flashes && flashes.getBoundingClientRect().top > window.innerHeight) flashes.scrollIntoView({ block: 'center' });
+        })();
+    </script>
+{% include '_version_watch.html' %}
 </body>
 </html>

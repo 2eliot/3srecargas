@@ -14,10 +14,88 @@
 {% endblock %}
 
 {% block content %}
+        {#- Imágenes y fondos del sitio: ordenadas por tipo, cada una en una tarjeta pareja (miniatura de lo que hay + subir + quitar). -#}
+        {%- macro upload_icon() -%}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10.5"/><path d="m14 19.5 3-3 3 3"/><path d="M17 22v-5.5"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+        {%- endmacro -%}
+        {%- macro video_icon() -%}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+        {%- endmacro -%}
+        {%- macro save_icon() -%}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        {%- endmacro -%}
+        {#- Botón de guardar propio de cada sección (guarda todo el formulario y vuelve a esta misma sección). -#}
+        {%- macro save_bar(section_id) -%}
+        <div class="settings-save">
+            <span class="settings-save-status" data-save-status role="status" aria-live="polite"></span>
+            <button type="submit" name="__section" value="{{ section_id }}" class="btn-primary btn-sm settings-save-btn">{{ save_icon() }}<span>Guardar esta sección</span></button>
+        </div>
+        {%- endmacro -%}
+        {#- Tarjeta de subir archivo (imagen o video). `video`: True = vista en bucle (banner), 'clip' = primer cuadro + enlace "Ver video" (tutoriales). `icon`: 'image' | 'video'. -#}
+        {%- macro img_tile(input_id, label, hint, current, alt, remove_name, remove_text, shape='square', video=False, accept='image/png,image/jpeg,image/webp,image/gif', extra_attrs='', title='Elegir foto', sub='PNG, JPG, WEBP o GIF', icon='image') -%}
+        {%- set is_clip = (video == 'clip' and current and current.lower().endswith(('.mp4', '.webm', '.mov', '.m4v'))) -%}
+        <div class="img-tile{{ ' is-wide' if shape == 'wide' }}">
+            <div class="img-tile-head">
+                <span class="img-tile-ico">{% if icon == 'video' %}{{ video_icon() }}{% else %}{{ upload_icon() }}{% endif %}</span>
+                <span class="img-tile-headtext">
+                    <label for="{{ input_id }}">{{ label }}</label>
+                    <small>{{ hint }}</small>
+                </span>
+            </div>
+            <div class="img-tile-body">
+                {% if current %}
+                <div class="logo-preview img-tile-thumb is-{{ shape }}{{ ' is-clip' if is_clip }}">
+                    {% if is_clip %}
+                    <video src="{{ url_for('static', filename='uploads/' + current) }}#t=0.1" muted playsinline preload="metadata" aria-label="{{ alt }} (primer cuadro)"></video>
+                    {% elif video == True and current.lower().endswith('.mp4') %}
+                    <video src="{{ url_for('static', filename='uploads/' + current) }}" autoplay muted loop playsinline preload="metadata" aria-label="{{ alt }} (video)"></video>
+                    {% else %}
+                    <img src="{{ url_for('static', filename='uploads/' + current) }}" alt="{{ alt }}">
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="img-tile-thumb is-{{ shape }} is-empty" aria-hidden="true">{% if icon == 'video' %}{{ video_icon() }}{% else %}{{ upload_icon() }}{% endif %}<span>{{ 'Sin video' if icon == 'video' else 'Sin imagen' }}</span></div>
+                {% endif %}
+                <div class="img-tile-side">
+                    <div class="admin-dropzone" data-admin-dropzone>
+                        <input type="file" id="{{ input_id }}" name="{{ input_id }}" accept="{{ accept }}" class="admin-dropzone-input" {{ extra_attrs|safe }}>
+                        <span class="admin-dropzone-text">
+                            <strong class="admin-dropzone-title">{{ title }}</strong>
+                            <small class="admin-dropzone-sub">{{ sub }}</small>
+                        </span>
+                        <span class="admin-dropzone-btn">{{ 'Cambiar' if current else 'Subir' }}</span>
+                    </div>
+                    {% if is_clip %}
+                    <a class="img-tile-view" href="{{ url_for('static', filename='uploads/' + current) }}" target="_blank" rel="noopener">{{ video_icon() }}<span>Ver video</span></a>
+                    {% endif %}
+                    {% if current %}
+                    <label class="remove-logo img-tile-remove">
+                        <input type="checkbox" name="{{ remove_name }}" value="1">
+                        {{ remove_text }}
+                    </label>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {%- endmacro -%}
+        {#- Campo de red social: icono de línea + nombre + el campo (mismo estilo que las tarjetas de imágenes). -#}
+        {%- macro social_field(field_id, label, hint, value, icon_svg, input_type='text', placeholder='') -%}
+        <div class="social-field">
+            <div class="img-tile-head">
+                <span class="img-tile-ico">{{ icon_svg|safe }}</span>
+                <span class="img-tile-headtext">
+                    <label for="{{ field_id }}">{{ label }}</label>
+                    {% if hint %}<small>{{ hint }}</small>{% endif %}
+                </span>
+            </div>
+            <input type="{{ input_type }}" id="{{ field_id }}" name="{{ field_id }}" placeholder="{{ placeholder }}" value="{{ value or '' }}" autocomplete="off">
+        </div>
+        {%- endmacro -%}
+
 <div class="admin-card settings-card" style="padding:26px 28px;">
     <form method="POST" action="{{ url_for('admin_bp.settings') }}" enctype="multipart/form-data">
 
-        <details class="settings-section">
+        <details class="settings-section" id="sec-tasa">
             <summary class="settings-section-summary">
                 <h2>Tasa y Preferencias</h2>
                 <span class="settings-chevron">▾</span>
@@ -40,161 +118,120 @@
                     </p>
                 </div>
             </div>
+                    {{ save_bar('sec-tasa') }}
         </details>
 
-        <details class="settings-section">
+
+        <details class="settings-section" id="sec-imagenes">
             <summary class="settings-section-summary">
                 <h2>Imágenes y fondos del sitio</h2>
                 <span class="settings-chevron">▾</span>
             </summary>
-            <p class="form-hint" style="margin-bottom:18px; max-width:640px; line-height:1.5;">
-                Todas las imágenes configurables del sitio en un solo lugar: el logo, el banner promocional, la imagen de seguimiento de
-                órdenes, y los fondos de pantalla completa — el de la <strong>página principal</strong> ("Fondo de la web") y el de cada página
-                específica (Recarga Acumulada, Sorteo, etc.). <strong>Todos los fondos de pantalla completa usan la misma configuración</strong>
-                (cubren detrás de todo el contenido, nunca el menú lateral, y siempre con un velo oscuro para que el texto se siga leyendo). Como
-                la web es sobre todo para celulares, se ven mejor con imágenes verticales tipo pantalla de teléfono, de aproximadamente
-                <strong>1080×1920 píxeles</strong>. Para que carguen rápido, lo ideal es que pesen <strong>entre 150 y 300 KB</strong>: usa formato
-                <strong>WEBP</strong> si puedes (misma calidad que JPG pero pesa la mitad), o JPG con calidad 75-85%. Evita subir PNG para fotos,
-                porque puede pesar varios MB y hacer que la página cargue lento. Tope máximo: 1.5MB.
+            <p class="form-hint img-intro">
+                Aquí están todas las imágenes de la web, ordenadas por tipo. Cada tarjeta muestra la que está puesta ahora: para cambiarla toca
+                «Subir» o «Cambiar»; para borrarla marca «Quitar…». Los cambios se aplican al tocar «Guardar esta sección» (abajo de esta sección).
             </p>
-            <div class="form-grid-2">
-                <div class="form-group">
-                    <label for="site_logo">Logo del encabezado</label>
-                    <div class="admin-dropzone" data-admin-dropzone>
-                        <input type="file" id="site_logo" name="site_logo" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
-                        <span class="admin-dropzone-icon">🖼️</span>
-                        <span class="admin-dropzone-text">
-                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
-                            <small class="admin-dropzone-sub">Reemplaza el logo estándar del header</small>
-                        </span>
-                        <span class="admin-dropzone-btn">Subir</span>
-                    </div>
-                    {% if site_logo %}
-                    <div class="logo-preview">
-                        <img src="{{ url_for('static', filename='uploads/' + site_logo) }}" alt="Logo actual">
-                        <label class="remove-logo">
-                            <input type="checkbox" name="remove_logo" value="1">
-                            Quitar logo personalizado
-                        </label>
-                    </div>
-                    {% endif %}
+            <details class="img-tips">
+                <summary>Medidas y peso recomendados</summary>
+                <ul>
+                    <li><strong>Fondos de pantalla:</strong> verticales, tipo pantalla de celular, de unos <strong>1080×1920 píxeles</strong>. Todos usan la misma configuración: cubren detrás de todo el contenido (nunca el menú lateral) y llevan un velo oscuro para que el texto se lea.</li>
+                    <li><strong>Peso:</strong> lo ideal es <strong>150 a 300 KB</strong>. Usa <strong>WEBP</strong> (misma calidad que JPG con la mitad del peso) o JPG con calidad 75–85 %. Evita PNG para fotos: pesa varios MB y la página carga lenta. Tope máximo: 1.5 MB.</li>
+                    <li><strong>Banner promocional:</strong> horizontal, proporción 5:1 (por ejemplo 1000×220). También sirve un video MP4 liviano (máx. {{ promo_banner_video_max_mb }} MB).</li>
+                </ul>
+            </details>
+
+            <section class="img-group">
+                <div class="img-group-head">
+                    <h4>Marca, chat y seguimiento</h4>
+                    <p>Lo que identifica a la tienda y lo que ve el cliente en el chat y al seguir su orden.</p>
                 </div>
-                <div class="form-group">
-                    <label for="support_avatar">Foto de soporte (chat)</label>
-                    <div class="admin-dropzone" data-admin-dropzone>
-                        <input type="file" id="support_avatar" name="support_avatar" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
-                        <span class="admin-dropzone-icon">🖼️</span>
-                        <span class="admin-dropzone-text">
-                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
-                            <small class="admin-dropzone-sub">Cuadrada, sale arriba en el chat de soporte del cliente</small>
-                        </span>
-                        <span class="admin-dropzone-btn">Subir</span>
-                    </div>
-                    {% if support_avatar %}
-                    <div class="logo-preview">
-                        <img src="{{ url_for('static', filename='uploads/' + support_avatar) }}" alt="Foto de soporte actual" style="border-radius:50%">
-                        <label class="remove-logo">
-                            <input type="checkbox" name="remove_support_avatar" value="1">
-                            Quitar foto de soporte
-                        </label>
-                    </div>
-                    {% endif %}
+                <div class="img-grid">
+                    {{ img_tile('site_logo', 'Logo del encabezado', 'Reemplaza el logo estándar de arriba de la tienda.', site_logo, 'Logo actual', 'remove_logo', 'Quitar logo personalizado', shape='contain') }}
+                    {{ img_tile('support_avatar', 'Foto de soporte (chat)', 'Cuadrada. Sale arriba en el chat de soporte del cliente.', support_avatar, 'Foto de soporte actual', 'remove_support_avatar', 'Quitar foto de soporte', shape='round') }}
+                    {{ img_tile('order_status_image', 'Imagen para seguimiento de órdenes', 'Vertical o cuadrada. Sale junto al estado de la orden.', order_status_image, 'Imagen actual de seguimiento', 'remove_order_status_image', 'Quitar imagen de seguimiento', shape='contain') }}
                 </div>
-                <div class="form-group">
-                    <label for="site_background_image">Fondo de la web (página principal)</label>
-                    <div class="admin-dropzone" data-admin-dropzone>
-                        <input type="file" id="site_background_image" name="site_background_image" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
-                        <span class="admin-dropzone-icon">🖼️</span>
-                        <span class="admin-dropzone-text">
-                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
-                            <small class="admin-dropzone-sub">Fondo a pantalla completa de la tienda</small>
-                        </span>
-                        <span class="admin-dropzone-btn">Subir</span>
-                    </div>
-                    {% if site_background_image %}
-                    <div class="logo-preview">
-                        <img src="{{ url_for('static', filename='uploads/' + site_background_image) }}" alt="Fondo actual">
-                        <label class="remove-logo">
-                            <input type="checkbox" name="remove_site_background" value="1">
-                            Quitar fondo personalizado
-                        </label>
-                    </div>
-                    {% endif %}
+            </section>
+
+            <section class="img-group">
+                <div class="img-group-head">
+                    <h4>Banner promocional</h4>
+                    <p>La franja de arriba de la tienda. Puede llevar un link.</p>
                 </div>
-                <div class="form-group">
-                    <label for="order_status_image">Imagen para seguimiento de órdenes</label>
-                    <div class="admin-dropzone" data-admin-dropzone>
-                        <input type="file" id="order_status_image" name="order_status_image" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
-                        <span class="admin-dropzone-icon">🖼️</span>
-                        <span class="admin-dropzone-text">
-                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
-                            <small class="admin-dropzone-sub">Vertical o cuadrada, junto al estado de la orden</small>
-                        </span>
-                        <span class="admin-dropzone-btn">Subir</span>
+                <div class="img-grid">
+                    {{ img_tile('promo_banner_image', 'Banner promocional (arriba de la tienda)', 'Horizontal, proporción 5:1 (ej. 1000×220). También sirve un video MP4 liviano (máx. ' ~ promo_banner_video_max_mb ~ ' MB).', promo_banner_image, 'Banner promocional actual', 'remove_promo_banner_image', 'Quitar banner promocional', shape='wide', video=True, accept='image/png,image/jpeg,image/webp,image/gif,video/mp4,.mp4', extra_attrs='data-max-video-mb="' ~ promo_banner_video_max_mb ~ '"', title='Elegir foto o video', sub='MP4 liviano (máx. ' ~ promo_banner_video_max_mb ~ ' MB)') }}
+                    <div class="img-tile img-tile-link">
+                        <div class="img-tile-head">
+                            <label for="promo_banner_link">Link del banner promocional</label>
+                            <small>Al hacer clic en el banner, el cliente será llevado a este link. Déjalo vacío si no quieres que sea clicable.</small>
+                        </div>
+                        <input type="text" id="promo_banner_link" name="promo_banner_link" value="{{ promo_banner_link }}" placeholder="https://... (opcional)">
                     </div>
-                    {% if order_status_image %}
-                    <div class="logo-preview">
-                        <img src="{{ url_for('static', filename='uploads/' + order_status_image) }}" alt="Imagen actual de seguimiento">
-                        <label class="remove-logo">
-                            <input type="checkbox" name="remove_order_status_image" value="1">
-                            Quitar imagen de seguimiento
-                        </label>
-                    </div>
-                    {% endif %}
                 </div>
-                <div class="form-group">
-                    <label for="promo_banner_image">Banner promocional (arriba de la tienda)</label>
-                    <div class="admin-dropzone" data-admin-dropzone>
-                        <input type="file" id="promo_banner_image" name="promo_banner_image" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
-                        <span class="admin-dropzone-icon">🖼️</span>
-                        <span class="admin-dropzone-text">
-                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
-                            <small class="admin-dropzone-sub">Horizontal, proporción ~5:1 (ej. 1000x220)</small>
-                        </span>
-                        <span class="admin-dropzone-btn">Subir</span>
-                    </div>
-                    {% if promo_banner_image %}
-                    <div class="logo-preview">
-                        <img src="{{ url_for('static', filename='uploads/' + promo_banner_image) }}" alt="Banner promocional actual">
-                        <label class="remove-logo">
-                            <input type="checkbox" name="remove_promo_banner_image" value="1">
-                            Quitar banner promocional
-                        </label>
-                    </div>
-                    {% endif %}
+            </section>
+
+            <section class="img-group">
+                <div class="img-group-head">
+                    <h4>Fondos de pantalla</h4>
+                    <p>Uno para la página principal y uno para cada página especial.</p>
                 </div>
-                <div class="form-group">
-                    <label for="promo_banner_link">Link del banner promocional</label>
-                    <input type="text" id="promo_banner_link" name="promo_banner_link" value="{{ promo_banner_link }}" placeholder="https://... (opcional)">
-                    <p class="form-hint">Al hacer clic en el banner, el cliente será llevado a este link. Déjalo vacío si no quieres que sea clicable.</p>
+                <div class="img-grid">
+                    {{ img_tile('site_background_image', 'Fondo de la web (página principal)', 'Fondo a pantalla completa de la tienda.', site_background_image, 'Fondo actual', 'remove_site_background', 'Quitar fondo personalizado', shape='tall') }}
+                    {% for key, label, value in drawer_bg_items %}
+                    {{ img_tile(key, 'Fondo de "' ~ label ~ '"', 'Fondo a pantalla completa de esta página.', value, 'Fondo actual de ' ~ label, 'remove_' ~ key, 'Quitar fondo de "' ~ label ~ '"', shape='tall') }}
+                    {% endfor %}
                 </div>
-                {% for key, label, value in drawer_bg_items %}
-                <div class="form-group">
-                    <label for="{{ key }}">Fondo de "{{ label }}"</label>
-                    <div class="admin-dropzone" data-admin-dropzone>
-                        <input type="file" id="{{ key }}" name="{{ key }}" accept="image/png,image/jpeg,image/webp,image/gif" class="admin-dropzone-input">
-                        <span class="admin-dropzone-icon">📷</span>
-                        <span class="admin-dropzone-text">
-                            <strong class="admin-dropzone-title">Toca aquí para subir foto</strong>
-                            <small class="admin-dropzone-sub">Adjunta el fondo de "{{ label }}"</small>
-                        </span>
-                        <span class="admin-dropzone-btn">Subir</span>
-                    </div>
-                    {% if value %}
-                    <div class="logo-preview">
-                        <img src="{{ url_for('static', filename='uploads/' + value) }}" alt="Fondo actual de {{ label }}">
-                        <label class="remove-logo">
-                            <input type="checkbox" name="remove_{{ key }}" value="1">
-                            Quitar fondo de "{{ label }}"
-                        </label>
-                    </div>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            </div>
+            </section>
+                    {{ save_bar('sec-imagenes') }}
         </details>
 
-        <details class="settings-section">
+        <details class="settings-section" id="sec-google">
+            <summary class="settings-section-summary">
+                <h3>Entrar con Google (clientes)</h3>
+                <span class="settings-chevron">▾</span>
+            </summary>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="check-label" style="margin-top:30px;">
+                        <input type="checkbox" name="google_login_enabled" value="1"
+                               {% if google_login_settings.enabled %}checked{% endif %}>
+                        Mostrar "Continuar con Google" en Iniciar sesión
+                    </label>
+                    <p class="form-hint">
+                        Estado ahora: <strong>{{ 'ACTIVO (el botón se ve)' if google_login_settings.active else 'apagado (falta una llave o está desmarcado)' }}</strong>.
+                        El cliente entra con su correo de Google y ve las órdenes que hizo con ese correo.
+                    </p>
+                </div>
+                <div class="form-group">
+                    <label for="google_client_id">Client ID de Google</label>
+                    <input type="text" id="google_client_id" name="google_client_id" autocomplete="off"
+                           placeholder="123456789-abc....apps.googleusercontent.com"
+                           value="{{ google_login_settings.client_id }}">
+                </div>
+                <div class="form-group">
+                    <label for="google_client_secret">Client secret de Google</label>
+                    <input type="password" id="google_client_secret" name="google_client_secret" autocomplete="new-password"
+                           placeholder="{{ '•••••••• (ya guardada; escribe otra solo si quieres cambiarla)' if google_login_settings.has_secret else 'GOCSPX-...' }}">
+                    <p class="form-hint">Se guarda en el servidor y nunca se vuelve a mostrar.</p>
+                </div>
+                <div class="form-group">
+                    <label for="google_redirect_uri">Dirección de retorno (cópiala en Google)</label>
+                    <input type="text" id="google_redirect_uri" readonly value="{{ google_redirect_uri }}" onclick="this.select()">
+                    <p class="form-hint">
+                        Pasos: 1) En console.cloud.google.com entra a <em>APIs y servicios &gt; Credenciales &gt; Crear credenciales &gt; ID de cliente de OAuth &gt; Aplicación web</em>.
+                        2) En <em>URI de redireccionamiento autorizados</em> pega la dirección de arriba. 3) Copia aquí el Client ID y el Client secret y guarda.
+                    </p>
+                </div>
+            </div>
+            {% if google_login_settings.client_id or google_login_settings.has_secret %}
+            <label class="remove-logo" style="margin:0 0 14px 4px">
+                <input type="checkbox" name="remove_google_client" value="1">
+                Quitar las llaves de Google (apaga el botón)
+            </label>
+            {% endif %}
+                    {{ save_bar('sec-google') }}
+        </details>
+
+        <details class="settings-section" id="sec-verificacion-pagos">
             <summary class="settings-section-summary">
                 <h3>Verificación Automática de Pagos</h3>
                 <span class="settings-chevron">▾</span>
@@ -220,9 +257,10 @@
                     </p>
                 </div>
             </div>
+                    {{ save_bar('sec-verificacion-pagos') }}
         </details>
 
-        <details class="settings-section">
+        <details class="settings-section" id="sec-binance">
             <summary class="settings-section-summary">
                 <h3>Binance Pay Automático</h3>
                 <span class="settings-chevron">▾</span>
@@ -250,9 +288,10 @@
                     </p>
                 </div>
             </div>
+                    {{ save_bar('sec-binance') }}
         </details>
 
-        <details class="settings-section">
+        <details class="settings-section" id="sec-horario">
             <summary class="settings-section-summary">
                 <h3>Horario de las recargas manuales</h3>
                 <span class="settings-chevron">▾</span>
@@ -299,9 +338,10 @@
                     </p>
                 </div>
             </div>
+                    {{ save_bar('sec-horario') }}
         </details>
 
-        <details class="settings-section">
+        <details class="settings-section" id="sec-popup">
             <summary class="settings-section-summary">
                 <h3>Popup "Únete a nuestra comunidad"</h3>
                 <span class="settings-chevron">▾</span>
@@ -331,9 +371,10 @@
                     <p class="form-hint">Si lo dejas vacío, se usa el link de WhatsApp de soporte configurado arriba.</p>
                 </div>
             </div>
+                    {{ save_bar('sec-popup') }}
         </details>
 
-        <details class="settings-section">
+        <details class="settings-section" id="sec-video-pago">
             <summary class="settings-section-summary">
                 <h3>Video Tutorial por Método de Pago</h3>
                 <span class="settings-chevron">▾</span>
@@ -350,20 +391,7 @@
                     <p class="form-hint">Solo cuando el cliente entre con este método seleccionado verá el bloque con video.</p>
                 </div>
                 <div class="form-group">
-                    <label for="checkout_payment_video_file">Video tutorial</label>
-                    <input type="file" id="checkout_payment_video_file" name="checkout_payment_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
-                    <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
-                    {% if checkout_payment_video_file %}
-                    <div class="logo-preview" style="align-items:flex-start;">
-                        <video controls preload="metadata" style="width:120px;height:120px;object-fit:cover;border-radius:8px;display:block;flex-shrink:0;">
-                            <source src="{{ url_for('static', filename='uploads/' + checkout_payment_video_file) }}">
-                        </video>
-                        <label class="remove-logo">
-                            <input type="checkbox" name="remove_checkout_payment_video_file" value="1">
-                            Quitar video tutorial
-                        </label>
-                    </div>
-                    {% endif %}
+                    {{ img_tile('checkout_payment_video_file', 'Video tutorial', 'Se ve en el checkout cuando el cliente elige ese método de pago.', checkout_payment_video_file, 'Video tutorial del checkout', 'remove_checkout_payment_video_file', 'Quitar video tutorial', shape='wide', video='clip', accept='video/mp4,video/webm,video/quicktime,.m4v', title='Elegir video', sub='MP4, WEBM, MOV o M4V', icon='video') }}
                 </div>
                 <div class="form-group">
                     <label for="checkout_payment_video_title">Título</label>
@@ -380,9 +408,10 @@
                     <textarea id="checkout_payment_video_message" name="checkout_payment_video_message" rows="3" placeholder="Ej: Mira este tutorial rápido para aprender a pagar. Es más fácil de lo que parece.">{{ checkout_payment_video_message }}</textarea>
                 </div>
             </div>
+                    {{ save_bar('sec-video-pago') }}
         </details>
 
-        <details class="settings-section">
+        <details class="settings-section" id="sec-video-flotante">
             <summary class="settings-section-summary">
                 <h3>Video Tutorial Flotante</h3>
                 <span class="settings-chevron">▾</span>
@@ -393,20 +422,7 @@
             </p>
             <div class="form-grid-2">
                 <div class="form-group">
-                    <label for="site_tutorial_video_file">Video tutorial</label>
-                    <input type="file" id="site_tutorial_video_file" name="site_tutorial_video_file" accept="video/mp4,video/webm,video/quicktime,.m4v">
-                    <p class="form-hint">Formatos permitidos: mp4, webm, mov y m4v.</p>
-                    {% if site_tutorial_video_file %}
-                    <div class="logo-preview" style="align-items:flex-start;">
-                        <video controls preload="metadata" style="width:120px;height:120px;object-fit:cover;border-radius:8px;display:block;flex-shrink:0;">
-                            <source src="{{ url_for('static', filename='uploads/' + site_tutorial_video_file) }}">
-                        </video>
-                        <label class="remove-logo">
-                            <input type="checkbox" name="remove_site_tutorial_video_file" value="1">
-                            Quitar video tutorial
-                        </label>
-                    </div>
-                    {% endif %}
+                    {{ img_tile('site_tutorial_video_file', 'Video tutorial', 'Es el que se abre con el botón "Tutorial" de la burbuja de soporte.', site_tutorial_video_file, 'Video tutorial flotante', 'remove_site_tutorial_video_file', 'Quitar video tutorial', shape='wide', video='clip', accept='video/mp4,video/webm,video/quicktime,.m4v', title='Elegir video', sub='MP4, WEBM, MOV o M4V', icon='video') }}
                 </div>
                 <div class="form-group">
                     <label for="site_tutorial_video_title">Título de la ventana</label>
@@ -414,41 +430,25 @@
                            value="{{ site_tutorial_video_title }}" placeholder="Ej: Cómo recargar en 3S Recargas">
                 </div>
             </div>
+                    {{ save_bar('sec-video-flotante') }}
         </details>
 
-        <details class="settings-section">
+        <details class="settings-section" id="sec-redes">
             <summary class="settings-section-summary">
                 <h3>Redes Sociales (Footer)</h3>
                 <span class="settings-chevron">▾</span>
             </summary>
-            <div class="form-grid-2">
-                <div class="form-group">
-                    <label for="social_facebook">Facebook URL</label>
-                    <input type="url" id="social_facebook" name="social_facebook" placeholder="https://facebook.com/3srecargas"
-                           value="{{ social_settings.social_facebook }}">
-                    <p class="form-hint">Enlace a tu fanpage principal.</p>
-                </div>
-                <div class="form-group">
-                    <label for="social_instagram">Instagram URL/usuario</label>
-                    <input type="text" id="social_instagram" name="social_instagram" placeholder="https://instagram.com/3srecargas"
-                           value="{{ social_settings.social_instagram }}">
-                    <p class="form-hint">Coloca la URL completa o el usuario.</p>
-                </div>
-                <div class="form-group">
-                    <label for="social_tiktok">TikTok URL/usuario</label>
-                    <input type="text" id="social_tiktok" name="social_tiktok" placeholder="https://www.tiktok.com/@3srecargas"
-                           value="{{ social_settings.social_tiktok }}">
-                </div>
-                <div class="form-group">
-                    <label for="social_whatsapp">Link directo de WhatsApp</label>
-                    <input type="url" id="social_whatsapp" name="social_whatsapp" placeholder="https://wa.me/58412XXXXXXX"
-                           value="{{ social_settings.social_whatsapp }}">
-                    <p class="form-hint">Formato recomendado: wa.me con número o enlace a canal.</p>
-                </div>
+            <p class="form-hint img-intro">Cada ícono de red social del pie de la tienda abre el enlace que pongas aquí.</p>
+            <div class="social-grid">
+                {{ social_field('social_facebook', 'Facebook', 'Enlace a tu fanpage principal.', social_settings.social_facebook, '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>', 'url', 'https://facebook.com/3srecargas') }}
+                {{ social_field('social_instagram', 'Instagram', 'La URL completa o solo el usuario.', social_settings.social_instagram, '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>', 'text', 'https://instagram.com/3srecargas') }}
+                {{ social_field('social_tiktok', 'TikTok', 'La URL completa o solo el usuario.', social_settings.social_tiktok, '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>', 'text', 'https://www.tiktok.com/@3srecargas') }}
+                {{ social_field('social_whatsapp', 'WhatsApp', 'Formato recomendado: wa.me con tu número o el enlace de tu canal.', social_settings.social_whatsapp, '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>', 'url', 'https://wa.me/58412XXXXXXX') }}
             </div>
+                    {{ save_bar('sec-redes') }}
         </details>
 
-        <details class="settings-section">
+        <details class="settings-section" id="sec-correo">
             <summary class="settings-section-summary">
                 <h3>Notificaciones por Correo</h3>
                 <span class="settings-chevron">▾</span>
@@ -502,136 +502,14 @@
                            value="{{ email_settings.unsubscribe_url }}">
                 </div>
             </div>
+                    {{ save_bar('sec-correo') }}
         </details>
 
-        <details class="settings-section">
-            <summary class="settings-section-summary">
-                <h3>Rankings Mensuales</h3>
-                <span class="settings-chevron">▾</span>
-            </summary>
-            <div class="form-grid-2">
-                <div class="form-group">
-                    <label class="check-label" style="margin-top:30px;">
-                        <input type="checkbox" name="ranking_free_fire_enabled" value="1"
-                               {% if ranking_settings.ranking_free_fire_enabled == '1' %}checked{% endif %}>
-                        Mostrar ranking de Free Fire
-                    </label>
-                    <p class="form-hint">Visible en el header y en el modal público. Puedes ocultarlo de forma independiente.</p>
-                </div>
-                <div class="form-group">
-                    <label for="ranking_free_fire_game_id">Juego asociado a Free Fire</label>
-                    <select id="ranking_free_fire_game_id" name="ranking_free_fire_game_id">
-                        <option value="">Selecciona un juego</option>
-                        {% for game in ranking_games %}
-                        <option value="{{ game.id }}" {% if ranking_settings.ranking_free_fire_game_id == game.id|string %}selected{% endif %}>{{ game.name }} (#{{ game.id }})</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="check-label" style="margin-top:30px;">
-                        <input type="checkbox" name="ranking_blood_strike_enabled" value="1"
-                               {% if ranking_settings.ranking_blood_strike_enabled == '1' %}checked{% endif %}>
-                        Mostrar ranking de Blood Strike
-                    </label>
-                    <p class="form-hint">Se comporta igual que Free Fire, pero con tabla independiente y activación separada.</p>
-                </div>
-                <div class="form-group">
-                    <label for="ranking_blood_strike_game_id">Juego asociado a Blood Strike</label>
-                    <select id="ranking_blood_strike_game_id" name="ranking_blood_strike_game_id">
-                        <option value="">Selecciona un juego</option>
-                        {% for game in ranking_games %}
-                        <option value="{{ game.id }}" {% if ranking_settings.ranking_blood_strike_game_id == game.id|string %}selected{% endif %}>{{ game.name }} (#{{ game.id }})</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
-
-            <div class="ranking-prize-config-grid">
-                <div class="admin-card ranking-prize-card" data-ranking-key="free_fire">
-                    <div class="card-header">
-                        <h3>Premios Automáticos: Top Free Fire</h3>
-                    </div>
-                    <div class="table-wrap">
-                        <table class="admin-table ranking-prize-table">
-                            <thead>
-                                <tr>
-                                    <th>Puesto</th>
-                                    <th>Premio visible</th>
-                                    <th>Paquete que se entregará</th>
-                                    <th>Auto</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for position in ranking_prize_positions %}
-                                {% set row = ranking_prize_settings['free_fire'][position] %}
-                                <tr>
-                                    <td>#{{ position }}</td>
-                                    <td>{{ row.reward_label }}</td>
-                                    <td>
-                                        <select name="ranking_free_fire_prize_package_{{ position }}"
-                                                class="ranking-prize-select"
-                                                data-ranking-key="free_fire"
-                                                data-selected="{{ row.package_id }}">
-                                            <option value="">Selecciona un paquete</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <label class="check-label">
-                                            <input type="checkbox" name="ranking_free_fire_prize_auto_{{ position }}" value="1"
-                                                   {% if row.auto == '1' %}checked{% endif %}>
-                                            Activar
-                                        </label>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="admin-card ranking-prize-card" data-ranking-key="blood_strike">
-                    <div class="card-header">
-                        <h3>Premios Automáticos: Top Blood Strike</h3>
-                    </div>
-                    <div class="table-wrap">
-                        <table class="admin-table ranking-prize-table">
-                            <thead>
-                                <tr>
-                                    <th>Puesto</th>
-                                    <th>Premio visible</th>
-                                    <th>Paquete que se entregará</th>
-                                    <th>Auto</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for position in ranking_prize_positions %}
-                                {% set row = ranking_prize_settings['blood_strike'][position] %}
-                                <tr>
-                                    <td>#{{ position }}</td>
-                                    <td>{{ row.reward_label }}</td>
-                                    <td>
-                                        <select name="ranking_blood_strike_prize_package_{{ position }}"
-                                                class="ranking-prize-select"
-                                                data-ranking-key="blood_strike"
-                                                data-selected="{{ row.package_id }}">
-                                            <option value="">Selecciona un paquete</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <label class="check-label">
-                                            <input type="checkbox" name="ranking_blood_strike_prize_auto_{{ position }}" value="1"
-                                                   {% if row.auto == '1' %}checked{% endif %}>
-                                            Activar
-                                        </label>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </details>
+        <div class="settings-section" id="sec-rankings" style="padding:16px 20px;">
+            <h3 style="margin:0 0 6px;">Rankings Mensuales</h3>
+            <p class="form-hint" style="margin:0 0 10px;">Los rankings (Free Fire, Blood Strike, cuentas, niveles y los que tú crees) ahora se manejan en <strong>Dinámicas → Ranking</strong>: ahí los creas, eliges el juego y les pones el premio de cada puesto.</p>
+            <a href="{{ url_for('admin_bp.rankings') }}" class="btn-primary" style="text-decoration:none; display:inline-block;">Ir a Dinámicas → Ranking</a>
+        </div>
 
         <div class="modal-actions" style="margin-top:18px;">
             <button type="submit" class="btn-primary">Guardar configuración</button>
@@ -692,61 +570,6 @@
 
 <script>
 (function() {
-    var rankingPackagesByGame = {{ ranking_packages_by_game|tojson }};
-
-    function fillRankingPrizeSelects(rankingKey) {
-        var gameSelect = document.getElementById('ranking_' + rankingKey + '_game_id');
-        var enabledInput = document.querySelector('input[name="ranking_' + rankingKey + '_enabled"]');
-        var card = document.querySelector('.ranking-prize-card[data-ranking-key="' + rankingKey + '"]');
-        var selects = document.querySelectorAll('.ranking-prize-select[data-ranking-key="' + rankingKey + '"]');
-        var gameId = gameSelect ? String(gameSelect.value || '') : '';
-        var options = rankingPackagesByGame[gameId] || [];
-        var shouldShow = !!(enabledInput && enabledInput.checked && gameId);
-
-        if (card) {
-            card.style.opacity = shouldShow ? '1' : '.55';
-        }
-
-        selects.forEach(function(select) {
-            var selectedValue = select.getAttribute('data-selected') || select.value || '';
-            select.innerHTML = '<option value="">Selecciona un paquete</option>';
-
-            options.forEach(function(pkg) {
-                var option = document.createElement('option');
-                option.value = String(pkg.id);
-                option.textContent = '#' + pkg.id + ' · ' + pkg.name + (pkg.is_automated ? ' · Auto' : '');
-                if (String(pkg.id) === String(selectedValue)) {
-                    option.selected = true;
-                }
-                select.appendChild(option);
-            });
-
-            select.disabled = !shouldShow;
-        });
-    }
-
-    ['free_fire', 'blood_strike'].forEach(function(rankingKey) {
-        fillRankingPrizeSelects(rankingKey);
-
-        var gameSelect = document.getElementById('ranking_' + rankingKey + '_game_id');
-        var enabledInput = document.querySelector('input[name="ranking_' + rankingKey + '_enabled"]');
-
-        if (gameSelect) {
-            gameSelect.addEventListener('change', function() {
-                document.querySelectorAll('.ranking-prize-select[data-ranking-key="' + rankingKey + '"]').forEach(function(select) {
-                    select.setAttribute('data-selected', '');
-                });
-                fillRankingPrizeSelects(rankingKey);
-            });
-        }
-
-        if (enabledInput) {
-            enabledInput.addEventListener('change', function() {
-                fillRankingPrizeSelects(rankingKey);
-            });
-        }
-    });
-
     // Load current values on page load
     function loadVerifyConfig() {
         fetch('/admin/config/active_login_game', {credentials: 'same-origin'})
@@ -839,6 +662,16 @@
 
         input.addEventListener('change', function () {
             var file = input.files && input.files[0];
+            var maxVideoMb = parseFloat(input.getAttribute('data-max-video-mb') || '0');
+            if (file && maxVideoMb && /^video\//.test(file.type) && file.size > maxVideoMb * 1024 * 1024) {
+                // Video demasiado pesado: se avisa aquí mismo y no se envía (el servidor también lo revisa).
+                var tooBig = (file.size / (1024 * 1024)).toFixed(1);
+                input.value = '';
+                if (title) { title.textContent = 'Ese video pesa ' + tooBig + ' MB'; title.classList.remove('is-ok'); }
+                if (sub) sub.textContent = 'El máximo es ' + maxVideoMb + ' MB: usa uno más corto o más liviano.';
+                if (btn) btn.textContent = defaultBtn;
+                return;
+            }
             if (file) {
                 if (title) { title.textContent = '¡Cargado con éxito!'; title.classList.add('is-ok'); }
                 if (sub) sub.textContent = file.name;
@@ -849,6 +682,46 @@
                 if (btn) btn.textContent = defaultBtn;
             }
         });
+    });
+})();
+
+// Botón de guardar de cada sección: guarda todo el formulario y vuelve a la misma sección (la abre y muestra ahí mismo el resultado).
+(function () {
+    var form = document.querySelector('form[action$="/settings"]');
+    if (!form) return;
+    var id = (location.hash || '').slice(1);
+    if (/^sec-[a-z0-9_-]+$/.test(id)) {
+        var section = document.getElementById(id);
+        if (section && section.tagName === 'DETAILS') {
+            section.open = true;
+            var flash = document.querySelector('.admin-flashes .flash span');
+            var status = section.querySelector('[data-save-status]');
+            if (flash && status) {
+                var ok = /flash-(success|info)/.test(flash.parentElement.className);
+                status.textContent = (ok ? '✓ ' : '⚠ ') + flash.textContent.trim().slice(0, 140);
+                status.className = 'settings-save-status is-on ' + (ok ? 'is-ok' : 'is-bad');
+                setTimeout(function () { status.classList.remove('is-on'); }, 7000);
+            }
+        }
+    }
+    // Enter dentro de un campo guarda ESA sección (si no, el navegador usaría el primer botón del formulario y volvería a la primera sección).
+    form.addEventListener('keydown', function (evt) {
+        if (evt.key !== 'Enter' || evt.isComposing) return;
+        var el = evt.target;
+        if (!el || el.tagName !== 'INPUT' || /^(submit|button|checkbox|radio|file)$/.test(el.type)) return;
+        evt.preventDefault();
+        var holder = el.closest('details.settings-section');
+        var btn = holder && holder.querySelector('.settings-save-btn');
+        if (btn) btn.click();
+    });
+    // Mientras se guarda: el botón avisa y no se puede tocar dos veces.
+    form.addEventListener('submit', function (evt) {
+        var btn = evt.submitter;
+        if (btn && btn.classList.contains('settings-save-btn')) {
+            var label = btn.querySelector('span');
+            if (label) label.textContent = 'Guardando…';
+            window.setTimeout(function () { btn.disabled = true; }, 0);
+        }
     });
 })();
 </script>

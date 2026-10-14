@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar mi perfil — 3S Recargas</title>
+    {% include '_head_common.html' %}
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Inter:wght@400;500;600;700&family=Orbitron:wght@700;900&family=Outfit:wght@400;600;700;800;900&family=Pacifico&family=Archivo+Black&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ static_v('css/main.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/neon.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/profile.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/color-picker.css') }}">
+</head>
+<body class="pf-page">
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="{{ url_for('main_bp.index') }}" class="logo-link">
+                {% if SITE_LOGO %}
+                    <img src="{{ url_for('static', filename='uploads/' + SITE_LOGO) }}" alt="Logo" class="logo-img">
+                {% else %}
+                    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="3S Recargas" class="logo-img"
+                         onerror="this.style.display='none';document.getElementById('logo-text').style.display='flex'">
+                    <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
+                {% endif %}
+            </a>
+        </div>
+    </header>
+
+    {% set th = v.theme %}
+    {%- macro color_field(name, label, value) -%}
+    <div class="pf-field">
+        <label for="f_{{ name }}">{{ label }}</label>
+        <div class="pf-color"><input type="color" id="f_{{ name }}" name="{{ name }}" value="{{ value }}" data-live data-modern-color><span data-hex-for="f_{{ name }}">{{ value }}</span></div>
+    </div>
+    {%- endmacro -%}
+    {%- macro range_field(name, label, value, lo, hi, unit='') -%}
+    <div class="pf-range">
+        <div class="pf-range-head"><label for="f_{{ name }}">{{ label }}</label><span data-val-for="f_{{ name }}" data-unit="{{ unit }}">{{ value }}{{ unit }}</span></div>
+        <input type="range" id="f_{{ name }}" name="{{ name }}" min="{{ lo }}" max="{{ hi }}" value="{{ value }}" data-live>
+    </div>
+    {%- endmacro -%}
+    {%- macro select_field(name, label, value, options) -%}
+    <div class="pf-field">
+        <label for="f_{{ name }}">{{ label }}</label>
+        <select id="f_{{ name }}" name="{{ name }}" data-live>
+            {% for key, text in options %}<option value="{{ key }}" {% if key == value %}selected{% endif %}>{{ text }}</option>{% endfor %}
+        </select>
+    </div>
+    {%- endmacro -%}
+    {%- macro radio_group(name, value, options, cls='is-grid') -%}
+    <div class="pf-radios {{ cls }}" role="radiogroup">
+        {% for key, text in options %}<label><input type="radio" name="{{ name }}" value="{{ key }}" data-live {% if key == value %}checked{% endif %}><span>{{ text }}</span></label>{% endfor %}
+    </div>
+    {%- endmacro -%}
+    {%- macro file_field(kind, label, hint, current, size=None) -%}
+    {%- set cur_url = url_for('static', filename='uploads/' + current) if current else '' -%}
+    {%- set blocked = (not current) and image_count >= max_images -%}
+    <div class="pf-field pf-file" data-file-kind="{{ kind }}" data-max-mb="{{ limits_mb[kind] }}">
+        <span class="pf-label">{{ label }}</span>
+        {#- Zona para elegir la imagen (tocar o arrastrar), con miniatura; el <input type="file"> de verdad sigue dentro, escondido -#}
+        <label class="pf-drop{{ ' is-disabled' if blocked }}" for="f_{{ kind }}" data-drop data-orig-url="{{ cur_url }}">
+            <input type="file" class="pf-drop-input" name="{{ kind }}" id="f_{{ kind }}" accept="image/png,image/jpeg,image/webp,image/gif" data-live-file {% if blocked %}disabled{% endif %}>
+            <span class="pf-drop-thumb" data-drop-thumb>{% if cur_url %}<img src="{{ cur_url }}" alt="">{% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.7"/><path d="m21 15-5-5L5 21"/></svg>{% endif %}</span>
+            <span class="pf-drop-text">
+                <strong data-drop-title>{{ 'Cambiar imagen' if current else 'Elegir imagen' }}</strong>
+                <small data-drop-sub>{{ 'Imagen actual · toca o arrastra otra' if current else 'Toca aquí o arrastra tu imagen' }}</small>
+            </span>
+            <span class="pf-drop-btn" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg></span>
+        </label>
+        <p class="pf-hint">{{ hint }} Máximo {{ limits_mb[kind] }} MB.</p>
+        {% if size %}<p class="pf-sizehint"><b>Medida ideal:</b> {{ size }}</p>{% endif %}
+        <p class="pf-file-limit" {% if current or image_count < max_images %}hidden{% endif %}>Tu perfil ya tiene {{ max_images }} imágenes, que es el máximo. Quita una para subir esta.</p>
+        <p class="pf-file-error" role="alert" hidden></p>
+        {% if current %}<label class="pf-remove"><input type="checkbox" name="remove_{{ kind }}" value="1" data-live-remove="{{ kind }}"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m6 6 1 14h10l1-14"/></svg> Quitar la imagen actual</span></label>{% endif %}
+    </div>
+    {%- endmacro -%}
+    {#- Selector de marco: "Sin marco", "Mi marco" (el que subió), y los de la tienda (todos gratis) -#}
+    {%- macro frame_picker(kind, label, choice, own_url, shop) -%}
+    <div class="pf-field pf-frames" data-frame-kind="{{ kind }}" data-own-url="{{ url_for('static', filename=own_url) if own_url else '' }}">
+        <span class="pf-label">{{ label }}</span>
+        <div class="pf-framegrid{{ ' is-wide' if kind == 'banner' }}" role="radiogroup">
+            <label class="pf-frame-card">
+                <input type="radio" name="{{ kind }}_frame_choice" value="none" {% if choice == 'none' %}checked{% endif %}>
+                <span class="pf-frame-thumb is-none"><i>Sin marco</i></span>
+            </label>
+            <label class="pf-frame-card" data-own-card {% if not own_url %}hidden{% endif %}>
+                <input type="radio" name="{{ kind }}_frame_choice" value="own" data-frame-url="{{ url_for('static', filename=own_url) if own_url else '' }}" {% if choice == 'own' %}checked{% endif %}>
+                <span class="pf-frame-thumb"><img src="{{ url_for('static', filename=own_url) if own_url else '' }}" alt=""></span>
+                <span class="pf-frame-name">Mi marco</span>
+            </label>
+            {% for f in shop %}
+            <label class="pf-frame-card" data-frame-id="{{ f.id }}">
+                <input type="radio" name="{{ kind }}_frame_choice" value="{{ f.id }}" data-frame-url="{{ url_for('static', filename=f.url) }}" {% if choice == f.id|string %}checked{% endif %}>
+                <span class="pf-frame-thumb"><img src="{{ url_for('static', filename=f.url) }}" alt="" loading="lazy"></span>
+                <span class="pf-frame-name">{{ f.name }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        {% if not shop %}<p class="pf-hint">Todavía no hay marcos en la tienda. Mientras tanto puedes subir uno tuyo abajo.</p>{% endif %}
+    </div>
+    {%- endmacro -%}
+    {#- Ventana (popup): el perfil pequeño arriba, las opciones abajo y los botones fijos al pie -#}
+    {%- macro pop(id, title) -%}
+    <div class="pf-pop" id="{{ id }}" data-pop role="dialog" aria-modal="true" aria-labelledby="{{ id }}_t" hidden>
+        <div class="pf-pop-backdrop" data-pop-close></div>
+        <div class="pf-pop-sheet">
+            <div class="pf-pop-head">
+                <strong id="{{ id }}_t">{{ title }}</strong>
+                <button type="button" class="pf-pop-x" data-pop-close aria-label="Cerrar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+            </div>
+            <div class="pf-pop-preview" data-pop-preview></div>
+            <div class="pf-pop-body">{{ caller() }}</div>
+            <div class="pf-pop-foot">
+                <button type="button" class="pf-btn" data-pop-close title="Cerrar sin guardar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;margin-right:5px;vertical-align:-2px"><path d="m15 5-7 7 7 7"/></svg>Volver
+                </button>
+                <button type="submit" class="pf-btn is-primary" data-save-btn>Guardar cambios<span class="pf-dirty">&nbsp;•</span></button>
+            </div>
+        </div>
+    </div>
+    {%- endmacro -%}
+
+    <main class="pf-edit nx-store">
+        <div class="nx-back-row">
+            <a href="{{ url_for('auth_bp.profile') }}" class="nx-back-btn" id="pfBack">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+                <span>Mi perfil</span>
+            </a>
+        </div>
+        <h1>Editar mi perfil</h1>
+        <p class="pf-rules" id="pfRules"><b>Reglas del perfil:</b> por seguridad de la tienda <b>no se muestran IDs, compras, juegos, redes sociales, teléfonos ni correos</b>, y el perfil <b>no tiene comentarios</b>. Por eso el nombre y "acerca de mí" no aceptan enlaces, @usuarios ni números largos.</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="nx-prof-flashes">
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <section class="pf-stage-wrap" aria-label="Vista previa">
+            <p class="pf-stage-label">Vista previa</p>
+            <div id="pfStageHost">
+                {% set scope_class = 'pf-scope-stage' %}
+                {% set preview = true %}
+                {% include 'profiles/_scope.html' %}
+            </div>
+        </section>
+
+        <form method="POST" action="{{ url_for('profiles_bp.edit_profile') }}" enctype="multipart/form-data" id="pfForm" autocomplete="off"
+              data-max-images="{{ max_images }}">
+            <input type="hidden" name="__show_fields" value="1">
+
+            <p class="pf-imgmeter" data-image-meter>Imágenes propias: <b data-image-count>{{ image_count }}</b> de {{ max_images }} <small>(foto, banner, fondo y marcos que subas; los marcos de la tienda no cuentan)</small></p>
+
+            <div class="pf-optgrid">
+                <button type="button" class="pf-opt" data-pop-open="pop_pres" id="optPres">
+                    <span class="pf-opt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>
+                    <span class="pf-opt-text"><strong>Mi presentación</strong><small>Nombre, frase y privacidad</small></span>
+                </button>
+                <button type="button" class="pf-opt" data-pop-open="pop_photo" id="optPhoto">
+                    <span class="pf-opt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg></span>
+                    <span class="pf-opt-text"><strong>Foto de perfil</strong><small>Foto, forma y marco</small></span>
+                </button>
+                <button type="button" class="pf-opt" data-pop-open="pop_banner" id="optBanner">
+                    <span class="pf-opt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="10" rx="2"/><path d="M3 19h18"/></svg></span>
+                    <span class="pf-opt-text"><strong>Portada (banner)</strong><small>Imagen, colores y marco</small></span>
+                </button>
+                <button type="button" class="pf-opt" data-pop-open="pop_bg" id="optBg">
+                    <span class="pf-opt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg></span>
+                    <span class="pf-opt-text"><strong>Fondo de la página</strong><small>Degradado, color o imagen</small></span>
+                </button>
+                <button type="button" class="pf-opt" data-pop-open="pop_colors" id="optColors">
+                    <span class="pf-opt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="15.5" cy="10" r="1.2"/></svg></span>
+                    <span class="pf-opt-text"><strong>Colores y letra</strong><small>Color principal y letra</small></span>
+                </button>
+            </div>
+
+            {% call pop('pop_pres', 'Mi presentación') %}
+                <div class="pf-field">
+                    <label for="f_display_name">Nombre para mostrar</label>
+                    <input type="text" id="f_display_name" name="display_name" maxlength="{{ name_max }}" value="{{ profile.display_name if profile and profile.display_name else '' }}" placeholder="{{ v.handle }}" data-live>
+                    <p class="pf-hint">Si lo dejas vacío se usa tu usuario (@{{ v.handle }}).</p>
+                    <p class="pf-warn" id="warn_display_name" role="alert" hidden>Detectamos un enlace, red social, correo, teléfono o número de ID: se guardará tachado con asteriscos (********).</p>
+                </div>
+                <div class="pf-field">
+                    <label for="f_status_text">Frase de estado</label>
+                    <input type="text" id="f_status_text" name="status_text" maxlength="{{ status_max }}" value="{{ profile.status_text if profile and profile.status_text else '' }}" placeholder="Ej: Rey del pase de nivel" data-live>
+                    <p class="pf-hint">Una frase corta (máx. {{ status_max }} letras) que sale bajo tu nombre.</p>
+                    <p class="pf-warn" id="warn_status_text" role="alert" hidden>Detectamos un enlace, red social, correo, teléfono o número de ID: se guardará tachado con asteriscos (********).</p>
+                </div>
+                <div class="pf-field">
+                    <label for="f_bio">Acerca de mí</label>
+                    <textarea id="f_bio" name="bio" maxlength="{{ bio_max }}" placeholder="Cuéntales quién eres, a qué juegas…" data-live>{{ profile.bio if profile and profile.bio else '' }}</textarea>
+                    <span class="pf-count" id="bioCount">0 / {{ bio_max }}</span>
+                    <p class="pf-warn" id="warn_bio" role="alert" hidden>Detectamos un enlace, red social, correo, teléfono o número de ID: se guardará tachado con asteriscos (********).</p>
+                </div>
+                <div class="pf-field">
+                    <span class="pf-label">¿Quién puede ver tu perfil?</span>
+                    <div class="pf-radios is-grid" role="radiogroup">
+                        <label><input type="radio" name="is_public" value="1" {% if not profile or profile.is_public %}checked{% endif %}><span>Todos (público)</span></label>
+                        <label><input type="radio" name="is_public" value="0" {% if profile and not profile.is_public %}checked{% endif %}><span>Solo yo (privado)</span></label>
+                    </div>
+                    {% if status[0] == 'oculto' %}<p class="pf-hint" style="color:#fde68a">El administrador ocultó tu perfil: aunque esté público, nadie más lo ve.</p>{% endif %}
+                </div>
+                <div class="pf-field">
+                    <span class="pf-label">Dato que se muestra</span>
+                    <label class="pf-check"><input type="checkbox" name="show_since" value="1" data-live {% if th.show.since %}checked{% endif %}> Mostrar desde cuándo soy cliente</label>
+                    <label class="pf-check"><input type="checkbox" name="show_stats" value="1" data-live {% if not profile or profile.show_stats is not false %}checked{% endif %}> Mostrar mi nivel (el número y el del mes), mis números (diamantes), insignias y premios</label>
+                    <label class="pf-check"><input type="checkbox" name="in_rankings" value="1" data-live {% if not profile or profile.in_rankings is not false %}checked{% endif %}> Aparecer en el Top de perfiles y en el Ranking de la tienda (con mi foto y un botón para que vean mi perfil)</label>
+                    <p class="pf-hint">Tu perfil nunca muestra tus IDs, ni los juegos que tienes enlazados, ni la lista de tus compras. Los números y el top salen de las compras que haces con tu cuenta.</p>
+                </div>
+            {% endcall %}
+
+            {% call pop('pop_photo', 'Foto de perfil') %}
+                {{ file_field('avatar', 'Foto', 'PNG, JPG, WEBP o GIF animado. Se recorta cuadrada.', profile and profile.avatar_path) }}
+                <div class="pf-field">
+                    <span class="pf-label">Forma</span>
+                    {{ radio_group('avatar_shape', th.avatar.shape, [('circle', 'Círculo'), ('squircle', 'Cuadrado redondeado')]) }}
+                </div>
+                <label class="pf-check"><input type="checkbox" name="avatar_ring_auto" value="1" data-live {% if th.avatar.ring_auto %}checked{% endif %}> Aro de mi nivel del mes (Bronce, Plata, Oro, Diamante o Leyenda): se pone solo según tu nivel</label>
+                <hr class="pf-sep">
+                <p class="pf-subtitle">Marco de la foto</p>
+                {{ frame_picker('avatar', 'Elige un marco (puede tener movimiento)', avatar_frame_choice, own_avatar_frame, shop_avatar_frames) }}
+                <hr class="pf-sep">
+                <p class="pf-subtitle">Hacer mi propio marco</p>
+                {{ file_field('avatar_frame', 'Mi marco para la foto', 'Una imagen con el centro transparente (PNG, WEBP o GIF animado) que se pone encima de tu foto. Cuenta como una de tus imágenes.', profile and profile.avatar_frame_path, '600 × 600 píxeles (cuadrada). Deja el hueco transparente del centro de unos 430 píxeles (72 % del ancho) para que tu foto encaje justo con el tamaño 140 % de abajo. Si tiene movimiento (GIF, WEBP o PNG animado) se conserva: hasta 300 cuadros.') }}
+                {{ range_field('avatar_ov_scale', 'Tamaño del marco', th.avatar.ov_scale, 100, 220, ' %') }}
+                {{ range_field('avatar_ov_x', 'Moverlo a los lados', th.avatar.ov_x, -40, 40, ' %') }}
+                {{ range_field('avatar_ov_y', 'Moverlo arriba / abajo', th.avatar.ov_y, -40, 40, ' %') }}
+            {% endcall %}
+
+            {% call pop('pop_banner', 'Portada (banner)') %}
+                {{ file_field('banner', 'Imagen de la portada', 'PNG, JPG, WEBP o GIF animado. Se ve horizontal (5:2).', profile and profile.banner_path) }}
+                <details class="pf-sub">
+                    <summary>Colores de la portada <small>(si no subes imagen)</small></summary>
+                    <div class="pf-sub-body">
+                        <div class="pf-chiprow" data-presets="banner">
+                            {% for p in banner_presets %}<button type="button" class="pf-choice" data-preset='{{ p|tojson }}'>{{ p.name }}</button>{% endfor %}
+                        </div>
+                        <div class="pf-row2">
+                            {{ color_field('banner_c1', 'Color 1', th.banner.c1) }}
+                            {{ color_field('banner_c2', 'Color 2', th.banner.c2) }}
+                        </div>
+                        {{ range_field('banner_angle', 'Ángulo del degradado', th.banner.angle, 0, 360, '°') }}
+                    </div>
+                </details>
+                <hr class="pf-sep">
+                <p class="pf-subtitle">Marco de la portada</p>
+                {{ frame_picker('banner', 'Elige un marco (puede tener movimiento)', banner_frame_choice, own_banner_frame, shop_banner_frames) }}
+                <hr class="pf-sep">
+                <p class="pf-subtitle">Hacer mi propio marco</p>
+                {{ file_field('banner_frame', 'Mi marco para la portada', 'Una imagen con el centro transparente (PNG, WEBP o GIF animado) que se estira encima de la portada. Cuenta como una de tus imágenes.', profile and profile.banner_frame_path, '1500 × 600 píxeles (horizontal, proporción 5:2, la misma de la portada) para que encaje perfecto y sin deformarse. Dibuja el marco en los bordes y deja transparente el centro para que se vea tu portada. Si tiene movimiento (GIF, WEBP o PNG animado) se conserva: hasta 300 cuadros.') }}
+                <div class="pf-stack" id="bnPopBox">
+                    {{ range_field('banner_ov_extra', 'Cuánto sobresale', th.banner.ov_extra, 0, 50, ' %') }}
+                    <p class="pf-sizehint"><b>Para que algo SOBRESALGA de la portada</b> (por ejemplo unas manos): sube un marco más alto que la portada, de <b>1500 × 1200 px</b> con fondo transparente y la franja de la portada (1500 × 600) en el centro; lo que dibujes en los 300 px de arriba y de abajo se sale. Al elegir la imagen, esta barra se ajusta sola a 50 %. Con 0 % el marco queda justo encima de la portada.</p>
+                    <p class="pf-hint" id="bnExtraNote" role="status" hidden></p>
+                </div>
+            {% endcall %}
+
+            {% call pop('pop_bg', 'Fondo de la página') %}
+                <div class="pf-field">
+                    <span class="pf-label">Tipo de fondo</span>
+                    {{ radio_group('background_mode', th.background.mode, [('gradient', 'Degradado'), ('color', 'Color liso'), ('image', 'Mi imagen'), ('banner', 'Mi banner difuminado')]) }}
+                </div>
+                <details class="pf-sub">
+                    <summary>Colores del fondo</summary>
+                    <div class="pf-sub-body">
+                        <div class="pf-chiprow" data-presets="background">
+                            {% for p in background_presets %}<button type="button" class="pf-choice" data-preset='{{ p|tojson }}'>{{ p.name }}</button>{% endfor %}
+                        </div>
+                        <div class="pf-row2">
+                            {{ color_field('background_c1', 'Color 1', th.background.c1) }}
+                            {{ color_field('background_c2', 'Color 2', th.background.c2) }}
+                        </div>
+                        {{ range_field('background_angle', 'Ángulo del degradado', th.background.angle, 0, 360, '°') }}
+                    </div>
+                </details>
+                <details class="pf-sub">
+                    <summary>Imagen de fondo</summary>
+                    <div class="pf-sub-body">
+                        {{ file_field('background', 'Imagen de fondo', 'PNG, JPG o WEBP. Al subirla se pone sola como tipo de fondo "Mi imagen".', profile and profile.background_path) }}
+                        <div class="pf-bghint" id="bgUnusedHint" role="status" hidden>
+                            <span>Tienes una imagen de fondo, pero el tipo de fondo elegido no la usa, por eso no se ve.</span>
+                            <button type="button" class="pf-choice" id="bgUseImage">Usar mi imagen como fondo</button>
+                        </div>
+                        <hr class="pf-sep">
+                        {{ range_field('background_dim', 'Oscurecer el fondo', th.background.dim, 0, 90, ' %') }}
+                        {{ range_field('background_blur', 'Desenfoque', th.background.blur, 0, 20, ' px') }}
+                    </div>
+                </details>
+            {% endcall %}
+
+            {% call pop('pop_colors', 'Colores y letra') %}
+                <div class="pf-field">
+                    <span class="pf-label">Color principal (enlaces, bordes)</span>
+                    <div class="pf-chiprow" data-swatches="accent">
+                        {% for c in swatches %}<button type="button" class="pf-swatch" data-color="{{ c }}" style="background:{{ c }}" aria-label="Color {{ c }}"></button>{% endfor %}
+                    </div>
+                </div>
+                <div class="pf-row2">
+                    {{ color_field('accent', 'Color principal', th.accent) }}
+                    {{ color_field('name_color', 'Color del nombre', th.name_color) }}
+                </div>
+                {{ select_field('font', 'Letra del nombre', th.font, [('outfit', 'Outfit (normal)'), ('space', 'Archivo Black'), ('cinzel', 'Cinzel (elegante)'), ('orbitron', 'Orbitron (futurista)'), ('pacifico', 'Pacifico (a mano)')]) }}
+            {% endcall %}
+
+            <div class="pf-savebar" id="pfSaveBar">
+                <div class="pf-savebar-inner">
+                    <a class="pf-btn" href="{{ url_for('profiles_bp.public_profile', username=v.handle) }}" id="pfViewBtn">Ver mi perfil</a>
+                    <button type="submit" class="pf-btn is-primary" id="pfSaveBtn" data-save-btn>Guardar cambios<span class="pf-dirty">&nbsp;•</span></button>
+                </div>
+            </div>
+        </form>
+
+        <div class="pf-danger-zone">
+            <span>¿Quieres empezar de cero? Se borran tus fotos, textos y colores.</span>
+            <form method="POST" action="{{ url_for('profiles_bp.reset_my_profile') }}" onsubmit="return confirm('¿Borrar todo tu perfil y dejarlo como nuevo?');">
+                <button type="submit" class="pf-btn is-danger">Restablecer perfil</button>
+            </form>
+        </div>
+    </main>
+
+    <script src="{{ static_v('js/color-picker.js') }}"></script>
+    <script src="{{ static_v('js/profile-editor.js') }}"></script>
+</body>
+</html>

@@ -2,15 +2,28 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Adivina el Número • 3SRecargas</title>
+{% include '_head_common.html' %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+    /* Los textos "slate" de Tailwind son gris con tono azulado: aquí pasan a gris neutro (solo el color de la letra). */
+    tailwind.config = { theme: { extend: { textColor: { slate: { 50: '#fafafa', 100: '#f5f5f5', 200: '#e5e5e5', 300: '#d4d4d4', 400: '#a3a3a3', 500: '#737373', 600: '#525252', 700: '#404040', 800: '#262626', 900: '#171717', 950: '#0a0a0a' } } } } };
+</script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
-body { font-family: 'Outfit', sans-serif; background-color: #000000; color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+body {
+    font-family: 'Outfit', sans-serif; background-color: #000000; color: #fafafa; -webkit-tap-highlight-color: transparent;
+    /* el mismo fondo de la portada (negro con brillo rojo arriba y violeta abajo) para que el cristal tenga algo que mostrar */
+    background-image: radial-gradient(ellipse at 50% -10%, rgba(255,0,0,.10), transparent 55%), radial-gradient(ellipse at 85% 110%, rgba(120,0,255,.08), transparent 55%);
+    background-attachment: fixed;
+}
 .custom-glow { box-shadow: 0 0 20px rgba(220, 38, 38, 0.2); }
-.mobile-shell { width: 100%; max-width: 440px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; background-color: #000000; position: relative; }
+/* transparente (antes negro sólido): así el cristal deja ver el fondo que se elige en el admin */
+.mobile-shell { width: 100%; max-width: 440px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; background-color: transparent; position: relative; }
 button, input, select { touch-action: manipulation; }
 [hidden] { display: none !important; }
 
@@ -33,14 +46,42 @@ button, input, select { touch-action: manipulation; }
 }
 .glass-game-btn:not(.is-selected):hover { border-color: rgba(255,0,0,0.4); background: rgba(255,255,255,0.07); }
 
+/* Cristal IGUAL que el contenedor de "Verificar ID" de la portada (.glass-panel de neon.css): fondo casi transparente, desenfoque, borde de
+   luz y las mismas sombras. Las piezas de adentro NO llevan desenfoque propio (uno dentro de otro no ve la página). */
 .glass-card {
-    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 45%, rgba(10,10,15,0.04) 100%);
-    border: 1px solid rgba(255,60,60,0.45);
-    border-top: 1px solid rgba(255,150,150,0.5);
-    border-left: 1px solid rgba(255,100,100,0.35);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.15);
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
+    backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    -webkit-backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-top: 1px solid rgba(255,255,255,0.35);
+    border-left: 1px solid rgba(255,255,255,0.25);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 30px rgba(255,0,0,0.08);
 }
-.glass-card.is-current { box-shadow: 0 10px 25px rgba(255,0,0,0.35), inset 0 1px 2px rgba(255,255,255,0.2); border-color: rgba(255,60,60,0.75); }
+@media (min-width: 768px) {
+    .glass-card { backdrop-filter: blur(8px) saturate(200%) brightness(1.2); -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.2); }
+}
+.glass-card.is-current { box-shadow: 0 15px 35px rgba(255,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.25); border-color: rgba(255,60,60,0.55); }
+.glass-chip {
+    background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.14);
+    border-top: 1px solid rgba(255,255,255,0.28);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.12);
+}
+.glass-inset {
+    background: rgba(0,0,0,0.22);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-top: 1px solid rgba(255,255,255,0.2);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.08);
+}
+.glass-inset.is-prize { border-color: rgba(245,158,11,0.45); border-top-color: rgba(251,191,36,0.55); }
+.glass-overlay { background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.glass-window {
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-top: 1px solid rgba(255,255,255,0.35);
+    border-left: 1px solid rgba(255,255,255,0.25);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 30px rgba(255,0,0,0.08);
+}
 
 .step-num-badge {
     width: 22px; height: 22px;
@@ -59,7 +100,7 @@ button, input, select { touch-action: manipulation; }
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 1px rgba(255,255,255,0.15);
     color: #fff;
 }
-.glass-input-field::placeholder { color: #94a3b8; font-weight: 600; }
+.glass-input-field::placeholder { color: #a3a3a3; font-weight: 600; }
 .glass-input-field:focus {
     border-color: rgba(255,0,0,0.65);
     box-shadow: 0 0 0 3px rgba(255,0,0,0.15), inset 0 2px 4px rgba(0,0,0,0.1);
@@ -68,10 +109,10 @@ button, input, select { touch-action: manipulation; }
 </head>
 <body class="bg-black text-slate-100 flex justify-center">
 {% if DRAWER_BG_IMAGES.drawer_bg_adivina %}
-<div aria-hidden="true" style="position:fixed;inset:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_adivina) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
+<div aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_adivina) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
 {% endif %}
 <div class="mobile-shell p-4">
-    <a href="{{ url_for('main_bp.index') }}" class="inline-flex items-center gap-1.5 bg-black border border-red-500/40 hover:border-red-500 hover:bg-red-600/10 text-slate-300 hover:text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-sm transition mt-1 mb-2 w-fit active:scale-95">
+    <a href="{{ url_for('main_bp.index') }}" class="inline-flex items-center gap-1.5 glass-chip hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-sm transition mt-1 mb-2 w-fit active:scale-95">
         <span>←</span> Volver a la tienda
     </a>
 
@@ -127,7 +168,7 @@ button, input, select { touch-action: manipulation; }
                     <input type="tel" inputmode="numeric" id="playerIdInput" placeholder="Tu ID de Juego..."
                            class="glass-input-field flex-1 min-w-0 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none font-mono">
                     {% if verifiable %}
-                    <button type="button" id="verifyIdBtn" class="flex-shrink-0 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/60 text-slate-200 hover:text-white font-extrabold text-[10px] px-3.5 rounded-xl uppercase tracking-wider">🔍 Verificar</button>
+                    <button type="button" id="verifyIdBtn" class="flex-shrink-0 glass-chip hover:bg-white/10 text-slate-200 hover:text-white font-extrabold text-[10px] px-3.5 rounded-xl uppercase tracking-wider">🔍 Verificar</button>
                     {% endif %}
                 </div>
                 {% if verifiable %}
@@ -153,11 +194,11 @@ button, input, select { touch-action: manipulation; }
         {% endif %}
     </main>
 
-    <div id="winModal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4" hidden>
-        <div class="bg-gradient-to-b from-[#080808] to-[#000000] border-2 border-red-500/60 p-5 rounded-2xl shadow-2xl w-full max-w-xs text-center custom-glow">
+    <div id="winModal" class="fixed inset-0 glass-overlay z-50 flex items-center justify-center p-4" hidden>
+        <div class="glass-window p-5 rounded-2xl w-full max-w-xs text-center">
             <div class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-red-600/20 text-red-500 text-lg mb-2 border border-red-500/40 animate-bounce">🎉</div>
             <h3 class="text-base font-black text-white tracking-wider mb-1">¡NÚMERO CORRECTO!</h3>
-            <div class="bg-[#000000] border border-red-500/40 rounded-xl p-3 my-2 shadow-inner">
+            <div class="glass-inset rounded-xl p-3 my-2">
                 <span id="modalRewardLabel" class="text-[10px] text-red-400 font-extrabold uppercase tracking-wider block mb-1">👑 ¡GANASTE!</span>
                 <div id="modalSlot" class="text-xs font-black text-amber-400 tracking-wide"></div>
             </div>
@@ -189,11 +230,11 @@ function escapeHtml(value) {
 function renderWinners(winners) {
     const box = document.getElementById('winnersBox');
     if (!winners || !winners.length) {
-        box.innerHTML = `<div class="bg-[#000000] border border-zinc-900 rounded-xl p-2 text-center text-slate-400 text-xs">Esperando ganador...</div>`;
+        box.innerHTML = `<div class="glass-inset rounded-xl p-2 text-center text-slate-400 text-xs">Esperando ganador...</div>`;
         return;
     }
     box.innerHTML = winners.map((w, i) => `
-        <div class="bg-black border border-amber-500/40 rounded-xl p-2.5 text-slate-400 text-xs shadow-inner">
+        <div class="glass-inset is-prize rounded-xl p-2.5 text-slate-400 text-xs">
             <div class="flex items-center justify-between">
                 <span class="text-[9px] text-amber-400 font-extrabold uppercase">👑 Cupo #${i + 1}</span>
                 <span class="text-[10px] font-bold text-white">Número #${escapeHtml(w.guessed_number)}</span>
@@ -211,11 +252,11 @@ function renderHistory(history) {
     if (!history || !history.length) { container.hidden = true; return; }
     container.hidden = false;
     list.innerHTML = history.map(day => `
-        <div class="bg-black border border-zinc-900 p-2.5 rounded-xl shadow">
+        <div class="glass-inset p-2.5 rounded-xl">
             <div class="text-white font-bold text-[11px] mb-1.5">📅 ${escapeHtml(day.day_key)}</div>
             <div class="grid grid-cols-1 gap-1.5">
                 ${day.winners.map((w, i) => `
-                    <div class="bg-[#080808] border border-zinc-800/80 rounded-lg p-2 text-[10px]">
+                    <div class="rounded-lg p-2 text-[10px]" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);">
                         <div class="flex items-center justify-between">
                             <span class="text-amber-400 font-extrabold">👑 #${i + 1}</span>
                             <span class="text-slate-400">Número #${escapeHtml(w.guessed_number)}</span>
@@ -230,6 +271,7 @@ function renderHistory(history) {
 }
 
 let resetIntervalId = null;
+let resetRefreshTimer = null;
 
 // Cuenta regresiva hasta la medianoche (Venezuela), cuando se reinician
 // los cupos del día — solo se muestra una vez que ya se entregaron todos
@@ -246,6 +288,14 @@ function iniciarTemporizadorReinicio(nextResetIso, show) {
         const diff = target - Date.now();
         if (diff <= 0) {
             el.textContent = '⏳ Reiniciando cupos...';
+            // Llegó la hora del reinicio: se vuelve a pedir el estado solo (antes el botón se quedaba bloqueado hasta recargar la página a mano).
+            // Si el reloj del teléfono va adelantado y el servidor todavía no reinició, lo vuelve a intentar cada 5 s.
+            if (!resetRefreshTimer) {
+                resetRefreshTimer = setTimeout(() => {
+                    resetRefreshTimer = null;
+                    refreshState(playerIdInputEl ? playerIdInputEl.value.trim() : '').catch(() => {});
+                }, 5000);
+            }
             return;
         }
         const h = Math.floor(diff / 3600000);
@@ -265,7 +315,7 @@ async function refreshState(playerId) {
 
     document.getElementById('scheduleLabel').textContent = `Se reinicia todos los días a las 00:00 (Venezuela)`;
     document.getElementById('rangeText').innerHTML =
-        `Adivina el número secreto entre <strong class="text-white">1 y ${data.number_max}</strong>. Hay <strong class="text-amber-400">${data.winners_per_day} premios</strong> diarios de <strong class="text-amber-400">${data.reward_label}</strong>.`;
+        `Adivina el número secreto entre <strong class="text-white">1 y ${data.number_max}</strong>. Hay <strong class="text-amber-400">${data.winners_per_day} premios</strong> diarios de <strong class="text-amber-400">${escapeHtml(data.reward_label)}</strong>.`;
     // Si ya no hay cupos hoy, mostrar "2 de 2 intentos" junto a un botón
     // bloqueado era confuso (parecía que sí se podía jugar). Los intentos
     // de este ID no sirven de nada hasta que reinicie, así que se avisa
@@ -345,7 +395,9 @@ if (verifyIdBtn) {
     });
 }
 
-document.getElementById('guessBtn').addEventListener('click', async () => {
+let guessInFlight = false;   // un solo intento a la vez: con red lenta, un doble toque mandaba el mismo número dos veces y gastaba 2 intentos
+(document.getElementById('guessBtn') || { addEventListener: function () {} }).addEventListener('click', async () => {
+    if (guessInFlight) return;
     const playerId = playerIdInputEl.value.trim();
     const guess = document.getElementById('guessInput').value.trim();
     const feedback = document.getElementById('feedbackMsg');
@@ -357,6 +409,10 @@ document.getElementById('guessBtn').addEventListener('click', async () => {
         return;
     }
 
+    guessInFlight = true;
+    const guessBtnEl = document.getElementById('guessBtn');
+    const guessWasDisabled = guessBtnEl ? guessBtnEl.disabled : false;
+    if (guessBtnEl) guessBtnEl.disabled = true;
     try {
         const res = await fetch('/promos/api/adivina/intentar', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -390,14 +446,27 @@ document.getElementById('guessBtn').addEventListener('click', async () => {
         refreshState(playerId);
     } catch (e) {
         feedback.textContent = 'Error de conexión, intenta de nuevo.';
+    } finally {
+        guessInFlight = false;
+        // El botón vuelve a como estaba; enseguida refreshState lo deja activo o bloqueado según los intentos y cupos que queden.
+        if (guessBtnEl) guessBtnEl.disabled = guessWasDisabled;
     }
 });
 
-document.getElementById('closeModalBtn').addEventListener('click', () => {
+(document.getElementById('closeModalBtn') || { addEventListener: function () {} }).addEventListener('click', () => {
     document.getElementById('winModal').hidden = true;
 });
 
-refreshState('');
+// Si la primera carga falla (conexión mala), se reintenta sola en vez de quedarse en "Cargando..." para siempre.
+function firstLoad(attempt) {
+    refreshState('').catch(() => {
+        const status = document.getElementById('statusLine');
+        if (status) status.textContent = 'No se pudo cargar. Reintentando...';
+        if (attempt < 6) setTimeout(() => firstLoad(attempt + 1), 3000 * (attempt + 1));
+    });
+}
+firstLoad(0);
 </script>
+{% include '_version_watch.html' %}
 </body>
 </html>

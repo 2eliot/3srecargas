@@ -2,7 +2,7 @@
    3S RECARGAS — Tema "Neón Glass" (rediseño 2026)
    Se carga DESPUÉS de main.css y re-tematiza todo el lado público.
    Tokens: fondo #000, glass translúcido, neón rojo #FF0000,
-   fuentes Outfit (display/números) + Space Grotesk (texto).
+   fuentes Outfit (display/números) + Archivo Black (texto).
    ══════════════════════════════════════════════════════════════ */
 
 :root {
@@ -10,11 +10,11 @@
     --nx-red-dark: #c80000;
     --nx-amber: #fbbf24;
     --nx-green: #10b981;
-    --nx-text: #f1f5f9;
-    --nx-muted: #cbd5e1;
-    --nx-dim: #94a3b8;
+    --nx-text: #f5f5f5;
+    --nx-muted: #d4d4d4;
+    --nx-dim: #a3a3a3;
     --nx-font-display: 'Outfit', sans-serif;
-    --nx-font-sans: 'Space Grotesk', sans-serif;
+    --nx-font-sans: 'Archivo Black', 'Arial Black', Impact, sans-serif;
 }
 
 /* ── Base ─────────────────────────────────────────────────── */
@@ -26,6 +26,8 @@ body {
     background: transparent !important;
     color: var(--nx-text);
     font-family: var(--nx-font-sans) !important;
+    /* Archivo Black ya es una letra muy gruesa y de un solo grosor: sin esto el navegador la "engorda" otra vez (borrosa) donde se pide negrita */
+    font-synthesis-weight: none;
 }
 
 /* Capa fija de fondo: reemplaza a background-attachment: fixed en el body,
@@ -136,7 +138,7 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 }
 
 .nx-store input::placeholder,
-.nx-checkout input::placeholder { color: #94a3b8; font-weight: 600; }
+.nx-checkout input::placeholder { color: #a3a3a3; font-weight: 600; }
 
 .nx-store input:focus,
 .nx-checkout input:focus {
@@ -203,6 +205,10 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 /* ── Header ───────────────────────────────────────────────── */
 .site-header {
     background: transparent !important;
+    /* Sin desenfoque propio (main.css le pone backdrop-filter): con uno, los botones de cristal y el panel de
+       notificaciones que están dentro del encabezado no podrían ver la página de atrás. */
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
     border-bottom: none !important;
     box-shadow: none !important;
     padding: 14px 0 0 !important;
@@ -237,6 +243,8 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     justify-self: center;
     min-width: 0;
 }
+/* Cabeceras donde el logo va solo (perfiles, iniciar sesión, Mi cuenta): al CENTRO (columna del medio), no pegado a la izquierda */
+.header-inner > .logo-link:only-child { grid-column: 2; justify-self: center; }
 .header-inner .nav-toggle { justify-self: end; }
 
 .logo-img { max-height: 40px !important; }
@@ -250,7 +258,7 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     text-transform: uppercase;
     color: #fff !important;
     font-size: 18px !important;
-    background: linear-gradient(60deg, #cbd5e1, #fff, #94a3b8);
+    background: linear-gradient(60deg, #d4d4d4, #fff, #a3a3a3);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -276,19 +284,33 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
     width: 38px;
     height: 38px;
     flex: 0 0 auto;
-    border-radius: 12px;
-    background: linear-gradient(135deg, rgba(255,255,255,.02), rgba(255,255,255,.005));
-    border: 1px solid rgba(255,0,0,.4);
-    backdrop-filter: blur(6px) saturate(190%);
+    border-radius: 13px;
+    /* Botón de cristal: EXACTAMENTE el cristal de las tarjetas (.glass-panel): fondo casi transparente, desenfoque,
+       borde de luz arriba/izquierda y las mismas sombras. */
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
+    -webkit-backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-top: 1px solid rgba(255,255,255,0.35);
+    border-left: 1px solid rgba(255,255,255,0.25);
+    box-shadow:
+        0 15px 35px rgba(0,0,0,0.15),
+        inset 0 1px 2px rgba(255,255,255,0.25),
+        inset 0 -1.5px 2px rgba(0,0,0,0.02),
+        0 0 30px rgba(255,0,0,0.08);
     cursor: pointer;
-    box-shadow: 0 1px 6px rgba(0,0,0,.35);
-    transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s ease, background .2s ease;
+}
+@media (min-width: 768px) {
+    .nav-toggle { -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.2); backdrop-filter: blur(8px) saturate(200%) brightness(1.2); }
 }
 .nav-toggle:hover,
+.nav-toggle:focus-visible,
 .nav-toggle[aria-expanded="true"] {
-    border-color: var(--nx-red);
-    box-shadow: 0 0 14px rgba(255,0,0,.35);
-    background: rgba(255,0,0,.08);
+    border-color: rgba(255,60,85,.7);
+    background: linear-gradient(135deg, rgba(255,255,255,.07), rgba(255,40,70,.12));
+    outline: none;
 }
 .nav-toggle-bars {
     display: flex;
@@ -308,12 +330,17 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 .nav-toggle[aria-expanded="true"] .nav-toggle-bars span:nth-child(2) { opacity: 0; }
 .nav-toggle[aria-expanded="true"] .nav-toggle-bars span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 
+/* ── Menú lateral (cristal) ───────────────────────────────────────────────
+   Hoja de cristal flotante a la derecha con el mismo lenguaje de la tienda (.glass-panel): fondo casi transparente
+   con desenfoque, borde de luz arriba, filas de cristal y cuadritos de ícono rojos, iguales a los del popup de
+   Juegos (un solo estilo para todos los íconos). Entra con las filas apareciendo una tras otra. */
 .site-drawer-overlay {
     position: fixed;
-    inset: 0;
+    top:0;right:0;bottom:0;left:0;
     z-index: 1100;
-    background: rgba(0,0,0,.68);
-    backdrop-filter: blur(3px);
+    background: rgba(0,0,0,.42);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
     opacity: 0;
     transition: opacity .25s ease;
 }
@@ -322,142 +349,377 @@ body::selection, body ::selection { background: var(--nx-red); color: #fff; }
 
 .site-drawer {
     position: fixed;
-    top: 0;
-    right: 0;
+    top: max(10px, env(safe-area-inset-top));
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
     z-index: 1110;
-    width: min(84vw, 310px);
-    height: 100%;
+    width: min(86vw, 320px);
     display: flex;
     flex-direction: column;
-    background: linear-gradient(180deg, #14070a 0%, #090408 100%);
-    border-left: 1px solid rgba(255,0,0,.35);
-    box-shadow: -18px 0 44px rgba(0,0,0,.6);
-    transform: translateX(100%);
-    transition: transform .28s cubic-bezier(.22,.75,.28,1);
-    overflow-y: auto;
-    overscroll-behavior: contain;
+    border-radius: 24px;
+    background:
+        linear-gradient(155deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.035) 42%, rgba(255,40,70,.07) 100%),
+        rgba(10,10,14,.28);
+    -webkit-backdrop-filter: blur(18px) saturate(190%);
+    backdrop-filter: blur(18px) saturate(190%);
+    border: 1px solid rgba(255,255,255,.16);
+    border-top-color: rgba(255,255,255,.34);
+    box-shadow: 0 24px 60px rgba(0,0,0,.6), inset 0 1px 2px rgba(255,255,255,.22), 0 0 40px rgba(255,0,0,.08);
+    transform: translateX(calc(100% + 24px));
+    transition: transform .32s cubic-bezier(.22,.75,.28,1);
+    overflow: hidden;               /* el scroll va dentro de la lista, para que las esquinas redondas no se corten */
 }
 .site-drawer.is-open { transform: translateX(0); }
 
 .site-drawer-head {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 16px 16px 12px;
-    border-bottom: 1px solid rgba(255,255,255,.07);
+    padding: 16px 16px 13px;
+    border-bottom: 1px solid rgba(255,255,255,.1);
 }
 .site-drawer-title {
     font-family: var(--nx-font-display);
-    font-weight: 900;
+    font-weight: 800;
     font-size: 12px;
-    letter-spacing: .16em;
+    letter-spacing: .2em;
     text-transform: uppercase;
-    color: rgba(255,255,255,.55);
+    color: rgba(255,255,255,.75);
 }
 .site-drawer-close {
-    width: 30px;
-    height: 30px;
-    border-radius: 9px;
-    background: rgba(255,255,255,.05);
-    border: 1px solid rgba(255,255,255,.1);
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.16);
     color: #fff;
     font-size: 13px;
     line-height: 1;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
     transition: border-color .2s ease, background .2s ease;
 }
-.site-drawer-close:hover { border-color: var(--nx-red); background: rgba(255,0,0,.12); }
+.site-drawer-close:hover,
+.site-drawer-close:focus-visible { border-color: rgba(255,60,85,.7); background: rgba(255,40,70,.16); outline: none; }
 
-.site-drawer-nav { display: flex; flex-direction: column; gap: 6px; padding: 14px 12px 24px; }
+.site-drawer-nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 12px 20px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+}
+.site-drawer-nav::-webkit-scrollbar { display: none; }
 
 .drawer-item {
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
-    padding: 11px 12px;
-    border-radius: 13px;
-    background: rgba(255,255,255,.02);
-    border: 1px solid rgba(255,255,255,.06);
+    padding: 9px 12px 9px 10px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.015));
+    border: 1px solid rgba(255,255,255,.12);
+    border-top-color: rgba(255,255,255,.24);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.1);
     color: #fff;
     text-align: left;
     text-decoration: none;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
     transition: border-color .2s ease, background .2s ease, transform .15s ease;
 }
 .drawer-item:hover,
 .drawer-item:focus-visible {
-    border-color: rgba(255,0,0,.5);
-    background: rgba(255,0,0,.07);
+    border-color: rgba(255,60,85,.6);
+    background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,40,70,.09));
+    outline: none;
 }
 .drawer-item:active { transform: scale(.985); }
-
-.drawer-item-icon {
-    width: 34px;
-    height: 34px;
+/* "Soporte" del menú: borde rojo y un efecto que late (resplandor + anillo que se expande) para que los clientes lo vean. El anillo va en
+   ::before (no se anima la fila misma: ya tiene la animación de entrada del menú); el anillo se queda dentro de los 12 px de margen del menú. */
+.drawer-item[href^="/soporte"] {
+    position: relative;
+    border-color: rgba(255,45,70,.85);
+    border-top-color: rgba(255,120,135,.9);
+    background: linear-gradient(135deg, rgba(255,255,255,.085), rgba(255,40,70,.12));
+    box-shadow: 0 0 14px rgba(255,30,60,.35), inset 0 1px 1px rgba(255,255,255,.14);
+}
+.drawer-item[href^="/soporte"]::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    border: 1.5px solid rgba(255,60,85,.9);
+    pointer-events: none;
+    animation: nx-support-ping 2.2s ease-out infinite;
+}
+.drawer-item[href^="/soporte"] .drawer-item-icon { animation: nx-support-icon 2.2s ease-in-out infinite; }
+@keyframes nx-support-ping {
+    0%   { transform: scale(1);    opacity: .9; }
+    70%  { transform: scale(1.035, 1.22); opacity: 0; }
+    100% { transform: scale(1.035, 1.22); opacity: 0; }
+}
+@keyframes nx-support-icon {
+    0%, 55%, 100% { transform: none; }
+    62% { transform: rotate(-9deg) scale(1.06); }
+    70% { transform: rotate(8deg) scale(1.06); }
+    78% { transform: rotate(-5deg); }
+    86% { transform: rotate(3deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .drawer-item[href^="/soporte"]::before, .drawer-item[href^="/soporte"] .drawer-item-icon { animation: none; }
+}
+/* Flechita a la derecha de cada fila (la de "Dinámicas Gratis" ya trae la suya) */
+.drawer-item:not(.drawer-item-toggle)::after {
+    content: "";
     flex: 0 0 auto;
-    border-radius: 50%;
+    width: 7px;
+    height: 7px;
+    margin: 0 4px 0 auto;
+    border-top: 2px solid rgba(255,255,255,.45);
+    border-right: 2px solid rgba(255,255,255,.45);
+    border-radius: 1px;
+    transform: rotate(45deg);
+}
+
+/* Cuadrito del ícono: el mismo cristal rojo para todos (antes cada ícono tenía un color distinto) */
+.drawer-item-icon {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    border-radius: 12px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    color: #fff;
+    background:
+        radial-gradient(circle at 30% 16%, rgba(255,255,255,.4), rgba(255,255,255,0) 58%),
+        linear-gradient(150deg, rgba(255,64,88,.85), rgba(178,0,30,.8));
+    border: 1px solid rgba(255,140,150,.5);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.4), inset 0 -4px 8px rgba(110,0,15,.35), 0 4px 12px rgba(255,0,40,.22);
 }
-.drawer-item-icon svg { width: 17px; height: 17px; }
-.drawer-icon-home { background: rgba(148,163,184,.18); color: #cbd5e1; }
-.drawer-icon-redeem { background: rgba(16,185,129,.2); color: #34d399; }
-.drawer-icon-points { background: rgba(59,130,246,.2); color: #60a5fa; }
-.drawer-icon-ranking { background: rgba(245,158,11,.2); color: #fbbf24; }
-.drawer-icon-mini { background: rgba(168,85,247,.2); color: #c084fc; }
-.drawer-icon-user,
-.drawer-icon-login { background: rgba(255,0,0,.2); color: var(--nx-red); }
-.drawer-icon-support { background: rgba(255,0,0,.2); color: var(--nx-red); }
+.drawer-item-icon svg { width: 19px; height: 19px; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* Tres tonos de la marca: rojo (el de arriba), BLANCO (ícono rojo) y NEGRO (ícono blanco), todos de cristal */
+.drawer-item-icon.drawer-icon-ranking,
+.drawer-item-icon.drawer-icon-redeem {
+    color: var(--nx-red);
+    background: radial-gradient(circle at 30% 16%, #fff, rgba(255,255,255,.55) 58%), linear-gradient(150deg, #fff, #dcdcdc);
+    border: 1px solid rgba(255,255,255,.9);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.9), inset 0 -4px 8px rgba(0,0,0,.12), 0 4px 12px rgba(255,255,255,.1);
+}
+.drawer-item-icon.drawer-icon-points,
+.drawer-item-icon.drawer-icon-mini,
+.drawer-item-icon.drawer-icon-home,
+.drawer-item[data-pwa-install] .drawer-item-icon {
+    color: #fff;
+    background: radial-gradient(circle at 30% 16%, rgba(255,255,255,.28), rgba(255,255,255,0) 58%), linear-gradient(150deg, #26262a, #000);
+    border: 1px solid rgba(255,255,255,.28);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.25), inset 0 -4px 8px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.4);
+}
+/* Dos íconos a pedido del dueño: Ranking en amarillo casi dorado y "Soy mini influencer" (y su panel) en azul */
+#openRankingModalBtn .drawer-item-icon {
+    color: #fff;
+    background: radial-gradient(circle at 30% 16%, rgba(255,255,255,.55), rgba(255,255,255,0) 58%), linear-gradient(150deg, #ffd24a, #d79a00);
+    border: 1px solid rgba(255,220,110,.85);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.6), inset 0 -4px 8px rgba(120,70,0,.35), 0 4px 12px rgba(255,190,40,.28);
+}
+.drawer-item[href^="/minis"] .drawer-item-icon {
+    color: #fff;
+    background: radial-gradient(circle at 30% 16%, rgba(255,255,255,.4), rgba(255,255,255,0) 58%), linear-gradient(150deg, #4f8dff, #1d4fd8);
+    border: 1px solid rgba(140,180,255,.75);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.45), inset 0 -4px 8px rgba(5,25,110,.4), 0 4px 12px rgba(60,120,255,.28);
+}
 
-.drawer-item-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.drawer-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .drawer-item-text strong {
     font-family: var(--nx-font-display);
-    font-weight: 900;
-    font-size: 13px;
+    font-weight: 800;
+    font-size: 14px;
+    line-height: 1.2;
     letter-spacing: .01em;
 }
 .drawer-item-text small {
-    font-size: 10.5px;
-    color: rgba(255,255,255,.45);
-    line-height: 1.35;
+    font-family: var(--nx-font-display);
+    font-weight: 500;
+    font-size: 11.5px;
+    color: rgba(255,255,255,.58);
+    line-height: 1.3;
 }
 
 .drawer-item-chevron {
     flex: 0 0 auto;
     margin-left: auto;
-    color: rgba(255,255,255,.4);
+    color: rgba(255,255,255,.5);
     transition: transform .2s ease;
 }
 .drawer-item-toggle[aria-expanded="true"] .drawer-item-chevron { transform: rotate(90deg); color: #fff; }
-.drawer-item-toggle[aria-expanded="true"] { border-color: rgba(255,0,0,.5); background: rgba(255,0,0,.07); }
+.drawer-item-toggle[aria-expanded="true"] { border-color: rgba(255,60,85,.6); background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,40,70,.1)); }
 
 .drawer-submenu {
     display: none;
     flex-direction: column;
-    gap: 6px;
-    padding-left: 18px;
+    gap: 8px;
+    padding-left: 16px;
     margin-top: -2px;
-    border-left: 1px dashed rgba(255,255,255,.12);
+    border-left: 1px solid rgba(255,255,255,.14);
 }
 .drawer-submenu:not([hidden]) { display: flex; }
-.drawer-subitem { padding: 9px 12px; background: rgba(255,255,255,.015); }
-.drawer-subitem .drawer-item-icon { width: 28px; height: 28px; }
-.drawer-subitem .drawer-item-icon svg { width: 14px; height: 14px; }
-.drawer-subitem .drawer-item-text strong { font-size: 12px; }
+.drawer-subitem { padding: 8px 12px 8px 9px; }
+.drawer-subitem .drawer-item-icon { width: 30px; height: 30px; border-radius: 10px; }
+.drawer-subitem .drawer-item-icon svg { width: 15px; height: 15px; }
+.drawer-subitem .drawer-item-text strong { font-size: 12.5px; }
+.drawer-subitem .drawer-item-text small { font-size: 10.5px; }
 
 .drawer-sep {
     height: 1px;
-    background: rgba(255,255,255,.07);
-    margin: 8px 4px;
+    background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.22), rgba(255,255,255,0));
+    margin: 6px 4px;
 }
+
+/* Apartado de hasta abajo del menú: modo liviano a mano (interruptor). Va fuera de la lista que se desplaza, así que siempre se ve al fondo. */
+.site-drawer-foot {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px 12px;
+    border-top: 1px solid rgba(255,255,255,.1);
+    background: linear-gradient(0deg, rgba(0,0,0,.28), rgba(0,0,0,0));
+}
+/* Borde blanco para que resalte; el cuadro "late" con un anillo blanco que se expande (como el de Soporte) y el ícono se sacude con un destello.
+   Solo se mueven transform y opacity (baratos para el teléfono) y solo mientras el menú está abierto. */
+.drawer-lite {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 8px 12px 8px 10px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,255,255,.02));
+    border: 2px solid rgba(255,255,255,.92);
+    box-shadow: 0 0 14px rgba(255,255,255,.28), inset 0 1px 1px rgba(255,255,255,.2);
+    color: #fff;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .2s ease, box-shadow .2s ease;
+}
+.drawer-lite:hover,
+.drawer-lite:focus-visible { background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.04)); box-shadow: 0 0 18px rgba(255,255,255,.35), inset 0 1px 1px rgba(255,255,255,.25); outline: none; }
+.drawer-lite[aria-checked="true"] { background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,40,70,.14)); }
+.drawer-lite::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    border: 2px solid rgba(255,255,255,.85);
+    pointer-events: none;
+    opacity: 0;
+}
+.site-drawer.is-open .drawer-lite::before { animation: nx-lite-ping 2.4s ease-out infinite; }
+.site-drawer.is-open .drawer-lite .drawer-item-icon { animation: nx-lite-icon 2.4s ease-in-out infinite; }
+.site-drawer.is-open .drawer-lite .drawer-item-icon svg { animation: nx-lite-bolt 2.4s ease-in-out infinite; }
+@keyframes nx-lite-ping {
+    0%   { transform: scale(1);    opacity: .9; }
+    70%  { transform: scale(1.035, 1.28); opacity: 0; }
+    100% { transform: scale(1.035, 1.28); opacity: 0; }
+}
+@keyframes nx-lite-icon {
+    0%, 55%, 100% { transform: none; }
+    62% { transform: rotate(-10deg) scale(1.1); }
+    70% { transform: rotate(9deg) scale(1.1); }
+    78% { transform: rotate(-6deg) scale(1.05); }
+    86% { transform: rotate(3deg); }
+}
+@keyframes nx-lite-bolt {
+    0%, 55%, 100% { transform: none; opacity: 1; }
+    62%, 78% { transform: scale(1.25); opacity: .55; }
+    70%, 86% { transform: scale(1.1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .site-drawer.is-open .drawer-lite::before,
+    .site-drawer.is-open .drawer-lite .drawer-item-icon,
+    .site-drawer.is-open .drawer-lite .drawer-item-icon svg { animation: none; }
+}
+.drawer-lite .drawer-item-icon { width: 34px; height: 34px; border-radius: 11px; }
+.drawer-lite .drawer-item-icon svg { width: 17px; height: 17px; }
+.drawer-lite .drawer-item-text strong { font-size: 13px; }
+.drawer-lite .drawer-item-text small { font-size: 10.5px; }
+.drawer-lite-switch {
+    position: relative;
+    flex: 0 0 auto;
+    margin-left: auto;
+    width: 42px;
+    height: 24px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.16);
+    border: 1px solid rgba(255,255,255,.25);
+    transition: background .2s ease, border-color .2s ease;
+}
+.drawer-lite-switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.5);
+    transition: transform .2s ease;
+}
+.drawer-lite[aria-checked="true"] .drawer-lite-switch { background: linear-gradient(150deg, rgba(255,64,88,.95), rgba(178,0,30,.95)); border-color: rgba(255,140,150,.6); }
+.drawer-lite[aria-checked="true"] .drawer-lite-switch::after { transform: translateX(18px); }
+.drawer-lite-auto {
+    align-self: center;
+    padding: 4px 8px;
+    background: none;
+    border: 0;
+    color: rgba(255,255,255,.55);
+    font-family: var(--nx-font-display);
+    font-size: 11px;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.drawer-lite-auto[hidden] { display: none; }
+
+/* Las filas aparecen una tras otra al abrir el menú */
+@keyframes nx-drawer-item-in {
+    from { opacity: 0; transform: translateX(16px); }
+    to { opacity: 1; transform: none; }
+}
+.site-drawer.is-open .site-drawer-nav > * { animation: nx-drawer-item-in .4s cubic-bezier(.22,.75,.28,1) both; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(1) { animation-delay: 0.060s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(2) { animation-delay: 0.095s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(3) { animation-delay: 0.130s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(4) { animation-delay: 0.165s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(5) { animation-delay: 0.200s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(6) { animation-delay: 0.235s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(7) { animation-delay: 0.270s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(8) { animation-delay: 0.305s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(9) { animation-delay: 0.340s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(10) { animation-delay: 0.375s; }
+.site-drawer.is-open .site-drawer-nav > :nth-child(11) { animation-delay: 0.410s; }
 
 body.drawer-open { overflow: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
     .site-drawer, .site-drawer-overlay, .nav-toggle-bars span { transition: none; }
+    .site-drawer.is-open .site-drawer-nav > * { animation: none; }
 }
 
 .header-action-btn,
@@ -553,14 +815,21 @@ body.drawer-open { overflow: hidden; }
     border: 1px solid rgba(51,65,85,.8) !important;
     padding: 8px 16px !important;
     border-radius: 12px !important;
-    color: #f1f5f9 !important;
+    color: #f5f5f5 !important;
     font-family: var(--nx-font-display);
     font-weight: 700;
     font-size: 13px !important;
     letter-spacing: .05em;
     box-shadow: 0 4px 14px rgba(0,0,0,.4);
 }
-.footer-rif svg { width: 13px; height: 13px; color: #94a3b8; }
+.footer-rif svg { width: 13px; height: 13px; color: #a3a3a3; }
+/* El RIF: fondo negro con letras blancas (el botón de Soporte, que también usa .footer-rif, sigue rojo) */
+.footer-rif:not(.footer-support-btn) {
+    background: #000 !important;
+    border: 1px solid rgba(255,255,255,.16) !important;
+    color: #fff !important;
+}
+.footer-rif:not(.footer-support-btn) svg { color: #fff; }
 
 .footer-support-btn {
     background: linear-gradient(135deg, var(--nx-red), #b91c1c) !important;
@@ -600,7 +869,7 @@ body.drawer-open { overflow: hidden; }
 
 .footer-social-list .footer-social-link:nth-child(1) { background: #fff; color: #0f172a !important; }
 .footer-social-list .footer-social-link:nth-child(2) { background: linear-gradient(50deg, #f59e0b, var(--nx-red), #9333ea); color: #fff !important; }
-.footer-social-list .footer-social-link:nth-child(3) { background: #020617; border: 1px solid #1e293b !important; color: #22d3ee !important; }
+.footer-social-list .footer-social-link:nth-child(3) { background: #000; border: 1px solid rgba(255,255,255,.16) !important; color: #fff !important; }
 .footer-social-list .footer-social-wa { background: linear-gradient(90deg, var(--nx-red), #dc2626) !important; color: #fff !important; }
 
 .footer-contact-list { display: flex; flex-direction: column; gap: 8px; align-items: center; padding: 0 !important; margin: 0 !important; }
@@ -665,7 +934,7 @@ body.drawer-open { overflow: hidden; }
     margin: 26px auto 0 !important;
     border-top: 1px solid rgba(255,255,255,.08) !important;
     background: transparent !important;
-    color: #64748b !important;
+    color: #737373 !important;
     font-size: 11px !important;
     padding-top: 16px !important;
     text-align: center;
@@ -694,28 +963,44 @@ body.drawer-open { overflow: hidden; }
     border-radius: 12px;
     overflow: hidden;
     border: 1px solid rgba(255,255,255,.3);
-    box-shadow: 0 12px 30px rgba(0,0,0,.5);
+    /* La sombra oscura va hacia arriba y los lados: hacia abajo caía sobre la barra de pestañas y la oscurecía
+       (se veía distinta a Player ID aunque tuviera el mismo cristal). */
+    box-shadow: 0 -6px 18px -4px rgba(0,0,0,.45);
     cursor: pointer;
     display: block;
 }
-.nx-promo-banner img {
+.nx-promo-banner img,
+.nx-promo-banner video {
     width: 100%;
     aspect-ratio: 50 / 11;
     object-fit: cover;
     display: block;
     transition: transform .5s ease;
 }
-.nx-promo-banner:hover img { transform: scale(1.05); }
+.nx-promo-banner video { background: #000; pointer-events: none; }
+.nx-promo-banner:hover img,
+.nx-promo-banner:hover video { transform: scale(1.05); }
 
-/* Tabs de categorías */
-.nx-store .categories-bar { background: transparent !important; border: none !important; padding: 0 !important; position: static !important; }
+/* Tabs de categorías: dentro de la barra de cristal solo van los nombres, SIN cuadros ni cápsulas por dentro.
+   La categoría elegida se nota porque su nombre va en blanco y más grueso; las demás, más apagadas. */
+/* La franja que envuelve las pestañas NO debe llevar desenfoque ni sombra propios (main.css le pone backdrop-filter): con
+   uno encima, el cristal de la barra de adentro (.glass-panel) deja de funcionar y se ve más apagado que Player ID. */
+.nx-store .categories-bar {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    position: static !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+}
 .nx-store .categories-inner {
     display: flex !important;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px !important;
-    border-radius: 16px;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 6px !important;
+    border-radius: 16px !important;
     max-width: none !important;
     overflow: hidden;
 }
@@ -726,28 +1011,63 @@ body.drawer-open { overflow: hidden; }
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 10px 6px !important;
-    border-radius: 6px !important;
+    padding: 13px 6px !important;
+    border-radius: 11px !important;
     font-family: var(--nx-font-display) !important;
-    font-weight: 900 !important;
-    font-size: 11.5px !important;
-    letter-spacing: .03em;
-    color: var(--nx-muted) !important;
-    background: linear-gradient(135deg, rgba(255,255,255,0.01), rgba(255,255,255,0.001)) !important;
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-top: 1px solid rgba(255,255,255,0.2) !important;
-    box-shadow: 0 4px 10px rgba(0,0,0,.25);
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    letter-spacing: .02em;
+    color: rgba(255,255,255,.55) !important;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    box-shadow: none !important;
     cursor: pointer;
-    transition: all .3s ease;
-    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+    transition: color .2s ease, background .25s ease, border-color .25s ease, box-shadow .25s ease;
     text-transform: none;
 }
-.nx-store .cat-btn:hover { color: #fff !important; }
+.nx-store .cat-btn:hover { color: rgba(255,255,255,.85) !important; }
+/* La categoría elegida: su nombre va en blanco y más grueso, y por detrás lleva un cuadro de cristal con
+   EXACTAMENTE el mismo cristal que Player ID y las demás tarjetas (.glass-panel): mismo fondo casi transparente,
+   mismo borde de luz y mismas sombras. Si se cambia .glass-panel, cambiar también estos valores. NO lleva
+   backdrop-filter propio: el desenfoque/saturación ya los pone la barra (.glass-panel) que está detrás, y repetirlos
+   en el cuadro lo haría ver más claro que Player ID.
+   El cuadro es UNO solo (.cat-slider) que se desliza de una pestaña a otra (static/js/cat-slider.js); sin ese
+   script (sin la clase has-slider) la pestaña elegida lleva su propio cuadro. */
 .nx-store .cat-btn.active {
-    background: linear-gradient(135deg, rgba(255,0,0,1), rgba(200,0,0,0.95)) !important;
     color: #fff !important;
-    border: 1px solid rgba(255,80,80,0.8) !important;
-    box-shadow: 0 0 20px rgba(255,0,0,0.6), inset 0 1.5px 2px rgba(255,255,255,0.5) !important;
+    font-weight: 900 !important;
+}
+.nx-store .cat-slider,
+.nx-store .categories-inner:not(.has-slider) .cat-btn.active {
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%) !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    border-top: 1px solid rgba(255,255,255,0.35) !important;
+    border-left: 1px solid rgba(255,255,255,0.25) !important;
+    box-shadow:
+        0 15px 35px rgba(0,0,0,0.15),
+        inset 0 1px 2px rgba(255,255,255,0.25),
+        inset 0 -1.5px 2px rgba(0,0,0,0.02),
+        0 0 30px rgba(255,0,0,0.08) !important;
+}
+.nx-store .categories-inner { position: relative; }
+.nx-store .cat-btn { position: relative; z-index: 1; }
+.nx-store .cat-slider {
+    position: absolute;
+    left: 0; top: 0;
+    width: 0; height: 0;
+    box-sizing: border-box;
+    border-radius: 11px;
+    pointer-events: none;
+    z-index: 0;
+    will-change: transform, width;
+}
+/* Solo se anima cuando ya está colocado (is-ready): al cargar y al girar el celular salta sin "viajar" */
+.nx-store .categories-inner.is-ready .cat-slider {
+    transition: transform .42s cubic-bezier(.3, 1.25, .4, 1), width .42s cubic-bezier(.3, 1.25, .4, 1), height .3s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+    .nx-store .categories-inner.is-ready .cat-slider { transition: none; }
 }
 
 /* Kicker de secciones */
@@ -794,16 +1114,16 @@ body.drawer-open { overflow: hidden; }
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    background: rgba(20,20,25,0.06) !important;
+    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.015) 55%, rgba(255,40,70,0.04) 100%) !important;
     /* Puede haber decenas de estas tarjetas en la grilla de juegos, así que
        el blur mobile-first es más liviano — cada una es una capa de GPU
        aparte y en un scroll largo se nota. Se restaura en pantallas
        grandes más abajo. */
     backdrop-filter: blur(5px) saturate(170%);
     -webkit-backdrop-filter: blur(5px) saturate(170%);
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    border-top: 1px solid rgba(255,255,255,0.2) !important;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.25) !important;
+    border: 1px solid rgba(255,255,255,0.16) !important;
+    border-top: 1px solid rgba(255,255,255,0.32) !important;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.25), inset 0 1px 2px rgba(255,255,255,0.2) !important;
     transition: border-color .3s ease, box-shadow .3s ease, transform .3s ease;
     padding: 0 !important;
 }
@@ -825,7 +1145,7 @@ body.drawer-open { overflow: hidden; }
     height: 64px !important;
     overflow: hidden;
     position: relative;
-    background: #0b0f19;
+    background: transparent;     /* cristal: deja ver el fondo; la foto del juego, si la hay, lo tapa */
 }
 .nx-store .game-img-wrapper img {
     width: 100%; height: 100%;
@@ -841,19 +1161,20 @@ body.drawer-open { overflow: hidden; }
     font-family: var(--nx-font-display);
     font-size: 26px; font-weight: 900;
     color: var(--nx-red);
-    background: radial-gradient(circle at top, rgba(255,0,0,.18), transparent 70%);
+    text-shadow: 0 0 14px rgba(255,0,40,.45);
+    background: radial-gradient(circle at 50% 0%, rgba(255,40,70,.16), transparent 72%);
 }
 
 .nx-store .game-title {
-    background: rgba(0,0,0,.6) !important;
-    backdrop-filter: blur(8px);
-    border-top: 1px solid rgba(255,255,255,.1);
+    background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.22)) !important;
+    border-top: 1px solid rgba(255,255,255,.14);
     padding: 7px 4px !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    font-family: var(--nx-font-display);
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    letter-spacing: .03em;
+    font-family: var(--nx-font-display) !important;
     text-align: center;
-    color: #e2e8f0 !important;
+    color: #fff !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1193,7 +1514,7 @@ body.drawer-open { overflow: hidden; }
 }
 .nx-store .pkg-info .price-usd {
     font-size: 10px;
-    color: #64748b;
+    color: #737373;
     text-decoration: line-through;
 }
 /* Puntos que deja la compra. Va en dorado para que no compita con el precio
@@ -1365,7 +1686,7 @@ body.drawer-open { overflow: hidden; }
     align-items: center;
     gap: 8px;
     overflow: hidden;
-    color: #f1f5f9;
+    color: #f5f5f5;
     font-family: var(--nx-font-display);
     font-weight: 900;
     font-size: 12.5px;
@@ -1513,7 +1834,7 @@ body.drawer-open { overflow: hidden; }
 .nx-store .phone-country-display { display: inline-flex; align-items: center; gap: 6px; }
 .nx-store .phone-country-flag { border-radius: 2px; }
 .nx-store .phone-country-code { font-weight: 800; }
-.nx-store .phone-country-select { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.nx-store .phone-country-select { position: absolute; top:0;right:0;bottom:0;left:0; opacity: 0; pointer-events: none; }
 
 .nx-store .phone-input-shell input[type="tel"] { flex: 1; min-width: 0; padding: 10px 14px; font-size: 13px; }
 
@@ -1544,7 +1865,7 @@ body.drawer-open { overflow: hidden; }
     border-radius: 10px;
     border: none;
     background: transparent;
-    color: #e2e8f0;
+    color: #e5e5e5;
     font-size: 12.5px;
     cursor: pointer;
 }
@@ -1673,8 +1994,7 @@ body.drawer-open { overflow: hidden; }
    tarjeta (se vio primero en los botones de selección de juego). */
 /* Sin backdrop-filter: al 85% de opacidad el blur de pantalla completa
    (lo más caro de calcular en móviles) no se alcanzaba a notar. */
-.overlay-modal { background: rgba(0,0,0,.85) !important; }
-.overlay-modal-card,
+.overlay-modal { background: rgba(0,0,0,.5) !important; }   /* el desenfoque (blur 10px) lo pone main.css: así la página de atrás se ve borrosa, como cristal esmerilado */
 .store-popup-card,
 .payment-warning-card,
 .nx-video-card,
@@ -1691,6 +2011,24 @@ body.drawer-open { overflow: hidden; }
        distinto solo porque heredaba la fuente base del body (Space
        Grotesk). Se hereda hacia todo el contenido interno que no tenga
        ya su propia font-family declarada. */
+    font-family: var(--nx-font-display);
+}
+
+/* Ventanas del sitio (Ranking, Canjear puntos, Soporte...): el mismo cristal que Player ID y las demás tarjetas
+   (.glass-panel): fondo casi transparente, borde de luz y sombras iguales. El desenfoque de lo de atrás lo hace el
+   fondo de la ventana (.overlay-modal): un backdrop-filter dentro de otro no ve la página, por eso aquí no se repite. */
+.overlay-modal-card {
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%) !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    border-top: 1px solid rgba(255,255,255,0.35) !important;
+    border-left: 1px solid rgba(255,255,255,0.25) !important;
+    box-shadow:
+        0 15px 35px rgba(0,0,0,0.15),
+        inset 0 1px 2px rgba(255,255,255,0.25),
+        inset 0 -1.5px 2px rgba(0,0,0,0.02),
+        0 0 30px rgba(255,0,0,0.08) !important;
+    border-radius: 20px !important;
+    color: var(--nx-text);
     font-family: var(--nx-font-display);
 }
 
@@ -1717,6 +2055,55 @@ body.drawer-open { overflow: hidden; }
 }
 .ranking-prizes-title { background: rgba(255,0,0,.1) !important; }
 
+/* ── Ranking: recuadro de PREMIOS (rediseño) ───────────────────────────────────────────────────────────────────────────
+   Va ARRIBA del ranking en una fila (igual en celular y en PC): una tarjeta por puesto con el color de su medalla (oro, plata, bronce y el rojo de la
+   marca para el resto), insignia redonda con el número del puesto y el premio en grande con una gema de diamante. Sin backdrop-filter propio (el
+   desenfoque lo pone la ventana del ranking). `--n` (lo pone main.js) es la cantidad de premios. */
+.ranking-shell { grid-template-columns: 1fr !important; }
+.ranking-prizes { display: grid; grid-template-columns: repeat(var(--cols, var(--n, 5)), minmax(0, 1fr)); gap: 6px; padding: 0 8px 10px; border-radius: 20px; }
+.ranking-prizes-title {
+    grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 7px; margin: 0 -8px 4px; padding: 11px 8px 10px;
+    font-size: 10.5px; font-weight: 900; letter-spacing: .16em; color: #fff;
+    background: linear-gradient(180deg, rgba(255,0,0,.24), rgba(255,0,0,.05)) !important; border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.ranking-prizes-title::before {
+    content: ''; flex: none; width: 15px; height: 15px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fbbf24' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9H4.5a2.5 2.5 0 0 1 0-5H6'/%3E%3Cpath d='M18 9h1.5a2.5 2.5 0 0 0 0-5H18'/%3E%3Cpath d='M4 22h16'/%3E%3Cpath d='M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22'/%3E%3Cpath d='M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22'/%3E%3Cpath d='M18 2H6v7a6 6 0 0 0 12 0V2Z' fill='%23fbbf24' fill-opacity='.25'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.ranking-prize-item {
+    --c: 255,45,85; --bt: #fff;
+    position: relative; overflow: hidden; isolation: isolate; min-height: 0; min-width: 0; padding: 9px 2px 8px; gap: 6px;
+    border: 1px solid rgba(var(--c), .32); border-top-color: rgba(var(--c), .55); border-radius: 13px;
+    background: linear-gradient(165deg, rgba(var(--c), .2), rgba(var(--c), .045) 72%);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.12), 0 6px 14px rgba(0,0,0,.22);
+}
+.ranking-podium-1 { --c: 255,196,0; --bt: #2a1d00; }
+.ranking-podium-2 { --c: 203,210,225; --bt: #1c1f27; }
+.ranking-podium-3 { --c: 214,133,56; --bt: #2a1600; }
+.ranking-prize-item > span {
+    display: grid; place-items: center; width: 23px; height: 23px; border-radius: 50%; font-size: 11px; font-weight: 900; line-height: 1; color: var(--bt);
+    background: radial-gradient(circle at 30% 22%, rgba(255,255,255,.75), rgba(255,255,255,0) 56%), linear-gradient(150deg, rgba(var(--c), 1), rgba(var(--c), .62));
+    border: 1.5px solid rgba(255,255,255,.55); box-shadow: 0 3px 10px rgba(var(--c), .5);
+}
+.ranking-podium-1 > span { width: 26px; height: 26px; font-size: 12px; }
+.ranking-prize-item strong { display: inline-flex; align-items: center; justify-content: center; flex-direction: column; gap: 3px; max-width: 100%; font-size: 13px; line-height: 1; font-weight: 900; letter-spacing: -.01em; }
+.rk-prize-num { font: inherit; font-variant-numeric: tabular-nums; }
+.rk-prize-gem { flex: none; width: 13px; height: 13px; filter: drop-shadow(0 1px 3px rgba(14,165,233,.55)); }
+.rk-prize-text { font-size: 10px; font-weight: 800; line-height: 1.2; text-align: center; overflow-wrap: anywhere; color: #fff; text-shadow: none; }
+.rk-prize-text.is-none { color: var(--text-muted); font-weight: 700; }
+.ranking-podium-1::after {
+    content: ''; position: absolute; z-index: -1; top: -40%; bottom: -40%; left: -60%; width: 38%; transform: rotate(18deg); pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent); animation: rkPrizeSheen 4.8s ease-in-out infinite;
+}
+@keyframes rkPrizeSheen { 0%, 55% { left: -60%; } 100% { left: 135%; } }
+@media (prefers-reduced-motion: reduce) { .ranking-podium-1::after { animation: none; display: none; } }
+/* La web es para celular: en PC la ventana del ranking también se ve del tamaño de un celular (centrada), con los mismos márgenes que en el celular */
+#rankingModal .overlay-modal-card { width: min(100%, 460px); margin: 16px auto; max-height: calc(100vh - 32px); display: flex; flex-direction: column; }
+/* ...y se desplaza igual que en el celular: la lista (.ranking-board) baja por dentro de la ventana (en PC antes se quedaba cortada y no bajaba) */
+#rankingModal .ranking-board { flex: 1 1 auto; min-height: 0; padding-bottom: 18px; overflow-y: auto; overscroll-behavior: contain; }
+#rankingModal .overlay-modal-header, #rankingModal .ranking-tabs, #rankingModal .ranking-board, #rankingModal .ranking-status { padding-left: 12px; padding-right: 12px; }
+#rankingModal .ranking-main-card { padding: 12px; border-radius: 16px; }
+
 .ranking-main-card {
     background:
         radial-gradient(circle at top left, rgba(255,60,92,.16), transparent 32%),
@@ -1727,6 +2114,117 @@ body.drawer-open { overflow: hidden; }
 
 .ranking-live-chip {
     box-shadow: 0 0 16px rgba(255,22,60,.35);
+}
+
+/* ── Ranking: podio con los 3 primeros arriba y lista del 4.º en adelante ───────────────────────────────────────────
+   Todo es translúcido y SIN backdrop-filter propio (el desenfoque ya lo pone el fondo de la ventana). La foto de cada jugador es la de
+   su perfil si tiene cuenta con ese ID verificado; si no, una silueta neutra. */
+.ranking-podium { display: grid; grid-template-columns: 1fr 1.14fr 1fr; align-items: end; gap: 8px; margin: 10px 0 14px; }
+.rk-pod { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; text-align: center; }
+.rk-pod.is-empty { visibility: hidden; }
+.rk-crown { font-size: 20px; line-height: 1; margin-bottom: -4px; filter: drop-shadow(0 2px 6px rgba(255,200,0,.5)); }
+.rk-pod-avatar, .rk-row-avatar {
+    flex: none; display: grid; place-items: center; overflow: hidden; border-radius: 50%;
+    color: rgba(255,255,255,.72);
+    background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.22), rgba(255,255,255,.04) 62%), linear-gradient(150deg, #3a0a12, #14060a);
+    border: 2px solid rgba(255,255,255,.35);
+    box-shadow: 0 6px 16px rgba(0,0,0,.35);
+}
+.rk-pod-avatar svg, .rk-row-avatar svg { width: 62%; height: 62%; }
+.rk-pod-avatar img, .rk-row-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rk-pod-avatar { width: 56px; height: 56px; }
+.rk-pod.is-1 .rk-pod-avatar { width: 72px; height: 72px; border-color: #ffd54a; box-shadow: 0 0 22px rgba(255,200,0,.45), 0 6px 16px rgba(0,0,0,.4); }
+.rk-pod.is-2 .rk-pod-avatar { border-color: #d9dbe4; box-shadow: 0 0 14px rgba(220,225,240,.3), 0 6px 16px rgba(0,0,0,.4); }
+.rk-pod.is-3 .rk-pod-avatar { border-color: #e39a62; box-shadow: 0 0 14px rgba(227,154,98,.35), 0 6px 16px rgba(0,0,0,.4); }
+.rk-pod-name { max-width: 100%; margin-top: 7px; font-size: 12.5px; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-pod-id { max-width: 100%; font-size: 10px; letter-spacing: .04em; color: rgba(255,255,255,.5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-pod-units { margin-top: 2px; font-size: 11.5px; font-weight: 800; color: #ffd0d4; }
+.rk-pod-block {
+    width: 100%; margin-top: 8px; display: grid; place-items: center;
+    border-radius: 14px 14px 4px 4px;
+    background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.04));
+    border: 1px solid rgba(255,255,255,.2); border-top-color: rgba(255,255,255,.4);
+    box-shadow: inset 0 1px 2px rgba(255,255,255,.25);
+}
+.rk-pod.is-1 .rk-pod-block { height: 92px; }
+.rk-pod.is-2 .rk-pod-block { height: 66px; }
+.rk-pod.is-3 .rk-pod-block { height: 50px; }
+.rk-pod-block span { font-size: 30px; font-weight: 900; line-height: 1; color: rgba(255,255,255,.9); text-shadow: 0 2px 10px rgba(0,0,0,.4); }
+.rk-pod.is-1 .rk-pod-block span { color: #ffd54a; }
+.rk-pod.is-2 .rk-pod-block span { color: #e6e8f0; }
+.rk-pod.is-3 .rk-pod-block span { color: #f0a868; }
+
+.rk-list {
+    margin-top: 4px; padding: 10px; border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255,255,255,.06), rgba(255,255,255,.015));
+    border: 1px solid rgba(255,255,255,.14); border-top-color: rgba(255,255,255,.26);
+}
+.rk-list-title { margin: 0 4px 6px; text-align: center; font-size: 11px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+.rk-row { display: flex; align-items: center; gap: 10px; padding: 8px 6px; }
+.rk-row + .rk-row { border-top: 1px solid rgba(255,255,255,.08); }
+.rk-row-pos { flex: none; min-width: 28px; font-size: 13px; font-weight: 900; color: rgba(255,255,255,.7); }
+.rk-row-avatar { width: 36px; height: 36px; border-width: 1.5px; box-shadow: none; }
+.rk-row-text { flex: 1; min-width: 0; display: grid; }
+.rk-row-text strong { font-size: 13px; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-row-text small { font-size: 10.5px; color: rgba(255,255,255,.5); }
+.rk-row-units { flex: none; display: grid; justify-items: end; line-height: 1.1; font-size: 14px; font-weight: 900; color: #fff; }
+.rk-row-units small { font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: rgba(255,255,255,.5); }
+
+/* Pestaña "Cuentas" del ranking: la foto es un enlace al perfil público de la cuenta y el premio es un texto libre que escribe el dueño. */
+a.rk-pod-avatar, a.rk-row-avatar { text-decoration: none; cursor: pointer; transition: transform .16s ease; -webkit-tap-highlight-color: transparent; }
+a.rk-pod-avatar:hover, a.rk-row-avatar:hover { transform: scale(1.07); }
+a.rk-pod-avatar:focus-visible, a.rk-row-avatar:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.ranking-prizes.ranking-prizes-free { display: block; padding: 0 12px 12px; }
+.ranking-prize-free { margin: 8px 0 0; text-align: center; font-size: 13.5px; font-weight: 800; line-height: 1.45; color: #fff; white-space: pre-line; overflow-wrap: anywhere; }
+.ranking-cta-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
+.ranking-cta { display: inline-block; padding: 9px 16px; border-radius: 12px; font-weight: 800; font-size: 13px; color: #fff; text-decoration: none; background: linear-gradient(135deg, rgba(255,0,0,1), rgba(200,0,0,.95)); border: 1px solid rgba(255,255,255,.4); }
+.ranking-cta.is-ghost { background: rgba(255,255,255,.08); }
+
+/* Tocar la foto de alguien del ranking: cuadro pequeño con "Ver perfil" (si su cuenta lo permite) o un aviso. Sin backdrop-filter propio. */
+.rk-pod-avatar[data-rk-pos], .rk-row-avatar[data-rk-pos] { cursor: pointer; transition: transform .16s ease, box-shadow .16s ease; -webkit-tap-highlight-color: transparent; }
+.rk-pod-avatar[data-rk-pos]:hover, .rk-row-avatar[data-rk-pos]:hover { transform: scale(1.07); }
+.rk-pod-avatar[data-rk-pos]:active, .rk-row-avatar[data-rk-pos]:active { transform: scale(.96); }
+.rk-pod-avatar[data-rk-pos]:focus-visible, .rk-row-avatar[data-rk-pos]:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.rk-pop { position: fixed; top:0;right:0;bottom:0;left:0; z-index: 1300; display: grid; place-items: center; padding: 18px; }
+/* Cristal igual que las ventanas de la web (.overlay-modal + .overlay-modal-card): el fondo de la ventana pone el negro .5 y el desenfoque
+   de 10 px, y la tarjeta es el mismo cristal casi transparente de Player ID SIN backdrop-filter propio (uno dentro de otro no ve la página). */
+.rk-pop-backdrop { position: absolute; top:0;right:0;bottom:0;left:0; background: rgba(0,0,0,.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: rkPopFade .16s ease both; }
+.rk-pop-card {
+    position: relative; width: min(300px, 100%); display: grid; justify-items: center; gap: 6px; padding: 24px 18px 18px; text-align: center;
+    border-radius: 20px; color: #fff;
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
+    border: 1px solid rgba(255,255,255,0.18); border-top: 1px solid rgba(255,255,255,0.35); border-left: 1px solid rgba(255,255,255,0.25);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 30px rgba(255,0,0,0.08);
+    animation: rkPopIn .2s cubic-bezier(.2,.9,.3,1.2) both;
+}
+.rk-pop-x {
+    position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border-radius: 50%;
+    font-size: 13px; color: rgba(255,255,255,.9); cursor: pointer; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.2); border-top-color: rgba(255,255,255,.34);
+}
+.rk-pop-x:hover { background: rgba(255,255,255,.14); }
+.rk-pop-avatar {
+    width: 78px; height: 78px; margin-bottom: 4px; display: grid; place-items: center; overflow: hidden; border-radius: 50%; color: rgba(255,255,255,.72);
+    background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.22), rgba(255,255,255,.04) 62%), linear-gradient(150deg, #3a0a12, #14060a);
+    border: 2px solid rgba(255,255,255,.4); box-shadow: 0 8px 22px rgba(0,0,0,.45);
+}
+.rk-pop-avatar svg { width: 62%; height: 62%; }
+.rk-pop-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rk-pop-name { max-width: 100%; font-size: 16px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-pop-sub { font-size: 12px; font-weight: 700; color: #ffd0d4; }
+.rk-pop-note { margin: 8px 0 2px; font-size: 13px; line-height: 1.4; color: rgba(255,255,255,.78); }
+.rk-pop-btn {
+    margin-top: 10px; min-width: 160px; padding: 11px 22px; display: inline-flex; justify-content: center; align-items: center; border-radius: 14px;
+    font-size: 14px; font-weight: 800; color: #fff; text-decoration: none; cursor: pointer;
+    background: linear-gradient(180deg, #ff1a2e, #b80016); border: 1px solid rgba(255,255,255,.28);
+    box-shadow: 0 8px 22px rgba(255,22,60,.35), inset 0 1px 1px rgba(255,255,255,.3);
+}
+.rk-pop-btn:hover { filter: brightness(1.08); }
+.rk-pop-btn.is-ghost { background: rgba(255,255,255,.08); box-shadow: none; border-color: rgba(255,255,255,.22); }
+@keyframes rkPopIn { from { opacity: 0; transform: translateY(10px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes rkPopFade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+    .rk-pop-card, .rk-pop-backdrop { animation: none; }
+    .rk-pod-avatar[data-rk-pos], .rk-row-avatar[data-rk-pos] { transition: none; }
 }
 
 .ranking-table-wrap {
@@ -1771,27 +2269,64 @@ body.drawer-open { overflow: hidden; }
     letter-spacing: .06em;
 }
 
+/* Botón de abajo del aviso de pago: "ya sé, no mostrar más" (se esconde 48 horas y vuelve a salir; esa pausa NO se
+   le dice al cliente en pantalla, es un dato interno) */
+.payment-warning-snooze {
+    display: block;
+    width: calc(100% - 28px);
+    margin: -2px 14px 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.18);
+    color: #e5e5e5;
+    font-family: var(--nx-font-display);
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: .04em;
+    text-align: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .18s ease, border-color .18s ease;
+}
+.payment-warning-snooze:hover, .payment-warning-snooze:focus-visible {
+    background: rgba(255,255,255,.1);
+    border-color: rgba(255,255,255,.32);
+    outline: none;
+}
+
 /* ── Popup "Únete a nuestra comunidad" (recurrente) ────────── */
 .community-popup-overlay {
     position: fixed;
-    inset: 0;
+    top:0;right:0;bottom:0;left:0;
     z-index: 1300;
-    background: rgba(0,0,0,.82);
+    /* Igual que el fondo de las demás ventanas de cristal (.overlay-modal): la página de atrás se ve borrosa. */
+    background: rgba(0,0,0,.5);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 16px;
 }
+/* Tarjeta de cristal: EL MISMO cristal que Player ID y las ventanas (.glass-panel / .overlay-modal-card): fondo casi
+   transparente, borde de luz y sombras iguales. NO lleva backdrop-filter propio: el desenfoque ya lo pone el fondo
+   (.community-popup-overlay) y un backdrop-filter dentro de otro no ve la página. Si se cambia .glass-panel, cambiar esto. */
 .community-popup-card {
     position: relative;
     width: min(100%, 360px);
     padding: 28px 22px 22px;
     border-radius: 20px;
     text-align: center;
-    background: linear-gradient(135deg, rgba(30,32,40,.97) 0%, rgba(10,12,18,.98) 100%);
-    border: 1px solid rgba(255,0,0,.45);
-    border-top: 1px solid rgba(255,255,255,.25);
-    box-shadow: 0 25px 70px rgba(0,0,0,.7), 0 0 40px rgba(255,0,0,.15);
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-top: 1px solid rgba(255,255,255,0.35);
+    border-left: 1px solid rgba(255,255,255,0.25);
+    box-shadow:
+        0 15px 35px rgba(0,0,0,0.15),
+        inset 0 1px 2px rgba(255,255,255,0.25),
+        inset 0 -1.5px 2px rgba(0,0,0,0.02),
+        0 0 30px rgba(255,0,0,0.08);
     color: var(--nx-text);
     font-family: var(--nx-font-display);
     display: flex;
@@ -1806,8 +2341,10 @@ body.drawer-open { overflow: hidden; }
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255,255,255,.08);
-    border: 1px solid rgba(255,255,255,.2);
+    background: linear-gradient(135deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,.02) 100%);
+    border: 1px solid rgba(255,255,255,.18);
+    border-top: 1px solid rgba(255,255,255,.32);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.2);
     border-radius: 999px;
     padding: 4px 9px;
     color: #fff;
@@ -1826,8 +2363,9 @@ body.drawer-open { overflow: hidden; }
     border-radius: 999px;
     display: flex; align-items: center; justify-content: center;
     background: linear-gradient(135deg, rgba(255,0,0,.9), rgba(150,0,0,.85));
+    border: 1px solid rgba(255,255,255,.4);
     color: #fff;
-    box-shadow: 0 4px 20px rgba(255,0,0,.5);
+    box-shadow: 0 4px 20px rgba(255,0,0,.5), inset 0 1.5px 2px rgba(255,255,255,.4);
     margin-top: 4px;
 }
 .community-popup-card h3 {
@@ -1860,25 +2398,81 @@ body.drawer-open { overflow: hidden; }
     letter-spacing: .04em;
     text-decoration: none;
     font-size: 13.5px;
+    /* Efecto: un brillo de luz cruza el botón cada pocos segundos y el resplandor rojo late suave. */
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    animation: communityJoinGlow 2.6s ease-in-out infinite;
+}
+.community-popup-join::after {
+    content: "";
+    position: absolute;
+    top: -20%;
+    bottom: -20%;
+    left: -45%;
+    width: 36%;
+    background: linear-gradient(100deg, transparent 0%, rgba(255,255,255,.55) 50%, transparent 100%);
+    transform: skewX(-20deg) translateX(0);
+    pointer-events: none;
+    z-index: -1;
+    animation: communityJoinShine 2.6s ease-in-out infinite;
+}
+.community-popup-join > * { position: relative; z-index: 1; }
+/* Solo se animan transform y opacity (los pinta la GPU): antes se animaban `left` y `box-shadow`, que obligan al teléfono a rehacer el
+   diseño y repintar en cada cuadro y se notaba en equipos de gama baja. translateX(444%) = 160% del ancho del botón (la franja mide 36%). */
+@keyframes communityJoinShine {
+    0%   { transform: skewX(-20deg) translateX(0); opacity: 0; }
+    12%  { opacity: 1; }
+    55%  { transform: skewX(-20deg) translateX(444%); opacity: 1; }
+    56%, 100% { transform: skewX(-20deg) translateX(444%); opacity: 0; }
+}
+@keyframes communityJoinGlow {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.02); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .community-popup-join, .community-popup-join::after { animation: none; }
 }
 .community-popup-continue {
     width: 100%;
     padding: 11px 16px;
     border-radius: 10px;
-    background: rgba(255,255,255,.06);
+    background: linear-gradient(135deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,.02) 100%);
     border: 1px solid rgba(255,255,255,.18);
+    border-top: 1px solid rgba(255,255,255,.32);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.15);
     color: var(--nx-text);
     font-size: 13px;
     font-weight: 700;
 }
+/* "No mostrar más por hoy": botón de cristal, un poco más grande que antes (era un texto subrayado de 11.5 px). */
 .community-popup-mute {
-    background: none;
-    border: none;
-    color: var(--nx-dim);
-    font-size: 11.5px;
-    padding: 2px;
-    text-decoration: underline;
+    width: 100%;
+    padding: 11px 16px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,.02) 100%);
+    border: 1px solid rgba(255,255,255,.18);
+    border-top: 1px solid rgba(255,255,255,.32);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.15);
+    color: var(--nx-text);
+    font-family: var(--nx-font-display);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
 }
+.community-popup-mute:hover, .community-popup-mute:focus-visible {
+    background: linear-gradient(135deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.04) 100%);
+    outline: none;
+}
+
+/* Ventana que ofrece el modo liviano (static/js/lite-detect.js): mismo cristal que la de la comunidad, pero sus botones son <button>. */
+.lite-offer-btn {
+    cursor: pointer;
+    font-family: var(--nx-font-display);
+    -webkit-tap-highlight-color: transparent;
+}
+.lite-offer-btn:focus-visible { outline: 2px solid rgba(255,255,255,.75); outline-offset: 2px; }
+.lite-offer-card .community-popup-lead { margin-bottom: 6px; }
 
 /* ── Banner de opt-in de notificaciones (paso 1 de 2) ──────── */
 .push-prompt-banner {
@@ -1964,15 +2558,8 @@ body.drawer-open { overflow: hidden; }
 
 .points-modal-card {
     width: min(100%, 512px);
-    background: rgba(8, 8, 8, .85) !important;
-    /* blur(40px) quitado: con el fondo ya al 85% de opacidad casi no se
-       notaba, pero era el blur más pesado de todo el sitio (GPU/batería
-       en móviles de gama media/baja cada vez que se abre este popup). */
-    border: 1px solid rgba(255, 0, 0, .35) !important;
-    border-top: 1px solid rgba(255, 0, 0, .35) !important;
-    border-radius: 44px !important;
-    box-shadow: 0 0 30px rgba(255, 0, 0, .25), inset 0 0 15px rgba(255, 0, 0, .15) !important;
-    animation: pointsIosPulse 4s infinite ease-in-out;
+    /* El cristal (fondo, borde, sombras, esquinas) lo da .overlay-modal-card, igual que Player ID. Antes aquí había
+       un fondo casi negro, borde rojo grueso, brillo rojo pulsante y esquinas de 44 px. */
     font-family: var(--nx-font-display);
 }
 
@@ -1980,34 +2567,36 @@ body.drawer-open { overflow: hidden; }
 .points-modal-card.is-rolling { animation: pointsPureAura 1.2s infinite ease-in-out; }
 
 .points-modal-card .overlay-modal-header {
-    background: rgba(3, 3, 3, .95);
-    border-bottom: 1px solid rgba(255, 0, 0, .2);
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, .12);
     align-items: center;
-    padding: 28px;
-    margin-bottom: 28px;
+    padding: 24px 28px 18px;
+    margin-bottom: 22px;
 }
 
-/* La X cuadrada del diseno, no la redonda gris del resto de modales. */
+/* La X: círculo de cristal (igual que la del menú lateral) */
 .points-modal-card .overlay-close-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 14px;
-    background: #121212;
-    border: 1px solid rgba(255, 0, 0, .3);
-    color: #9ca3af;
-    font-size: 15px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .07);
+    border: 1px solid rgba(255, 255, 255, .16);
+    color: #fff;
+    font-size: 14px;
     transition: all .25s ease;
 }
 
-.points-modal-card .overlay-close-btn:hover {
-    background: #1a1a1a;
-    color: #fff;
+.points-modal-card .overlay-close-btn:hover,
+.points-modal-card .overlay-close-btn:focus-visible {
+    background: rgba(255, 40, 70, .16);
+    border-color: rgba(255, 60, 85, .7);
+    outline: none;
 }
 
 .points-modal-card .overlay-modal-header h2 {
     font-family: var(--nx-font-display);
-    font-size: 20px;
-    font-weight: 900;
+    font-size: 19px;
+    font-weight: 800;
     letter-spacing: .08em;
     text-transform: uppercase;
     color: #fff;
@@ -2022,10 +2611,8 @@ body.drawer-open { overflow: hidden; }
     width: 100%;
     padding: 12px 14px;
     border-radius: 12px;
-    background: rgba(0, 0, 0, .35);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, .15);
+    background: rgba(0, 0, 0, .55);
+    border: 1px solid rgba(255, 255, 255, .18);
     border-top: 1px solid rgba(255, 255, 255, .25);
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, .1), 0 1px 1px rgba(255, 255, 255, .1);
     color: #fff;
@@ -2153,7 +2740,7 @@ body.drawer-open { overflow: hidden; }
 }
 
 .points-balance-label { display: block; font-family: var(--nx-font-display); font-weight: 800; font-size: 16px; color: #fff; }
-.points-balance-id { display: block; margin-top: 2px; font-size: 11.5px; color: #9ca3af; }
+.points-balance-id { display: block; margin-top: 2px; font-size: 11.5px; color: #a3a3a3; }
 .points-balance-amount { text-align: right; }
 .points-balance-amount strong {
     display: block;
@@ -2164,7 +2751,7 @@ body.drawer-open { overflow: hidden; }
     color: #fff;
     line-height: 1;
 }
-.points-balance-amount span { font-size: 10.5px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: .08em; }
+.points-balance-amount span { font-size: 10.5px; font-weight: 700; color: #a3a3a3; text-transform: uppercase; letter-spacing: .08em; }
 
 /* Paso de elección: ruleta vs canje directo por paquete. */
 .points-choice-options { display: flex; flex-direction: column; gap: 12px; margin: 0 28px 18px; }
@@ -2286,7 +2873,7 @@ body.drawer-open { overflow: hidden; }
 /* Modal del resultado del giro, con el regalo que se abre por pasos. */
 .points-result-modal {
     position: fixed;
-    inset: 0;
+    top:0;right:0;bottom:0;left:0;
     z-index: 1500;
     display: none;
     align-items: center;
@@ -2397,7 +2984,7 @@ body.drawer-open { overflow: hidden; }
 /* Modal video tutorial */
 .nx-video-modal {
     position: fixed;
-    inset: 0;
+    top:0;right:0;bottom:0;left:0;
     z-index: 1200;
     background: rgba(0,0,0,.88);
     display: none;
@@ -2516,7 +3103,7 @@ body.drawer-open { overflow: hidden; }
     font-size: 20px;
     color: var(--nx-red);
 }
-.nx-price-line .striked { text-decoration: line-through; color: #64748b; }
+.nx-price-line .striked { text-decoration: line-through; color: #737373; }
 .nx-price-line .disc { color: #34d399; font-weight: 800; }
 
 /* reutilizar clases del checkout viejo dentro del tema */
@@ -2695,7 +3282,7 @@ body.drawer-open { overflow: hidden; }
 }
 .nx-checkout .payment-detail-value,
 .nx-checkout .payment-detail-value-main {
-    color: #f1f5f9 !important;
+    color: #f5f5f5 !important;
     font-family: var(--nx-font-display) !important;
     font-weight: 900 !important;
     letter-spacing: .06em;
@@ -2973,7 +3560,7 @@ body.drawer-open { overflow: hidden; }
     font-weight: 900;
     background: #1e293b;
     border: 1px solid #475569;
-    color: #cbd5e1;
+    color: #d4d4d4;
     z-index: 2;
     transition: all .3s ease;
 }
@@ -3090,9 +3677,9 @@ body.drawer-open { overflow: hidden; }
     padding: 10px 20px;
     min-width: 180px;
 }
-.nx-binance-wait .codebox .lbl { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #94a3b8; margin: 0 0 3px; }
+.nx-binance-wait .codebox .lbl { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: #a3a3a3; margin: 0 0 3px; }
 .nx-binance-wait .codebox .code { font-size: 20px; font-weight: 900; letter-spacing: .22em; color: #fbbf24; margin: 0; }
-.nx-binance-wait .note { font-size: 10.5px; color: #94a3b8; margin: 0; }
+.nx-binance-wait .note { font-size: 10.5px; color: #a3a3a3; margin: 0; }
 .nx-binance-wait .hour { font-size: 26px; animation: nx-spin 1.6s linear infinite; }
 
 /* WhatsApp manual */
@@ -3236,7 +3823,7 @@ body.drawer-open { overflow: hidden; }
     .nx-store section[style*="margin-bottom:12px"] { margin-bottom: 8px !important; }
     .nx-store .nx-step-head { margin-bottom: 8px; }
     .nx-store .categories-inner { padding: 6px !important; gap: 5px; }
-    .nx-store .cat-btn { padding: 9px 4px !important; font-size: 11px !important; }
+    .nx-store .cat-btn { padding: 11px 4px !important; font-size: 12.5px !important; }
     .nx-store .packages-grid { gap: 5px !important; }
     .nx-store .package-item { min-height: 76px; padding: 9px 4px !important; }
     .nx-store .nx-total-row { padding: 8px 12px; margin-top: 6px; }
@@ -3327,7 +3914,7 @@ body.drawer-open { overflow: hidden; }
 /* El código es lo único importante de esta pantalla: se escribe grande,
    en monoespaciada y espaciado, como se lee en un video. */
 .rdm-code-input {
-    font-family: "Space Grotesk", ui-monospace, monospace !important;
+    font-family: "Archivo Black", ui-monospace, monospace !important;
     font-size: 21px !important;
     font-weight: 700 !important;
     letter-spacing: .18em !important;
@@ -3472,7 +4059,7 @@ body.drawer-open { overflow: hidden; }
     color: rgba(255,255,255,.45);
 }
 .rdm-order strong {
-    font-family: "Space Grotesk", monospace;
+    font-family: "Archivo Black", monospace;
     font-size: 15px;
     color: var(--nx-red);
     letter-spacing: .06em;
@@ -3500,7 +4087,7 @@ body.drawer-open { overflow: hidden; }
 
 .rdm-modal {
     position: fixed;
-    inset: 0;
+    top:0;right:0;bottom:0;left:0;
     z-index: 1250;
     display: flex;
     align-items: center;
@@ -3599,7 +4186,7 @@ body.drawer-open { overflow: hidden; }
 .rdm-pager-btn:hover:not(:disabled) { border-color: var(--nx-red); color: var(--nx-red); }
 .rdm-pager-btn:disabled { opacity: .35; cursor: default; }
 .rdm-pager-info {
-    font-family: "Space Grotesk", monospace;
+    font-family: "Archivo Black", monospace;
     font-size: 11.5px;
     font-weight: 700;
     letter-spacing: .06em;
@@ -3745,7 +4332,7 @@ body.drawer-open { overflow: hidden; }
     justify-content: center;
 }
 .mn-stat span { display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.45); margin-bottom: 4px; }
-.mn-stat strong { font-family: "Space Grotesk", monospace; font-size: 18px; color: #fff; }
+.mn-stat strong { font-family: "Archivo Black", monospace; font-size: 18px; color: #fff; }
 .mn-stat strong.is-accent { color: var(--nx-red); }
 .mn-page .is-accent { color: var(--nx-red); }
 
@@ -3791,7 +4378,7 @@ body.drawer-open { overflow: hidden; }
 .mn-progress-fill::after {
     content: '';
     position: absolute;
-    inset: 0;
+    top:0;right:0;bottom:0;left:0;
     background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
     animation: nx-progress-shine 2.2s infinite;
 }
@@ -3830,7 +4417,7 @@ body.drawer-open { overflow: hidden; }
 .mn-rank-list-item.is-current { border-color: var(--nx-red); background: rgba(255,0,0,.08); }
 .mn-rank-list-item strong { display: block; font-family: var(--nx-font-display); font-size: 14px; color: #fff; }
 .mn-rank-list-item small { display: block; font-size: 11px; color: rgba(255,255,255,.5); margin-top: 2px; }
-.mn-rank-list-item .is-accent { font-family: "Space Grotesk", monospace; font-size: 15px; font-weight: 700; }
+.mn-rank-list-item .is-accent { font-family: "Archivo Black", monospace; font-size: 15px; font-weight: 700; }
 
 .mn-rank-list-compact { gap: 5px; }
 .mn-rank-list-compact .mn-rank-list-item { padding: 6px 10px; }
@@ -4159,7 +4746,7 @@ body.drawer-open { overflow: hidden; }
 
 .nx-tutorial-modal {
     position: fixed;
-    inset: 0;
+    top:0;right:0;bottom:0;left:0;
     z-index: 1200;
     display: none;
     align-items: center;
@@ -4169,7 +4756,7 @@ body.drawer-open { overflow: hidden; }
 .nx-tutorial-modal:not([hidden]) { display: flex; }
 .nx-tutorial-modal-backdrop {
     position: absolute;
-    inset: 0;
+    top:0;right:0;bottom:0;left:0;
     background: rgba(0,0,0,.82);
 }
 .nx-tutorial-modal-card {
@@ -4266,8 +4853,38 @@ body.drawer-open { overflow: hidden; }
     95% { transform: rotate(8deg); }
     98% { transform: rotate(-4deg); }
 }
+/* El numerito rojo de la campanita (avisos sin leer) llama la atención: late y se mueve, tiene un resplandor que respira y un aro que se expande.
+   Solo transform y opacity (no pesa). Se apaga con "reducir movimiento" y en modo liviano. */
+.notif-toggle.has-unread .notif-badge {
+    animation: notif-badge-pop 2s ease-in-out infinite;
+    box-shadow: 0 0 0 2px #000, 0 0 14px 3px rgba(255,40,40,.85);
+}
+.notif-toggle.has-unread .notif-badge::before,
+.notif-toggle.has-unread .notif-badge::after { content: ''; position: absolute; z-index: -1; pointer-events: none; border-radius: 999px; }
+.notif-toggle.has-unread .notif-badge::before {
+    top: -9px; right: -9px; bottom: -9px; left: -9px;
+    background: radial-gradient(circle, rgba(255,50,50,.8) 0%, rgba(255,0,0,.35) 45%, rgba(255,0,0,0) 72%);
+    animation: notif-badge-glow 2s ease-in-out infinite;
+}
+.notif-toggle.has-unread .notif-badge::after {
+    top: -3px; right: -3px; bottom: -3px; left: -3px;
+    border: 2px solid rgba(255,90,90,.95);
+    animation: notif-badge-ring 2s ease-out infinite;
+}
+@keyframes notif-badge-pop {
+    0%, 55%, 100% { transform: scale(1) rotate(0); }
+    10% { transform: scale(1.22) rotate(-10deg); }
+    22% { transform: scale(1.12) rotate(9deg); }
+    34% { transform: scale(1.2) rotate(-6deg); }
+    46% { transform: scale(1.05) rotate(3deg); }
+}
+@keyframes notif-badge-glow { 0%, 100% { opacity: .45; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.15); } }
+@keyframes notif-badge-ring { 0% { opacity: .9; transform: scale(.9); } 70%, 100% { opacity: 0; transform: scale(2); } }
 @media (prefers-reduced-motion: reduce) {
     .notif-toggle.has-unread .notif-bell { animation: none; }
+    .notif-toggle.has-unread .notif-badge { animation: none; }
+    .notif-toggle.has-unread .notif-badge::before,
+    .notif-toggle.has-unread .notif-badge::after { animation: none; display: none; }
 }
 
 .notif-panel {
@@ -4275,14 +4892,19 @@ body.drawer-open { overflow: hidden; }
     top: calc(100% + 12px);
     right: 0;
     width: min(350px, calc(100vw - 24px));
-    max-height: min(72vh, 480px);
+    max-height: min(72vh, 500px);
     display: flex;
     flex-direction: column;
-    background: rgba(12,12,14,.97);
-    border: 1px solid rgba(255,0,0,.35);
-    border-radius: 16px;
-    box-shadow: 0 18px 44px rgba(0,0,0,.65), 0 0 24px rgba(255,0,0,.12);
-    backdrop-filter: blur(10px);
+    border-radius: 22px;
+    /* Hoja de cristal (la misma del menú lateral): fondo casi transparente con desenfoque y borde de luz. */
+    background:
+        linear-gradient(155deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.035) 42%, rgba(255,40,70,.07) 100%),
+        rgba(10,10,14,.34);
+    -webkit-backdrop-filter: blur(18px) saturate(190%);
+    backdrop-filter: blur(18px) saturate(190%);
+    border: 1px solid rgba(255,255,255,.16);
+    border-top-color: rgba(255,255,255,.34);
+    box-shadow: 0 24px 60px rgba(0,0,0,.6), inset 0 1px 2px rgba(255,255,255,.22), 0 0 40px rgba(255,0,0,.08);
     z-index: 1160;
     overflow: hidden;
     /* Misma fuente que los títulos de la tienda ("Selecciona tu paquete"). */
@@ -4290,11 +4912,13 @@ body.drawer-open { overflow: hidden; }
 }
 .notif-panel[hidden] { display: none; }
 .notif-head {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 14px;
-    border-bottom: 1px solid rgba(255,255,255,.08);
+    gap: 10px;
+    padding: 14px 14px 12px 18px;
+    border-bottom: 1px solid rgba(255,255,255,.1);
     font-size: 14px;
     font-weight: 800;
     letter-spacing: .03em;
@@ -4302,48 +4926,150 @@ body.drawer-open { overflow: hidden; }
 }
 .notif-head strong { font-weight: 800; }
 .notif-close {
-    background: none;
-    border: 0;
-    color: #94a3b8;
-    font-size: 15px;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.16);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
     cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 8px;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s ease, background .2s ease;
 }
-.notif-close:hover { color: #fff; background: rgba(255,255,255,.08); }
-.notif-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; }
-.notif-item {
+.notif-close:hover,
+.notif-close:focus-visible { border-color: rgba(255,60,85,.7); background: rgba(255,40,70,.16); outline: none; }
+.notif-list {
+    list-style: none;
+    margin: 0;
+    padding: 10px;
     display: flex;
-    gap: 10px;
-    padding: 12px 14px;
-    border-bottom: 1px solid rgba(255,255,255,.06);
-    color: #e5e7eb;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+}
+.notif-list::-webkit-scrollbar { display: none; }
+.notif-item {
+    --st: 255,60,85;                 /* color del estado (r,g,b); cada estado lo cambia más abajo */
+    display: flex;
+    gap: 12px;
+    padding: 11px 12px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.015));
+    border: 1px solid rgba(255,255,255,.12);
+    border-top-color: rgba(255,255,255,.24);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.1);
+    color: #fff;
     text-decoration: none;
+    transition: border-color .2s ease, background .2s ease;
 }
 a.notif-item { cursor: pointer; }
-a.notif-item:hover { background: rgba(255,255,255,.05); }
-a.notif-item:active { background: rgba(255,0,0,.12); }
-.notif-go { margin: 6px 0 0; font-size: 11.5px; font-weight: 800; letter-spacing: .03em; color: var(--nx-red); }
-.notif-item.is-unread { background: rgba(255,0,0,.07); box-shadow: inset 3px 0 0 var(--nx-red); }
+a.notif-item:hover,
+a.notif-item:focus-visible { border-color: rgba(var(--st),.6); background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(var(--st),.09)); outline: none; }
+a.notif-item:active { background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(var(--st),.16)); }
+/* Lo nuevo: franja del color del estado a la izquierda y un leve tinte */
+.notif-item.is-unread {
+    border-color: rgba(var(--st),.5);
+    background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(var(--st),.12));
+    box-shadow: inset 3px 0 0 rgb(var(--st)), inset 0 1px 1px rgba(255,255,255,.1);
+}
+/* Colores por proceso: EN PROCESO = amarillo, APROBADO = verde, RECHAZADO = rojo; novedades del equipo = neutro */
+.notif-item.st-wait { --st: 250,190,40; }
+.notif-item.st-ok { --st: 46,204,113; }
+.notif-item.st-bad { --st: 255,59,48; }
+.notif-item.st-neutral { --st: 255,60,85; }
+/* Cuadrito del ícono de cristal: del color del proceso (amarillo / verde / rojo); las novedades y mensajes del equipo
+   van en negro y blanco, igual que en el menú lateral */
 .notif-icon {
-    flex: 0 0 32px;
-    height: 32px;
-    border-radius: 10px;
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
-    background: rgba(255,255,255,.06);
+    color: #fff;
+    background: radial-gradient(circle at 30% 16%, rgba(255,255,255,.28), rgba(255,255,255,0) 58%), linear-gradient(150deg, #26262a, #000);
+    border: 1px solid rgba(255,255,255,.28);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.25), inset 0 -4px 8px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.4);
 }
-.notif-item.lvl-success .notif-icon { background: rgba(34,197,94,.16); }
-.notif-item.lvl-warning .notif-icon { background: rgba(245,158,11,.18); }
-.notif-item.lvl-danger .notif-icon { background: rgba(239,68,68,.18); }
+.notif-icon svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* Campanita junto al título del panel de notificaciones */
+.notif-head-bell { display: inline-block; margin-right: 2px; font-size: 1em; line-height: 1; }
+/* El cuadrito NEGRO de las novedades del equipo rebota (con un pequeño aplastón al caer) para llamar la atención; los de estado de pedido
+   (amarillo, verde, rojo) y el blanco se quedan quietos. Casi todo el ciclo está en reposo para no molestar. */
+.notif-item.st-neutral .notif-icon:not(.ic-white) { animation: nx-notif-bounce 2.4s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes nx-notif-bounce {
+    0%, 52%, 100% { transform: translateY(0) scale(1, 1); }
+    58% { transform: translateY(-9px) scale(.94, 1.08); }
+    66% { transform: translateY(0) scale(1.1, .9); }
+    72% { transform: translateY(-4px) scale(.98, 1.03); }
+    79% { transform: translateY(0) scale(1.04, .96); }
+    86% { transform: translateY(-1.5px) scale(1, 1); }
+}
+@media (prefers-reduced-motion: reduce) { .notif-item.st-neutral .notif-icon:not(.ic-white) { animation: none; } }
+.notif-icon.ic-white {
+    color: var(--nx-red);
+    background: radial-gradient(circle at 30% 16%, #fff, rgba(255,255,255,.55) 58%), linear-gradient(150deg, #fff, #dcdcdc);
+    border: 1px solid rgba(255,255,255,.9);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.9), inset 0 -4px 8px rgba(0,0,0,.12), 0 4px 12px rgba(255,255,255,.1);
+}
+.notif-item.st-wait .notif-icon,
+.notif-item.st-ok .notif-icon,
+.notif-item.st-bad .notif-icon {
+    color: #fff;
+    background:
+        radial-gradient(circle at 30% 16%, rgba(255,255,255,.4), rgba(255,255,255,0) 58%),
+        linear-gradient(150deg, rgba(var(--st),.95), rgba(var(--st),.62));
+    border: 1px solid rgba(var(--st),.7);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.4), inset 0 -4px 8px rgba(0,0,0,.28), 0 4px 12px rgba(var(--st),.28);
+}
 .notif-text { min-width: 0; flex: 1; }
-.notif-title { font-weight: 800; font-size: 13px; letter-spacing: .02em; color: #fff; margin: 0 0 2px; }
-.notif-body { font-size: 12.5px; font-weight: 600; line-height: 1.45; color: #cbd5e1; margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
-.notif-time { font-size: 11px; font-weight: 600; color: #94a3b8; margin: 4px 0 0; }
-.notif-empty { padding: 26px 18px; text-align: center; color: #94a3b8; font-size: 13px; font-weight: 600; }
-.notif-foot { margin: 0; padding: 9px 14px; font-size: 11px; font-weight: 600; color: #94a3b8; border-top: 1px solid rgba(255,255,255,.08); }
+/* El título va encerrado en un contenedor del color del proceso (amarillo / verde / rojo; neutro en las novedades) */
+.notif-title {
+    display: inline-block;
+    max-width: 100%;
+    margin: 0 0 6px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-weight: 800;
+    font-size: 13px;
+    line-height: 1.3;
+    letter-spacing: .01em;
+    color: #fff;
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.22);
+}
+.notif-item.st-wait .notif-title { color: #ffd45a; background: rgba(250,190,40,.16); border-color: rgba(250,190,40,.55); }
+.notif-item.st-ok .notif-title { color: #6ee79a; background: rgba(46,204,113,.16); border-color: rgba(46,204,113,.55); }
+.notif-item.st-bad .notif-title { color: #ff7a85; background: rgba(255,59,48,.16); border-color: rgba(255,59,48,.55); }
+/* Todo el texto de las notificaciones va en blanco puro (la jerarquía la dan el tamaño y el grosor) */
+.notif-body { font-size: 12.5px; font-weight: 600; line-height: 1.45; color: #fff; margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.notif-time { font-size: 11px; font-weight: 600; color: #fff; margin: 5px 0 0; }
+/* "Ver mi orden ›": botoncito de cristal del color del proceso */
+.notif-go {
+    display: inline-flex;
+    align-items: center;
+    margin: 8px 0 0;
+    padding: 4px 11px;
+    border-radius: 999px;
+    background: rgba(var(--st),.14);
+    border: 1px solid rgba(var(--st),.5);
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    color: #fff;
+}
+.notif-empty { padding: 26px 18px; text-align: center; color: #fff; font-size: 13px; font-weight: 600; }
+.notif-foot { flex: 0 0 auto; margin: 0; padding: 10px 18px 13px; font-size: 11px; font-weight: 600; line-height: 1.4; color: #fff; border-top: 1px solid rgba(255,255,255,.1); }
 
 /* ── Instalar la web como app ─────────────────────────────── */
 .pwa-install-toggle { color: #fff; }
@@ -4352,8 +5078,8 @@ a.notif-item:active { background: rgba(255,0,0,.12); }
 .drawer-item[data-pwa-install][hidden] { display: none; }
 .pwa-install-toggle { animation: pwa-glow 2.6s ease-in-out infinite; }
 @keyframes pwa-glow {
-    0%, 100% { box-shadow: 0 1px 6px rgba(0,0,0,.35); }
-    50% { box-shadow: 0 0 12px rgba(255,0,0,.55); }
+    0%, 100% { box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 30px rgba(255,0,0,0.08); }
+    50% { box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 14px rgba(255,0,0,.6); }
 }
 /* Con tres botones en el header se achican un poco para que quepan en pantallas angostas. */
 .header-right.has-install { gap: 5px; }
@@ -4364,7 +5090,7 @@ a.notif-item:active { background: rgba(255,0,0,.12); }
 /* Pasos para instalar en iPhone */
 .pwa-help {
     position: fixed;
-    inset: 0;
+    top:0;right:0;bottom:0;left:0;
     z-index: 10050;
     display: flex;
     align-items: center;
@@ -4396,3 +5122,1046 @@ a.notif-item:active { background: rgba(255,0,0,.12); }
     font-weight: 800;
     cursor: pointer;
 }
+
+/* ── Barra flotante de abajo (dock) ───────────────────────────
+   Cristal casi transparente con borde luminoso. Cinco apartados iguales; el botón rojo marca el elegido.
+   Al cambiar de apartado el botón rojo se hunde como una gota (sale) y en el apartado nuevo la barra se
+   hincha, la gota se despega y nace el botón con el hueco curvo debajo (entra). La forma de la barra la
+   dibuja dock.js con una curva (clip-path) que se recalcula en cada cuadro; aquí solo van los colores.
+   Solo en la portada. */
+.nx-dock {
+    --dock-h: 52px;
+    position: fixed;
+    left: 50%;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(400px, calc(100% - 20px));
+    height: var(--dock-h);
+    z-index: 880;
+    pointer-events: none;           /* solo reciben toques los botones, no el vidrio */
+    transition: transform .25s ease, opacity .2s ease;
+}
+.nx-dock:not(.is-ready) { opacity: 0; }   /* hasta que dock.js dibuja la forma, para que no se vea un rectángulo */
+.nx-dock.is-away { transform: translate(-50%, 160%); opacity: 0; }
+body.has-dock { padding-bottom: 84px; }
+
+/* La forma se dibuja 28 px más arriba de la barra (ahí se hincha la gota y asoma el botón). */
+.nx-dock-bar,
+.nx-dock-edge,
+.nx-dock-shadow {
+    position: absolute;
+    left: 0;
+    top: -28px;
+    width: 100%;
+    height: 80px;
+    pointer-events: none;
+}
+.nx-dock-bar {
+    background: linear-gradient(135deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.025) 55%, rgba(255,40,70,.05) 100%),
+                rgba(8,8,12,.30);
+    -webkit-backdrop-filter: blur(18px) saturate(190%);
+    backdrop-filter: blur(18px) saturate(190%);
+    clip-path: inset(28px 0 0 0 round 20px);   /* hasta que dock.js pone la curva */
+}
+.nx-dock-edge, .nx-dock-shadow { overflow: visible; }
+.nx-dock-edge path { fill: none; stroke: url(#nxDockEdge); stroke-width: 1; }
+.nx-dock-shadow { transform: translateY(3px); filter: blur(10px); }
+.nx-dock-shadow path { fill: rgba(0,0,0,.5); }
+
+.nx-dock-items {
+    position: absolute;
+    top:0;right:0;bottom:0;left:0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    align-items: center;
+    padding: 4px 22px 0;            /* deja sitio a los apartados de las puntas para que el hueco redondo quepa entero */
+}
+.nx-dock-item {
+    pointer-events: auto;
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: rgba(255,255,255,.66);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color .18s ease, transform .15s ease;
+}
+.nx-dock-item svg { width: 23px; height: 23px; transition: filter .18s ease, opacity .22s ease; }
+/* Estilo iPhone: de línea en la barra y relleno dentro del botón de cristal (apartado elegido) */
+.nx-dock-item .ico-fill { display: none; }
+.nx-dock-main .ico-line { display: none; }
+.nx-dock-item:hover, .nx-dock-item:focus-visible { color: #fff; }
+.nx-dock-item:hover svg, .nx-dock-item:focus-visible svg { filter: drop-shadow(0 0 5px rgba(255,40,70,.85)); }
+.nx-dock-item:active { transform: scale(.9); }
+/* Sin el recuadro blanco del navegador: al navegar con teclado el apartado se resalta con un fondo suave */
+.nx-dock-item, .nx-dock-main { outline: none; }
+.nx-dock-item:focus-visible { background: rgba(255,255,255,.09); border-radius: 16px; }
+.nx-dock-main:focus-visible { filter: brightness(1.2); }
+/* El apartado elegido no muestra su ícono: ya lo lleva el botón rojo. */
+.nx-dock-item.is-covered svg { opacity: 0; }
+
+/* Botón redondo de cristal: marca el apartado elegido. Su posición, tamaño y transparencia los mueve dock.js. */
+.nx-dock-main {
+    pointer-events: auto;
+    position: absolute;
+    left: 0;
+    top: -26px;
+    width: 46px; height: 46px;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: #fff;
+    text-decoration: none;
+    cursor: pointer;
+    /* Cristal transparente, sin color: el centro casi no tiene tinte (deja ver y desenfoca lo de atrás) y el
+       borde es un aro de luz de colores con un destello arriba (imagen de referencia del dueño). */
+    background:
+        radial-gradient(circle at 50% 22%, rgba(255,255,255,.1) 0%, rgba(255,255,255,.025) 55%, rgba(0,0,0,.16) 100%);
+    -webkit-backdrop-filter: blur(6px) saturate(160%);
+    backdrop-filter: blur(6px) saturate(160%);
+    border: 0;
+    box-shadow:
+        inset 0 0 0 3.5px rgba(255,255,255,.04),
+        inset 0 0 0 4px rgba(255,255,255,.09),
+        inset 0 -6px 12px rgba(0,0,0,.18);
+    -webkit-tap-highlight-color: transparent;
+    transition: filter .2s ease;
+}
+/* El aro de colores del borde (un degradado en círculo recortado como anillo) */
+.nx-dock-main::before {
+    content: "";
+    position: absolute;
+    top:0;right:0;bottom:0;left:0;
+    border-radius: 50%;
+    padding: 2.5px;
+    background: conic-gradient(from 0deg,
+        #fff 0deg, #ff2a3c 38deg, #8c0012 72deg, #000 108deg, #fff 150deg, #ff1a30 192deg, #000 232deg,
+        #ff3b4c 266deg, #fff 298deg, #000 326deg, #fff 352deg, #fff 360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    animation: nx-dock-ring-spin 6s linear infinite;      /* el aro de colores gira despacio alrededor del botón */
+}
+/* Destello de luz arriba del aro */
+.nx-dock-main::after {
+    content: "";
+    position: absolute;
+    top: -6px; left: 50%;
+    width: 30px; height: 15px;
+    margin-left: -19px;
+    background: radial-gradient(ellipse at 50% 72%, rgba(255,255,255,.95) 0%, rgba(255,40,62,.55) 42%, rgba(255,0,30,0) 72%);
+    filter: blur(3.5px);
+    pointer-events: none;
+    transform-origin: 19px 29px;                          /* el centro del botón: gira junto con el aro, siempre sobre su parte más brillante */
+    animation: nx-dock-ring-spin 6s linear infinite;
+}
+@keyframes nx-dock-ring-spin { to { transform: rotate(360deg); } }
+.nx-dock-main svg { position: relative; z-index: 1; width: 22px; height: 22px; color: #f4f5f8; filter: drop-shadow(0 1px 2px rgba(0,0,0,.45)); }
+.nx-dock-main:hover { filter: brightness(1.12); }
+.nx-dock-main-label {
+    position: absolute;
+    left: 0; bottom: 3px;
+    transform: translateX(-50%);
+    font-family: var(--nx-font-display);
+    font-weight: 800;
+    font-size: 10.5px;
+    letter-spacing: .03em;
+    text-transform: none;
+    white-space: nowrap;
+    color: #fff;
+    pointer-events: none;
+}
+
+/* Aviso "Tu perfil llegará pronto" */
+.nx-dock-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 72px);
+    transform: translateX(-50%);
+    z-index: 885;
+    max-width: calc(100% - 40px);
+    white-space: nowrap;
+    padding: 8px 15px;
+    border-radius: 999px;
+    background: rgba(12,12,18,.82);
+    border: 1px solid rgba(255,255,255,.2);
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-weight: 700;
+    font-size: 12px;
+    box-shadow: 0 8px 26px rgba(0,0,0,.55), 0 0 18px rgba(255,0,40,.25);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    opacity: 0;
+    pointer-events: none;
+}
+.nx-dock-toast[hidden] { display: none; }
+.nx-dock-toast.is-on { animation: nx-dock-toast 2.4s ease forwards; }
+@keyframes nx-dock-toast {
+    0% { opacity: 0; transform: translate(-50%, 8px); }
+    12%, 82% { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, 4px); }
+}
+@media (max-width: 360px) {
+    .nx-dock-item svg { width: 20px; height: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .nx-dock, .nx-dock-main, .nx-dock-item { transition: none; animation: none; }
+    .nx-dock-main::before, .nx-dock-main::after { animation: none; }
+    .nx-dock-toast.is-on { animation: none; opacity: 1; transform: translateX(-50%); }
+}
+
+/* El ícono de Soporte parpadea en rojo todo el tiempo (también dentro del botón de cristal cuando está elegido) */
+.nx-dock-blink { animation: nx-dock-blink 2s ease-in-out infinite; }   /* se enciende y se apaga cada 2 segundos */
+@keyframes nx-dock-blink {
+    50% { color: #ff2a3c; filter: drop-shadow(0 0 8px rgba(255,30,60,.95)); }
+}
+
+/* ── Ventana de Juegos (la abre el apartado "Juegos" de la barra) ─────────────
+   Hoja de cristal que sube desde la barra, con los mini juegos y las dinámicas en botones. Queda POR DEBAJO
+   de la barra (z-index 870 < 880) para que el botón de cristal siga a la vista. */
+.nx-games-pop { position: fixed; top:0;right:0;bottom:0;left:0; z-index: 870; }
+.nx-games-pop[hidden] { display: none; }
+.nx-games-pop-backdrop {
+    position: absolute;
+    top:0;right:0;bottom:0;left:0;
+    background: rgba(0,0,0,.38);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    opacity: 0;
+    transition: opacity .08s ease;
+}
+.nx-games-pop.is-open .nx-games-pop-backdrop { opacity: 1; }
+.nx-games-pop-sheet {
+    position: absolute;
+    left: 50%;
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 96px);
+    width: min(400px, calc(100% - 20px));
+    max-height: calc(100% - 150px);
+    overflow-y: auto;
+    padding: 14px 14px 16px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.03) 55%, rgba(255,40,70,.06) 100%), rgba(10,10,14,.42);
+    -webkit-backdrop-filter: blur(22px) saturate(190%);
+    backdrop-filter: blur(22px) saturate(190%);
+    border: 1px solid rgba(255,255,255,.16);
+    border-top-color: rgba(255,255,255,.34);
+    box-shadow: 0 18px 44px rgba(0,0,0,.55), inset 0 1px 2px rgba(255,255,255,.22);
+    transform: translate(-50%, 18px) scale(.97);
+    transform-origin: 50% 100%;
+    opacity: 0;
+    transition: transform .11s ease-out, opacity .08s ease;   /* sale casi al instante: si tarda, la gente toca varias veces */
+}
+.nx-games-pop.is-open .nx-games-pop-sheet { transform: translate(-50%, 0) scale(1); opacity: 1; }
+
+.nx-games-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 2px 4px; }
+.nx-games-pop-title strong { display: block; font-family: var(--nx-font-display); font-weight: 900; font-size: 17px; color: #fff; letter-spacing: .01em; }
+.nx-games-pop-title small { display: block; margin-top: 1px; font-size: 11.5px; color: var(--nx-muted); }
+.nx-games-pop-close {
+    flex: 0 0 auto;
+    display: grid; place-items: center;
+    width: 32px; height: 32px;
+    padding: 0;
+    border-radius: 50%;
+    color: #fff;
+    cursor: pointer;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.16);
+    -webkit-tap-highlight-color: transparent;
+}
+.nx-games-pop-close svg { width: 15px; height: 15px; }
+.nx-games-pop-close:hover, .nx-games-pop-close:focus-visible { background: rgba(255,255,255,.14); outline: none; }
+
+.nx-games-pop-kicker {
+    display: flex; align-items: center; gap: 8px;
+    margin: 14px 2px 0;
+    font-family: var(--nx-font-display);
+    font-weight: 800;
+    font-size: 10.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.62);
+}
+.nx-games-pop-kicker::before { content: ""; width: 14px; height: 2px; border-radius: 2px; background: var(--nx-red); }
+
+.nx-games-pop-item {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%;
+    margin: 8px 0 0;
+    padding: 9px 12px 9px 10px;
+    border-radius: 16px;
+    color: #fff;
+    text-align: left;
+    text-decoration: none;
+    font: inherit;
+    cursor: pointer;
+    /* Cada botón tiene su color (--tone, en el HTML): tiñe el fondo, el borde, el cuadrito del ícono y la flecha */
+    --tone: 255,255,255;
+    background: linear-gradient(135deg, rgba(var(--tone), .14), rgba(var(--tone), .03) 75%);
+    border: 1px solid rgba(var(--tone), .3);
+    border-top-color: rgba(var(--tone), .5);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.1);
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .18s ease, background .18s ease, transform .15s ease;
+}
+.nx-games-pop-item:hover, .nx-games-pop-item:focus-visible {
+    border-color: rgba(var(--tone), .75);
+    background: linear-gradient(135deg, rgba(var(--tone), .2), rgba(var(--tone), .05) 75%);
+    outline: none;
+}
+.nx-games-pop-item:active { transform: scale(.985); }
+.nx-games-pop-ico {
+    flex: 0 0 40px;
+    display: grid; place-items: center;
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    color: #fff;
+    /* cuadrito de cristal del color de cada botón (se oscurece hacia abajo) con el ícono en blanco */
+    background:
+        radial-gradient(circle at 30% 16%, rgba(255,255,255,.34), rgba(255,255,255,0) 58%),
+        linear-gradient(150deg, rgba(var(--tone), 1), rgba(var(--tone), .55) 55%, rgba(0,0,0,.75));
+    border: 1px solid rgba(var(--tone), .75);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.35), inset 0 -4px 8px rgba(0,0,0,.35), 0 4px 14px rgba(var(--tone), .35);
+}
+.nx-games-pop-ico svg { width: 22px; height: 22px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
+/* Torneos: amarillo con negro y blanco; las dos espadas pelean (cada una gira desde su empuñadura, chocan y salta una chispa) */
+.nx-games-pop-item--gold { --tone: 250,204,21; }
+.nx-games-pop-item--gold .nx-games-pop-ico {
+    color: #111;
+    background:
+        radial-gradient(circle at 30% 16%, rgba(255,255,255,.75), rgba(255,255,255,0) 58%),
+        linear-gradient(150deg, #fde047, #facc15 55%, #ca8a04);
+    border: 2px solid #fff;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.6), inset 0 -4px 8px rgba(0,0,0,.25), 0 4px 14px rgba(250,204,21,.4);
+}
+.nx-games-pop-item--gold .nx-games-pop-ico svg { stroke-width: 2; filter: drop-shadow(0 1px 0 rgba(255,255,255,.5)); overflow: visible; }
+/* El cuadrito también tiembla como en una turbulencia: sacudidas chiquitas todo el tiempo y más fuertes justo cuando las espadas chocan */
+.nx-games-pop-item--gold .nx-games-pop-ico { animation: nxTurbulence 2.4s linear infinite; will-change: transform; }
+@keyframes nxTurbulence {
+    0%, 100% { transform: translate(0, 0) rotate(0); }
+    3% { transform: translate(-1px, .6px) rotate(-1.4deg); }
+    6% { transform: translate(1.1px, -.8px) rotate(1.6deg); }
+    9% { transform: translate(-1.2px, -.5px) rotate(-1.1deg); }
+    12% { transform: translate(.9px, 1px) rotate(1.3deg); }
+    15% { transform: translate(-.8px, .4px) rotate(-1.5deg); }
+    18% { transform: translate(1px, -.9px) rotate(1.2deg); }
+    21% { transform: translate(-1.4px, .8px) rotate(-2.2deg); }
+    23% { transform: translate(2.8px, -1.8px) rotate(5deg); }
+    25% { transform: translate(-2.6px, 1.6px) rotate(-4.6deg); }
+    27% { transform: translate(2.2px, 1.2px) rotate(3.4deg); }
+    29% { transform: translate(-1.6px, -1.2px) rotate(-2.6deg); }
+    31% { transform: translate(1.2px, .8px) rotate(1.8deg); }
+    34% { transform: translate(-.9px, -.6px) rotate(-1.2deg); }
+    38% { transform: translate(.8px, .7px) rotate(1.1deg); }
+    42% { transform: translate(-1px, .4px) rotate(-1.4deg); }
+    46% { transform: translate(1.1px, -.7px) rotate(1.5deg); }
+    50% { transform: translate(-.8px, .9px) rotate(-1.2deg); }
+    54% { transform: translate(.9px, -.5px) rotate(1.3deg); }
+    58% { transform: translate(-1.3px, .7px) rotate(-1.8deg); }
+    63% { transform: translate(2.8px, -1.8px) rotate(5deg); }
+    65% { transform: translate(-2.6px, 1.6px) rotate(-4.6deg); }
+    67% { transform: translate(2.2px, 1.2px) rotate(3.4deg); }
+    69% { transform: translate(-1.6px, -1.2px) rotate(-2.6deg); }
+    71% { transform: translate(1.2px, .8px) rotate(1.8deg); }
+    75% { transform: translate(-.9px, -.6px) rotate(-1.2deg); }
+    80% { transform: translate(.8px, .6px) rotate(1.2deg); }
+    85% { transform: translate(-1px, -.4px) rotate(-1.3deg); }
+    90% { transform: translate(.9px, .7px) rotate(1.1deg); }
+    95% { transform: translate(-.6px, -.3px) rotate(-.8deg); }
+}
+.nx-sw-a { transform-origin: 19px 19px; animation: nxSwordA 2.4s ease-in-out infinite; }
+.nx-sw-b { transform-origin: 5px 19px; animation: nxSwordB 2.4s ease-in-out infinite; }
+.nx-spark { transform-origin: 12px 12px; opacity: 0; animation: nxSpark 2.4s ease-out infinite; }
+@keyframes nxSwordA {
+    0%, 100% { transform: rotate(0); }
+    12% { transform: rotate(-18deg); }
+    22% { transform: rotate(9deg); }
+    28% { transform: rotate(-4deg); }
+    36% { transform: rotate(0); }
+    52% { transform: rotate(-18deg); }
+    62% { transform: rotate(9deg); }
+    68% { transform: rotate(-4deg); }
+    76% { transform: rotate(0); }
+}
+@keyframes nxSwordB {
+    0%, 100% { transform: rotate(0); }
+    12% { transform: rotate(18deg); }
+    22% { transform: rotate(-9deg); }
+    28% { transform: rotate(4deg); }
+    36% { transform: rotate(0); }
+    52% { transform: rotate(18deg); }
+    62% { transform: rotate(-9deg); }
+    68% { transform: rotate(4deg); }
+    76% { transform: rotate(0); }
+}
+@keyframes nxSpark {
+    0%, 19%, 36%, 59%, 76%, 100% { opacity: 0; transform: scale(.4); }
+    22% { opacity: 1; transform: scale(1.15); }
+    30% { opacity: 0; transform: scale(1.5); }
+    62% { opacity: 1; transform: scale(1.15); }
+    70% { opacity: 0; transform: scale(1.5); }
+}
+/* Hordas se queda en negro (sin color): cuadrito negro con borde que respira y la calavera se mueve cada pocos segundos */
+.nx-games-pop-item--dark .nx-games-pop-ico {
+    background:
+        radial-gradient(circle at 30% 16%, rgba(255,255,255,.28), rgba(255,255,255,0) 58%),
+        linear-gradient(150deg, #26262a, #000);
+    border: 2px solid rgba(255,255,255,.7);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.25), inset 0 -4px 8px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.4);
+    animation: nxHordaBorder 2.6s ease-in-out infinite;
+}
+.nx-games-pop-item--dark .nx-games-pop-ico svg { transform-origin: 50% 80%; animation: nxHordaSkull 2.6s ease-in-out infinite; }
+@keyframes nxHordaBorder {
+    0%, 100% { border-color: rgba(255,255,255,.7); box-shadow: inset 0 1px 1px rgba(255,255,255,.25), inset 0 -4px 8px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.4); }
+    50% { border-color: rgba(255,75,92,.95); box-shadow: inset 0 1px 1px rgba(255,255,255,.25), inset 0 -4px 8px rgba(0,0,0,.5), 0 0 14px rgba(255,60,85,.45); }
+}
+@keyframes nxHordaSkull {
+    0%, 55%, 100% { transform: none; }
+    10% { transform: rotate(-12deg) translateY(-1px); }
+    22% { transform: rotate(11deg) translateY(-2px); }
+    34% { transform: rotate(-8deg) translateY(-1px); }
+    46% { transform: rotate(5deg); }
+}
+.nx-games-pop-text { flex: 1 1 auto; min-width: 0; }
+.nx-games-pop-text strong { display: block; font-family: var(--nx-font-display); font-weight: 800; font-size: 14px; line-height: 1.2; }
+.nx-games-pop-text small { display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.25; color: var(--nx-muted); }
+.nx-games-pop-chev { flex: 0 0 auto; width: 18px; height: 18px; color: rgba(var(--tone), .95); }
+
+@media (prefers-reduced-motion: reduce) {
+    .nx-dock-blink { animation: none; color: #ff4b5c; }
+    .nx-games-pop-backdrop, .nx-games-pop-sheet { transition: none; }
+    .nx-games-pop-item--dark .nx-games-pop-ico, .nx-games-pop-item--dark .nx-games-pop-ico svg { animation: none; }
+    .nx-sw-a, .nx-sw-b, .nx-spark, .nx-games-pop-item--gold .nx-games-pop-ico { animation: none; }
+}
+
+/* Con el ranking o los puntos abiertos la barra se queda a la vista, por encima del fondo oscuro (dock.js pone
+   la clase), y esas ventanas dejan libre el sitio de abajo para no quedar tapadas por la barra. */
+.nx-dock.is-over-modal { z-index: 1210; }
+body.dock-over-modal #rankingModal,
+body.dock-over-modal #pointsModal { padding-bottom: 104px; }
+body.dock-over-modal #rankingModal .overlay-modal-card,
+body.dock-over-modal #pointsModal .overlay-modal-card { max-height: calc(100vh - 136px); max-height: calc(min(100vh, 100dvh) - 136px); }   /* dvh = lo que de verdad se ve (con la barra del navegador); vh en el teléfono es más alto */
+/* La ventana de Puntos es más alta que la del ranking y no tiene una lista interna que deslice: en pantallas bajas (360x560, 320x480) el botón de
+   GIRAR y los de la billetera quedaban cortados y no se podían alcanzar. Con esto la tarjeta desliza por dentro. (El ranking ya desliza su lista.) */
+body.dock-over-modal #pointsModal .overlay-modal-card { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+
+/* ── Página "Iniciar sesión": selector de productos en burbuja de cristal, separador y botón de Google ───────────
+   El <select> sigue existiendo (viaja en el formulario) pero con JavaScript se esconde (static/js/bubble-picker.js). */
+.nx-picker-btn {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    margin-top: 6px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    text-align: left;
+    cursor: pointer;
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-weight: 700;
+    font-size: 14px;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s ease;
+}
+.js-bubble-picker .nx-picker-btn { display: flex; }
+.js-bubble-picker select[data-bubble-picker] { position: absolute; width: 1px !important; height: 1px !important; min-height: 0 !important; padding: 0 !important; border: 0 !important; opacity: 0; pointer-events: none; }
+.nx-picker-btn:hover,
+.nx-picker-btn:focus-visible,
+.nx-picker-btn[aria-expanded="true"] { border-color: rgba(255,60,85,.7) !important; outline: none; }
+.nx-picker-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-picker-value.is-placeholder { color: #a3a3a3; }
+.nx-picker-chev { width: 16px; height: 16px; flex: 0 0 auto; color: rgba(255,255,255,.7); transition: transform .2s ease; }
+.nx-picker-btn[aria-expanded="true"] .nx-picker-chev { transform: rotate(180deg); }
+
+.nx-bubble {
+    position: fixed;
+    z-index: 1250;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    border-radius: 22px;
+    /* Burbuja de cristal (la misma hoja del menú lateral y de las notificaciones), con un poco más de tinte: debajo
+       queda el botón rojo "Continuar" y, borroso a través del cristal, parecía una fila marcada. */
+    background:
+        linear-gradient(155deg, rgba(255,255,255,.11) 0%, rgba(255,255,255,.035) 42%, rgba(255,40,70,.07) 100%),
+        rgba(10,10,14,.58);
+    -webkit-backdrop-filter: blur(18px) saturate(190%);
+    backdrop-filter: blur(18px) saturate(190%);
+    border: 1px solid rgba(255,255,255,.16);
+    border-top-color: rgba(255,255,255,.34);
+    box-shadow: 0 24px 60px rgba(0,0,0,.6), inset 0 1px 2px rgba(255,255,255,.22), 0 0 40px rgba(255,0,0,.08);
+    opacity: 0;
+    transform: scale(.94) translateY(-6px);
+    transition: transform .24s cubic-bezier(.2,.9,.3,1.15), opacity .18s ease;
+}
+.nx-bubble[hidden] { display: none; }
+.nx-bubble.is-open { opacity: 1; transform: none; }
+.nx-bubble.is-above { transform: scale(.94) translateY(6px); }
+.nx-bubble.is-above.is-open { transform: none; }
+/* La flechita de la burbuja: un cuadrito girado del mismo cristal, apuntando al botón */
+.nx-bubble-arrow {
+    position: absolute;
+    top: -8px;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    transform: rotate(45deg);
+    border-radius: 4px 0 0 0;
+    background: #2a1d22;
+    border-top: 1px solid rgba(255,255,255,.34);
+    border-left: 1px solid rgba(255,255,255,.34);
+}
+.nx-bubble.is-above .nx-bubble-arrow { top: auto; bottom: -8px; border-radius: 0 0 4px 0; border: 0; border-bottom: 1px solid rgba(255,255,255,.2); border-right: 1px solid rgba(255,255,255,.2); }
+.nx-bubble-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 2px 8px 8px; }
+.nx-bubble-head strong { font-family: var(--nx-font-display); font-weight: 800; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: #fff; }
+.nx-bubble-close {
+    display: grid; place-items: center;
+    width: 28px; height: 28px;
+    padding: 0;
+    border-radius: 50%;
+    color: #fff;
+    cursor: pointer;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.16);
+}
+.nx-bubble-close svg { width: 13px; height: 13px; }
+.nx-bubble-close:hover, .nx-bubble-close:focus-visible { border-color: rgba(255,60,85,.7); background: rgba(255,40,70,.16); outline: none; }
+.nx-bubble-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; padding: 2px; scrollbar-width: none; overscroll-behavior: contain; }
+.nx-bubble-list::-webkit-scrollbar { display: none; }
+.nx-bubble-item {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 14px;
+    text-align: left;
+    cursor: pointer;
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-weight: 800;
+    font-size: 14px;
+    background: linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.015));
+    border: 1px solid rgba(255,255,255,.12);
+    border-top-color: rgba(255,255,255,.24);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.1);
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .18s ease, background .18s ease, transform .15s ease;
+}
+.nx-bubble-item:hover, .nx-bubble-item:focus-visible { border-color: rgba(255,60,85,.6); background: linear-gradient(135deg, rgba(255,255,255,.1), rgba(255,40,70,.09)); outline: none; }
+.nx-bubble-item:active { transform: scale(.985); }
+.nx-bubble-item.is-selected { border-color: rgba(255,60,85,.7); background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,40,70,.14)); }
+.nx-bubble-thumb {
+    flex: 0 0 34px;
+    display: grid; place-items: center;
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    overflow: hidden;
+    color: #fff;
+    background: radial-gradient(circle at 30% 16%, rgba(255,255,255,.28), rgba(255,255,255,0) 58%), linear-gradient(150deg, #26262a, #000);
+    border: 1px solid rgba(255,255,255,.28);
+}
+.nx-bubble-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.nx-bubble-thumb b { font-weight: 900; font-size: 15px; }
+.nx-bubble-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-bubble-check { flex: 0 0 auto; width: 18px; height: 18px; margin-right: 2px; color: #fff; opacity: 0; transition: opacity .15s ease; }
+.nx-bubble-item.is-selected .nx-bubble-check { opacity: 1; }
+
+.nx-or {
+    display: flex; align-items: center; gap: 12px;
+    margin: 16px 0 12px;
+    font-family: var(--nx-font-display);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.7);
+}
+.nx-or::before, .nx-or::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.24), rgba(255,255,255,0)); }
+.nx-google-btn {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%;
+    padding: 13px 16px;
+    border-radius: 12px;
+    text-decoration: none;
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: .02em;
+    background: linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.015));
+    border: 1px solid rgba(255,255,255,.18);
+    border-top-color: rgba(255,255,255,.35);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.12);
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s ease, background .2s ease, transform .15s ease;
+}
+.nx-google-btn:hover, .nx-google-btn:focus-visible { border-color: rgba(255,255,255,.55); background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.03)); outline: none; }
+.nx-google-btn:active { transform: scale(.985); }
+.nx-google-btn svg { flex: 0 0 auto; }
+
+@media (prefers-reduced-motion: reduce) {
+    .nx-bubble { transition: none; }
+}
+
+/* Botón "Volver" de la página de iniciar sesión: pastilla de cristal (el mismo cristal de las tarjetas) encima de la tarjeta */
+.nx-back-row { display: flex; margin: 0 0 14px; }
+.nx-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px 9px 11px;
+    border-radius: 13px;
+    text-decoration: none;
+    color: #fff;
+    font-family: var(--nx-font-display);
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: .02em;
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
+    -webkit-backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-top: 1px solid rgba(255,255,255,0.35);
+    border-left: 1px solid rgba(255,255,255,0.25);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 30px rgba(255,0,0,0.08);
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s ease, background .2s ease, transform .15s ease;
+}
+.nx-back-btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.nx-back-btn:hover, .nx-back-btn:focus-visible { border-color: rgba(255,60,85,.7); background: linear-gradient(135deg, rgba(255,255,255,.07), rgba(255,40,70,.12)); outline: none; }
+.nx-back-btn:active { transform: scale(.97); }
+
+/* ═══ Cuentas: pestañas de Iniciar sesión (Con mi ID / Mi cuenta / Registrarse) y perfil ═══ */
+.nx-auth-tabs {
+    position: relative;
+    display: flex;
+    gap: 4px;
+    margin: 0 0 16px;
+    padding: 5px;
+    border-radius: 14px;
+    background: rgba(0,0,0,.34);
+    border: 1px solid rgba(255,255,255,.12);
+    border-top-color: rgba(255,255,255,.2);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,.25);
+}
+.nx-auth-tab {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 11px 4px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--nx-font-display);
+    font-weight: 700;
+    font-size: 12.5px;
+    letter-spacing: .02em;
+    color: rgba(255,255,255,.55);
+    -webkit-tap-highlight-color: transparent;
+    transition: color .2s ease;
+}
+.nx-auth-tab:hover { color: rgba(255,255,255,.85); }
+.nx-auth-tab.is-active { color: #fff; font-weight: 900; }
+.nx-auth-tab:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: 1px; }
+/* La pestaña elegida lleva un cuadro de cristal que se desliza (un solo cuadro); sin JavaScript lo lleva ella misma */
+.nx-auth-slider,
+.nx-auth-tabs:not(.has-slider) .nx-auth-tab.is-active {
+    background: linear-gradient(135deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.05) 55%, rgba(255,255,255,.08) 100%);
+    border: 1px solid rgba(255,255,255,.2);
+    border-top-color: rgba(255,255,255,.38);
+    border-left-color: rgba(255,255,255,.28);
+    box-shadow: 0 6px 16px rgba(0,0,0,.2), inset 0 1px 2px rgba(255,255,255,.22);
+}
+.nx-auth-slider {
+    position: absolute;
+    left: 0; top: 0;
+    width: 0; height: 0;
+    box-sizing: border-box;
+    border-radius: 10px;
+    pointer-events: none;
+    z-index: 0;
+    will-change: transform, width;
+}
+.nx-auth-tabs:not(.has-slider) .nx-auth-slider { display: none; }
+.nx-auth-tabs.is-ready .nx-auth-slider {
+    transition: transform .42s cubic-bezier(.3, 1.25, .4, 1), width .42s cubic-bezier(.3, 1.25, .4, 1), height .3s ease;
+}
+
+.nx-auth-pane[hidden] { display: none; }
+.nx-auth-pane.is-entering { animation: nxAuthIn .34s cubic-bezier(.2, .8, .3, 1) both; }
+@keyframes nxAuthIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+    .nx-auth-tabs.is-ready .nx-auth-slider { transition: none; }
+    .nx-auth-pane.is-entering { animation: none; }
+}
+
+.nx-auth-input { display: block; width: 100%; box-sizing: border-box; margin-top: 6px; padding: 13px 14px; font-size: 14px; }
+.nx-auth-hint { margin: 6px 2px 0; font-family: var(--nx-font-display); font-size: 11.5px; line-height: 1.4; color: rgba(255,255,255,.5); }
+.nx-auth-hint.nx-auth-error { color: #fb7185; font-weight: 700; }
+.nx-auth-hint[hidden] { display: none; }
+.nx-auth-foot { margin-top: 18px !important; }
+.nx-auth-pane .rdm-btn { margin-top: 4px; }
+.nx-auth-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+.nx-pass-wrap { position: relative; }
+.nx-pass-wrap .nx-auth-input { padding-right: 46px; }
+.nx-pass-toggle {
+    position: absolute; right: 6px; top: 6px; bottom: 0;
+    width: 38px; height: 38px;
+    display: grid; place-items: center;
+    background: none; border: 0; border-radius: 10px;
+    color: rgba(255,255,255,.55);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.nx-pass-toggle:hover, .nx-pass-toggle:focus-visible { color: #fff; outline: none; }
+.nx-pass-toggle svg { width: 19px; height: 19px; }
+.nx-pass-toggle .nx-eye-off { display: none; }
+.nx-pass-toggle.is-on .nx-eye { display: none; }
+.nx-pass-toggle.is-on .nx-eye-off { display: block; }
+
+/* Perfil */
+.nx-prof { max-width: 560px; }
+.nx-prof-card { padding: 20px 18px; border-radius: 20px; margin-bottom: 14px; }
+.nx-prof-id { display: flex; align-items: center; gap: 14px; }
+.nx-prof-avatar {
+    flex: 0 0 auto;
+    width: 58px; height: 58px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    font-family: var(--nx-font-display);
+    font-weight: 900; font-size: 24px;
+    color: #fff;
+    background: radial-gradient(circle at 30% 18%, rgba(255,255,255,.3), rgba(255,255,255,0) 58%), linear-gradient(150deg, #e11d2e, #6b0610);
+    border: 1px solid rgba(255,255,255,.35);
+    box-shadow: 0 8px 22px rgba(225,29,46,.3), inset 0 1px 2px rgba(255,255,255,.35);
+}
+.nx-prof-who { min-width: 0; }
+.nx-prof-name {
+    margin: 0 0 6px;
+    font-family: var(--nx-font-display);
+    font-weight: 900; font-size: 22px; letter-spacing: -.01em;
+    color: #fff;
+    overflow-wrap: anywhere;
+}
+.nx-prof-chip {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-family: var(--nx-font-display);
+    font-weight: 800; font-size: 11px; letter-spacing: .04em;
+    color: #fff;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.22);
+}
+.nx-prof-chip.is-account { background: rgba(52,211,153,.14); border-color: rgba(52,211,153,.5); }
+.nx-prof-chip.is-google { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.4); }
+.nx-prof-chip.is-readonly { background: rgba(251,191,36,.14); border-color: rgba(251,191,36,.5); }
+.nx-prof-meta { margin: 16px 0 0; display: grid; gap: 8px; }
+.nx-prof-meta > div { display: flex; justify-content: space-between; gap: 14px; font-family: var(--nx-font-display); font-size: 13px; }
+.nx-prof-meta dt { color: rgba(255,255,255,.55); font-weight: 700; }
+.nx-prof-meta dd { margin: 0; color: #fff; font-weight: 700; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.nx-prof-logout { margin: 16px 0 0; }
+.nx-prof-btn-ghost {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 11px 18px;
+    border-radius: 12px;
+    font-family: var(--nx-font-display);
+    font-weight: 800; font-size: 13px; letter-spacing: .02em;
+    text-decoration: none;
+    color: #fff;
+    background: linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.015));
+    border: 1px solid rgba(255,255,255,.2);
+    border-top-color: rgba(255,255,255,.35);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .2s ease, background .2s ease, transform .15s ease;
+}
+.nx-prof-btn-ghost:hover, .nx-prof-btn-ghost:focus-visible { border-color: rgba(255,255,255,.55); outline: none; }
+.nx-prof-btn-ghost:active { transform: scale(.97); }
+.nx-prof-flashes { margin-bottom: 14px; }
+.nx-prof-flashes .flash { margin-bottom: 8px; }
+.nx-prof-h { margin: 0 0 6px; font-family: var(--nx-font-display); font-weight: 900; font-size: 17px; color: #fff; }
+.nx-prof-text { margin: 0 0 14px; font-family: var(--nx-font-display); font-size: 13px; line-height: 1.55; color: rgba(255,255,255,.62); }
+.nx-prof-empty { margin: 8px 0 14px; font-family: var(--nx-font-display); font-size: 13px; color: rgba(255,255,255,.5); }
+.nx-prof-actions { display: grid; gap: 10px; }
+.nx-prof-actions .rdm-btn { margin: 0; }
+.nx-prof-list { list-style: none; margin: 8px 0 14px; padding: 0; display: grid; gap: 8px; }
+.nx-prof-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    text-decoration: none;
+    color: #fff;
+    background: linear-gradient(135deg, rgba(255,255,255,.06), rgba(255,255,255,.012));
+    border: 1px solid rgba(255,255,255,.14);
+    border-top-color: rgba(255,255,255,.26);
+}
+a.nx-prof-row { transition: border-color .2s ease, transform .15s ease; -webkit-tap-highlight-color: transparent; }
+a.nx-prof-row:hover, a.nx-prof-row:focus-visible { border-color: rgba(255,255,255,.5); outline: none; }
+a.nx-prof-row:active { transform: scale(.985); }
+.nx-prof-row-main { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.nx-prof-row-main strong { font-family: var(--nx-font-display); font-weight: 800; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-prof-row-main small { font-family: var(--nx-font-display); font-weight: 600; font-size: 11.5px; color: rgba(255,255,255,.55); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-prof-order-side { flex: 0 0 auto; display: grid; justify-items: end; gap: 4px; font-family: var(--nx-font-display); }
+.nx-prof-order-side b { font-weight: 900; font-size: 14px; color: #fff; }
+.nx-prof-status {
+    font-style: normal; font-weight: 800; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 999px; border: 1px solid transparent; color: #fff;
+}
+.nx-prof-status.st-wait { background: rgba(251,191,36,.18); border-color: rgba(251,191,36,.55); }
+.nx-prof-status.st-ok { background: rgba(52,211,153,.18); border-color: rgba(52,211,153,.55); }
+.nx-prof-status.st-bad { background: rgba(251,113,133,.2); border-color: rgba(251,113,133,.6); }
+.nx-prof-status.st-neutral { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.3); }
+.nx-prof-x {
+    flex: 0 0 auto;
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    border-radius: 10px;
+    color: rgba(255,255,255,.7);
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.16);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.nx-prof-x:hover, .nx-prof-x:focus-visible { color: #fff; border-color: rgba(251,113,133,.7); background: rgba(251,113,133,.14); outline: none; }
+.nx-prof-x svg { width: 16px; height: 16px; }
+.nx-prof-form { margin-top: 6px; }
+.nx-prof-details {
+    margin-top: 10px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(255,255,255,.06), rgba(255,255,255,.012));
+    border: 1px solid rgba(255,255,255,.14);
+    border-top-color: rgba(255,255,255,.26);
+}
+.nx-prof-details > summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 13px 14px;
+    list-style: none;
+    cursor: pointer;
+    font-family: var(--nx-font-display);
+    -webkit-tap-highlight-color: transparent;
+}
+.nx-prof-details > summary::-webkit-details-marker { display: none; }
+.nx-prof-details > summary span { font-weight: 800; font-size: 14px; color: #fff; }
+.nx-prof-details > summary small { font-weight: 600; font-size: 12px; color: rgba(255,255,255,.55); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.nx-prof-details > summary::after {
+    content: ""; flex: 0 0 auto; width: 8px; height: 8px;
+    border-right: 2px solid rgba(255,255,255,.6); border-bottom: 2px solid rgba(255,255,255,.6);
+    transform: rotate(45deg); transition: transform .2s ease; margin-left: 2px;
+}
+.nx-prof-details[open] > summary::after { transform: rotate(-135deg); }
+.nx-prof-details > form { padding: 0 14px 14px; }
+.nx-prof-order .nx-prof-row-main small { white-space: normal; overflow: visible; line-height: 1.35; }
+
+/* "Mis IDs" desplegable (perfil): el encabezado es el botón; la flechita gira al abrir */
+.nx-prof-fold-card { padding: 0; }
+.nx-prof-fold > summary.nx-prof-fold-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 20px 18px;
+    list-style: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.nx-prof-fold > summary.nx-prof-fold-head::-webkit-details-marker { display: none; }
+.nx-prof-fold > summary.nx-prof-fold-head:focus-visible { outline: 2px solid rgba(255,255,255,.6); outline-offset: -4px; border-radius: 20px; }
+.nx-prof-fold-head .nx-prof-h { margin: 0; display: flex; align-items: center; gap: 10px; }
+.nx-prof-count {
+    min-width: 24px; padding: 2px 8px;
+    border-radius: 999px;
+    text-align: center;
+    font-size: 12px; font-weight: 900;
+    color: #fff;
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.25);
+}
+.nx-prof-fold-chev { flex: 0 0 auto; width: 22px; height: 22px; color: rgba(255,255,255,.7); transition: transform .25s ease; }
+.nx-prof-fold[open] .nx-prof-fold-chev { transform: rotate(180deg); }
+.nx-prof-fold-body { padding: 0 18px 20px; }
+.nx-prof-fold[open] .nx-prof-fold-body { animation: nxAuthIn .3s cubic-bezier(.2, .8, .3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+    .nx-prof-fold-chev { transition: none; }
+    .nx-prof-fold[open] .nx-prof-fold-body { animation: none; }
+}
+
+/* Título de la página "Mi cuenta" */
+.nx-prof-pagetitle { margin: 4px 0 14px; font-family: var(--nx-font-display); font-weight: 900; font-size: 22px; color: #fff; }
+.nx-prof-pagetitle small { display: block; margin-top: 3px; font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,.55); }
+
+/* Estado de verificación de cada ID enlazado (Mi cuenta) */
+.nx-prof-verify-chip { justify-self: start; margin-top: 3px; padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 900; letter-spacing: .04em; border: 1px solid transparent; }
+.nx-prof-verify-chip.is-ok { color: #86efac; background: rgba(52,211,153,.15); border-color: rgba(52,211,153,.5); }
+.nx-prof-verify-chip.is-pending { color: #fde68a; background: rgba(251,191,36,.12); border-color: rgba(251,191,36,.45); }
+.nx-prof-verifyrow { margin: -2px 0 4px; list-style: none; }
+.nx-prof-verifyrow .nx-prof-details { margin-top: 0; }
+.nx-prof-verify-chip.is-free { color: rgba(255,255,255,.7); background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.22); }
+.nx-prof-proof { padding: 12px; border-radius: 14px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.4); }
+.nx-prof-proof[hidden] { display: none; }
+
+/* ── Signo de verificado (junto al nombre) y apartado "Obtén el verificado y su insignia" ─────────────── */
+.pf-verified { flex: 0 0 auto; display: inline-flex; width: 22px; height: 22px; cursor: help; }
+.pf-verified svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 0 6px rgba(47, 155, 255, .6)); }
+.pf-verified circle { fill: #2f9bff; }
+.pf-verified .pf-verified-check { fill: none; stroke: #fff; stroke-width: 2.7; stroke-linecap: round; stroke-linejoin: round; }
+.pf-verified.is-mini { width: 15px; height: 15px; margin-left: 5px; vertical-align: -2px; }
+.pf-verified.is-mini svg { filter: none; }
+@media (max-width: 480px) { .pf-verified:not(.is-mini) { width: 19px; height: 19px; } }
+
+.nx-prof-vfy { border-color: rgba(47, 155, 255, .38); }
+.nx-prof-vfy-h { display: flex; align-items: center; gap: 10px; }
+.nx-prof-vfy-h .pf-verified { width: 26px; height: 26px; cursor: default; }
+.nx-prof-vfy.is-done { border-color: rgba(47, 155, 255, .55); }
+.nx-prof-steps { margin: 4px 0 14px; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: vfy; }
+.nx-prof-steps li { counter-increment: vfy; display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; line-height: 1.45; color: rgba(255, 255, 255, .86); }
+.nx-prof-steps li::before {
+    content: counter(vfy); flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 800; color: #fff; background: #2f9bff;
+}
+.nx-prof-steps a { color: #7cc4ff; font-weight: 700; text-decoration: underline; }
+.nx-prof-vfy-done { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-weight: 700; color: #bfe3ff; }
+
+/* ── Mi cuenta: tarjeta única (identidad + perfil público) y popup "Mis datos" ─────────────────────── */
+.nx-prof-bottom { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+.nx-prof-bottom .nx-prof-logout { margin: 0; }
+.nx-prof-card .nx-prof-public { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, .14); }
+.nx-prof-modal { position: fixed; top:0;right:0;bottom:0;left:0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 14px; }
+.nx-prof-modal[hidden] { display: none; }
+.nx-prof-modal-backdrop { position: absolute; top:0;right:0;bottom:0;left:0; background: rgba(0, 0, 0, .6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); opacity: 0; transition: opacity .2s ease; }
+.nx-prof-modal.is-open .nx-prof-modal-backdrop { opacity: 1; }
+.nx-prof-modal-sheet {
+    position: relative; width: min(100%, 460px); max-height: calc(100vh - 28px); max-height: calc(100dvh - 28px); overflow-y: auto;
+    padding: 18px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, rgba(255,255,255,.015) 0%, rgba(255,255,255,.002) 40%, rgba(10,15,28,.008) 100%), rgba(12, 12, 16, .78);
+    -webkit-backdrop-filter: blur(16px) saturate(170%); backdrop-filter: blur(16px) saturate(170%);
+    border: 1px solid rgba(255,255,255,.18); border-top-color: rgba(255,255,255,.35); border-left-color: rgba(255,255,255,.25);
+    box-shadow: 0 24px 60px rgba(0,0,0,.55), inset 0 1px 2px rgba(255,255,255,.2);
+    transform: translateY(12px) scale(.98); opacity: 0;
+    transition: transform .24s cubic-bezier(.2,.8,.3,1), opacity .2s ease;
+}
+.nx-prof-modal.is-open .nx-prof-modal-sheet { transform: none; opacity: 1; }
+.nx-prof-modal-sheet:focus { outline: none; }
+.nx-prof-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.nx-prof-modal-head .nx-prof-h { margin: 0; font-size: 19px; }
+.nx-prof-modal-close { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; color: #fff; cursor: pointer; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); }
+.nx-prof-modal-close svg { width: 16px; height: 16px; }
+.nx-prof-modal-close:hover, .nx-prof-modal-close:focus-visible { border-color: rgba(255,255,255,.55); outline: none; }
+.nx-prof-modal-flashes .flash { margin-bottom: 8px; }
+.nx-prof-modal-flashes:empty { display: none; }
+/* ═══════════ Auditoría 2026-10: pantallas bajas y equipos lentos ═══════════ */
+/* Celular acostado (pantalla muy baja): las ventanas con texto largo se desplazan en vez de cortarse arriba y abajo. */
+@media (max-height: 480px) {
+    .community-popup-card, .nx-video-card {
+        max-height: calc(100vh - 24px);
+        max-height: calc(100dvh - 24px);
+        overflow-y: auto;
+    }
+}
+/* Modo liviano (html.lite): lo marca el script de base.html en equipos con poca memoria, pocos núcleos con red lenta o ahorro de datos
+   (o a mano con ?lite=1 / ?lite=0). Quita el desenfoque de cristal (lo más pesado para el teléfono) y deja fondos algo más oscuros y
+   sólidos para que todo siga leyéndose igual; apaga solo las animaciones decorativas que no paran. */
+html.lite *, html.lite *::before, html.lite *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+html.lite .rk-pop-backdrop, html.lite .community-popup-overlay, html.lite .nx-games-pop-backdrop, html.lite .nx-prof-modal-backdrop,
+html.lite .overlay-modal, html.lite .pf-menu-backdrop, html.lite .pf-pop-backdrop, html.lite .site-drawer-overlay,
+html.lite .store-popup-overlay, html.lite .payment-warning-modal, html.lite .payment-method-video-modal {
+    background: rgba(0, 0, 0, .9) !important;
+}
+/* Sin desenfoque el cristal de las ventanas deja ver la página de atrás y estorba al leer: en liviano la tarjeta es oscura y casi sólida (y pinta más rápido). */
+html.lite .overlay-modal-card { background: rgba(14, 14, 18, .97) !important; }
+html.lite .site-drawer, html.lite .notif-panel, html.lite .nx-dock-bar, html.lite .nx-games-pop-sheet, html.lite .nx-bubble,
+html.lite .nx-prof-modal-sheet, html.lite .pf-menu-sheet, html.lite .sc-window, html.lite .nx-dock-toast {
+    background: rgba(16, 16, 22, .95) !important;
+}
+html.lite .nx-chat-float, html.lite .pwa-install-toggle, html.lite .nx-dock-blink, html.lite .footer-support-btn,
+html.lite .nx-tutorial-blink, html.lite .community-popup-join, html.lite .community-popup-join::after {
+    animation: none !important;
+}
+
+/* Modo liviano, nivel 2 ("aún más liviano", pedido del dueño): todo cambia al instante, sin animaciones ni transiciones (las que terminan en un
+   estado visible lo alcanzan de una vez y las que se repiten se quedan quietas), sin sombras, resplandores ni filtros, y el fondo es una imagen
+   fija liviana de rayos rojos oscuros (sin la imagen configurada). Es lo más pesado para un teléfono lento. Los textos, bordes, colores y botones se quedan igual. */
+/* (la clase se repite a propósito: sube la prioridad para ganarle a las reglas con !important de tarjetas y botones que ponen su propio resplandor) */
+html.lite.lite.lite.lite *, html.lite.lite.lite.lite *::before, html.lite.lite.lite.lite *::after {
+    animation-duration: .001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    will-change: auto !important;
+}
+/* EXCEPCIONES (pedido del dueño): la campana de notificaciones y el número de avisos sin leer se siguen moviendo y brillando también en modo liviano, y
+   la rueda de colores que gira alrededor del botón rojo de la barra de abajo también se queda, pero liviana: solo gira (transform, en su propia capa de
+   la tarjeta gráfica, sin repintar) y sin desenfoque ni sombras. La clase se repite para ganarle a la regla general de arriba. */
+html.lite.lite.lite.lite .notif-toggle.has-unread .notif-bell { animation-duration: 3s !important; animation-iteration-count: infinite !important; }
+html.lite.lite.lite.lite .notif-toggle.has-unread .notif-badge,
+html.lite.lite.lite.lite .notif-toggle.has-unread .notif-badge::before,
+html.lite.lite.lite.lite .notif-toggle.has-unread .notif-badge::after { animation-duration: 2s !important; animation-iteration-count: infinite !important; }
+html.lite.lite.lite.lite .notif-toggle .notif-badge { box-shadow: 0 0 0 2px #000, 0 0 14px 3px rgba(255,40,40,.85) !important; }
+html.lite.lite.lite.lite .nx-dock-main::before,
+html.lite.lite.lite.lite .nx-dock-main::after { animation-duration: 6s !important; animation-iteration-count: infinite !important; will-change: transform !important; }
+@media (prefers-reduced-motion: reduce) {
+    html.lite.lite.lite.lite .notif-toggle.has-unread .notif-bell,
+    html.lite.lite.lite.lite .notif-toggle.has-unread .notif-badge,
+    html.lite.lite.lite.lite .notif-toggle.has-unread .notif-badge::before,
+    html.lite.lite.lite.lite .notif-toggle.has-unread .notif-badge::after,
+    html.lite.lite.lite.lite .nx-dock-main::before,
+    html.lite.lite.lite.lite .nx-dock-main::after { animation: none !important; }
+}
+/* Fondo del modo liviano: una sola imagen fija (sin animación ni desenfoque) de rayos rojos oscuros y discretos sobre negro (static/img/lite-bg.webp, ~12 KB).
+   Solo se descarga cuando el modo liviano está encendido (el navegador no baja las imágenes de reglas que no se aplican). */
+html.lite body::before {
+    background-color: #050003 !important;
+    background-image: url('../img/lite-bg.webp') !important;
+    background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+}
+html.lite .nx-dock-toast.is-on { animation: none !important; opacity: 1; transform: translateX(-50%); }   /* el aviso termina en "oculto": en liviano se queda visible hasta que el script lo esconde */
+html.lite .main-footer { content-visibility: auto; contain-intrinsic-size: auto 700px; }
+html.lite .rdm-bgimg { display: none !important; }   /* la foto grande del fondo de la pantalla de entrar: en liviano se ve el fondo de ondas */
+
+/* ── Puntos del PERFIL (bolsa de puntos de una cuenta): se pasan a un ID para usarlos ── */
+.points-wallet { margin: 0 28px 14px; padding: 14px 16px; border-radius: 16px; display: flex; align-items: center; gap: 12px;
+    background: linear-gradient(135deg, rgba(255,0,0,.14) 0%, rgba(255,255,255,.02) 100%); border: 1px solid rgba(255,0,0,.4); border-top-color: rgba(255,255,255,.22);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.08), 0 10px 25px rgba(0,0,0,.3); }
+.points-wallet-ico { font-size: 26px; flex: none; }
+.points-wallet-text strong { display: block; font-family: var(--nx-font-display); font-weight: 800; font-size: 14px; color: #fff; }
+.points-wallet-text strong b { font-weight: 900; font-size: 17px; }
+.points-wallet-text small { display: block; margin-top: 3px; font-size: 11.5px; color: var(--nx-muted); line-height: 1.4; }
+.points-wallet-text small b { color: #fff; }
+#pointsWalletBtn { margin-bottom: 12px; }
+#pointsLookupStep.has-wallet #pointsLookupBtn { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14); border-top-color: rgba(255,255,255,.24); box-shadow: none; color: #d1d5db; }
+#pointsLookupStep.has-wallet #pointsLookupBtn:hover:not(:disabled) { background: rgba(255,255,255,.1); box-shadow: none; border-color: rgba(255,0,0,.5); }
+.nx-prof-points-amount { margin: 2px 0 8px; font-family: var(--nx-font-display); font-size: 14px; color: var(--nx-muted); }
+.nx-prof-points-amount b { font-size: 30px; font-weight: 900; color: #fff; margin-right: 4px; }
+#pointsTransferNote { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.45); color: #86efac; }
+
+/* Cuentas del ranking de cuentas y de niveles: se pueden tocar (podio y lista) y abren el cuadro con "Ver perfil" */
+.rk-pod.is-tappable, .rk-row.is-tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .14s ease, background-color .14s ease; }
+.rk-pod.is-tappable:active, .rk-row.is-tappable:active { transform: scale(.97); }
+.rk-row.is-tappable:hover { background-color: rgba(255,255,255,.06); }
+.rk-pod.is-tappable:focus-visible, .rk-row.is-tappable:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .rk-pod.is-tappable, .rk-row.is-tappable { transition: none; } }

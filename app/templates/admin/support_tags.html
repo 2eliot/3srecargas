@@ -3,6 +3,7 @@
 {% block page_title %}Etiquetas de soporte{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/color-picker.css') }}">
 <style>
 .tag-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
 @media (max-width:900px){.tag-grid{grid-template-columns:1fr}}
@@ -62,7 +63,7 @@
         </div>
         <div class="form-group">
             <label for="color">Color</label>
-            <input type="color" id="color" name="color" value="#6c5ce7">
+            <input type="color" id="color" name="color" value="#6c5ce7" data-modern-color>
         </div>
         <div class="form-group">
             <button type="submit" class="btn-primary">Crear</button>
@@ -80,7 +81,7 @@
             <span class="tag-dot" style="background:{{ tag.color }}"></span>
             <form method="POST" action="{{ url_for('admin_support_bp.tag_edit', tag_id=tag.id) }}">
                 <input type="text" name="name" value="{{ tag.name }}" maxlength="60">
-                <input type="color" name="color" value="{{ tag.color }}">
+                <input type="color" name="color" value="{{ tag.color }}" data-modern-color>
                 <label style="font-size:.78rem;color:#94a3b8;display:flex;align-items:center;gap:4px">
                     <input type="checkbox" name="is_active" {% if tag.is_active %}checked{% endif %}> activa
                 </label>
@@ -88,7 +89,7 @@
             </form>
             {% if tag.slug != 'sin-identificar' %}
             <form method="POST" action="{{ url_for('admin_support_bp.tag_delete', tag_id=tag.id) }}"
-                  onsubmit="return confirm('¿Borrar «{{ tag.name }}»? Se quitará de todos los chats que la tengan.')">
+                  onsubmit="return confirm({{ ('¿Borrar «' ~ (tag.name) ~ '»? Se quitará de todos los chats que la tengan.')|jsattr }})">
                 <button type="submit" class="btn-danger">✕</button>
             </form>
             {% else %}
@@ -106,4 +107,8 @@
 <div style="margin-top:18px">
     <a href="{{ url_for('admin_support_bp.inbox') }}" class="btn-secondary">← Volver a la bandeja</a>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/color-picker.js') }}"></script>
 {% endblock %}

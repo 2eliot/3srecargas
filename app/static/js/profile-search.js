@@ -1,0 +1,177 @@
+/* ── 3S Recargas — buscador de amigos por nombre de usuario (barra de arriba de los perfiles) ─────────────────────────────────────────────
+ * Escribes 2 o más letras del usuario y salen las cuentas con perfil público que lo contienen (nombre, @usuario y foto). Al tocar una se abre
+ * su perfil (/u/<usuario>). Va a GET /perfiles/buscar (el servidor limita las consultas por minuto y solo devuelve perfiles que cualquiera puede
+ * abrir). Todo lo que llega del servidor se revisa antes de dibujarlo (el usuario y la foto deben tener la forma esperada) y se escribe como
+ * texto, nunca como HTML.
+ */
+(function () {
+    'use strict';
+
+    var root = document.getElementById('pfSearch');
+    if (!root) return;
+    var input = document.getElementById('pfSearchInput');
+    var clearBtn = document.getElementById('pfSearchClear');
+    var panel = document.getElementById('pfSearchPanel');
+    var list = document.getElementById('pfSearchList');
+    var note = document.getElementById('pfSearchNote');
+    var url = root.getAttribute('data-url') || '/perfiles/buscar';
+    if (!input || !panel || !list || !note) return;
+
+    var MIN = 2;
+    var HANDLE_RE = /^[A-Za-z0-9._-]{3,20}$/;
+    var AVATAR_RE = /^uploads\/profiles\/\d+\/[a-z_]+_[0-9a-f]{12}\.(webp|gif)$/;
+    var timer = null;
+    var controller = null;
+    var lastQuery = '';
+    var items = [];
+
+    function setOpen(open) {
+        panel.hidden = !open;
+        input.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function say(text) {
+        note.textContent = text || '';
+        note.hidden = !text;
+    }
+
+    function clearList() {
+        while (list.firstChild) list.removeChild(list.firstChild);
+        items = [];
+    }
+
+    function buildItem(entry) {
+        var handle = entry && typeof entry.handle === 'string' ? entry.handle : '';
+        if (!HANDLE_RE.test(handle)) return null;
+        var name = entry && typeof entry.name === 'string' && entry.name ? entry.name : handle;
+        var li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        var a = document.createElement('a');
+        a.className = 'pf-search-item';
+        a.href = '/u/' + handle;
+        var av = document.createElement('span');
+        av.className = 'pf-search-av';
+        av.setAttribute('aria-hidden', 'true');
+        if (entry.avatar && typeof entry.avatar === 'string' && AVATAR_RE.test(entry.avatar)) {
+            var img = document.createElement('img');
+            img.src = '/static/' + entry.avatar;
+            img.alt = '';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            av.appendChild(img);
+        } else {
+            av.textContent = (name.charAt(0) || '?').toUpperCase();
+        }
+        var text = document.createElement('span');
+        text.className = 'pf-search-txt';
+        var strong = document.createElement('strong');
+        strong.textContent = name;
+        var small = document.createElement('small');
+        small.textContent = '@' + handle;
+        text.appendChild(strong);
+        text.appendChild(small);
+        a.appendChild(av);
+        a.appendChild(text);
+        li.appendChild(a);
+        return li;
+    }
+
+    function render(results) {
+        clearList();
+        (results || []).forEach(function (entry) {
+            var li = buildItem(entry);
+            if (li) { list.appendChild(li); items.push(li.firstChild); }
+        });
+        if (items.length) {
+            say('');
+        } else {
+            say('No encontramos a nadie con ese usuario.');
+        }
+        setOpen(true);
+    }
+
+    function search(query) {
+        if (controller && controller.abort) controller.abort();
+        controller = window.AbortController ? new AbortController() : null;
+        lastQuery = query;
+        say('Buscando…');
+        setOpen(true);
+        fetch(url + '?q=' + encodeURIComponent(query), {
+            credentials: 'same-origin', headers: { 'Accept': 'application/json' }, signal: controller ? controller.signal : undefined,
+        })
+            .then(function (res) {
+                return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, status: res.status, data: data }; });
+            })
+            .then(function (r) {
+                if (query !== lastQuery) return;   // ya se escribió otra cosa: esta respuesta quedó vieja
+                if (!r.ok) {
+                    clearList();
+                    say((r.data && r.data.error) || (r.status === 429 ? 'Vas muy rápido. Espera un momento.' : 'No se pudo buscar ahora. Intenta de nuevo.'));
+                    return;
+                }
+                render(r.data && Array.isArray(r.data.results) ? r.data.results : []);
+            })
+            .catch(function (err) {
+                if (err && err.name === 'AbortError') return;
+                if (query !== lastQuery) return;
+                clearList();
+                say('Sin conexión. Revisa tu internet e intenta de nuevo.');
+            });
+    }
+
+    function clean() {
+        return input.value.trim().replace(/^@+/, '');
+    }
+
+    function onInput() {
+        var value = clean();
+        clearBtn.hidden = !input.value;
+        if (timer) clearTimeout(timer);
+        if (value.length < MIN) {
+            if (controller && controller.abort) controller.abort();
+            lastQuery = '';
+            clearList();
+            say(value.length ? 'Escribe al menos ' + MIN + ' letras.' : '');
+            setOpen(value.length > 0);
+            return;
+        }
+        timer = setTimeout(function () { search(value); }, 250);
+    }
+
+    input.addEventListener('input', onInput);
+    input.addEventListener('focus', function () { if (clean().length >= MIN && (items.length || note.textContent)) setOpen(true); });
+    input.addEventListener('keydown', function (evt) {
+        if (evt.key === 'ArrowDown' && items.length) {
+            evt.preventDefault();
+            items[0].focus();
+        } else if (evt.key === 'Enter') {
+            evt.preventDefault();
+            if (items.length) { window.location.href = items[0].getAttribute('href'); return; }
+            var value = clean();
+            if (HANDLE_RE.test(value)) window.location.href = '/u/' + value;   // si escribió el usuario completo, se intenta abrir directo
+        } else if (evt.key === 'Escape') {
+            setOpen(false);
+        }
+    });
+    list.addEventListener('keydown', function (evt) {
+        var idx = items.indexOf(document.activeElement);
+        if (evt.key === 'ArrowDown') {
+            evt.preventDefault();
+            if (idx < items.length - 1) items[idx + 1].focus();
+        } else if (evt.key === 'ArrowUp') {
+            evt.preventDefault();
+            if (idx > 0) items[idx - 1].focus(); else input.focus();
+        } else if (evt.key === 'Escape') {
+            setOpen(false);
+            input.focus();
+        }
+    });
+    clearBtn.addEventListener('click', function () {
+        input.value = '';
+        onInput();
+        input.focus();
+    });
+    document.addEventListener('click', function (evt) {
+        if (!root.contains(evt.target)) setOpen(false);
+    });
+})();

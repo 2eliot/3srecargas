@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Iniciar Sesión — 3S Recargas</title>
+    {% include '_head_common.html' %}
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&family=Archivo+Black&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ static_v('css/main.css') }}">
     <link rel="stylesheet" href="{{ static_v('css/neon.css') }}">
     <style>
         /* El resto de la tarjeta (kicker/título/subtítulo/labels/inputs/botón)
@@ -85,7 +86,7 @@
         }
         .admin-popup {
             position: fixed;
-            inset: 0;
+            top:0;right:0;bottom:0;left:0;
             background: rgba(0,0,0,.7);
             display: none;
             align-items: center;
@@ -131,6 +132,7 @@
 
     <!-- Meta Pixel Code -->
     <script>
+    (function(){function nxLoadPixel(){
     !function(f,b,e,v,n,t,s)
     {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
     n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -141,6 +143,9 @@
     'https://connect.facebook.net/en_US/fbevents.js');
     fbq('init', '1893616271596771');
     fbq('track', 'PageView');
+    }
+    if(document.readyState==='complete'){setTimeout(nxLoadPixel,2500);}else{window.addEventListener('load',function(){setTimeout(nxLoadPixel,2500);});}
+    })();
     </script>
     <noscript><img height="1" width="1" style="display:none"
     src="https://www.facebook.com/tr?id=1893616271596771&ev=PageView&noscript=1"
@@ -148,6 +153,9 @@
     <!-- End Meta Pixel Code -->
 </head>
 <body>
+    {% if DRAWER_BG_IMAGES.drawer_bg_login %}
+    <div class="rdm-bgimg" aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_login) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
+    {% endif %}
     <header class="site-header">
         <div class="header-inner">
             <a href="{{ url_for('main_bp.index') }}" class="logo-link">
@@ -163,12 +171,43 @@
     </header>
 
     <main class="auth-container nx-store">
+        <div class="nx-back-row">
+            {#- Vuelve a la página de la que vino el cliente; si entró directo (o recargó esta misma página), lo lleva a la tienda. -#}
+            <a href="{{ url_for('main_bp.index') }}" class="nx-back-btn" id="loginBackBtn" aria-label="Volver atrás">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+                <span>Volver</span>
+            </a>
+        </div>
+        {%- set tab_text = {
+            'id': {'kicker': 'Historial de compras', 'title': 'Iniciar Sesión', 'sub': 'Entra con el ID o correo que usaste al comprar para ver tu perfil. Con el ID solo puedes mirar: para editar, crea una cuenta.'},
+            'cuenta': {'kicker': 'Tu cuenta', 'title': 'Iniciar Sesión', 'sub': 'Entra con tu nombre de usuario o tu correo y tu contraseña.'},
+            'registro': {'kicker': 'Cuenta nueva', 'title': 'Registrarse', 'sub': 'Crea tu cuenta para editar tu perfil y enlazar tus IDs. Es gratis y toma un minuto.'}
+        } -%}
+        {%- macro google_button(label) -%}
+        <div class="nx-or" role="separator"><span>o</span></div>
+        <a class="nx-google-btn" href="{{ url_for('auth_bp.google_login_start', next=next_url or None) }}">
+            <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            <span>{{ label }}</span>
+        </a>
+        {%- endmacro -%}
+        {%- macro eye_icon() -%}
+        <svg class="nx-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg class="nx-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.1 10.1 0 0 1 12 19c-6.4 0-10-7-10-7a17.6 17.6 0 0 1 4.06-4.94M9.9 4.24A9.8 9.8 0 0 1 12 5c6.4 0 10 7 10 7a17.7 17.7 0 0 1-2.16 3.19M1 1l22 22"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/></svg>
+        {%- endmacro -%}
         <section class="glass-panel rdm-card">
             <div class="rdm-head">
-                <span class="rdm-kicker">Historial de compras</span>
-                <h1 class="rdm-title">Iniciar Sesión</h1>
-                <p class="rdm-sub">Revisa el historial de tus órdenes. Elige el juego o servicio y escribe el ID o correo que usaste al comprar.</p>
+                <span class="rdm-kicker" id="authKicker">{{ tab_text[active_tab].kicker }}</span>
+                <h1 class="rdm-title" id="authTitle">{{ tab_text[active_tab].title }}</h1>
+                <p class="rdm-sub" id="authSub">{{ tab_text[active_tab].sub }}</p>
             </div>
+
+            {#- Tres formas de entrar: con el ID (solo para mirar), con la cuenta o crear una. Son enlaces: sin JavaScript recargan la página en la pestaña elegida; con JavaScript solo cambian el panel. -#}
+            <nav class="nx-auth-tabs" id="authTabs" role="tablist" aria-label="Formas de entrar">
+                <span class="nx-auth-slider" aria-hidden="true"></span>
+                <a href="{{ url_for('auth_bp.login', tab='id', next=next_url or None) }}" role="tab" data-tab="id" class="nx-auth-tab{{ ' is-active' if active_tab == 'id' }}" aria-selected="{{ 'true' if active_tab == 'id' else 'false' }}">Con mi ID</a>
+                <a href="{{ url_for('auth_bp.login', tab='cuenta', next=next_url or None) }}" role="tab" data-tab="cuenta" class="nx-auth-tab{{ ' is-active' if active_tab == 'cuenta' }}" aria-selected="{{ 'true' if active_tab == 'cuenta' else 'false' }}">Mi cuenta</a>
+                <a href="{{ url_for('auth_bp.register', next=next_url or None) }}" role="tab" data-tab="registro" class="nx-auth-tab{{ ' is-active' if active_tab == 'registro' }}" aria-selected="{{ 'true' if active_tab == 'registro' else 'false' }}">Registrarse</a>
+            </nav>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
@@ -178,38 +217,150 @@
                 {% endif %}
             {% endwith %}
 
-            <form method="POST" id="customerLoginForm" class="rdm-step">
-                <input type="hidden" name="admin_password" id="adminPasswordField">
-                <div>
-                    <label class="rdm-label" for="service_id">Juego o Servicio</label>
-                    <select id="service_id" name="service_id" class="glass-input" style="margin-top:6px">
-                        <option value="">Selecciona dónde hiciste tu compra</option>
-                        {% for game in active_games %}
-                        <option value="{{ game.id }}">{{ game.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label class="rdm-label" for="identifier">ID, Correo o Cuenta</label>
-                    <div class="identifier-verify-row" style="margin-top:6px">
-                        <input type="text" id="identifier" name="identifier" required class="glass-input"
-                               placeholder="Ej: 55678210, correo@ejemplo.com o Pay ID" autocomplete="username">
-                        <button type="button" id="verifyIdBtn" class="verify-id-btn" hidden>Verificar</button>
+            {% if id_customer_session %}
+            <div class="flash flash-info">Ya entraste con tu ID y solo puedes mirar tu perfil. Inicia sesión en tu cuenta o crea una para poder editarlo.</div>
+            {% endif %}
+
+            {#- ── Con mi ID: solo lectura (así era siempre) ── #}
+            <div class="nx-auth-pane" data-pane="id" {% if active_tab != 'id' %}hidden{% endif %}>
+                <form method="POST" action="{{ url_for('auth_bp.login', next=next_url or None) }}" id="customerLoginForm" class="rdm-step">
+                    <input type="hidden" name="admin_password" id="adminPasswordField">
+                    <div>
+                        <label class="rdm-label" for="productPickerBtn">Selecciona el producto que compraste</label>
+                        {#- El <select> viaja en el formulario; con JavaScript se esconde y el cliente elige en la burbuja de cristal (bubble-picker.js). -#}
+                        <select id="service_id" name="service_id" class="glass-input" style="margin-top:6px"
+                                data-bubble-picker="productPickerBtn" data-bubble="productBubble">
+                            <option value="">Elige tu producto</option>
+                            {% for game in active_games %}
+                            <option value="{{ game.id }}">{{ game.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" id="productPickerBtn" class="glass-input nx-picker-btn"
+                                aria-haspopup="listbox" aria-expanded="false" aria-controls="productBubble">
+                            <span class="nx-picker-value is-placeholder">Elige tu producto</span>
+                            <svg class="nx-picker-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
                     </div>
-                    <p class="verify-id-result" id="verifyIdResult" hidden></p>
-                </div>
+                    <div>
+                        <label class="rdm-label" for="identifier">ID, Correo o Cuenta</label>
+                        <div class="identifier-verify-row" style="margin-top:6px">
+                            <input type="text" id="identifier" name="identifier" required class="glass-input"
+                                   placeholder="Ej: 55678210, correo@ejemplo.com o Pay ID" autocomplete="username"
+                                   value="{{ form_values.identifier or '' }}">
+                            <button type="button" id="verifyIdBtn" class="verify-id-btn" hidden>Verificar</button>
+                        </div>
+                        <p class="verify-id-result" id="verifyIdResult" hidden></p>
+                    </div>
 
-                <button type="submit" class="rdm-btn red-glow-pill">
-                    <span class="rdm-btn-label">Continuar</span>
-                </button>
-            </form>
+                    <button type="submit" class="rdm-btn red-glow-pill">
+                        <span class="rdm-btn-label">Continuar</span>
+                    </button>
+                </form>
+                <p class="rdm-sub nx-auth-foot">
+                    ¿Quieres editar tu perfil?
+                    <a href="{{ url_for('auth_bp.register', next=next_url or None) }}" class="rdm-link-btn" data-tab-link="registro">Crea tu cuenta</a>
+                    o
+                    <a href="{{ url_for('main_bp.index') }}" class="rdm-link-btn">haz tu compra desde la tienda</a>.
+                </p>
+            </div>
 
-            <p class="rdm-sub" style="margin-top:18px">
-                No necesitas registro previo.
-                <a href="{{ url_for('main_bp.index') }}" class="rdm-link-btn">Haz tu compra desde la tienda</a>
-            </p>
+            {#- ── Mi cuenta: usuario o correo + contraseña, o Google ── #}
+            <div class="nx-auth-pane" data-pane="cuenta" {% if active_tab != 'cuenta' %}hidden{% endif %}>
+                <form method="POST" action="{{ url_for('auth_bp.account_login', next=next_url or None) }}" id="accountLoginForm" class="rdm-step">
+                    <div>
+                        <label class="rdm-label" for="acc_login">Usuario o correo</label>
+                        <input type="text" id="acc_login" name="login" required maxlength="120" class="glass-input nx-auth-input"
+                               placeholder="tu_usuario o correo@ejemplo.com" autocomplete="username" autocapitalize="none" spellcheck="false"
+                               value="{{ form_values.acc_login or '' }}">
+                    </div>
+                    <div>
+                        <label class="rdm-label" for="acc_password">Contraseña</label>
+                        <div class="nx-pass-wrap">
+                            <input type="password" id="acc_password" name="password" required maxlength="128" class="glass-input nx-auth-input"
+                                   placeholder="Tu contraseña" autocomplete="current-password">
+                            <button type="button" class="nx-pass-toggle" aria-label="Mostrar contraseña" aria-pressed="false">{{ eye_icon() }}</button>
+                        </div>
+                    </div>
+                    <button type="submit" class="rdm-btn red-glow-pill">
+                        <span class="rdm-btn-label">Entrar</span>
+                    </button>
+                </form>
+                {% if google_login_enabled %}{{ google_button('Continuar con Google') }}{% endif %}
+                <p class="rdm-sub nx-auth-foot">
+                    ¿Olvidaste tu contraseña? Escríbenos por
+                    <a href="{{ url_for('support_bp.page') }}" class="rdm-link-btn">soporte</a>
+                    y te ayudamos a recuperarla.
+                </p>
+            </div>
+
+            {#- ── Registrarse: usuario, correo, contraseña y repetirla (o con Google) ── #}
+            <div class="nx-auth-pane" data-pane="registro" {% if active_tab != 'registro' %}hidden{% endif %}>
+                <form method="POST" action="{{ url_for('auth_bp.register', next=next_url or None) }}" id="registerForm" class="rdm-step">
+                    <div>
+                        <label class="rdm-label" for="reg_username">Nombre de usuario</label>
+                        <input type="text" id="reg_username" name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9._\-]{3,20}"
+                               class="glass-input nx-auth-input" placeholder="Ej: juan_gamer" autocomplete="username" autocapitalize="none" spellcheck="false"
+                               value="{{ form_values.reg_username or '' }}">
+                        <p class="nx-auth-hint">De 3 a 20 caracteres: letras, números, punto, guion o guion bajo.</p>
+                    </div>
+                    <div>
+                        <label class="rdm-label" for="reg_email">Correo</label>
+                        <input type="email" id="reg_email" name="email" required maxlength="120"
+                               class="glass-input nx-auth-input" placeholder="correo@ejemplo.com" autocomplete="email" autocapitalize="none" spellcheck="false"
+                               value="{{ form_values.reg_email or '' }}">
+                    </div>
+                    <div>
+                        <label class="rdm-label" for="reg_password">Contraseña</label>
+                        <div class="nx-pass-wrap">
+                            <input type="password" id="reg_password" name="password" required minlength="8" maxlength="128"
+                                   class="glass-input nx-auth-input" placeholder="Mínimo 8 caracteres" autocomplete="new-password">
+                            <button type="button" class="nx-pass-toggle" aria-label="Mostrar contraseña" aria-pressed="false">{{ eye_icon() }}</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="rdm-label" for="reg_password_repeat">Repetir contraseña</label>
+                        <div class="nx-pass-wrap">
+                            <input type="password" id="reg_password_repeat" name="password_repeat" required minlength="8" maxlength="128"
+                                   class="glass-input nx-auth-input" placeholder="Escríbela otra vez" autocomplete="new-password">
+                            <button type="button" class="nx-pass-toggle" aria-label="Mostrar contraseña" aria-pressed="false">{{ eye_icon() }}</button>
+                        </div>
+                        <p class="nx-auth-hint nx-auth-error" id="regMismatch" hidden>Las contraseñas no coinciden.</p>
+                    </div>
+                    {#- Trampa para programas: una persona no ve este campo y lo deja vacío. -#}
+                    <div class="nx-auth-trap" aria-hidden="true"><label>No lo llenes <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+                    <button type="submit" class="rdm-btn red-glow-pill">
+                        <span class="rdm-btn-label">Crear cuenta</span>
+                    </button>
+                </form>
+                {% if google_login_enabled %}{{ google_button('Registrarse con Google') }}{% endif %}
+                <p class="rdm-sub nx-auth-foot">
+                    ¿Ya tienes cuenta?
+                    <a href="{{ url_for('auth_bp.login', tab='cuenta', next=next_url or None) }}" class="rdm-link-btn" data-tab-link="cuenta">Inicia sesión</a>
+                </p>
+            </div>
         </section>
     </main>
+
+    <div class="nx-bubble" id="productBubble" role="listbox" aria-label="Productos" hidden>
+        <span class="nx-bubble-arrow" aria-hidden="true"></span>
+        <div class="nx-bubble-head">
+            <strong>Elige tu producto</strong>
+            <button type="button" class="nx-bubble-close" aria-label="Cerrar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+        </div>
+        <div class="nx-bubble-list">
+            {% for game in active_games %}
+            <button type="button" class="nx-bubble-item" role="option" aria-selected="false" data-value="{{ game.id }}" data-name="{{ game.name }}">
+                <span class="nx-bubble-thumb">
+                    {% if game.image %}<img src="{{ url_for('static', filename='uploads/' + game.image) }}" alt="" loading="lazy">{% else %}<b>{{ (game.name or '?')[0]|upper }}</b>{% endif %}
+                </span>
+                <span class="nx-bubble-name">{{ game.name }}</span>
+                <svg class="nx-bubble-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+            </button>
+            {% endfor %}
+        </div>
+    </div>
 
     <div class="admin-popup" id="adminPasswordPopup" aria-hidden="true">
         <div class="admin-popup-card">
@@ -228,6 +379,115 @@
         </div>
     </div>
 
+    <script src="{{ static_v('js/bubble-picker.js') }}"></script>
+    <script>
+        /* Pestañas (Con mi ID / Mi cuenta / Registrarse), ojito de las contraseñas y comprobación de "repetir contraseña". */
+        (function () {
+            var tabsEl = document.getElementById('authTabs');
+            var slider = tabsEl && tabsEl.querySelector('.nx-auth-slider');
+            var tabs = tabsEl ? Array.prototype.slice.call(tabsEl.querySelectorAll('.nx-auth-tab')) : [];
+            var panes = Array.prototype.slice.call(document.querySelectorAll('.nx-auth-pane'));
+            var texts = {{ tab_text|tojson }};
+            var kicker = document.getElementById('authKicker');
+            var title = document.getElementById('authTitle');
+            var sub = document.getElementById('authSub');
+
+            function placeSlider(animate) {
+                if (!tabsEl || !slider) return;
+                var active = tabsEl.querySelector('.nx-auth-tab.is-active');
+                if (!active) return;
+                if (!animate) tabsEl.classList.remove('is-ready');
+                var b = tabsEl.getBoundingClientRect(), a = active.getBoundingClientRect();
+                slider.style.width = a.width + 'px';
+                slider.style.height = a.height + 'px';
+                slider.style.transform = 'translate(' + (a.left - b.left - tabsEl.clientLeft) + 'px, ' + (a.top - b.top - tabsEl.clientTop) + 'px)';
+                tabsEl.classList.add('has-slider');
+                if (!animate) { void slider.offsetWidth; requestAnimationFrame(function () { tabsEl.classList.add('is-ready'); }); }
+            }
+
+            function showTab(name, push) {
+                if (!texts[name]) return;
+                tabs.forEach(function (t) {
+                    var on = t.getAttribute('data-tab') === name;
+                    t.classList.toggle('is-active', on);
+                    t.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                panes.forEach(function (p) {
+                    var on = p.getAttribute('data-pane') === name;
+                    if (on && p.hidden) {
+                        p.hidden = false;
+                        p.classList.remove('is-entering'); void p.offsetWidth; p.classList.add('is-entering');
+                    } else if (!on) {
+                        p.hidden = true;
+                    }
+                });
+                if (kicker) kicker.textContent = texts[name].kicker;
+                if (title) title.textContent = texts[name].title;
+                if (sub) sub.textContent = texts[name].sub;
+                placeSlider(true);
+                if (push) {
+                    // Sin recargar: la dirección refleja la pestaña (así al recargar o compartir se queda en ella).
+                    var path = name === 'registro' ? '/register' : (name === 'cuenta' ? '/login?tab=cuenta' : '/login?tab=id');
+                    try {
+                        var next = new URLSearchParams(window.location.search).get('next');
+                        if (next) path += (path.indexOf('?') === -1 ? '?' : '&') + 'next=' + encodeURIComponent(next);
+                        window.history.replaceState(null, '', path);
+                    } catch (_) {}
+                }
+                var firstField = document.querySelector('.nx-auth-pane[data-pane="' + name + '"] input:not([type=hidden]):not([tabindex="-1"])');
+                if (firstField && name !== 'id' && window.matchMedia('(hover: hover)').matches) firstField.focus({ preventScroll: true });
+            }
+
+            tabs.forEach(function (t) {
+                t.addEventListener('click', function (evt) {
+                    if (evt.ctrlKey || evt.metaKey || evt.shiftKey || evt.button === 1) return;
+                    evt.preventDefault();
+                    showTab(t.getAttribute('data-tab'), true);
+                });
+            });
+            Array.prototype.forEach.call(document.querySelectorAll('[data-tab-link]'), function (a) {
+                a.addEventListener('click', function (evt) {
+                    if (evt.ctrlKey || evt.metaKey || evt.shiftKey || evt.button === 1) return;
+                    evt.preventDefault();
+                    showTab(a.getAttribute('data-tab-link'), true);
+                });
+            });
+
+            var resizeTimer = null;
+            window.addEventListener('resize', function () { clearTimeout(resizeTimer); resizeTimer = setTimeout(function () { placeSlider(false); }, 60); });
+            placeSlider(false);
+            if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { placeSlider(false); });
+
+            // Ojito para ver u ocultar la contraseña.
+            Array.prototype.forEach.call(document.querySelectorAll('.nx-pass-toggle'), function (btn) {
+                btn.addEventListener('click', function () {
+                    var input = btn.parentNode.querySelector('input');
+                    if (!input) return;
+                    var show = input.type === 'password';
+                    input.type = show ? 'text' : 'password';
+                    btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+                    btn.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+                    btn.classList.toggle('is-on', show);
+                });
+            });
+
+            // Registro: avisa al momento si las dos contraseñas no coinciden (el servidor lo vuelve a comprobar).
+            var regForm = document.getElementById('registerForm');
+            if (regForm) {
+                var p1 = document.getElementById('reg_password'), p2 = document.getElementById('reg_password_repeat');
+                var mismatch = document.getElementById('regMismatch');
+                function check() {
+                    var bad = !!p2.value && p1.value !== p2.value;
+                    mismatch.hidden = !bad;
+                    p2.setCustomValidity(bad ? 'Las contraseñas no coinciden.' : '');
+                    return !bad;
+                }
+                p1.addEventListener('input', check);
+                p2.addEventListener('input', check);
+                regForm.addEventListener('submit', function (evt) { if (!check()) { evt.preventDefault(); p2.focus(); } });
+            }
+        })();
+    </script>
     <script>
         (function () {
             var form = document.getElementById('customerLoginForm');
@@ -238,7 +498,8 @@
             var adminPasswordInput = document.getElementById('adminPasswordInput');
             var adminPopupConfirmBtn = document.getElementById('adminPopupConfirmBtn');
             var adminPopupCancelBtn = document.getElementById('adminPopupCancelBtn');
-            var adminEmail = {{ admin_email_hint|tojson }};
+            // El correo del admin ya no está en esta página: si lo escrito es el del admin, el servidor responde con admin_prompt.
+            var adminPrompt = {{ 'true' if admin_prompt else 'false' }};
             var verifiableIds = {{ verifiable_ids|tojson }};
             var verifyBtn = document.getElementById('verifyIdBtn');
             var verifyResult = document.getElementById('verifyIdResult');
@@ -263,6 +524,20 @@
                 var show = selectedGameIsVerifiable() && /^\d+$/.test(uid);
                 verifyBtn.hidden = !show;
                 if (!show) setVerifyResult('', '');
+            }
+
+            // "Volver": regresa a la página anterior del sitio; si no hay (entró directo, o la anterior es esta misma
+            // página, como después de un intento fallido), el enlace lleva a la tienda.
+            var backBtn = document.getElementById('loginBackBtn');
+            if (backBtn) {
+                backBtn.addEventListener('click', function (event) {
+                    var previous = null;
+                    try { previous = document.referrer ? new URL(document.referrer) : null; } catch (_) { previous = null; }
+                    if (previous && previous.origin === window.location.origin && previous.pathname !== window.location.pathname && window.history.length > 1) {
+                        event.preventDefault();
+                        window.history.back();
+                    }
+                });
             }
 
             if (serviceInput) serviceInput.addEventListener('change', updateVerifyBtnVisibility);
@@ -334,22 +609,20 @@
 
             if (form) {
                 form.addEventListener('submit', function (event) {
-                    var identifier = (identifierInput && identifierInput.value || '').trim().toLowerCase();
-                    var adminMatch = adminEmail && identifier && identifier === String(adminEmail).trim().toLowerCase();
+                    var identifier = (identifierInput && identifierInput.value || '').trim();
+                    // Un correo se manda aunque falte elegir el producto: el servidor decide (si es el del admin pide su clave).
+                    var looksLikeEmail = identifier.indexOf('@') > 0;
 
-                    if (adminMatch && !adminPasswordField.value) {
+                    if (!looksLikeEmail && !adminPasswordField.value && serviceInput && !serviceInput.value) {
                         event.preventDefault();
-                        openAdminPopup();
-                        return;
-                    }
-
-                    if (!adminMatch && serviceInput && !serviceInput.value) {
-                        event.preventDefault();
-                        serviceInput.focus();
+                        if (serviceInput.nxPicker) serviceInput.nxPicker.open(); else serviceInput.focus();
                     }
                 });
             }
+
+            if (adminPrompt) openAdminPopup();
         })();
     </script>
+{% include '_version_watch.html' %}
 </body>
 </html>

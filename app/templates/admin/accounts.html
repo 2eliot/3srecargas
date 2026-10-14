@@ -1,0 +1,132 @@
+{% extends 'admin/base.html' %}
+{% block title %}Cuentas{% endblock %}
+{% block page_title %}Cuentas registradas{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 12px;text-align:right;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+    <a href="{{ url_for('admin_bp.profile_frames') }}" class="btn-sm btn-outline">🖼 Tienda de marcos</a>
+    <a href="{{ url_for('admin_bp.account_social_settings') }}" class="btn-sm btn-outline">⚙ Ajustes de perfiles (niveles, insignias, me gusta)</a>
+</p>
+<div class="stats-grid" style="margin-bottom:20px;">
+    <div class="stat-card">
+        <div class="stat-icon">👥</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ totals.all }}</span>
+            <span class="stat-label">Cuentas en total</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🔑</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ totals.registered }}</span>
+            <span class="stat-label">Con correo y contraseña</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">G</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ totals.google }}</span>
+            <span class="stat-label">Con Google</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">⛔</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ totals.inactive }}</span>
+            <span class="stat-label">Desactivadas</span>
+        </div>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Personas registradas</h3>
+        <span>
+            {% if total_pages > 1 %}<span style="opacity:.7;margin-right:10px">Mostrando {{ start_index }}–{{ end_index }}</span>{% endif %}
+            {{ total }} {{ 'cuenta' if total == 1 else 'cuentas' }}
+        </span>
+    </div>
+    <form method="GET" action="{{ url_for('admin_bp.accounts') }}" style="display:flex;flex-wrap:wrap;gap:10px;padding:0 20px 16px;align-items:flex-end;">
+        <div class="form-group" style="margin:0;flex:1 1 220px;">
+            <label for="accSearch">Buscar</label>
+            <input type="search" id="accSearch" name="q" value="{{ search_query }}" maxlength="100" placeholder="Usuario, correo o número de cuenta">
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label for="accKind">Tipo</label>
+            <select id="accKind" name="tipo">
+                <option value="">Todos</option>
+                <option value="registered" {% if kind_filter == 'registered' %}selected{% endif %}>Correo y contraseña</option>
+                <option value="google_email" {% if kind_filter == 'google_email' %}selected{% endif %}>Google</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+            <label for="accState">Estado</label>
+            <select id="accState" name="estado">
+                <option value="">Todos</option>
+                <option value="activas" {% if state_filter == 'activas' %}selected{% endif %}>Activas</option>
+                <option value="desactivadas" {% if state_filter == 'desactivadas' %}selected{% endif %}>Desactivadas</option>
+            </select>
+        </div>
+        <button type="submit" class="btn-primary" style="height:40px;">Buscar</button>
+        {% if search_query or kind_filter or state_filter %}
+        <a href="{{ url_for('admin_bp.accounts') }}" class="btn-sm btn-outline" style="height:40px;display:inline-flex;align-items:center;">Limpiar</a>
+        {% endif %}
+    </form>
+
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Usuario</th>
+                    <th>Correo</th>
+                    <th>Tipo</th>
+                    <th>Registro</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="{{ 'row-used' if not row.is_active }}">
+                    <td>{{ row.id }}</td>
+                    <td><strong>{{ row.username if row.has_chosen_username else '—' }}</strong></td>
+                    <td>{{ row.email if row.is_registered_account else (row.account_identifier or row.contact_email or '—') }}</td>
+                    <td>
+                        {% if row.is_registered_account %}<span class="badge badge-auto">Contraseña</span>{% else %}<span class="badge badge-warning">Google</span>{% endif %}
+                    </td>
+                    <td>{{ row.created_at|datetime_ve('%d/%m/%Y %H:%M') if row.created_at else '—' }}</td>
+                    <td>
+                        {% if row.is_active %}<span class="badge badge-active">Activa</span>{% else %}<span class="badge badge-danger">Desactivada</span>{% endif %}
+                    </td>
+                    <td><a href="{{ url_for('admin_bp.account_detail', user_id=row.id) }}" class="btn-sm btn-outline">Ver / editar</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="empty-row">{% if search_query or kind_filter or state_filter %}No hay cuentas con ese filtro.{% else %}Todavía no se ha registrado nadie.{% endif %}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="orders-pagination">
+        <a class="orders-pagination-link {% if current_page == 1 %}is-disabled{% endif %}"
+           href="{% if current_page > 1 %}{{ url_for('admin_bp.accounts', q=search_query or None, tipo=kind_filter or None, estado=state_filter or None, page=current_page - 1) }}{% else %}#{% endif %}">Anterior</a>
+        {% if page_numbers[0] > 1 %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.accounts', q=search_query or None, tipo=kind_filter or None, estado=state_filter or None, page=1) }}">1</a>
+        {% if page_numbers[0] > 2 %}<span class="orders-pagination-ellipsis">...</span>{% endif %}
+        {% endif %}
+        {% for page_number in page_numbers %}
+        <a class="orders-pagination-link {% if page_number == current_page %}is-active{% endif %}"
+           href="{{ url_for('admin_bp.accounts', q=search_query or None, tipo=kind_filter or None, estado=state_filter or None, page=page_number) }}">{{ page_number }}</a>
+        {% endfor %}
+        {% if page_numbers[-1] < total_pages %}
+        {% if page_numbers[-1] < total_pages - 1 %}<span class="orders-pagination-ellipsis">...</span>{% endif %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.accounts', q=search_query or None, tipo=kind_filter or None, estado=state_filter or None, page=total_pages) }}">{{ total_pages }}</a>
+        {% endif %}
+        <a class="orders-pagination-link {% if current_page == total_pages %}is-disabled{% endif %}"
+           href="{% if current_page < total_pages %}{{ url_for('admin_bp.accounts', q=search_query or None, tipo=kind_filter or None, estado=state_filter or None, page=current_page + 1) }}{% else %}#{% endif %}">Siguiente</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

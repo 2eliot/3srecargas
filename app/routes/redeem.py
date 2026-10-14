@@ -9,6 +9,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..models import Game, Setting
 from ..utils.timezone import format_ve
+from ..utils.locks import client_ip
 from ..utils.order_access import remember_own_order
 from ..utils.gift_codes import (
     clear_attempts,
@@ -31,10 +32,8 @@ RATE_LIMIT_MESSAGE = (
 
 
 def _client_ip():
-    """IP real del cliente. La app corre detrás de nginx, así que la
-    cabecera del proxy es la que tiene la IP de verdad."""
-    forwarded = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
-    return forwarded or (request.remote_addr or '')
+    """IP real del cliente (misma función segura que usan todos los topes: ver utils/locks.py)."""
+    return client_ip()
 
 
 def _setting(key, default=''):
@@ -161,9 +160,9 @@ def redeem():
 
     data = request.get_json(silent=True) or request.form
     code = normalize_code(data.get('code'))
-    player_id = (data.get('player_id') or '').strip()
-    zone_id = (data.get('zone_id') or '').strip()
-    nickname = (data.get('nickname') or '').strip()
+    player_id = str(data.get('player_id') or '').strip()
+    zone_id = str(data.get('zone_id') or '').strip()
+    nickname = str(data.get('nickname') or '').strip()
 
     if not code:
         return jsonify({'ok': False, 'message': 'Falta el código.'}), 400
@@ -211,7 +210,7 @@ def history():
     """Canjes hechos con un ID. Va aparte y detrás de un enlace discreto:
     no tiene sentido tenerlo compitiendo con el formulario principal."""
     data = request.get_json(silent=True) or request.form
-    player_id = (data.get('player_id') or '').strip()
+    player_id = str(data.get('player_id') or '').strip()
     if not player_id:
         return jsonify({'ok': False, 'message': 'Escribe tu ID para buscar.'}), 400
     if len(player_id) > 100:

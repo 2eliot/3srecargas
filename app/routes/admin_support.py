@@ -7,6 +7,7 @@ líneas. Cuelga de `/admin/soporte` con su propio guardián de acceso: el
 
 import hashlib
 import json
+import re
 from datetime import datetime
 
 from flask import (
@@ -45,6 +46,12 @@ def guard():
 
 def _admin_id():
     return current_user.id if current_user.is_authenticated else None
+
+
+def _clean_color(value, fallback):
+    """Color de etiqueta: solo #rgb / #rrggbb / #rrggbbaa (va dentro de un style=\"...\"); cualquier otra cosa -> el anterior."""
+    value = (value or '').strip()
+    return value if re.fullmatch(r'#[0-9a-fA-F]{3,8}', value) else (fallback or '#6c5ce7')
 
 
 def _slugify(value):
@@ -621,7 +628,7 @@ def tag_create():
 
     db.session.add(SupportTag(
         name=name[:60], slug=slug, kind=kind,
-        color=(request.form.get('color') or '#6c5ce7')[:9],
+        color=_clean_color(request.form.get('color'), '#6c5ce7'),
         sort_order=(last.sort_order or 0) + 1 if last else 1,
     ))
     db.session.commit()
@@ -636,7 +643,7 @@ def tag_edit(tag_id):
     name = (request.form.get('name') or '').strip()
     if name:
         tag.name = name[:60]
-    tag.color = (request.form.get('color') or tag.color)[:9]
+    tag.color = _clean_color(request.form.get('color'), tag.color)
     tag.is_active = request.form.get('is_active') == 'on'
     db.session.commit()
     flash('Etiqueta actualizada.', 'success')
@@ -772,7 +779,9 @@ def quick_reply_delete(reply_id):
 
 @admin_support_bp.app_context_processor
 def _inject_support_pending():
-    """Badge de chats sin responder, junto al link de Soporte."""
+    """Badge de chats sin responder, junto al link de Soporte. Solo dentro del panel (/admin): no se calcula en las páginas de la tienda."""
+    if not request.path.startswith('/admin'):
+        return {}
     try:
         return {'support_pending_count': support_service.pending_chats_count()}
     except Exception:

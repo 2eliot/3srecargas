@@ -67,7 +67,10 @@
 <div class="admin-card">
     <div class="card-header">
         <h3>Inventario de PINs</h3>
-        <span>{{ pins_list | length }} total</span>
+        <span>
+            {% if total_pages > 1 %}<span style="opacity:.7;margin-right:10px">Mostrando {{ start_index }}–{{ end_index }}</span>{% endif %}
+            {{ pins_total }} total
+        </span>
     </div>
     <div class="table-wrap">
         <table class="admin-table">
@@ -104,6 +107,7 @@
                     <td>
                         {% if not pin.is_used %}
                         <form method="POST" action="{{ url_for('admin_bp.pin_delete', pin_id=pin.id) }}" style="display:inline">
+                            <input type="hidden" name="page" value="{{ current_page }}">
                             <button class="btn-sm btn-danger" type="submit"
                                     onclick="return confirm('¿Eliminar PIN?')">Eliminar</button>
                         </form>
@@ -116,6 +120,35 @@
             </tbody>
         </table>
     </div>
+
+    {% if total_pages > 1 %}
+    <div class="orders-pagination">
+        <a class="orders-pagination-link {% if current_page == 1 %}is-disabled{% endif %}"
+           href="{% if current_page > 1 %}{{ url_for('admin_bp.pins', package_id=selected_package.id, page=current_page - 1) }}{% else %}#{% endif %}">Anterior</a>
+
+        {% if page_numbers[0] > 1 %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.pins', package_id=selected_package.id, page=1) }}">1</a>
+        {% if page_numbers[0] > 2 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        {% endif %}
+
+        {% for page_number in page_numbers %}
+        <a class="orders-pagination-link {% if page_number == current_page %}is-active{% endif %}"
+           href="{{ url_for('admin_bp.pins', package_id=selected_package.id, page=page_number) }}">{{ page_number }}</a>
+        {% endfor %}
+
+        {% if page_numbers[-1] < total_pages %}
+        {% if page_numbers[-1] < total_pages - 1 %}
+        <span class="orders-pagination-ellipsis">...</span>
+        {% endif %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.pins', package_id=selected_package.id, page=total_pages) }}">{{ total_pages }}</a>
+        {% endif %}
+
+        <a class="orders-pagination-link {% if current_page == total_pages %}is-disabled{% endif %}"
+           href="{% if current_page < total_pages %}{{ url_for('admin_bp.pins', package_id=selected_package.id, page=current_page + 1) }}{% else %}#{% endif %}">Siguiente</a>
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 {% endblock %}

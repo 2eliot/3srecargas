@@ -1,18 +1,38 @@
 {% extends 'base.html' %}
+{% set hide_floats = true %}
+{% block body_class %}has-dock{% endblock %}
 
 {% block title %}3S Recargas — Recarga Fácil y Rápida{% endblock %}
 
 {% block content %}
 <div class="nx-store" id="nxStore">
 
+    {#- El banner puede ser una imagen o un video MP4 liviano (se reconoce por la extensión): el video corre solo, sin sonido y en bucle. -#}
+    {#- Si el banner se mueve y ya tiene su copia liviana (utils/banner_lite.py), el navegador elige: en modo liviano la copia chica, si no el original. El
+        `src` se pone con un script justo después para que solo se descargue UNA de las dos. -#}
+    {%- macro promo_media(path, lite_path='') -%}
+    {%- if path.lower().endswith('.mp4') -%}
+    {%- if lite_path -%}
+    <video data-full-src="{{ url_for('static', filename='uploads/' + path) }}" data-lite-src="{{ url_for('static', filename='uploads/' + lite_path) }}" autoplay muted loop playsinline preload="metadata" disablepictureinpicture disableremoteplayback aria-label="Promoción" data-promo-video></video><script>(function(v){v.src=v.getAttribute(document.documentElement.classList.contains('lite')?'data-lite-src':'data-full-src');})(document.currentScript.previousElementSibling);</script>
+    {%- else -%}
+    <video src="{{ url_for('static', filename='uploads/' + path) }}" autoplay muted loop playsinline preload="metadata" disablepictureinpicture disableremoteplayback aria-label="Promoción" data-promo-video></video>
+    {%- endif -%}
+    {%- else -%}
+    {%- if lite_path -%}
+    <img data-full-src="{{ url_for('static', filename='uploads/' + path) }}" data-lite-src="{{ url_for('static', filename='uploads/' + lite_path) }}" alt="Promoción"><script>(function(v){v.src=v.getAttribute(document.documentElement.classList.contains('lite')?'data-lite-src':'data-full-src');})(document.currentScript.previousElementSibling);</script>
+    {%- else -%}
+    <img src="{{ url_for('static', filename='uploads/' + path) }}" alt="Promoción">
+    {%- endif -%}
+    {%- endif -%}
+    {%- endmacro -%}
     {% if promo_banner %}
     {% if promo_banner_link %}
-    <a class="nx-promo-banner glass-panel" href="{{ promo_banner_link }}" target="_blank" rel="noopener">
-        <img src="{{ url_for('static', filename='uploads/' + promo_banner) }}" alt="Promoción">
+    <a class="nx-promo-banner glass-panel" href="{{ promo_banner_link|safe_href }}" target="_blank" rel="noopener">
+        {{ promo_media(promo_banner, promo_banner_lite) }}
     </a>
     {% else %}
     <div class="nx-promo-banner glass-panel" style="cursor:default">
-        <img src="{{ url_for('static', filename='uploads/' + promo_banner) }}" alt="Promoción">
+        {{ promo_media(promo_banner, promo_banner_lite) }}
     </div>
     {% endif %}
     {% endif %}
@@ -20,6 +40,7 @@
     <!-- Tabs de categorías -->
     <section class="categories-bar">
         <div class="categories-inner glass-panel">
+            <span class="cat-slider" aria-hidden="true"></span>
             {% for cat in categories %}
             <button
                 class="cat-btn {% if active_category.slug == cat.slug %}active{% endif %}"
@@ -282,7 +303,7 @@
                                         <img src="https://flagcdn.com/w20/ve.png" alt="Venezuela" class="phone-country-flag" width="20" height="15">
                                         <span class="phone-country-code">+58</span>
                                     </span>
-                                    <span aria-hidden="true" style="font-size:9px;color:#94a3b8">▼</span>
+                                    <span aria-hidden="true" style="font-size:9px;color:#a3a3a3">▼</span>
                                 </button>
                                 <select id="phoneCountryCode" class="phone-country-select" aria-label="Prefijo del país" tabindex="-1">
                                     <option value="+58" data-flag-src="https://flagcdn.com/w20/ve.png" data-country-name="Venezuela" selected>Venezuela +58</option>
@@ -361,6 +382,7 @@
             </div>
             <div class="payment-warning-footer">🚀 ¡Si sigues estos pasos, tu recarga llega al instante! 🚀</div>
             <button type="button" class="payment-warning-ack" id="paymentWarningAcknowledge">OK, ENTIENDO 🎮</button>
+            <button type="button" class="payment-warning-snooze" id="paymentWarningSnooze">YA SÉ, NO MOSTRAR MÁS</button>
         </div>
     </div>
 
@@ -391,13 +413,13 @@
                 <button type="button" class="nx-video-close" id="nxVideoClose">✕</button>
             </div>
             {% if checkout_payment_video.message %}
-            <p style="font-size:12px; color:#cbd5e1; margin:0">{{ checkout_payment_video.message }}</p>
+            <p style="font-size:12px; color:#d4d4d4; margin:0">{{ checkout_payment_video.message }}</p>
             {% endif %}
             <video controls preload="metadata" playsinline id="nxVideoPlayer"></video>
             <button type="button" class="red-glow-pill" id="nxVideoContinue" style="padding:10px 0; font-size:12px; letter-spacing:.08em; text-transform:uppercase">
                 {{ checkout_payment_video.cta }}
             </button>
-            <button type="button" id="nxVideoDontShow" style="padding:9px 0; font-size:11px; font-weight:700; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.15); border-radius:10px; color:#cbd5e1; cursor:pointer">
+            <button type="button" id="nxVideoDontShow" style="padding:9px 0; font-size:11px; font-weight:700; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.15); border-radius:10px; color:#d4d4d4; cursor:pointer">
                 No volver a mostrar, ya sé usar la página
             </button>
         </div>
@@ -530,6 +552,8 @@
         </div>
     </div>
 </div>
+{% set dock_page = 'home' %}
+{% include '_dock.html' %}
 {% endblock %}
 
 {% block extra_js %}
@@ -598,6 +622,9 @@
     var aiRefInput = document.getElementById('nxAiExtractedReference');
     var warningModal = document.getElementById('paymentWarningModal');
     var warningAck = document.getElementById('paymentWarningAcknowledge');
+    var warningSnooze = document.getElementById('paymentWarningSnooze');
+    var NX_WARN_SNOOZE_KEY = 'nx_payment_warning_snooze_until';
+    var NX_WARN_SNOOZE_MS = 48 * 60 * 60 * 1000; // 48 horas
     var videoModal = document.getElementById('nxVideoModal');
     var videoClose = document.getElementById('nxVideoClose');
     var videoContinue = document.getElementById('nxVideoContinue');
@@ -992,8 +1019,26 @@
     }
 
     /* ── Modales de aviso y video ──────────────────────────────────── */
+    function isWarningSnoozed() {
+        try {
+            return Number(localStorage.getItem(NX_WARN_SNOOZE_KEY) || 0) > Date.now();
+        } catch (_) {
+            return false;
+        }
+    }
+
+    // Lo que sigue después del aviso (ya sea porque lo cerró o porque pidió no verlo por 48 horas).
+    function afterWarning() {
+        if (pendingCheckoutStepsReveal) {
+            pendingCheckoutStepsReveal = false;
+            revealCheckoutSteps();
+        }
+        maybeOpenVideo();
+    }
+
     function openWarning() {
         if (!warningModal) { maybeOpenVideo(); return; }
+        if (isWarningSnoozed()) { afterWarning(); return; }
         warningModal.style.display = 'flex';
         warningModal.setAttribute('aria-hidden', 'false');
     }
@@ -1002,11 +1047,7 @@
         if (!warningModal) return;
         warningModal.style.display = 'none';
         warningModal.setAttribute('aria-hidden', 'true');
-        if (pendingCheckoutStepsReveal) {
-            pendingCheckoutStepsReveal = false;
-            revealCheckoutSteps();
-        }
-        maybeOpenVideo();
+        afterWarning();
     }
 
     function getMethodVideoUrl() {
@@ -1054,6 +1095,12 @@
     }
 
     if (warningAck) warningAck.addEventListener('click', closeWarning);
+    if (warningSnooze) {
+        warningSnooze.addEventListener('click', function () {
+            try { localStorage.setItem(NX_WARN_SNOOZE_KEY, String(Date.now() + NX_WARN_SNOOZE_MS)); } catch (_) {}
+            closeWarning();
+        });
+    }
     if (videoClose) videoClose.addEventListener('click', closeVideo);
     if (videoContinue) videoContinue.addEventListener('click', closeVideo);
     if (videoDontShow) {
@@ -1212,7 +1259,7 @@
             if (isFinite(shown.usd)) fd.set('seen_usd', Number(shown.usd).toFixed(2));
         }
 
-        return fetch(actionUrl, { method: 'POST', body: fd })
+        return (window.nxFetch || fetch)(actionUrl, { method: 'POST', body: fd }, 30000)
             .then(function (res) {
                 return res.json().catch(function () { throw new Error('Respuesta inválida del servidor.'); });
             })
@@ -1283,11 +1330,13 @@
                     if (typeof window.nxRefreshCatalog === 'function') window.nxRefreshCatalog(true);
                     showToast('⚠️ ' + err.message, 12000);
                 } else {
-                    showToast('⚠️ ' + (err.message || 'Error al confirmar la orden.'));
+                    showToast('⚠️ ' + (window.nxFriendlyError ? window.nxFriendlyError(err, 'Error al confirmar la orden.') : (err.message || 'Error al confirmar la orden.')));
                 }
                 restoreSubmitButton();
             });
     });
 })();
 </script>
+<script src="{{ static_v('js/dock.js') }}" defer></script>
+<script src="{{ static_v('js/cat-slider.js') }}" defer></script>
 {% endblock %}

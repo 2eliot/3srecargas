@@ -26,11 +26,16 @@ self.addEventListener('push', function (event) {
 
     var options = {
         body: payload.body || '',
-        icon: '/static/img/logo.png',
-        badge: '/static/img/logo.png',
+        icon: '/static/pwa/icon-192.png',
+        badge: '/static/pwa/icon-192.png',
         tag: payload.tag || 'general',
         data: { url: payload.url || '/' },
     };
+    // Aviso de soporte: lleva un botón "Ir al chat" (tocar el aviso también abre el chat) y vuelve a sonar si llega otra respuesta.
+    if (String(payload.tag || '').indexOf('support-') === 0) {
+        options.actions = [{ action: 'open-chat', title: 'Ir al chat' }];
+        options.renotify = true;
+    }
 
     event.waitUntil(self.registration.showNotification(payload.title || '3S Recargas', options));
 });

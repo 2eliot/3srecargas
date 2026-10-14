@@ -1,0 +1,16 @@
+{# Cabecera común de las páginas que NO extienden base.html (login, perfil, promociones...): modo liviano + íconos + manifiesto.
+   Sin esto esas páginas pedían /favicon.ico (404) y no tenían ícono de pestaña ni modo liviano. Se incluye dentro de <head>. #}
+<script>(function(){try{var d=document.documentElement,n=navigator,f=null,q=location.search,a=null;
+try{f=localStorage.getItem('nx-lite')}catch(e){}
+if(/[?&]lite=1/.test(q)){f='1';try{localStorage.setItem('nx-lite','1')}catch(e){}}
+if(/[?&]lite=0/.test(q)){f='0';try{localStorage.setItem('nx-lite','0')}catch(e){}}
+if(/[?&]lite=auto/.test(q)){f=null;try{localStorage.removeItem('nx-lite');localStorage.removeItem('nx-lite-auto')}catch(e){}}
+try{a=JSON.parse(localStorage.getItem('nx-lite-auto')||'null')}catch(e){}
+var low=(n.deviceMemory&&n.deviceMemory<=1)||(n.hardwareConcurrency&&n.hardwareConcurrency<=2)||(a&&a.l===1&&a.x>Date.now());
+if(f==='1'||(f!=='0'&&low))d.className+=' lite'}catch(e){}})();</script>
+<script src="{{ static_v('js/lite-detect.js') }}" defer></script>
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='pwa/icon-192.png') }}">
+<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='pwa/apple-touch-icon.png') }}">
+<link rel="manifest" href="{{ url_for('main_bp.web_manifest') }}">
+<meta name="theme-color" content="#000000">

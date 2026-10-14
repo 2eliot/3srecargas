@@ -16,9 +16,9 @@ from sqlalchemy import or_, false, func
 from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 from ..models import (
-    db, AdminUser, Game, Package, Category, Order,
+    db, AdminUser, Game, Package, Category, Order, User, UserLinkedId, ProfileAward, UserBadge,
     Pin, Affiliate, AffiliateCommission, PaymentMethod, Setting, Discount,
-    OrderMiniGameOpportunity, PlayerPoints, PointsPrizeMapping, PointsSpinLog,
+    OrderMiniGameOpportunity, PlayerPoints, PointsPrizeMapping, PointsSpinLog, AccountPointsLog,
     PointsRedeemOption, PointsRedeemLog,
     RevendedoresCatalogItem, RevendedoresItemMapping, RevendedoresMappingItem, GiftCode,
     CentralOneCatalogItem, CentralOneItemMapping, CentralOneMappingItem, PackageDeliveryPlan,
@@ -26,10 +26,15 @@ from ..models import (
     PromoAccumulatedAward, PromoAccumulatedLevel, PromoAccumulatedOrderLog,
     PromoRaffleConfig, PromoRaffleWinner, PromoRaffleEntry,
     PromoGuessConfig, PromoGuessRound, PromoGuessWinner, PromoGuessAttempt,
-    PromoHordeConfig, PromoHordeWinner, SiteNotification, OrderNotification,
+    PromoHordeConfig, PromoHordeWinner, SiteNotification, OrderNotification, RankingBoard,
 )
 from ..utils.availability import format_hour, get_manual_schedule
-from ..utils.locks import check_rate_limit, client_ip
+from ..utils import google_login
+from ..utils.profiles import clean_text, delete_media, get_or_create_profile, get_profile, reset_profile, save_media
+from ..utils import account_points, banner_lite
+from ..utils import profile_social
+from ..utils import profile_xp
+from ..utils.locks import admin_login_locked, check_rate_limit, client_ip, register_admin_login_failure, remember_admin_device
 from ..utils.promos import (
     ACC_DEFAULT_MAX_PRIZES_PER_DAY, ACC_DEFAULT_MAX_PRIZES_PER_ID_PER_DAY, ACC_ENABLED_KEY,
     ACC_MAX_PRIZES_PER_DAY_KEY, ACC_MAX_PRIZES_PER_ID_PER_DAY_KEY,
@@ -80,10 +85,15 @@ from ..utils.points import (
     get_player_points_balance,
 )
 from ..utils.auth_accounts import (
+    ACCOUNT_KINDS,
     attach_matching_orders_to_customer,
     extract_customer_identifier_for_game,
     get_or_create_scoped_customer,
+    linked_orders,
     sync_env_admin_user,
+    validate_email_address,
+    validate_new_password,
+    validate_username,
 )
 from ..utils.payment_verification import (
     apply_underpaid_verification,
@@ -113,11 +123,13 @@ DRAWER_BG_ITEMS = [
     ('drawer_bg_recarga', 'Fondo del acceso "Recarga Acumulada"', 'Recarga Acumulada'),
     ('drawer_bg_sorteo', 'Fondo del acceso "Sorteo Diario"', 'Sorteo Diario'),
     ('drawer_bg_adivina', 'Fondo del acceso "Adivina el Número"', 'Adivina el Número'),
+    ('drawer_bg_hordas', 'Fondo del acceso "Hordas de Diamantes"', 'Hordas de Diamantes'),
+    ('drawer_bg_torneos', 'Fondo del acceso "Torneos"', 'Torneos'),
     ('drawer_bg_canjear', 'Fondo del acceso "Canjear código"', 'Canjear código'),
     ('drawer_bg_mini', 'Fondo del acceso "Soy mini influencer"', 'Soy mini influencer'),
+    ('drawer_bg_login', 'Fondo del acceso "Iniciar sesión"', 'Iniciar sesión'),
 ]
 PROTECTED_CATEGORY_SLUGS = {'juegos', 'tarjetas', 'wallet'}
-RANKING_PRIZE_POSITIONS = [1, 2, 3, 4, 5]
 GAME_PLAYER_INPUT_TYPES = {'numeric', 'text', 'email'}
 
 
@@ -168,6 +180,8 @@ def delete_uploaded_file(relative_path):
 MAX_IMAGE_DIMENSION = 1920
 # La foto de soporte se ve en un circulo pequeno: 512px sobra y pesa una fraccion.
 AVATAR_IMAGE_DIMENSION = 512
+# Los fondos de la web van detrás de un velo oscuro y la tienda es de celular: 1280 px de lado largo sobra y pesa una fracción.
+BACKGROUND_IMAGE_DIMENSION = 1280
 
 
 def _compress_and_save_image(file, dest_path, ext, max_dimension=MAX_IMAGE_DIMENSION):
@@ -178,7 +192,7 @@ def _compress_and_save_image(file, dest_path, ext, max_dimension=MAX_IMAGE_DIMEN
     archivo original como antes."""
     if ext == 'gif':
         file.save(dest_path)
-        return
+        return dest_path
 
     try:
         from PIL import Image, ImageOps
@@ -197,10 +211,31 @@ def _compress_and_save_image(file, dest_path, ext, max_dimension=MAX_IMAGE_DIMEN
                 image = image.convert('RGBA')
             image.save(dest_path, format='WEBP', quality=82, method=6)
         else:  # png
+            if not _has_real_transparency(image):
+                # Un PNG sin transparencia (una foto o un diseño de fondo) pesa 10-40 veces más que en WebP y no gana nada: se guarda
+                # como WebP (el fondo de la portada llegó a pesar 1,2 MB en PNG y 30 KB en WebP). Con transparencia real se queda PNG.
+                webp_path = os.path.splitext(dest_path)[0] + '.webp'
+                image.convert('RGB').save(webp_path, format='WEBP', quality=82, method=6)
+                return webp_path
             image.save(dest_path, format='PNG', optimize=True)
     except Exception:
         file.stream.seek(0)
         file.save(dest_path)
+    return dest_path
+
+
+def _has_real_transparency(image):
+    """True si la imagen tiene píxeles de verdad transparentes (no solo un canal alfa lleno de 255)."""
+    try:
+        if image.mode in ('RGBA', 'LA'):
+            return image.getchannel('A').getextrema()[0] < 250
+        if image.mode == 'P' and 'transparency' in image.info:
+            return True
+        if image.mode == 'PA':
+            return True
+    except Exception:
+        return True
+    return False
 
 
 def save_image(file, subfolder='', max_dimension=MAX_IMAGE_DIMENSION):
@@ -214,7 +249,8 @@ def save_image(file, subfolder='', max_dimension=MAX_IMAGE_DIMENSION):
     if subfolder:
         folder = os.path.join(folder, subfolder)
     os.makedirs(folder, exist_ok=True)
-    _compress_and_save_image(file, os.path.join(folder, filename), ext, max_dimension)
+    final_path = _compress_and_save_image(file, os.path.join(folder, filename), ext, max_dimension)
+    filename = os.path.basename(final_path or os.path.join(folder, filename))   # puede cambiar de .png a .webp
     return (subfolder + '/' + filename) if subfolder else filename
 
 
@@ -234,6 +270,36 @@ def save_video(file, subfolder=''):
     os.makedirs(folder, exist_ok=True)
     file.save(os.path.join(folder, filename))
     return (subfolder + '/' + filename) if subfolder else filename
+
+
+# Banner promocional animado: solo MP4 y liviano (el banner se descarga en la primera visita de TODOS los clientes).
+PROMO_BANNER_VIDEO_MAX_MB = 8
+PROMO_BANNER_VIDEO_MAX_BYTES = PROMO_BANNER_VIDEO_MAX_MB * 1024 * 1024
+
+
+def is_promo_banner_video(filename):
+    """True si lo guardado/subido es el video del banner (se reconoce por la extensión .mp4)."""
+    return (filename or '').strip().lower().endswith('.mp4')
+
+
+def save_promo_banner_video(file):
+    """Guarda el MP4 del banner en la carpeta de branding. Devuelve (ruta, mensaje_de_error): si hay error, la ruta es None.
+    Se comprueba el tamaño y que el archivo sea de verdad un MP4 (la caja `ftyp` al inicio), no solo que termine en .mp4."""
+    if not file or not is_promo_banner_video(file.filename):
+        return None, 'El video del banner debe ser un archivo MP4.'
+    stream = file.stream
+    stream.seek(0, os.SEEK_END)
+    size = stream.tell()
+    stream.seek(0)
+    if size <= 0:
+        return None, 'El video está vacío.'
+    if size > PROMO_BANNER_VIDEO_MAX_BYTES:
+        return None, f'El video pesa {size / (1024 * 1024):.1f} MB: el máximo es {PROMO_BANNER_VIDEO_MAX_MB} MB. Usa uno más corto o más liviano.'
+    head = stream.read(12)
+    stream.seek(0)
+    if len(head) < 12 or head[4:8] != b'ftyp':
+        return None, 'Ese archivo no es un MP4 válido.'
+    return save_video(file, 'branding'), ''
 
 
 def order_supports_delivery_proof(order):
@@ -324,14 +390,6 @@ def run_housekeeping_if_needed():
     cleanup_old_orders()
     cleanup_used_pins()
     _last_housekeeping_run = now
-
-
-def _ranking_prize_package_key(ranking_key, position):
-    return f'ranking_{ranking_key}_prize_package_{position}'
-
-
-def _ranking_prize_auto_key(ranking_key, position):
-    return f'ranking_{ranking_key}_prize_auto_{position}'
 
 
 def _parse_optional_decimal(raw_value):
@@ -433,8 +491,16 @@ def login():
         if env_admin_email:
             valid_identifiers.add(env_admin_email.lower())
 
+        is_admin_identifier = identifier.lower() in valid_identifiers
+        # Freno general (todas las IP juntas) para quien prueba claves del admin; no cuenta los errores de otros usuarios.
+        if is_admin_identifier and admin_login_locked():
+            flash('Demasiados intentos fallidos con la clave del administrador. Espera 15 minutos.', 'danger')
+            return render_template('admin/login.html'), 429
+
         password_ok = hmac.compare_digest(password.encode('utf-8'), env_admin_password.encode('utf-8'))
-        if identifier.lower() not in valid_identifiers or not password_ok:
+        if not is_admin_identifier or not password_ok:
+            if is_admin_identifier:
+                register_admin_login_failure()
             flash('Correo/usuario admin o contraseña incorrectos.', 'danger')
             return render_template('admin/login.html')
 
@@ -447,7 +513,7 @@ def login():
 
         if user:
             login_user(user)
-            return redirect(url_for('admin_bp.dashboard'))
+            return remember_admin_device(redirect(url_for('admin_bp.dashboard')))
 
         flash('No se pudo iniciar sesión de administrador.', 'danger')
     return render_template('admin/login.html')
@@ -1765,9 +1831,17 @@ def get_stock_pins_access_code():
     return (current_app.config.get('STOCK_PINS_ACCESS_CODE') or '').strip()
 
 
+def _in_admin_area():
+    """Los datos del menú lateral del panel (candado, pendientes, mantenimiento) solo se calculan dentro de /admin: antes corrían
+    (con sus consultas a la base) en CADA página de la tienda, aunque ningún cliente los use."""
+    return request.path.startswith('/admin')
+
+
 @admin_bp.app_context_processor
 def _inject_stock_pins_state():
     """Para pintar el candado en el menú lateral."""
+    if not _in_admin_area():
+        return {}
     try:
         return {'stock_pins_protected': bool(get_stock_pins_access_code())}
     except Exception:
@@ -1876,6 +1950,10 @@ def pins_lock():
     return redirect(url_for('admin_bp.dashboard'))
 
 
+# Un paquete puede tener cientos de PINs: el inventario se muestra por páginas.
+PINS_PAGE_SIZE = 25
+
+
 @admin_bp.route('/pins')
 @login_required
 @stock_pins_required
@@ -1899,16 +1977,35 @@ def pins():
     pin_enabled_packages = pin_enabled_query.all()
     selected_package = None
     pins_list = []
+    pins_total = 0
+    page = 1
+    total_pages = 1
+    page_numbers = [1]
+    start_index = end_index = 0
 
     if package_id:
         selected_package = pin_enabled_query.filter(Package.id == package_id).first()
         if selected_package:
+            pins_query = Pin.query.filter_by(package_id=package_id)
+            pins_total = pins_query.count()
+            page = request.args.get('page', type=int) or 1
+            if page < 1:
+                page = 1
+            total_pages = max(1, (pins_total + PINS_PAGE_SIZE - 1) // PINS_PAGE_SIZE)
+            if page > total_pages:
+                page = total_pages
+            # Los PINs de una misma carga comparten la hora: sin el id como último criterio el orden no sería
+            # estable y un PIN podría repetirse o saltarse al pasar de una página a otra.
             pins_list = (
-                Pin.query
-                .filter_by(package_id=package_id)
-                .order_by(Pin.is_used.asc(), Pin.created_at.asc())
+                pins_query
+                .order_by(Pin.is_used.asc(), Pin.created_at.asc(), Pin.id.asc())
+                .offset((page - 1) * PINS_PAGE_SIZE)
+                .limit(PINS_PAGE_SIZE)
                 .all()
             )
+            page_numbers = list(range(max(1, page - 2), min(total_pages, page + 2) + 1))
+            start_index = ((page - 1) * PINS_PAGE_SIZE) + 1 if pins_total else 0
+            end_index = min(page * PINS_PAGE_SIZE, pins_total) if pins_total else 0
 
     # Antes salían todos los paquetes revueltos en una sola rejilla: Apple,
     # Free Fire y Roblox juntos. Ahora se elige primero el juego o servicio y
@@ -1936,6 +2033,12 @@ def pins():
         selected_game=selected_game_entry,
         selected_package=selected_package,
         pins_list=pins_list,
+        pins_total=pins_total,
+        current_page=page,
+        total_pages=total_pages,
+        page_numbers=page_numbers,
+        start_index=start_index,
+        end_index=end_index,
     )
 
 
@@ -1967,13 +2070,15 @@ def pins_upload(package_id):
 def pin_delete(pin_id):
     pin = Pin.query.get_or_404(pin_id)
     package_id = pin.package_id
+    # Se vuelve a la misma página del inventario desde la que se eliminó (si quedó vacía, la ruta pasa a la última).
+    page = request.form.get('page', type=int)
     if pin.is_used:
         flash('No se puede eliminar un PIN ya utilizado.', 'danger')
     else:
         db.session.delete(pin)
         db.session.commit()
         flash('PIN eliminado.', 'warning')
-    return redirect(url_for('admin_bp.pins', package_id=package_id))
+    return redirect(url_for('admin_bp.pins', package_id=package_id, page=page if page and page > 1 else None))
 
 
 # ─── Códigos de regalo ───────────────────────────────────────────────────────
@@ -2084,6 +2189,10 @@ def gift_codes_generate():
     batch = (request.form.get('batch') or '').strip()
     source = (request.form.get('source') or '').strip()
     expires_raw = (request.form.get('expires_at') or '').strip()
+
+    if not package_id or not quantity:
+        flash('Elige el paquete y cuántos códigos generar.', 'danger')
+        return redirect(url_for('admin_bp.gift_codes'))
 
     expires_at = None
     if expires_raw:
@@ -2845,6 +2954,8 @@ def mini_withdrawal_reject(w_id):
 @admin_bp.app_context_processor
 def _inject_minis_pending_state():
     """Para el badge de pendientes en el menú lateral, junto al link de Minis."""
+    if not _in_admin_area():
+        return {}
     try:
         return {
             'minis_pending_count': (
@@ -2861,6 +2972,8 @@ def _inject_minis_pending_state():
 def _inject_maintenance_state():
     """Para que el botón de mantenimiento del sidebar sepa si ya está
     prendido y se pinte distinto (y diga "Desactivar")."""
+    if not _in_admin_area():
+        return {}
     try:
         setting = Setting.query.filter_by(key='maintenance_mode').first()
         return {'maintenance_mode_on': bool(setting and setting.value == 'true')}
@@ -3126,51 +3239,65 @@ def payment_method_delete(method_id):
 # ─── Settings ────────────────────────────────────────────────────────────────
 
 def _build_admin_rankings_payload():
-    from .main import (
-        RANKING_DEFS,
-        _get_archive_history_payload,
-        _get_previous_archive_payload,
-        _get_ranking_entries,
-        _is_ranking_enabled,
-        _resolve_ranking_game,
-        get_ranking_prize_config,
-    )
+    """"Ganadores provisionales" del admin: de cada ranking encendido, el top actual del mes (con los datos completos) y los meses ya archivados."""
+    from .main import _get_archive_history_payload, _get_previous_archive_payload
+    from ..utils import ranking_boards as RB
 
     month_label = now_ve().strftime('%m/%Y')
     rankings = []
 
-    for ranking_key, config in RANKING_DEFS.items():
-        game = _resolve_ranking_game(config)
-        enabled = bool(game and _is_ranking_enabled(config, game))
-        prize_config = get_ranking_prize_config(ranking_key)
+    for board in RB.enabled_boards():
+        game = board.game if board.kind == 'game' else None
+        enabled = board.kind != 'game' or game is not None
+        prizes = RB.prize_map(board)
+        places = RB.places(board)
         item = {
-            'key': ranking_key,
-            'label': config.get('label') or ranking_key,
-            'units_label': config.get('units_label') or 'Unidades',
+            'key': board.key,
+            'kind': board.kind,
+            'label': board.name,
+            'units_label': RB.units_label(board),
             'month_label': month_label,
             'enabled': enabled,
             'game_id': game.id if game else None,
-            'game_name': game.name if game else (config.get('label') or ranking_key),
+            'game_name': game.name if game else board.name,
             'leaders': [],
             'total_players': 0,
-            'archive_history': _get_archive_history_payload(ranking_key, include_private=True),
-            'previous_winners': _get_previous_archive_payload(ranking_key),
+            'archive_history': _get_archive_history_payload(board.key, include_private=True),
+            'previous_winners': _get_previous_archive_payload(board.key),
         }
 
-        if enabled:
-            entries = _get_ranking_entries(game.id)
+        if enabled and board.kind == 'game':
+            entries = RB.game_entries(game.id)
             item['total_players'] = len(entries)
             for index, entry in enumerate(entries[:10], start=1):
-                package = prize_config.get(index, {}).get('package')
+                label = RB.prize_label(prizes.get(index)) if index <= places else ''
                 item['leaders'].append({
                     'position': index,
                     'player_id': (entry.get('player_id') or '').strip() or '----',
                     'nickname': (entry.get('nickname') or '').strip() or 'Sin nickname',
                     'total_units': int(entry.get('total_units') or 0),
                     'total_spent': round(float(entry.get('total_spent') or 0), 2),
-                    'reward_value': package.name if package else None,
-                    'prize_label': package.name if package else 'Sin premio',
-                    'is_prize_eligible': index <= 5,
+                    'reward_value': label or None,
+                    'prize_label': label or 'Sin premio',
+                    'is_prize_eligible': index <= places,
+                })
+        elif enabled:
+            rows = profile_social.level_ranking(limit=10, reveal=True) if board.kind == 'levels' else profile_social.account_month_ranking(limit=10, reveal=True)
+            item['total_players'] = len(rows)
+            for row in rows:
+                index = row['position']
+                owner = db.session.get(User, row['user_id'])
+                label = RB.prize_label(prizes.get(index)) if index <= places else ''
+                item['leaders'].append({
+                    'position': index,
+                    'player_id': f"@{row['handle']}",
+                    'nickname': row['name'],
+                    'email': (owner.email or owner.account_identifier or '') if owner is not None else '',
+                    'total_units': int(row['total_units'] or 0),
+                    'total_spent': 0,
+                    'reward_value': label or None,
+                    'prize_label': label or 'Sin premio',
+                    'is_prize_eligible': index <= places,
                 })
 
         rankings.append(item)
@@ -3178,10 +3305,105 @@ def _build_admin_rankings_payload():
     return rankings
 
 
+def _board_view(board, form=None):
+    """Un ranking tal como se pinta en el formulario: lo guardado o, si no se pudo guardar, lo que el administrador acababa de escribir."""
+    from ..utils import ranking_boards as RB
+
+    prizes = RB.prize_map(board)
+    rows = []
+    for position in range(1, RB.MAX_PLACES + 1):
+        if form is not None:
+            rows.append({
+                'position': position, 'type': (form.get(f'prize_type_{position}') or 'none'),
+                'package_id': (form.get(f'prize_package_{position}') or ''), 'points': (form.get(f'prize_points_{position}') or ''),
+                'text': (form.get(f'prize_text_{position}') or ''), 'auto': form.get(f'prize_auto_{position}') in ('1', 'on', 'true'),
+            })
+            continue
+        prize = prizes.get(position)
+        rows.append({
+            'position': position, 'type': prize.prize_type if prize else 'none', 'package_id': str(prize.package_id or '') if prize else '',
+            'points': str(prize.points) if (prize and prize.points) else '', 'text': (prize.text or '') if prize else '',
+            'auto': bool(prize and prize.auto),
+        })
+    if form is not None:
+        places = form.get('prize_places') or RB.places(board)
+        return {
+            'board': board, 'name': form.get('name') or board.name, 'units_label': form.get('units_label') or RB.units_label(board),
+            'enabled': form.get('enabled') in ('1', 'on', 'true'), 'game_id': form.get('game_id') or str(board.game_id or ''),
+            'places': places, 'rows': rows,
+        }
+    return {
+        'board': board, 'name': board.name, 'units_label': RB.units_label(board), 'enabled': bool(board.enabled),
+        'game_id': str(board.game_id or ''), 'places': RB.places(board), 'rows': rows,
+    }
+
+
+def _rankings_page(form_board=None, form=None):
+    from ..utils import ranking_boards as RB
+
+    games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
+    packages_by_game = {}
+    for package in Package.query.filter_by(is_active=True).order_by(Package.game_id.asc(), Package.sort_order.asc(), Package.name.asc()).all():
+        packages_by_game.setdefault(str(package.game_id), []).append({'id': package.id, 'name': package.name, 'is_automated': bool(package.is_automated)})
+    views = [
+        _board_view(board, form if (form is not None and form_board is not None and board.id == form_board.id) else None)
+        for board in RB.all_boards()
+    ]
+    return render_template(
+        'admin/rankings.html', boards=views, games=games, packages_by_game=packages_by_game, kinds=RB.KINDS, prize_type_labels=RB.PRIZE_TYPE_LABELS,
+        prize_types=RB.PRIZE_TYPES, max_places=RB.MAX_PLACES, text_max=RB.TEXT_MAX, name_max=RB.NAME_MAX, units_max=RB.UNITS_MAX,
+        points_max=RB.POINTS_MAX, max_boards=RB.MAX_BOARDS,
+    )
+
+
 @admin_bp.route('/rankings')
 @login_required
 def rankings():
-    return render_template('admin/rankings.html')
+    return _rankings_page()
+
+
+@admin_bp.route('/rankings/crear', methods=['POST'])
+@login_required
+def ranking_create():
+    from ..utils import ranking_boards as RB
+
+    board, error = RB.create_board(request.form.get('name'), (request.form.get('kind') or '').strip(), request.form.get('game_id'))
+    if error:
+        db.session.rollback()
+        flash(error, 'danger')
+        return redirect(url_for('admin_bp.rankings') + '#crearRanking')
+    flash(f'Ranking "{board.name}" creado. Está apagado: ponle los premios y enciéndelo para que salga en la tienda.', 'success')
+    return redirect(url_for('admin_bp.rankings') + f'#board-{board.id}')
+
+
+@admin_bp.route('/rankings/<int:board_id>/guardar', methods=['POST'])
+@login_required
+def ranking_save(board_id):
+    from ..utils import ranking_boards as RB
+
+    board = RankingBoard.query.get_or_404(board_id)
+    error = RB.save_board(board, request.form)
+    if error:
+        db.session.rollback()
+        flash(error, 'danger')
+        board = RankingBoard.query.get_or_404(board_id)   # sin lo que no se alcanzó a guardar
+        return _rankings_page(form_board=board, form=request.form)
+    db.session.commit()
+    flash(f'Ranking "{board.name}" guardado.' + (' Ya sale en la tienda.' if board.enabled else ' Está apagado: no se ve en la tienda.'), 'success')
+    return redirect(url_for('admin_bp.rankings') + f'#board-{board.id}')
+
+
+@admin_bp.route('/rankings/<int:board_id>/borrar', methods=['POST'])
+@login_required
+def ranking_delete(board_id):
+    from ..utils import ranking_boards as RB
+
+    board = RankingBoard.query.get_or_404(board_id)
+    name = board.name
+    RB.delete_board(board)
+    db.session.commit()
+    flash(f'Ranking "{name}" borrado. Los ganadores de meses anteriores ya archivados no se tocan.', 'warning')
+    return redirect(url_for('admin_bp.rankings'))
 
 
 @admin_bp.route('/rankings/live')
@@ -3195,6 +3417,17 @@ def rankings_live():
         'generated_at': format_ve(now_ve(), '%d/%m/%Y %H:%M:%S'),
         'rankings': _build_admin_rankings_payload(),
     })
+
+
+_SETTINGS_SECTION_RE = re.compile(r'^sec-[a-z0-9_-]{1,40}$')
+
+
+def _settings_redirect():
+    """Vuelve a Configuración. Si se guardó con el botón de una sección ("Guardar esta sección"), regresa a esa misma sección: la página la abre sola."""
+    section = (request.form.get('__section') or '').strip()
+    target = url_for('admin_bp.settings')
+    return redirect(f'{target}#{section}' if _SETTINGS_SECTION_RE.match(section) else target)
+
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])
 @login_required
@@ -3265,12 +3498,6 @@ def settings():
         'binance_auto_enabled': 'Activa verificación automática de Binance Pay',
         'binance_wallet_address': 'Dirección/email de Binance Pay que se muestra al cliente',
     }
-    ranking_keys = {
-        'ranking_free_fire_enabled': 'Mostrar ranking mensual de Free Fire',
-        'ranking_blood_strike_enabled': 'Mostrar ranking mensual de Blood Strike',
-        'ranking_free_fire_game_id': 'Juego asociado al ranking de Free Fire',
-        'ranking_blood_strike_game_id': 'Juego asociado al ranking de Blood Strike',
-    }
     community_popup_keys = {
         'community_popup_enabled': 'Activa el popup recurrente de "Únete a nuestra comunidad"',
         'community_popup_interval_hours': 'Cada cuántas horas puede reaparecer (por pestaña/visita)',
@@ -3296,10 +3523,14 @@ def settings():
         setting = Setting.query.filter_by(key=key).first()
         binance_auto_settings[key] = setting.value if setting else ''
 
-    ranking_settings = {}
-    for key in ranking_keys:
-        setting = Setting.query.filter_by(key=key).first()
-        ranking_settings[key] = setting.value if setting else ''
+    # Entrar con Google: la llave secreta nunca se devuelve a la pantalla, solo si ya hay una guardada.
+    google_config = google_login.get_config()
+    google_login_settings = {
+        'enabled': (Setting.query.filter_by(key='google_login_enabled').first() or Setting(value='')).value != '0',
+        'client_id': (Setting.query.filter_by(key='google_client_id').first() or Setting(value='')).value or '',
+        'has_secret': bool((Setting.query.filter_by(key='google_client_secret').first() or Setting(value='')).value),
+        'active': google_config['enabled'],
+    }
 
     community_popup_settings = {}
     for key in community_popup_keys:
@@ -3318,31 +3549,7 @@ def settings():
         'manual_service_force_closed': '1' if manual_schedule.get('force_closed') else '0',
     }
 
-    ranking_games = Game.query.filter_by(is_active=True).order_by(Game.name.asc()).all()
     active_payment_methods = PaymentMethod.query.filter_by(is_active=True).order_by(PaymentMethod.sort_order.asc(), PaymentMethod.name.asc()).all()
-    ranking_packages = Package.query.filter_by(is_active=True).order_by(Package.game_id.asc(), Package.sort_order.asc(), Package.name.asc()).all()
-    ranking_packages_by_game = {}
-    for package in ranking_packages:
-        ranking_packages_by_game.setdefault(str(package.game_id), []).append({
-            'id': package.id,
-            'name': package.name,
-            'sort_order': package.sort_order,
-            'is_automated': bool(package.is_automated),
-        })
-
-    ranking_prize_settings = {'free_fire': {}, 'blood_strike': {}}
-    for ranking_key_name in ranking_prize_settings.keys():
-        for position in RANKING_PRIZE_POSITIONS:
-            package_setting = Setting.query.filter_by(key=_ranking_prize_package_key(ranking_key_name, position)).first()
-            auto_setting = Setting.query.filter_by(key=_ranking_prize_auto_key(ranking_key_name, position)).first()
-            package_id = package_setting.value if package_setting else ''
-            package = Package.query.get(int(package_id)) if str(package_id).isdigit() else None
-            ranking_prize_settings[ranking_key_name][position] = {
-                'package_id': package_id,
-                'auto': auto_setting.value if auto_setting else '0',
-                'reward_label': package.name if package else 'Sin premio configurado',
-            }
-
     if request.method == 'POST':
         new_rate = request.form.get('usd_rate_bs', '').strip()
         default_pkg = request.form.get('default_auto_package_id', '').strip()
@@ -3378,12 +3585,6 @@ def settings():
             'binance_auto_enabled': '1' if request.form.get('binance_auto_enabled') else '0',
             'binance_wallet_address': (request.form.get('binance_wallet_address', '') or '').strip(),
         }
-        ranking_payload = {
-            'ranking_free_fire_enabled': '1' if request.form.get('ranking_free_fire_enabled') else '0',
-            'ranking_blood_strike_enabled': '1' if request.form.get('ranking_blood_strike_enabled') else '0',
-            'ranking_free_fire_game_id': (request.form.get('ranking_free_fire_game_id', '') or '').strip(),
-            'ranking_blood_strike_game_id': (request.form.get('ranking_blood_strike_game_id', '') or '').strip(),
-        }
         community_interval_raw = (request.form.get('community_popup_interval_hours', '') or '').strip()
         try:
             community_interval_hours = str(max(1, int(float(community_interval_raw)))) if community_interval_raw else '3'
@@ -3414,7 +3615,7 @@ def settings():
                 float(new_rate)
             except ValueError:
                 flash('La tasa debe ser un número válido.', 'danger')
-                return redirect(url_for('admin_bp.settings'))
+                return _settings_redirect()
 
             if not usd_rate_setting:
                 usd_rate_setting = Setting(
@@ -3480,7 +3681,7 @@ def settings():
             site_background_setting.value = ''
 
         if site_background_file and site_background_file.filename:
-            saved_background = save_image(site_background_file, 'branding')
+            saved_background = save_image(site_background_file, 'branding', BACKGROUND_IMAGE_DIMENSION)
             if saved_background:
                 if site_background_setting and site_background_setting.value:
                     delete_uploaded_file(site_background_setting.value)
@@ -3513,14 +3714,25 @@ def settings():
                 else:
                     order_status_image_setting.value = saved_order_status_image
 
+        new_promo_banner = None   # el banner recién subido: al guardar se le hace su copia liviana (modo liviano) en segundo plano
         if remove_promo_banner_image and promo_banner_image_setting:
+            banner_lite.delete_lite(promo_banner_image_setting.value)
             delete_uploaded_file(promo_banner_image_setting.value)
             promo_banner_image_setting.value = ''
 
         if promo_banner_image_file and promo_banner_image_file.filename:
-            saved_promo_banner = save_image(promo_banner_image_file, 'branding')
+            if is_promo_banner_video(promo_banner_image_file.filename):
+                saved_promo_banner, video_error = save_promo_banner_video(promo_banner_image_file)
+                if video_error:
+                    flash(video_error, 'danger')
+            else:
+                saved_promo_banner = save_image(promo_banner_image_file, 'branding')
+                if not saved_promo_banner:
+                    flash('Formato no permitido para el banner: usa una imagen (JPG, PNG, WEBP, GIF) o un video MP4.', 'danger')
             if saved_promo_banner:
+                new_promo_banner = saved_promo_banner
                 if promo_banner_image_setting and promo_banner_image_setting.value:
+                    banner_lite.delete_lite(promo_banner_image_setting.value)
                     delete_uploaded_file(promo_banner_image_setting.value)
                 if not promo_banner_image_setting:
                     promo_banner_image_setting = Setting(
@@ -3550,7 +3762,7 @@ def settings():
 
             bg_file = drawer_bg_files.get(key)
             if bg_file and bg_file.filename:
-                saved_bg = save_image(bg_file, 'branding')
+                saved_bg = save_image(bg_file, 'branding', BACKGROUND_IMAGE_DIMENSION)
                 if saved_bg:
                     if setting and setting.value:
                         delete_uploaded_file(setting.value)
@@ -3576,7 +3788,7 @@ def settings():
             saved_checkout_payment_video = save_video(checkout_payment_video_file, 'payments')
             if not saved_checkout_payment_video:
                 flash('El video debe estar en formato mp4, webm, mov o m4v.', 'danger')
-                return redirect(url_for('admin_bp.settings'))
+                return _settings_redirect()
             if checkout_payment_video_file_setting and checkout_payment_video_file_setting.value:
                 delete_uploaded_file(checkout_payment_video_file_setting.value)
             if not checkout_payment_video_file_setting:
@@ -3614,7 +3826,7 @@ def settings():
             saved_site_tutorial_video = save_video(site_tutorial_video_file, 'tutorial')
             if not saved_site_tutorial_video:
                 flash('El video debe estar en formato mp4, webm, mov o m4v.', 'danger')
-                return redirect(url_for('admin_bp.settings'))
+                return _settings_redirect()
             if site_tutorial_video_file_setting and site_tutorial_video_file_setting.value:
                 delete_uploaded_file(site_tutorial_video_file_setting.value)
             if not site_tutorial_video_file_setting:
@@ -3681,15 +3893,6 @@ def settings():
             else:
                 current_setting.value = val
 
-        for key, desc in ranking_keys.items():
-            val = ranking_payload.get(key, '')
-            current_setting = Setting.query.filter_by(key=key).first()
-            if not current_setting:
-                current_setting = Setting(key=key, value=val, description=desc)
-                db.session.add(current_setting)
-            else:
-                current_setting.value = val
-
         for key, desc in community_popup_keys.items():
             val = community_popup_payload.get(key, '')
             current_setting = Setting.query.filter_by(key=key).first()
@@ -3708,49 +3911,22 @@ def settings():
             else:
                 current_setting.value = val
 
-        ranking_prize_desc = 'Paquete vinculado al premio mensual del ranking por puesto.'
-        ranking_prize_auto_desc = 'Si está activo, el paquete del premio se fuerza como automatizado.'
-        for ranking_key_name in ('free_fire', 'blood_strike'):
-            selected_game_id = ranking_payload.get(f'ranking_{ranking_key_name}_game_id', '')
-            selected_game_id_int = int(selected_game_id) if selected_game_id.isdigit() else None
-
-            for position in RANKING_PRIZE_POSITIONS:
-                package_key = _ranking_prize_package_key(ranking_key_name, position)
-                auto_key = _ranking_prize_auto_key(ranking_key_name, position)
-                package_value = (request.form.get(package_key, '') or '').strip()
-                auto_value = '1' if request.form.get(auto_key) else '0'
-
-                valid_package_value = ''
-                prize_package = None
-                if package_value.isdigit() and selected_game_id_int:
-                    prize_package = Package.query.filter_by(
-                        id=int(package_value),
-                        game_id=selected_game_id_int,
-                        is_active=True,
-                    ).first()
-                    if prize_package:
-                        valid_package_value = str(prize_package.id)
-
-                package_setting = Setting.query.filter_by(key=package_key).first()
-                if not package_setting:
-                    package_setting = Setting(key=package_key, value=valid_package_value, description=ranking_prize_desc)
-                    db.session.add(package_setting)
-                else:
-                    package_setting.value = valid_package_value
-
-                auto_setting = Setting.query.filter_by(key=auto_key).first()
-                if not auto_setting:
-                    auto_setting = Setting(key=auto_key, value=auto_value, description=ranking_prize_auto_desc)
-                    db.session.add(auto_setting)
-                else:
-                    auto_setting.value = auto_value
-
-                if prize_package and auto_value == '1':
-                    prize_package.is_automated = True
+        # Entrar con Google (clientes): el secreto solo se cambia si se escribe uno nuevo.
+        if request.form.get('remove_google_client'):
+            _upsert_setting('google_client_id', '')
+            _upsert_setting('google_client_secret', '')
+        else:
+            _upsert_setting('google_client_id', (request.form.get('google_client_id', '') or '').strip()[:200])
+            new_google_secret = (request.form.get('google_client_secret', '') or '').strip()[:200]
+            if new_google_secret:
+                _upsert_setting('google_client_secret', new_google_secret)
+        _upsert_setting('google_login_enabled', '1' if request.form.get('google_login_enabled') else '0')
 
         db.session.commit()
+        if new_promo_banner:
+            banner_lite.ensure_async(current_app._get_current_object(), new_promo_banner)
         flash('Configuración actualizada.', 'success')
-        return redirect(url_for('admin_bp.settings'))
+        return _settings_redirect()
 
     return render_template(
         'admin/settings.html',
@@ -3762,6 +3938,7 @@ def settings():
         order_status_image=order_status_image_value,
         promo_banner_image=promo_banner_image_value,
         promo_banner_link=promo_banner_link_value,
+        promo_banner_video_max_mb=PROMO_BANNER_VIDEO_MAX_MB,
         drawer_bg_items=[
             (key, label, (drawer_bg_settings[key].value if key in drawer_bg_settings and drawer_bg_settings[key].value else ''))
             for key, _description, label in DRAWER_BG_ITEMS
@@ -3770,6 +3947,8 @@ def settings():
         email_settings=email_settings,
         payment_verify_settings=payment_verify_settings,
         binance_auto_settings=binance_auto_settings,
+        google_login_settings=google_login_settings,
+        google_redirect_uri=google_login.redirect_uri(),
         active_payment_methods=active_payment_methods,
         checkout_payment_video_method=checkout_payment_video_method_value,
         checkout_payment_video_title=checkout_payment_video_title_value,
@@ -3778,11 +3957,6 @@ def settings():
         checkout_payment_video_file=checkout_payment_video_file_value,
         site_tutorial_video_file=site_tutorial_video_file_value,
         site_tutorial_video_title=site_tutorial_video_title_value,
-        ranking_settings=ranking_settings,
-        ranking_games=ranking_games,
-        ranking_prize_settings=ranking_prize_settings,
-        ranking_prize_positions=RANKING_PRIZE_POSITIONS,
-        ranking_packages_by_game=ranking_packages_by_game,
         community_popup_settings=community_popup_settings,
         manual_schedule_settings=manual_schedule_settings,
     )
@@ -4258,7 +4432,52 @@ def points():
         points_per_dollar=get_points_per_dollar_rate(),
         points_spin_cost=get_points_spin_cost(),
         points_win_interval=get_points_win_interval(),
+        gifts_recent=_recent_point_gifts(),
+        gift_max=account_points.MAX_POINTS_PER_MOVE,
     )
+
+
+def _recent_point_gifts(limit=10):
+    """Los últimos puntos que el administrador le regaló a cuentas: [(movimiento, cuenta)]."""
+    return (
+        db.session.query(AccountPointsLog, User)
+        .join(User, User.id == AccountPointsLog.user_id)
+        .filter(AccountPointsLog.kind == 'admin', AccountPointsLog.delta > 0)
+        .order_by(AccountPointsLog.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+@admin_bp.route('/points/regalar', methods=['POST'])
+@login_required
+def points_gift():
+    """Regala puntos de la tienda (los que sirven para girar la ruleta y canjear paquetes) a una CUENTA, buscándola por su usuario o su correo.
+    Quedan en la bolsa del perfil; su dueño los pasa al ID que quiera desde "Canjear puntos"."""
+    back = url_for('admin_bp.points') + '#regalarPuntos'
+    target = (request.form.get('account') or '').strip().lstrip('@')[:255]
+    raw_amount = (request.form.get('amount') or '').strip()
+    note = clean_text(request.form.get('note'), 150)
+    if not target:
+        flash('Escribe el usuario o el correo de la cuenta.', 'danger')
+        return redirect(back)
+    if not raw_amount.isdigit() or not 1 <= int(raw_amount) <= account_points.MAX_POINTS_PER_MOVE:
+        flash('Escribe cuántos puntos regalar (un número entero mayor que 0).', 'danger')
+        return redirect(back)
+    needle = target.lower()
+    accounts = User.query.filter(User.account_kind.in_(ACCOUNT_KINDS))
+    user = accounts.filter(func.lower(User.username) == needle).first() or accounts.filter(func.lower(User.email) == needle).first()
+    if user is None:
+        flash(f'No encontré ninguna cuenta con el usuario o correo "{target}". Revisa que esté bien escrito (solo cuentas registradas).', 'danger')
+        return redirect(back)
+    if not user.is_active:
+        flash('Esa cuenta está desactivada: no se le pueden regalar puntos.', 'danger')
+        return redirect(back)
+    amount = int(raw_amount)
+    account_points.credit(user.id, amount, kind='admin', note=note or 'Regalo del administrador')
+    db.session.commit()
+    flash(f'Le regalaste {amount} puntos a @{user.username}. Ahora tiene {account_points.balance(user.id)} puntos en su perfil; los pasa a un ID desde "Canjear puntos".', 'success')
+    return redirect(back)
 
 
 @admin_bp.route('/points/mappings/<int:mapping_id>/toggle', methods=['POST'])
@@ -4593,7 +4812,8 @@ def promos_horde_ban():
 
     game_id = request.form.get('game_id', type=int)
     game = Game.query.get_or_404(game_id)
-    player_id = (request.form.get('player_id') or '').strip()[:100]
+    from ..utils.promos import canonical_player_id
+    player_id = canonical_player_id(request.form.get('player_id'))[:100]   # el mismo ID canónico con el que juegan: '0123' y '123' son uno
     reason = (request.form.get('reason') or '').strip()[:200] or 'Trampa'
     if not player_id:
         flash('Escribe el ID que quieres bloquear.', 'danger')
@@ -4603,6 +4823,12 @@ def promos_horde_ban():
         return _horde_back(game.id)
     db.session.add(PromoHordeBan(game_id=game.id, player_id=player_id, reason=reason))
     db.session.commit()
+    try:
+        from ..utils.promos import refresh_pending_horde_winners
+        refresh_pending_horde_winners(game.id)   # si ese ID era ganador pendiente, sale y suben los siguientes
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Hordas: no se pudieron rearmar los ganadores tras bloquear un ID')
     flash(f'ID {player_id} bloqueado en Hordas de {game.name}: ya no puede jugar ni sale en el ranking.', 'success')
     return _horde_back(game.id)
 
@@ -4622,6 +4848,37 @@ def promos_horde_unban(ban_id):
 
 # ─── Aprobación de premios de Hordas ──────────────────────────────────────────
 
+def _horde_winner_unverified_summary(winner):
+    """Texto con lo que NO se ha comprobado de las partidas de este ganador en la semana ('' si todo está en orden).
+    Las partidas se aceptan por lo que dice el teléfono (con topes); lo que las respalda es la repetición que el admin reproduce."""
+    from ..models import PromoHordeReplay, PromoHordeRun
+
+    runs = (
+        PromoHordeRun.query
+        .filter(PromoHordeRun.game_id == winner.game_id, PromoHordeRun.week_key == winner.week_key,
+                PromoHordeRun.player_id == winner.player_id, PromoHordeRun.finished_at.isnot(None),
+                PromoHordeRun.diamonds > 0)
+        .all()
+    )
+    if not runs:
+        return ''
+    with_replay = {
+        run_id for (run_id,) in db.session.query(PromoHordeReplay.run_id)
+        .filter(PromoHordeReplay.run_id.in_([r.id for r in runs]))
+    }
+    bad = sum(1 for r in runs if r.flag or r.replay_check == 'no_coincide')
+    no_replay = sum(1 for r in runs if r.id not in with_replay)
+    unchecked = sum(1 for r in runs if r.id in with_replay and r.replay_check != 'ok')
+    parts = []
+    if bad:
+        parts.append(f'{bad} partida(s) marcadas por el servidor o que no coinciden con su repetición')
+    if no_replay:
+        parts.append(f'{no_replay} partida(s) sin repetición guardada')
+    if unchecked:
+        parts.append(f'{unchecked} repetición(es) sin comprobar')
+    return '; '.join(parts)
+
+
 @admin_bp.route('/promos/horde/winner/<int:winner_id>/approve', methods=['POST'])
 @login_required
 def promos_horde_winner_approve(winner_id):
@@ -4629,6 +4886,15 @@ def promos_horde_winner_approve(winner_id):
 
     winner = PromoHordeWinner.query.get_or_404(winner_id)
     game_id = winner.game_id
+    # Aviso de dos pasos: si hay partidas sin respaldo, la primera pulsación solo avisa y la segunda aprueba.
+    unverified = _horde_winner_unverified_summary(winner)
+    warn_key = f'horde_approve_warned:{winner_id}'
+    if unverified and not session.get(warn_key):
+        session[warn_key] = True
+        flash(f'Antes de aprobar a {winner.player_id}: {unverified}. Revisa sus repeticiones en "Premios y repeticiones". '
+              'Si aun así quieres aprobarlo, pulsa Aprobar otra vez.', 'warning')
+        return _horde_back(game_id)
+    session.pop(warn_key, None)
     try:
         winner = approve_horde_winner(winner_id)
     except ValueError as exc:
@@ -5540,6 +5806,7 @@ def stats():
         'RECARGA-ACUM': 'Premio de Recarga Acumulada',
         'SORTEO': 'Premio de Sorteo Diario',
         'ADIVINA': 'Premio de Adivina el Número',
+        'HORDAS': 'Premio de Hordas',
     }
 
     def _zero_amount_category(order):
@@ -5808,3 +6075,462 @@ def stats():
         zero_amount_total=zero_amount_total,
         zero_amount_summary=zero_amount_summary,
     )
+
+
+# ─── Cuentas registradas ─────────────────────────────────────────────────────
+# Las personas que crearon una cuenta (con correo y contraseña, o con Google). Desde aquí se les corrigen los
+# datos, se les restablece la contraseña si la olvidan, se les desactiva la cuenta y se ven/quitan los IDs
+# que enlazaron. Los clientes que solo compran con su ID NO salen aquí (no tienen cuenta).
+
+ACCOUNTS_PAGE_SIZE = 25
+TEMP_PASSWORD_ALPHABET = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'  # sin letras que se confunden (l, I, O, 0, 1)
+
+
+def _generate_temp_password(length=10):
+    import secrets
+    return ''.join(secrets.choice(TEMP_PASSWORD_ALPHABET) for _ in range(length))
+
+
+def _like_pattern(text):
+    escaped = text.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    return f'%{escaped}%'
+
+
+def _account_or_404(user_id):
+    user = db.session.get(User, user_id)
+    if user is None or (user.account_kind or '') not in ACCOUNT_KINDS:
+        abort(404)
+    return user
+
+
+@admin_bp.route('/cuentas')
+@login_required
+def accounts():
+    search = (request.args.get('q') or '').strip()[:100]
+    kind_filter = request.args.get('tipo') if request.args.get('tipo') in ACCOUNT_KINDS else ''
+    state_filter = request.args.get('estado') if request.args.get('estado') in {'activas', 'desactivadas'} else ''
+
+    base = User.query.filter(User.account_kind.in_(ACCOUNT_KINDS))
+    totals = {
+        'all': base.count(),
+        'registered': base.filter(User.account_kind == 'registered').count(),
+        'google': base.filter(User.account_kind == 'google_email').count(),
+        'inactive': base.filter(User.is_active.is_(False)).count(),
+    }
+
+    query = base
+    if kind_filter:
+        query = query.filter(User.account_kind == kind_filter)
+    if state_filter == 'activas':
+        query = query.filter(User.is_active.is_(True))
+    elif state_filter == 'desactivadas':
+        query = query.filter(User.is_active.is_(False))
+    if search:
+        like = _like_pattern(search)
+        conditions = [
+            User.username.ilike(like, escape='\\'),
+            User.email.ilike(like, escape='\\'),
+            User.contact_email.ilike(like, escape='\\'),
+            User.account_identifier.ilike(like, escape='\\'),
+        ]
+        if search.isdigit():
+            conditions.append(User.id == int(search))
+        query = query.filter(or_(*conditions))
+
+    total = query.count()
+    total_pages = max(1, (total + ACCOUNTS_PAGE_SIZE - 1) // ACCOUNTS_PAGE_SIZE)
+    page = min(max(request.args.get('page', type=int) or 1, 1), total_pages)
+    rows = (
+        query.order_by(User.created_at.desc(), User.id.desc())
+        .offset((page - 1) * ACCOUNTS_PAGE_SIZE)
+        .limit(ACCOUNTS_PAGE_SIZE)
+        .all()
+    )
+    return render_template(
+        'admin/accounts.html',
+        rows=rows,
+        totals=totals,
+        search_query=search,
+        kind_filter=kind_filter,
+        state_filter=state_filter,
+        current_page=page,
+        total_pages=total_pages,
+        page_numbers=list(range(max(1, page - 2), min(total_pages, page + 2) + 1)),
+        total=total,
+        start_index=((page - 1) * ACCOUNTS_PAGE_SIZE) + 1 if total else 0,
+        end_index=min(page * ACCOUNTS_PAGE_SIZE, total) if total else 0,
+    )
+
+
+def _render_account_detail(user, temp_password=None, status=200):
+    return render_template(
+        'admin/account_detail.html',
+        account=user,
+        orders=linked_orders(user, limit=15),
+        temp_password=temp_password,
+        profile=get_profile(user),
+        awards=ProfileAward.query.filter_by(user_id=user.id).order_by(ProfileAward.awarded_at.desc(), ProfileAward.id.desc()).all(),
+        points_balance=account_points.balance(user.id),
+        points_log=account_points.recent_log(user.id, 10),
+        points_max=account_points.MAX_POINTS_PER_MOVE,
+    ), status
+
+
+@admin_bp.route('/cuentas/<int:user_id>')
+@login_required
+def account_detail(user_id):
+    return _render_account_detail(_account_or_404(user_id))
+
+
+@admin_bp.route('/cuentas/<int:user_id>/datos', methods=['POST'])
+@login_required
+def account_update(user_id):
+    user = _account_or_404(user_id)
+    errors = []
+
+    username_raw = (request.form.get('username') or '').strip()
+    if username_raw != (user.username or '') or not user.has_chosen_username:
+        if username_raw:
+            username, error = validate_username(username_raw, exclude_user_id=user.id)
+            if error:
+                errors.append(error)
+            else:
+                user.username = username
+        elif user.is_registered_account:
+            errors.append('El nombre de usuario no puede quedar vacío.')
+
+    if user.is_registered_account:
+        email_raw = (request.form.get('email') or '').strip().lower()
+        if email_raw != (user.email or ''):
+            email, error = validate_email_address(email_raw, exclude_user_id=user.id)
+            if error:
+                errors.append(error)
+            else:
+                user.email = email
+                user.contact_email = email
+                user.account_identifier = email
+                user.account_identifier_normalized = email
+
+    phone = (request.form.get('phone') or '').strip()
+    if len(phone) > 20:
+        errors.append('El teléfono es demasiado largo (máximo 20 caracteres).')
+    else:
+        user.phone = phone or None
+
+    if errors:
+        db.session.rollback()
+        for message in errors:
+            flash(message, 'danger')
+        return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo guardar: ese usuario o correo ya está en uso.', 'danger')
+        return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+    flash('Datos de la cuenta actualizados.', 'success')
+    return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+
+
+@admin_bp.route('/cuentas/<int:user_id>/clave', methods=['POST'])
+@login_required
+def account_password(user_id):
+    """Restablece la contraseña de quien la olvidó: el admin escribe una nueva o genera una temporal."""
+    user = _account_or_404(user_id)
+    if not user.is_registered_account:
+        flash('Esa cuenta entra con Google y no tiene contraseña.', 'warning')
+        return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+
+    if request.form.get('mode') == 'generate':
+        new_password = _generate_temp_password()
+    else:
+        new_password = (request.form.get('new_password') or '').strip()
+        error = validate_new_password(new_password, None, username=user.username, email=user.email)
+        if error:
+            flash(error, 'danger')
+            return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+
+    user.set_password(new_password)
+    db.session.commit()
+    # Se muestra UNA vez, directamente en la respuesta (no se guarda en la sesión ni en ningún mensaje guardado).
+    return _render_account_detail(user, temp_password=new_password)
+
+
+def _refresh_ranks_after_moderation(user=None):
+    """Tras ocultar, desactivar, restablecer o mover un ID, los puestos del Top se rehacen al momento (antes esperaban hasta 15 minutos)."""
+    try:
+        if user is not None:
+            profile_social.refresh_user(user)
+        profile_social.recompute_ranks()
+    except Exception:
+        db.session.rollback()
+
+
+@admin_bp.route('/cuentas/<int:user_id>/estado', methods=['POST'])
+@login_required
+def account_toggle(user_id):
+    user = _account_or_404(user_id)
+    user.is_active = not bool(user.is_active)
+    db.session.commit()
+    _refresh_ranks_after_moderation()
+    flash('Cuenta activada.' if user.is_active else 'Cuenta desactivada: ya no puede iniciar sesión.', 'success' if user.is_active else 'warning')
+    return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+
+
+@admin_bp.route('/cuentas/<int:user_id>/perfil/ocultar', methods=['POST'])
+@login_required
+def account_profile_toggle(user_id):
+    """Moderación: oculta (o vuelve a mostrar) el perfil público de la cuenta, aunque su dueño lo tenga público."""
+    user = _account_or_404(user_id)
+    profile = get_or_create_profile(user)
+    profile.moderation_hidden = not bool(profile.moderation_hidden)
+    db.session.commit()
+    _refresh_ranks_after_moderation()
+    flash('Perfil público ocultado: nadie más lo ve.' if profile.moderation_hidden else 'Perfil público visible otra vez.', 'warning' if profile.moderation_hidden else 'success')
+    return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+
+
+@admin_bp.route('/cuentas/<int:user_id>/perfil/restablecer', methods=['POST'])
+@login_required
+def account_profile_reset(user_id):
+    """Moderación: borra fotos, banner, fondo, marcos, textos y colores del perfil (queda como recién creado)."""
+    user = _account_or_404(user_id)
+    profile = get_profile(user)
+    if profile is not None:
+        reset_profile(profile, keep_privacy=True)   # lo que el dueño apagó (perfil público, números, rankings) se queda apagado
+        db.session.commit()
+        _refresh_ranks_after_moderation()
+    flash('Perfil público restablecido: se borraron sus imágenes y textos (sus opciones de privacidad no se tocaron).', 'success')
+    return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+
+
+@admin_bp.route('/cuentas/<int:user_id>/puntos', methods=['POST'])
+@login_required
+def account_points_adjust(user_id):
+    """Puntos de la tienda del perfil: el administrador se los pone (una dinámica de perfil) o se los quita. Los perfiles no ganan puntos recargando."""
+    user = _account_or_404(user_id)
+    raw_amount = (request.form.get('amount') or '').strip()
+    note = clean_text(request.form.get('note'), 150)
+    action = (request.form.get('action') or '').strip()
+    if not raw_amount.isdigit() or not 1 <= int(raw_amount) <= account_points.MAX_POINTS_PER_MOVE:
+        flash('Escribe cuántos puntos (un número entero mayor que 0).', 'danger')
+        return redirect(url_for('admin_bp.account_detail', user_id=user.id) + '#accountPointsCard')
+    amount = int(raw_amount)
+    if action == 'remove':
+        if not account_points.debit(user.id, amount, kind='admin', note=note or 'Puntos quitados por el administrador'):
+            db.session.rollback()
+            flash(f'El perfil solo tiene {account_points.balance(user.id)} puntos: no se le pueden quitar {amount}.', 'danger')
+            return redirect(url_for('admin_bp.account_detail', user_id=user.id) + '#accountPointsCard')
+        db.session.commit()
+        flash(f'Se quitaron {amount} puntos del perfil. Ahora tiene {account_points.balance(user.id)}.', 'success')
+    else:
+        account_points.credit(user.id, amount, kind='admin', note=note or 'Puntos del administrador')
+        db.session.commit()
+        flash(f'Se le dieron {amount} puntos al perfil. Ahora tiene {account_points.balance(user.id)}. Los usa desde "Canjear puntos", pasándolos a un ID.', 'success')
+    return redirect(url_for('admin_bp.account_detail', user_id=user.id) + '#accountPointsCard')
+
+
+@admin_bp.route('/cuentas/<int:user_id>/premios', methods=['POST'])
+@login_required
+def account_award_add(user_id):
+    """Vitrina de premios del perfil: el admin carga a mano un premio (sorteo, evento, etc.) con imagen opcional."""
+    user = _account_or_404(user_id)
+    title = clean_text(request.form.get('title'), 80)
+    description = clean_text(request.form.get('description'), 200)
+    if not title:
+        flash('Escribe el título del premio.', 'danger')
+        return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+    image_path = ''
+    upload = request.files.get('image')
+    if upload is not None and (upload.filename or '').strip():
+        image_path, error = save_media(upload, 'award', user.id)
+        if error:
+            flash(error, 'danger')
+            return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+    db.session.add(ProfileAward(
+        user_id=user.id, title=title, description=description, image_path=image_path or '',
+        is_title=request.form.get('is_title') in ('1', 'on', 'true'), kind='manual',
+    ))
+    db.session.commit()
+    flash('Premio agregado a la vitrina.', 'success')
+    return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+
+
+@admin_bp.route('/cuentas/<int:user_id>/premios/<int:award_id>/borrar', methods=['POST'])
+@login_required
+def account_award_delete(user_id, award_id):
+    user = _account_or_404(user_id)
+    award = ProfileAward.query.filter_by(id=award_id, user_id=user.id).first()
+    if award is None:
+        flash('Ese premio ya no estaba.', 'warning')
+    else:
+        delete_media(award.image_path)
+        db.session.delete(award)
+        db.session.commit()
+        flash('Premio quitado de la vitrina.', 'success')
+    return redirect(url_for('admin_bp.account_detail', user_id=user.id))
+
+
+@admin_bp.route('/cuentas/perfiles/ajustes', methods=['GET', 'POST'])
+@login_required
+def account_social_settings():
+    """Niveles del mes (diamantes para cada uno), umbral de "Ballena" y tope de me gusta por día."""
+    if request.method == 'POST':
+        error = profile_social.save_thresholds({key: request.form.get(f'level_{key}', '') for key in profile_social.LEVEL_KEYS})
+        whale = (request.form.get('whale') or '').strip()
+        likes = (request.form.get('like_limit') or '').strip()
+        if not error:
+            if not whale.isdigit() or not (1 <= int(whale) <= 10_000_000):
+                error = 'El umbral de "Ballena" debe ser un número entre 1 y 10.000.000.'
+            elif not likes.isdigit() or not (1 <= int(likes) <= 1000):
+                error = 'El tope de me gusta por día debe estar entre 1 y 1000.'
+        if error:
+            db.session.rollback()
+            flash(error, 'danger')
+        else:
+            profile_social._set_setting(profile_social.SETTING_WHALE, int(whale), 'Diamantes en un mes para la insignia Ballena')
+            profile_social._set_setting(profile_social.SETTING_LIKE_LIMIT, int(likes), 'Me gusta que una cuenta puede dar por día')
+            db.session.commit()
+            flash('Ajustes guardados. Los niveles se recalculan en unos minutos o con "Recalcular ahora".', 'success')
+        return redirect(url_for('admin_bp.account_social_settings'))
+    return _social_settings_page()
+
+
+def _social_settings_page(xp_override=None):
+    """La página de ajustes de perfiles. `xp_override` = lo que el administrador acaba de escribir en "Niveles por números" y no se pudo
+    guardar (así no pierde lo escrito)."""
+    thresholds = profile_social.get_thresholds()
+    counts = dict(db.session.query(UserBadge.badge_key, func.count(UserBadge.id)).group_by(UserBadge.badge_key).all())
+    total_accounts = User.query.filter(User.account_kind.in_(ACCOUNT_KINDS), User.is_active.is_(True)).count()
+    badges = [
+        {'key': key, **profile_social.BADGES[key], 'count': counts.get(key, 0), 'percent': round(counts.get(key, 0) * 100 / total_accounts, 1) if total_accounts else 0}
+        for key in profile_social.BADGE_ORDER
+    ]
+    xp_cfg = profile_xp.get_config()
+    return render_template(
+        'admin/profile_settings.html', levels=profile_social.LEVELS, thresholds=thresholds,
+        whale=profile_social.get_int_setting(profile_social.SETTING_WHALE, profile_social.DEFAULT_WHALE),
+        like_limit=profile_social.get_int_setting(profile_social.SETTING_LIKE_LIMIT, profile_social.DEFAULT_LIKE_LIMIT),
+        badges=badges, total_accounts=total_accounts,
+        refreshed_at=profile_social._get_setting(profile_social.SETTING_REFRESHED, ''),
+        xp_cfg=xp_cfg, xp_points=profile_xp.POINT_DEFS, xp_missions=profile_xp.MISSION_DEFS, xp_form=xp_override or {},
+        xp_preview=profile_xp.preview_levels(xp_cfg), xp_tiers=profile_xp.TIERS, xp_max=profile_xp.POINT_MAX,
+        xp_label=profile_xp.mission_text,
+    )
+
+
+@admin_bp.route('/cuentas/perfiles/ajustes/niveles', methods=['POST'])
+@login_required
+def account_xp_settings():
+    """Niveles por números (como Steam): puntos por cada acción, topes por día, curva de niveles y misiones."""
+    error = profile_xp.save_config(request.form)
+    if error:
+        db.session.rollback()
+        flash(error, 'danger')
+        return _social_settings_page(xp_override=request.form)
+    try:
+        profile_social.refresh_all()   # que el cambio se vea ya en los niveles (si ya hay un recálculo en curso, se aplica en unos minutos)
+        flash('Niveles por números guardados y recalculados.', 'success')
+    except Exception as exc:
+        db.session.rollback()
+        flash(f'Guardado, pero no se pudo recalcular ahora ({exc}). Usa "Recalcular ahora".', 'warning')
+    return redirect(url_for('admin_bp.account_social_settings'))
+
+
+@admin_bp.route('/cuentas/marcos', methods=['GET', 'POST'])
+@login_required
+def profile_frames():
+    """Tienda de marcos del perfil: se sube la imagen (PNG, WEBP o GIF, también con movimiento), se le pone nombre y tipo (foto o banner).
+    Todos son GRATIS: las cuentas los eligen desde su editor de perfil (los puntos son de cada ID y las cuentas no dependen de ningún ID)."""
+    from ..models import ProfileFrame, UserFrame
+    from ..utils import profile_frames as PF
+
+    if request.method == 'POST':
+        name = PF.clean_frame_name(request.form.get('name'))
+        kind = request.form.get('kind') if request.form.get('kind') in PF.FRAME_KINDS else 'avatar'
+        upload = request.files.get('image')
+        if not name:
+            flash('Ponle un nombre al marco.', 'danger')
+        elif upload is None or not (upload.filename or '').strip():
+            flash('Sube la imagen del marco (PNG, WEBP o GIF).', 'danger')
+        else:
+            rel, error = PF.save_frame_asset(upload, kind)
+            if error:
+                flash(error, 'danger')
+            else:
+                db.session.add(ProfileFrame(name=name, kind=kind, image_path=rel, price_points=0, is_active=True,
+                                            sort_order=(db.session.query(func.coalesce(func.max(ProfileFrame.sort_order), 0)).scalar() or 0) + 1))
+                db.session.commit()
+                flash(f'Marco "{name}" agregado (gratis para todas las cuentas).', 'success')
+        return redirect(url_for('admin_bp.profile_frames'))
+
+    frames = ProfileFrame.query.order_by(ProfileFrame.kind.asc(), ProfileFrame.sort_order.asc(), ProfileFrame.id.asc()).all()
+    owners = dict(db.session.query(UserFrame.frame_id, func.count(UserFrame.id)).group_by(UserFrame.frame_id).all())
+    return render_template('admin/profile_frames.html', frames=frames, owners=owners, frame_url=PF.frame_url)
+
+
+@admin_bp.route('/cuentas/marcos/<int:frame_id>/editar', methods=['POST'])
+@login_required
+def profile_frame_edit(frame_id):
+    from ..models import ProfileFrame
+    from ..utils import profile_frames as PF
+
+    frame = ProfileFrame.query.get_or_404(frame_id)
+    name = PF.clean_frame_name(request.form.get('name'))
+    if not name:
+        flash('El nombre no puede quedar vacío.', 'danger')
+        return redirect(url_for('admin_bp.profile_frames'))
+    frame.name = name
+    frame.price_points = 0   # todos los marcos son gratis (los puntos son de cada ID)
+    frame.is_active = request.form.get('is_active') == '1'
+    try:
+        frame.sort_order = max(0, min(100000, int(request.form.get('sort_order') or 0)))
+    except ValueError:
+        pass
+    upload = request.files.get('image')
+    if upload is not None and (upload.filename or '').strip():
+        rel, error = PF.save_frame_asset(upload, frame.kind)
+        if error:
+            db.session.rollback()
+            flash(error, 'danger')
+            return redirect(url_for('admin_bp.profile_frames'))
+        PF.delete_frame_asset(frame.image_path)
+        frame.image_path = rel
+    db.session.commit()
+    flash(f'Marco "{frame.name}" guardado.', 'success')
+    return redirect(url_for('admin_bp.profile_frames'))
+
+
+@admin_bp.route('/cuentas/marcos/<int:frame_id>/borrar', methods=['POST'])
+@login_required
+def profile_frame_delete(frame_id):
+    """Borra un marco que nadie compró. Si ya tiene dueños no se borra (se les quitaría lo que pagaron): se desactiva y deja de venderse."""
+    from ..models import ProfileFrame, UserFrame, UserProfile
+    from ..utils import profile_frames as PF
+
+    frame = ProfileFrame.query.get_or_404(frame_id)
+    if UserFrame.query.filter_by(frame_id=frame.id).count():
+        frame.is_active = False
+        db.session.commit()
+        flash(f'El marco "{frame.name}" ya lo compraron: no se borra, se desactivó (deja de venderse y de verse).', 'warning')
+        return redirect(url_for('admin_bp.profile_frames'))
+    UserProfile.query.filter(UserProfile.avatar_frame_id == frame.id).update({'avatar_frame_id': None}, synchronize_session=False)
+    UserProfile.query.filter(UserProfile.banner_frame_id == frame.id).update({'banner_frame_id': None}, synchronize_session=False)
+    PF.delete_frame_asset(frame.image_path)
+    name = frame.name
+    db.session.delete(frame)
+    db.session.commit()
+    flash(f'Marco "{name}" borrado.', 'success')
+    return redirect(url_for('admin_bp.profile_frames'))
+
+
+@admin_bp.route('/cuentas/perfiles/recalcular', methods=['POST'])
+@login_required
+def account_social_refresh():
+    try:
+        ok = profile_social.refresh_all()
+        flash('Perfiles recalculados.' if ok else 'Ya se estaba recalculando; espera un momento.', 'success' if ok else 'info')
+    except Exception as exc:
+        db.session.rollback()
+        flash(f'No se pudo recalcular: {exc}', 'danger')
+    return redirect(url_for('admin_bp.account_social_settings'))

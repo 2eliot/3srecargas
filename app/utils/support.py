@@ -22,6 +22,8 @@ from flask import current_app
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
 
+from .upload_guard import looks_like_markup
+
 from ..models import (
     db, Order, SupportChat, SupportChatTag, SupportMessage, SupportTag,
 )
@@ -572,7 +574,7 @@ def save_admin_note(chat, text, admin_id=None):
 
 
 IDLE_CLOSE_SETTING_KEY = 'support_idle_close_minutes'
-DEFAULT_IDLE_CLOSE_MINUTES = 10
+DEFAULT_IDLE_CLOSE_MINUTES = 120   # antes 10: el chat se cerraba en plena compra mientras el cliente pagaba en su banco; el admin lo cambia en Soporte → Etiquetas
 
 
 def get_idle_close_minutes():
@@ -612,18 +614,25 @@ def close_idle_chats(minutes=None):
                      SupportChat.last_message_at < cutoff)
              .all())
 
+    closed = 0
     for chat in stale:
-        chat.status = 'closed'
-        chat.closed_at = datetime.utcnow()
-        chat.unread_admin = 0
+        # Cierre condicional: si dos procesos barren a la vez (el de fondo y la bandeja del admin), solo UNO gana cada chat y por eso
+        # el aviso "Chat cerrado" se escribe una sola vez.
+        won = (SupportChat.query
+               .filter(SupportChat.id == chat.id, SupportChat.status == 'waiting_client')
+               .update({'status': 'closed', 'closed_at': datetime.utcnow(), 'unread_admin': 0}, synchronize_session=False))
+        if not won:
+            continue
+        db.session.refresh(chat)
         add_system_message(
             chat,
             f'Chat cerrado tras {minutes} minutos sin respuesta.'
         )
+        closed += 1
 
     if stale:
         db.session.commit()
-    return len(stale)
+    return closed
 
 
 def mark_read_by_admin(chat):
@@ -666,6 +675,8 @@ def save_attachment(file):
 
     name = str(file.filename)
     if '.' not in name or name.rsplit('.', 1)[1].lower() not in allowed:
+        raise SupportError('Solo se aceptan imágenes o videos.')
+    if looks_like_markup(file):
         raise SupportError('Solo se aceptan imágenes o videos.')
 
     filename = f"{now_ve_naive().strftime('%Y%m%d%H%M%S%f')}_{secure_filename(name)}"

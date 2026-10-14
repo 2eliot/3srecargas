@@ -1,0 +1,326 @@
+{% extends 'admin/base.html' %}
+{% block title %}{{ t.title }}{% endblock %}
+{% block page_title %}Torneo: {{ t.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.tn-state { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.tn-state.is-draft { background: rgba(245,158,11,.15); color: #fcd34d; }
+.tn-state.is-open { background: rgba(34,197,94,.15); color: #4ade80; }
+.tn-state.is-scheduled { background: rgba(96,165,250,.16); color: #93c5fd; }
+.tn-ready { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; }
+.tn-ready li { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; line-height: 1.45; color: var(--text-muted); }
+.tn-ready li::before { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; }
+.tn-ready li.is-ok::before { content: '✓'; background: rgba(34,197,94,.18); color: #4ade80; }
+.tn-ready li.is-warn::before { content: '!'; background: rgba(245,158,11,.18); color: #fcd34d; }
+.tn-ready li.is-bad::before { content: '×'; background: rgba(239,68,68,.2); color: #fca5a5; }
+.tn-ready li.is-bad { color: #fca5a5; }
+.tn-state.is-closed { background: rgba(239,68,68,.15); color: #fca5a5; }
+.tn-state.is-finished { background: rgba(100,100,100,.18); color: var(--text-muted); }
+.tn-body { padding: 0 20px 20px; }
+.tn-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tn-actions form { margin: 0; }
+.tn-link { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.tn-link input { flex: 1 1 260px; min-width: 0; font-family: monospace; font-size: 12.5px; }
+.tn-inline { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+.tn-inline .form-group { margin: 0; }
+.tn-room { margin: 0 20px 16px; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-secondary); }
+.tn-room.is-open { border-color: rgba(34,197,94,.5); }
+.tn-room.is-full { border-color: rgba(239,68,68,.45); }
+.tn-room.is-finished { border-color: rgba(148,163,184,.45); }
+.tn-room-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.tn-room-head h4 { margin: 0; font-size: 15px; }
+.tn-meter { height: 7px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; margin-bottom: 12px; }
+.tn-meter > span { display: block; height: 100%; background: linear-gradient(90deg, #22c55e, #86efac); }
+.tn-room.is-full .tn-meter > span { background: linear-gradient(90deg, #ef4444, #fca5a5); }
+.tn-sub { margin: 14px 0 6px; font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.tn-roster { max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.tn-win-row { display: grid; grid-template-columns: 96px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px; }
+.tn-win-row .tn-win-select { min-width: 0; }
+.tn-win-row.is-done { border-color: rgba(34,197,94,.45); background: rgba(34,197,94,.06); }
+@media (max-width: 640px) { .tn-win-row { grid-template-columns: 1fr; } }
+.tn-warn { margin: 0 20px 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 14px;"><a href="{{ url_for('admin_tournaments_bp.index') }}" class="link-sm">← Volver a los torneos</a></p>
+
+{# ───── Estado, link y botones principales ───── #}
+<div class="admin-card" style="margin-bottom:18px">
+    <div class="card-header">
+        <h3>{{ t.title }} <span class="tn-state is-{{ state_key }}" id="tnState">{{ state_text }}</span></h3>
+        <span>{{ t.game.name if t.game else '' }} · {{ total }} / {{ capacity }} inscritos</span>
+    </div>
+    <div class="tn-body">
+        {% if not verifiable %}
+        <div class="alert alert-danger" style="margin-bottom:12px;">Este juego no tiene la verificación de ID activa: no se puede abrir el torneo ni inscribirse nadie hasta activarla (Configuración → Verificación de ID). En los torneos el ID siempre se verifica.</div>
+        {% endif %}
+        {% if t.status in ('draft', 'closed') or scheduled %}
+        <div class="tn-sub" style="margin-top:0;">Antes de abrir</div>
+        <ul class="tn-ready" id="tnReady">
+            {% for level, text in readiness %}<li class="is-{{ level }}">{{ text }}</li>{% endfor %}
+        </ul>
+        <p class="form-hint" style="margin:-4px 0 12px;">Los datos de cada sala (nombre, ID y clave) salen de crear la sala en el juego: déjalos listos <b>antes</b> de la hora. Si después corriges algún dato, los inscritos lo ven actualizado en unos segundos.</p>
+        {% endif %}
+        <div class="tn-actions">
+            {% if t.status in ('draft', 'closed') and opens_future %}
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.set_status', tournament_id=t.id) }}"><input type="hidden" name="action" value="open"><button type="submit" class="btn-primary" id="tnOpenBtn">📣 Publicar con cuenta regresiva</button></form>
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.set_status', tournament_id=t.id) }}"><input type="hidden" name="action" value="open_now"><button type="submit" class="btn-sm btn-outline" id="tnOpenNowBtn">▶ Abrir ya (sin esperar la hora)</button></form>
+            {% elif t.status in ('draft', 'closed') %}
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.set_status', tournament_id=t.id) }}"><input type="hidden" name="action" value="open"><button type="submit" class="btn-primary" id="tnOpenBtn">▶ Abrir inscripciones</button></form>
+            {% endif %}
+            {% if scheduled %}
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.set_status', tournament_id=t.id) }}"><input type="hidden" name="action" value="open_now"><button type="submit" class="btn-primary" id="tnOpenNowBtn">▶ Abrir ya (sin esperar la hora)</button></form>
+            {% endif %}
+            {% if t.status == 'open' and not scheduled %}
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.set_status', tournament_id=t.id) }}"><input type="hidden" name="action" value="close"><button type="submit" class="btn-secondary" id="tnCloseBtn">⏸ Cerrar inscripciones</button></form>
+            {% endif %}
+            {% if t.status in ('open', 'closed') %}
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.set_status', tournament_id=t.id) }}" onsubmit="return confirm('¿Terminar el torneo? Deja de mostrarse a los clientes (tú conservas todo).');"><input type="hidden" name="action" value="finish"><button type="submit" class="btn-sm btn-outline">🏁 Terminar torneo</button></form>
+            {% endif %}
+            {% if t.status == 'finished' %}
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.set_status', tournament_id=t.id) }}"><input type="hidden" name="action" value="close"><button type="submit" class="btn-sm btn-outline">Volver a mostrarlo (cerrado)</button></form>
+            {% endif %}
+            {% if t.status == 'open' and total == 0 %}
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.set_status', tournament_id=t.id) }}"><input type="hidden" name="action" value="draft"><button type="submit" class="btn-sm btn-outline">Volver a «Preparando»</button></form>
+            {% endif %}
+            <a class="btn-sm btn-outline" href="{{ public_url }}" target="_blank" rel="noopener">👁 Ver como cliente</a>
+        </div>
+        <div class="tn-link">
+            <input type="text" id="tnPublicUrl" value="{{ public_url }}" readonly aria-label="Link del torneo para WhatsApp">
+            <button type="button" class="btn-sm btn-outline" id="tnCopyUrl" data-copy-from="tnPublicUrl">Copiar link para WhatsApp</button>
+        </div>
+        <p class="form-hint" style="margin-top:8px;">
+            {% if t.status == 'draft' %}Mientras esté en «Preparando» nadie más que tú ve este torneo. Cuando llegue la hora toca «Abrir inscripciones» y publica el link.
+            {% elif scheduled %}Programado: quien entre al link ve la cuenta regresiva y las inscripciones se abren solas el {{ opens_label }} (hora de Venezuela).
+            {% elif t.status == 'open' %}Las inscripciones están abiertas: quien entre al link verifica su ID y la web lo mete en la primera sala con lugar.
+            {% elif t.status == 'closed' %}Cerradas: nadie nuevo puede entrar; los ya inscritos siguen viendo los datos de su sala en el link.
+            {% else %}El torneo terminó y ya no se muestra a los clientes.{% endif %}
+        </p>
+        <details style="margin-top:12px;">
+            <summary style="cursor:pointer;font-weight:700;font-size:13px;">Editar nombre, texto y hora de apertura</summary>
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.edit', tournament_id=t.id) }}" class="tn-inline" style="margin-top:10px;">
+                <div class="form-group"><label for="ed_title">Nombre</label><input type="text" id="ed_title" name="title" maxlength="120" value="{{ t.title }}" required></div>
+                <div class="form-group"><label for="ed_desc">Texto para los clientes</label><input type="text" id="ed_desc" name="description" maxlength="300" value="{{ t.description or '' }}"></div>
+                <div class="form-group"><label for="ed_ip">Inscripciones por conexión (0 = sin límite)</label><input type="number" id="ed_ip" name="max_per_ip" min="0" max="50" value="{{ t.max_per_ip }}"></div>
+                <div class="form-group"><label for="ed_opens">Se abre el (hora de Venezuela; vacío = lo abres tú)</label><input type="datetime-local" id="ed_opens" name="opens_at" value="{{ opens_input }}"></div>
+                <div class="form-group"><button type="submit" class="btn-primary">Guardar</button></div>
+            </form>
+        </details>
+    </div>
+</div>
+
+{# ───── Premios ───── #}
+<div class="admin-card" style="margin-bottom:18px" id="premios">
+    <div class="card-header"><h3>Premios</h3><span>Se entregan solos al elegir al ganador de cada puesto en una sala</span></div>
+    <div class="tn-body">
+        <p class="form-hint" style="margin:0 0 12px;">
+            Cada puesto tiene un premio (un paquete de {{ t.game.name if t.game else 'este juego' }}). El mismo premio vale para <b>cada sala</b>: cada sala tiene sus propios ganadores.
+            Puedes poner 1 premio o los que quieras (1.º, 2.º, 3.º...).
+        </p>
+        {% if t.prizes %}
+        <div class="table-wrap" style="margin-bottom:12px;">
+            <table class="admin-table">
+                <thead><tr><th style="width:90px;">Puesto</th><th>Premio</th><th style="width:90px;"></th></tr></thead>
+                <tbody>
+                    {% for p in t.prizes %}
+                    <tr>
+                        <td><b>{{ '🥇' if p.place == 1 else '🥈' if p.place == 2 else '🥉' if p.place == 3 else '🏅' }} #{{ p.place }}</b></td>
+                        <td>{{ p.package.name if p.package else '(paquete borrado)' }}</td>
+                        <td><form method="POST" action="{{ url_for('admin_tournaments_bp.prize_delete', tournament_id=t.id, prize_id=p.id) }}" onsubmit="return confirm('¿Quitar este premio?');"><button type="submit" class="btn-sm btn-danger">Quitar</button></form></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="form-hint" style="margin:0 0 12px;"><b>Aún no hay premios.</b> Agrégalos aquí abajo para poder entregarlos a los ganadores.</p>
+        {% endif %}
+        <form method="POST" action="{{ url_for('admin_tournaments_bp.prize_add', tournament_id=t.id) }}" class="tn-inline">
+            <div class="form-group"><label for="pz_place">Puesto</label><input type="number" id="pz_place" name="place" min="1" max="100" value="{{ next_place }}" required></div>
+            <div class="form-group" style="grid-column: span 2;">
+                <label for="pz_package">Premio (paquete)</label>
+                <select id="pz_package" name="package_id" required>
+                    {% for pk in packages %}<option value="{{ pk.id }}">{{ pk.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group"><button type="submit" class="btn-primary" {% if not packages %}disabled{% endif %}>Agregar premio</button></div>
+        </form>
+        {% if not packages %}<p class="form-hint" style="margin-top:8px;">Este juego no tiene paquetes activos para usar de premio.</p>{% endif %}
+    </div>
+</div>
+
+{# ───── Salas ───── #}
+<div class="admin-card" style="margin-bottom:18px" id="salas">
+    <div class="card-header"><h3>Salas</h3><span>Se llenan en orden: la siguiente se abre cuando la anterior se llena. Un ID solo puede estar en una sala a la vez: queda libre cuando esa sala termina</span></div>
+    <div class="tn-body">
+        <form method="POST" action="{{ url_for('admin_tournaments_bp.room_add', tournament_id=t.id) }}" class="tn-inline">
+            <div class="form-group"><label for="rm_name">Nombre de la sala</label><input type="text" id="rm_name" name="name" maxlength="80" required placeholder="Ej: Sala 1"></div>
+            <div class="form-group"><label for="rm_code">ID de la sala</label><input type="text" id="rm_code" name="room_code" maxlength="60" required placeholder="El ID del juego"></div>
+            <div class="form-group"><label for="rm_pass">Clave de la sala</label><input type="text" id="rm_pass" name="room_password" maxlength="60" placeholder="Opcional"></div>
+            <div class="form-group"><label for="rm_max">Máx. de jugadores</label><input type="number" id="rm_max" name="max_players" min="1" max="1000" value="50" required></div>
+            <div class="form-group"><button type="submit" class="btn-primary">Crear sala</button></div>
+        </form>
+        <p class="form-hint" style="margin-top:8px;">El ID y la clave de la sala solo los ven las personas que ya se inscribieron en ella.</p>
+    </div>
+
+    {% for r in rooms %}
+    {% set room = r.room %}
+    <div class="tn-room is-{{ r.state }}" id="sala-{{ room.id }}">
+        <div class="tn-room-head">
+            <h4>{{ loop.index }}. {{ room.name }}
+                <span class="tn-state {{ 'is-open' if r.state == 'open' else 'is-closed' if r.state == 'full' else 'is-finished' if r.state == 'finished' else 'is-draft' }}">{{ 'Abierta (recibe gente)' if r.state == 'open' else 'Llena' if r.state == 'full' else 'Terminada (IDs libres)' if r.state == 'finished' else 'Bloqueada (espera a la anterior)' }}</span>
+            </h4>
+            <div class="tn-actions">
+                <strong>{{ r.count }} / {{ r.max }}</strong>
+                {% if r.state == 'finished' %}
+                <form method="POST" action="{{ url_for('admin_tournaments_bp.room_reopen', tournament_id=t.id, room_id=room.id) }}" onsubmit="return confirm('¿Reabrir esta sala? Sus jugadores vuelven a quedar ocupados en ella.');"><button type="submit" class="btn-sm btn-outline">↺ Reabrir sala</button></form>
+                {% else %}
+                <form method="POST" action="{{ url_for('admin_tournaments_bp.room_finish', tournament_id=t.id, room_id=room.id) }}" onsubmit="return confirm('¿Terminar esta sala? Ya no recibe gente y sus jugadores quedan libres para inscribirse en otra sala.');"><button type="submit" class="btn-sm btn-outline" title="Cuando la sala termine, sus jugadores quedan libres para otra sala">🏁 Terminar sala</button></form>
+                {% endif %}
+                <form method="POST" action="{{ url_for('admin_tournaments_bp.room_move', tournament_id=t.id, room_id=room.id) }}"><input type="hidden" name="direction" value="up"><button type="submit" class="btn-sm btn-outline" title="Subir" {% if loop.first %}disabled{% endif %}>↑</button></form>
+                <form method="POST" action="{{ url_for('admin_tournaments_bp.room_move', tournament_id=t.id, room_id=room.id) }}"><input type="hidden" name="direction" value="down"><button type="submit" class="btn-sm btn-outline" title="Bajar" {% if loop.last %}disabled{% endif %}>↓</button></form>
+            </div>
+        </div>
+        <div class="tn-meter"><span style="width: {{ [100, (r.count * 100 // r.max) if r.max else 0]|min }}%"></span></div>
+
+        <details>
+            <summary style="cursor:pointer;font-weight:700;font-size:13px;">Datos de la sala (ID y clave) · editar</summary>
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.room_edit', tournament_id=t.id, room_id=room.id) }}" class="tn-inline" style="margin-top:10px;">
+                <div class="form-group"><label>Nombre</label><input type="text" name="name" maxlength="80" value="{{ room.name }}" required></div>
+                <div class="form-group"><label>ID de la sala</label><input type="text" name="room_code" maxlength="60" value="{{ room.room_code }}" required></div>
+                <div class="form-group"><label>Clave</label><input type="text" name="room_password" maxlength="60" value="{{ room.room_password }}"></div>
+                <div class="form-group"><label>Máx. jugadores</label><input type="number" name="max_players" min="1" max="1000" value="{{ room.max_players }}" required></div>
+                <div class="form-group"><button type="submit" class="btn-primary">Guardar sala</button></div>
+            </form>
+            {% if r.count == 0 %}
+            <form method="POST" action="{{ url_for('admin_tournaments_bp.room_delete', tournament_id=t.id, room_id=room.id) }}" onsubmit="return confirm('¿Borrar esta sala?');" style="margin-top:8px;"><button type="submit" class="btn-sm btn-danger">Borrar sala</button></form>
+            {% endif %}
+        </details>
+
+        <div class="tn-sub">Inscritos ({{ r.roster|length }})</div>
+        <div class="tn-actions" style="margin-bottom:8px;">
+            <button type="button" class="btn-sm btn-outline" data-copy-from="roster-{{ room.id }}" {% if not r.roster %}disabled{% endif %}>Copiar lista (ID - Nombre)</button>
+            <span class="form-hint" style="margin:0;">Compárala con quienes están dentro de la sala del juego: expulsa a mano a quien no aparezca aquí.</span>
+        </div>
+        <textarea id="roster-{{ room.id }}" readonly hidden>{{ r.roster_text }}</textarea>
+        {% if r.roster %}
+        <div class="tn-roster">
+            <table class="admin-table">
+                <thead><tr><th style="width:56px;">Lugar</th><th>ID</th><th>Nombre en el juego</th><th style="width:96px;"></th></tr></thead>
+                <tbody>
+                    {% for e in r.roster %}
+                    <tr>
+                        <td>#{{ e.slot_number }}</td>
+                        <td><code>{{ e.player_id }}</code></td>
+                        <td>{{ e.player_nick or '—' }}</td>
+                        <td>
+                            {% if not (r.winners.values()|selectattr('player_id', 'equalto', e.player_id)|list) %}
+                            <form method="POST" action="{{ url_for('admin_tournaments_bp.entry_remove', tournament_id=t.id, entry_id=e.id) }}" onsubmit="return confirm({{ ('¿Sacar a ' ~ (e.player_nick or e.player_id) ~ ' de la lista? No podrá volver a inscribirse en este torneo.')|jsattr }});"><button type="submit" class="btn-sm btn-danger">Sacar</button></form>
+                            {% else %}<small style="opacity:.6">ganador</small>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="form-hint">Todavía no hay inscritos en esta sala.</p>
+        {% endif %}
+
+        <div class="tn-sub">Ganadores de esta sala</div>
+        {% if not t.prizes %}
+        <p class="form-hint">Agrega premios arriba para poder elegir ganadores.</p>
+        {% elif not r.roster %}
+        <p class="form-hint">Cuando haya inscritos podrás elegir aquí a los ganadores.</p>
+        {% else %}
+        {% for p in t.prizes %}
+        {% set w = r.winners.get(p.place) %}
+        {% if w %}
+        <div class="tn-win-row is-done">
+            <b>{{ '🥇' if p.place == 1 else '🥈' if p.place == 2 else '🥉' if p.place == 3 else '🏅' }} Puesto {{ p.place }}</b>
+            <span>✅ <b>{{ w.player_nick or w.player_id }}</b> <code>{{ w.player_id }}</code> · {{ p.package.name if p.package else '' }}
+                {% if w.prize_order %}<small style="opacity:.7">· orden #{{ w.prize_order.order_number }} ({{ w.prize_order.status }})</small>{% endif %}
+                <small style="opacity:.7">· {{ w.delivered_at|datetime_ve('%d/%m/%Y %H:%M') if w.delivered_at else 'entregando...' }}</small></span>
+            <span></span>
+        </div>
+        {% else %}
+        <form method="POST" action="{{ url_for('admin_tournaments_bp.winner_deliver', tournament_id=t.id, room_id=room.id) }}" class="tn-win-row" onsubmit="return tnConfirmDeliver(this, {{ p.place }});">
+            <b>{{ '🥇' if p.place == 1 else '🥈' if p.place == 2 else '🥉' if p.place == 3 else '🏅' }} Puesto {{ p.place }}</b>
+            <input type="hidden" name="place" value="{{ p.place }}">
+            <select name="entry_id" class="tn-win-select" required aria-label="Ganador del puesto {{ p.place }}">
+                <option value="">Elige al ganador… ({{ p.package.name if p.package else '' }})</option>
+                {% for e in r.roster %}{% if not (r.winners.values()|selectattr('player_id', 'equalto', e.player_id)|list) %}
+                <option value="{{ e.id }}">{{ e.player_id }} — {{ e.player_nick or 'sin nombre' }} (#{{ e.slot_number }})</option>
+                {% endif %}{% endfor %}
+            </select>
+            <button type="submit" class="btn-primary btn-sm">Entregar premio</button>
+        </form>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+    </div>
+    {% else %}
+    <p class="form-hint tn-body" style="padding-top:0;"><b>Aún no hay salas.</b> Crea la primera arriba para poder abrir las inscripciones.</p>
+    {% endfor %}
+    {% if removed %}<p class="form-hint tn-body" style="padding-top:0;">{{ removed }} persona(s) sacada(s) de las listas (no pueden volver a inscribirse en este torneo).</p>{% endif %}
+</div>
+
+{# ───── Historial ───── #}
+<div class="admin-card" id="historial">
+    <div class="card-header"><h3>Historial de ganadores de este torneo</h3><span>Fecha, sala, ID y nombre</span></div>
+    {% if history %}
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Fecha</th><th>Sala</th><th>Puesto</th><th>ID</th><th>Nombre</th><th>Premio</th></tr></thead>
+            <tbody>
+                {% for w in history %}
+                <tr>
+                    <td>{{ w.delivered_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ w.room.name if w.room else '' }}</td>
+                    <td>#{{ w.place }}</td>
+                    <td><code>{{ w.player_id }}</code></td>
+                    <td>{{ w.player_nick or '—' }}</td>
+                    <td>{{ w.package.name if w.package else '' }}{% if w.prize_order %} <small style="opacity:.65">· orden #{{ w.prize_order.order_number }} ({{ w.prize_order.status }})</small>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="form-hint tn-body">Aquí saldrán los ganadores (con fecha, ID y nombre) cuando entregues los premios.</p>
+    {% endif %}
+    {% if t.status != 'open' %}
+    <form method="POST" action="{{ url_for('admin_tournaments_bp.delete', tournament_id=t.id) }}" onsubmit="return confirm('¿Borrar este torneo y sus inscritos? Si ya entregó premios no se puede borrar.');" class="tn-body">
+        <button type="submit" class="btn-sm btn-danger">Borrar torneo</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function tnConfirmDeliver(form, place) {
+    var select = form.querySelector('select[name=entry_id]');
+    if (!select || !select.value) return false;
+    var who = select.options[select.selectedIndex].textContent.replace(/\s*\(#\d+\)\s*$/, '');
+    return confirm('¿Entregar el premio del puesto ' + place + ' a ' + who + '? Se envía en el momento y no se puede deshacer.');
+}
+document.querySelectorAll('[data-copy-from]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        var src = document.getElementById(btn.getAttribute('data-copy-from'));
+        var text = src.value !== undefined ? src.value : src.textContent;
+        var original = btn.textContent;
+        var done = function (label) { btn.textContent = label; setTimeout(function () { btn.textContent = original; }, 1600); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { done('¡Copiado!'); }, function () { done('No se pudo copiar'); });
+        } else {
+            var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); done('¡Copiado!'); } catch (e) { done('No se pudo copiar'); }
+            document.body.removeChild(ta);
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from flask import current_app
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 
 from .locks import acquire_lock, release_lock
 from .order_units import extract_order_units
@@ -36,6 +37,18 @@ from ..models import (
 
 def _current_month_key():
     return now_ve().strftime('%Y-%m')
+
+
+def canonical_player_id(raw):
+    """El ID sin espacios y, si es solo dígitos, sin ceros a la izquierda: '0123' y '123' son la misma persona (si no, cada forma de escribirlo abría
+    partidas, tickets o intentos nuevos, y esquivaba los bloqueos). Igual que en los torneos."""
+    player_id = ''.join(str(raw or '').split())
+    if player_id.isascii() and player_id.isdigit():
+        player_id = player_id.lstrip('0') or '0'
+    return player_id
+
+
+MAX_PLAYER_ID_LENGTH = 40
 
 
 def _tomorrow_ve_str():
@@ -497,23 +510,30 @@ def register_raffle_entry(game_id, player_id):
     if not config:
         raise ValueError('El sorteo no está activo para este juego en este momento.')
 
-    player_id = str(player_id or '').strip()
+    player_id = canonical_player_id(player_id)
     if not player_id:
         raise ValueError('Ingresa tu ID de juego.')
+    if len(player_id) > MAX_PLAYER_ID_LENGTH:
+        raise ValueError('Ese ID no es válido.')
 
-    day_key = _raffle_open_day_key(game_id, config=config)
-    is_next_day = day_key != today_ve_str()
+    def open_day():
+        key = _raffle_open_day_key(game_id, config=config)
+        next_day = key != today_ve_str()
+        if PromoRaffleEntry.query.filter_by(game_id=game_id, player_id=player_id, day_key=key).first():
+            raise ValueError(
+                'Este ID ya está registrado para el sorteo de mañana.' if next_day
+                else 'Este ID ya está registrado para el sorteo de hoy.'
+            )
+        return key, next_day
 
-    existing = PromoRaffleEntry.query.filter_by(game_id=game_id, player_id=player_id, day_key=day_key).first()
-    if existing:
-        raise ValueError(
-            'Este ID ya está registrado para el sorteo de mañana.' if is_next_day
-            else 'Este ID ya está registrado para el sorteo de hoy.'
-        )
+    day_key, is_next_day = open_day()
 
     ok, error, nick = _verify_id_if_needed(game_id, player_id, config.require_verification)
     if not ok:
         raise ValueError(error)
+    # La verificación puede tardar (consulta externa): mientras tanto pudo pasar la hora del sorteo. Se vuelve a calcular a qué sorteo entra este registro,
+    # si no, quedaba anotado en un sorteo que ya se había corrido y nunca participaba.
+    day_key, is_next_day = open_day()
 
     for _attempt in range(5):
         current_count = PromoRaffleEntry.query.filter_by(game_id=game_id, day_key=day_key).count()
@@ -531,12 +551,64 @@ def register_raffle_entry(game_id, player_id):
 
 
 def get_raffle_entry(game_id, player_id, day_key=None):
-    player_id = str(player_id or '').strip()
+    player_id = canonical_player_id(player_id)
     if not player_id:
         return None
     return PromoRaffleEntry.query.filter_by(
         game_id=game_id, player_id=player_id, day_key=day_key or today_ve_str(),
     ).first()
+
+
+def _deliver_prize_once(game, package, player_id, note, reference_prefix, marker):
+    """Entrega el premio de una promo UNA sola vez. La marca (ej. [SORTEO#12]) va en la nota del pedido: si una entrega anterior falló a medias (el pedido ya
+    se creó pero el proveedor falló), se reconoce ese pedido y no se crea otro. Un fallo no sube: devuelve el pedido o None si no se pudo."""
+    def existing_order():
+        return Order.query.filter(
+            Order.payment_method == 'prize', Order.game_id == game.id, Order.player_id == player_id, Order.notes.like(f'%{marker}%'),
+        ).first()
+
+    found = existing_order()
+    if found is not None:
+        return found
+    from .order_processing import deliver_prize_to_player
+    try:
+        order, _approval = deliver_prize_to_player(game, package, player_id, note=f'{note} {marker}', reference_prefix=reference_prefix)
+        return order
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Promo: la entrega del premio %s falló', marker)
+        return existing_order()
+
+
+def retry_undelivered_promo_prizes():
+    """Los ganadores del Sorteo y de Adivina que se guardaron pero no recibieron su pedido (la entrega falló) se reintentan solos, con la misma
+    protección de "una sola vez". Solo los de las últimas 6 horas y que tengan más de 3 minutos (para no pisar una entrega que sigue en marcha)."""
+    newest = datetime.utcnow() - timedelta(minutes=3)
+    oldest = datetime.utcnow() - timedelta(hours=6)
+    for winner in PromoRaffleWinner.query.filter(
+        PromoRaffleWinner.prize_order_id.is_(None), PromoRaffleWinner.created_at <= newest, PromoRaffleWinner.created_at >= oldest,
+    ).all():
+        config = get_raffle_config(winner.game_id)
+        game = db.session.get(Game, winner.game_id)
+        if not config or not config.package or not game:
+            continue
+        order = _deliver_prize_once(game, config.package, winner.player_id,
+                                    f'Premio Sorteo Diario — ticket #{winner.ticket_number} ({winner.day_key}).', 'SORTEO', f'[SORTEO#{winner.id}]')
+        if order is not None:
+            winner.prize_order_id = order.id
+            db.session.commit()
+    for winner in PromoGuessWinner.query.filter(
+        PromoGuessWinner.prize_order_id.is_(None), PromoGuessWinner.created_at <= newest, PromoGuessWinner.created_at >= oldest,
+    ).all():
+        config = get_guess_config(winner.game_id)
+        game = db.session.get(Game, winner.game_id)
+        if not config or not config.package or not game:
+            continue
+        order = _deliver_prize_once(game, config.package, winner.player_id,
+                                    f'Premio Adivina el Número — cupo #{winner.slot_index} ({winner.day_key}).', 'ADIVINA', f'[ADIVINA#{winner.id}]')
+        if order is not None:
+            winner.prize_order_id = order.id
+            db.session.commit()
 
 
 def run_daily_raffle_draws():
@@ -549,11 +621,15 @@ def run_daily_raffle_draws():
     ganadores" antes de que ninguna confirmara los suyos, y el sorteo
     terminaba con el doble (o más) de ganadores y premios entregados de los
     configurados."""
+    try:
+        retry_undelivered_promo_prizes()   # ganadores de antes cuya entrega falló
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Promos: no se pudieron reintentar las entregas pendientes')
+
     configs = PromoRaffleConfig.query.filter_by(is_active=True).all()
     current_time = now_ve().time().replace(second=0, microsecond=0)
     day_key = today_ve_str()
-
-    from .order_processing import deliver_prize_to_player
 
     for config in configs:
         draw_time = time(_raffle_draw_hour(config), config.draw_minute or 0)
@@ -606,11 +682,11 @@ def run_daily_raffle_draws():
             db.session.commit()
 
             if config.package:
+                # Cada ganador por separado: si la entrega de uno falla, los demás igual reciben la suya (y el que falló se reintenta solo, ver arriba).
                 for winner in winners:
-                    prize_order, _approval = deliver_prize_to_player(
+                    prize_order = _deliver_prize_once(
                         game, config.package, winner.player_id,
-                        note=f'Premio Sorteo Diario — ticket #{winner.ticket_number} ({day_key}).',
-                        reference_prefix='SORTEO',
+                        f'Premio Sorteo Diario — ticket #{winner.ticket_number} ({day_key}).', 'SORTEO', f'[SORTEO#{winner.id}]',
                     )
                     winner.prize_order_id = prize_order.id if prize_order else None
                     db.session.commit()
@@ -828,9 +904,11 @@ def submit_guess(game_id, player_id, guess_value, ip='', user_agent=''):
     if not config:
         raise ValueError('Este juego no está activo en este momento.')
 
-    player_id = str(player_id or '').strip()
+    player_id = canonical_player_id(player_id)
     if not player_id:
         raise ValueError('Ingresa tu ID de juego.')
+    if len(player_id) > MAX_PLAYER_ID_LENGTH:
+        raise ValueError('Ese ID no es válido.')
     try:
         guess_value = int(guess_value)
     except (TypeError, ValueError):
@@ -839,6 +917,7 @@ def submit_guess(game_id, player_id, guess_value, ip='', user_agent=''):
         raise ValueError(f'Ingresa un número entre 1 y {config.number_max}.')
 
     round_row = _get_or_create_round(game_id, config.number_max)
+    db.session.commit()   # si la ronda se acaba de crear, no se deja una escritura abierta mientras se consulta el ID (la consulta puede tardar más de un minuto)
     if round_row.winners_count >= config.winners_per_day:
         raise ValueError('Ya se completaron los cupos ganadores de hoy. Espera al reinicio (mira el temporizador arriba).')
 
@@ -866,22 +945,39 @@ def submit_guess(game_id, player_id, guess_value, ip='', user_agent=''):
         attempt = PromoGuessAttempt.query.filter_by(
             game_id=game_id, day_key=round_row.day_key, player_id=player_id,
         ).first()
-        if not attempt:
-            attempt = PromoGuessAttempt(game_id=game_id, day_key=round_row.day_key, player_id=player_id, attempts_used=0)
-            db.session.add(attempt)
-            db.session.flush()
-
-        if attempt.attempts_used >= config.max_attempts:
+        if attempt and attempt.attempts_used >= config.max_attempts:
             raise ValueError('Ya agotaste tus intentos de hoy para este ID.')
 
         # La verificación corre antes de gastar el intento: un ID inválido no
-        # debe consumirle una oportunidad a nadie.
+        # debe consumirle una oportunidad a nadie. Y corre ANTES de tocar la
+        # base de datos (sin escritura abierta): la consulta externa puede
+        # tardar más de un minuto y, con la escritura abierta, bloqueaba a
+        # toda la tienda mientras tanto.
         ok, error, verified_nick = _verify_id_if_needed(game_id, player_id, config.require_verification)
         if not ok:
             raise ValueError(error)
 
-        attempt.attempts_used += 1
-        attempt.updated_at = datetime.utcnow()
+        if not attempt:
+            attempt = PromoGuessAttempt(game_id=game_id, day_key=round_row.day_key, player_id=player_id, attempts_used=0)
+            db.session.add(attempt)
+            try:
+                db.session.flush()
+            except IntegrityError:
+                # Otro intento del mismo ID creó la fila mientras se verificaba: se usa esa.
+                db.session.rollback()
+                attempt = PromoGuessAttempt.query.filter_by(game_id=game_id, day_key=round_row.day_key, player_id=player_id).first()
+                round_row = db.session.get(PromoGuessRound, round_row.id)
+        # El intento se gasta con una suma EN la base (no "leer, sumar y escribir"): si dos peticiones del mismo ID se cruzan, el tope de intentos no se pasa.
+        spent = db.session.execute(
+            update(PromoGuessAttempt)
+            .where(PromoGuessAttempt.id == attempt.id, PromoGuessAttempt.attempts_used < config.max_attempts)
+            .values(attempts_used=PromoGuessAttempt.attempts_used + 1, updated_at=datetime.utcnow())
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        if spent != 1:
+            db.session.rollback()
+            raise ValueError('Ya agotaste tus intentos de hoy para este ID.')
+        db.session.refresh(attempt)
         remaining_attempts = config.max_attempts - attempt.attempts_used
         guess_log = PromoGuessLog(
             game_id=game_id, day_key=round_row.day_key, player_id=player_id, guess=guess_value,
@@ -937,12 +1033,11 @@ def submit_guess(game_id, player_id, guess_value, ip='', user_agent=''):
                 db.session.commit()
 
                 if config.package:
-                    from .order_processing import deliver_prize_to_player
-
-                    prize_order, _approval = deliver_prize_to_player(
+                    # Si la entrega falla no se pierde el premio ni se cobra dos veces: el ganador ya está guardado y se reintenta solo (ver
+                    # retry_undelivered_promo_prizes), con la marca [ADIVINA#id] en el pedido.
+                    prize_order = _deliver_prize_once(
                         Game.query.get(game_id), config.package, player_id,
-                        note=f'Premio Adivina el Número — cupo #{slot_index} ({round_row.day_key}).',
-                        reference_prefix='ADIVINA',
+                        f'Premio Adivina el Número — cupo #{slot_index} ({round_row.day_key}).', 'ADIVINA', f'[ADIVINA#{winner.id}]',
                     )
                     winner.prize_order_id = prize_order.id if prize_order else None
                     db.session.commit()
@@ -980,7 +1075,7 @@ def get_guess_public_state(game_id, player_id):
     round_row = _get_or_create_round(game_id, config.number_max)
     db.session.commit()
 
-    player_id = str(player_id or '').strip()
+    player_id = canonical_player_id(player_id)
     attempts_used = 0
     already_won = False
     if player_id:
@@ -1224,7 +1319,7 @@ HORDE_BANNED_MESSAGE = 'Este ID está bloqueado en Hordas de Diamantes para este
 
 
 def is_horde_banned(game_id, player_id):
-    player_id = str(player_id or '').strip()
+    player_id = canonical_player_id(player_id)
     if not player_id:
         return False
     return PromoHordeBan.query.filter_by(game_id=game_id, player_id=player_id).first() is not None
@@ -1274,6 +1369,18 @@ def _horde_free_runs_today(game_id, player_id, day_key):
     ).count()
 
 
+# Tope de partidas EXTRA (pagadas con puntos) por ID y por día. Los puntos viven en el ID y el ID se escribe a mano: sin tope, cualquiera podía gastarle los
+# puntos a otra persona abriendo partidas con su ID. Con 10 por día el daño máximo es pequeño y quien juega de verdad no lo nota.
+HORDE_MAX_PAID_RUNS_PER_DAY = 10
+
+
+def _horde_paid_runs_today(game_id, player_id, day_key):
+    return PromoHordeRun.query.filter(
+        PromoHordeRun.game_id == game_id, PromoHordeRun.player_id == player_id,
+        PromoHordeRun.day_key == day_key, PromoHordeRun.points_spent > 0,
+    ).count()
+
+
 def start_horde_run(game_id, player_id, ip='', use_points=False, rules=None):
     """Abre una partida y devuelve su token. Lanza ValueError con un
     mensaje listo para mostrar si no se puede jugar.
@@ -1286,7 +1393,7 @@ def start_horde_run(game_id, player_id, ip='', use_points=False, rules=None):
     if not config:
         raise ValueError('Este juego no está activo en este momento.')
 
-    player_id = str(player_id or '').strip()
+    player_id = canonical_player_id(player_id)
     if not player_id:
         raise ValueError('Ingresa tu ID de juego.')
     if len(player_id) > 40:
@@ -1304,21 +1411,29 @@ def start_horde_run(game_id, player_id, ip='', use_points=False, rules=None):
     week_key = _horde_week_key()
     runs_per_day = config.runs_per_day or 5
 
+    # La verificación del ID (consulta externa) puede tardar hasta ~75 s: el bloqueo dura más que eso, y además se vuelve a contar después de verificar.
     lock_key = f'horde_start:{game_id}:{player_id}'
     lock_holder = uuid4().hex
-    if not acquire_lock(lock_key, 15, lock_holder):
+    if not acquire_lock(lock_key, 90, lock_holder):
         raise ValueError('Tu partida anterior todavía se está abriendo. Espera unos segundos.')
 
-    try:
-        runs_today = _horde_free_runs_today(game_id, player_id, day_key)
-        points_cost = 0
-        if runs_today >= runs_per_day:
+    def check_limits():
+        """Cuenta las partidas de hoy y devuelve (partidas_gratis_usadas, costo_en_puntos). Lanza ValueError si ya no puede jugar."""
+        used = _horde_free_runs_today(game_id, player_id, day_key)
+        cost = 0
+        if used >= runs_per_day:
             extra_cost = int(config.points_per_extra_run or 0)
             if extra_cost <= 0:
                 raise ValueError(f'Ya usaste tus {runs_per_day} partidas de hoy con este ID. Vuelve mañana.')
             if not use_points:
                 raise ValueError(f'Ya usaste tus {runs_per_day} partidas gratis de hoy. Puedes jugar otra canjeando {extra_cost} puntos.')
-            points_cost = extra_cost
+            if _horde_paid_runs_today(game_id, player_id, day_key) >= HORDE_MAX_PAID_RUNS_PER_DAY:
+                raise ValueError(f'Llegaste al máximo de {HORDE_MAX_PAID_RUNS_PER_DAY} partidas extra de hoy con este ID. Vuelve mañana.')
+            cost = extra_cost
+        return used, cost
+
+    try:
+        runs_today, points_cost = check_limits()
 
         # La verificación real cuesta una consulta externa: basta con hacerla
         # una vez por semana por ID, después se reutiliza el nombre ya
@@ -1335,9 +1450,16 @@ def start_horde_run(game_id, player_id, ip='', use_points=False, rules=None):
         )
         nick = known.player_nick if known else None
         if not known:
-            ok, error, nick = _verify_id_if_needed(game_id, player_id, config.require_verification)
+            try:
+                ok, error, nick = _verify_id_if_needed(game_id, player_id, config.require_verification)
+            except Exception:
+                # La consulta externa falló o tardó demasiado: se avisa con un mensaje claro (antes salía un error 500 y el cliente veía "error de conexión").
+                db.session.rollback()
+                raise ValueError('No pudimos verificar tu ID en este momento. Intenta de nuevo en unos segundos.')
             if not ok:
                 raise ValueError(error)
+            # Mientras se verificaba, otra petición del mismo ID pudo abrir una partida: se cuenta de nuevo antes de abrir la nuestra.
+            runs_today, points_cost = check_limits()
 
         points_balance = None
         if points_cost:
@@ -1378,6 +1500,8 @@ def start_horde_run(game_id, player_id, ip='', use_points=False, rules=None):
             'points_balance': points_balance,
         }
     finally:
+        # Si algo falló a medias, la sesión queda sucia y soltar el bloqueo fallaría en silencio (el cliente no podría reintentar por unos segundos).
+        db.session.rollback()
         release_lock(lock_key, lock_holder)
 
 
@@ -1543,13 +1667,17 @@ def finish_horde_run(token, diamonds, kills, wave=None, final_cleared=False, rep
         raise ValueError('Esta partida ya fue registrada.')
     _store_horde_replay(run, replay)
 
-    ranking = get_horde_week_ranking(run.game_id, run.week_key, limit=None)
+    # Los cristales ya quedaron guardados: si calcular el puesto falla, igual se responde que se guardó (sin el puesto) en vez de un error.
     my_total = 0
     my_rank = None
-    for index, (pid, _nick, total) in enumerate(ranking, start=1):
-        if pid == run.player_id:
-            my_total, my_rank = total, index
-            break
+    try:
+        ranking = get_horde_week_ranking(run.game_id, run.week_key, limit=None)
+        for index, (pid, _nick, total) in enumerate(ranking, start=1):
+            if pid == run.player_id:
+                my_total, my_rank = total, index
+                break
+    except Exception:
+        db.session.rollback()
     return {
         'diamonds': accepted,
         'capped': accepted < diamonds,
@@ -1559,10 +1687,42 @@ def finish_horde_run(token, diamonds, kills, wave=None, final_cleared=False, rep
     }
 
 
+# Una partida que el servidor abrió pero el teléfono no pudo ARMAR (falla del juego en ese equipo, no de la conexión) se puede anular y devolver. Solo
+# vale justo después de abrirla: si no, se podría "anular" una partida mala para repetirla y quedarse solo con las buenas.
+HORDE_CANCEL_GRACE_SECONDS = 30
+
+
+def cancel_horde_run(token):
+    """Anula una partida sin terminar abierta hace menos de 30 s: se borra (deja de contar como partida del día) y se devuelven los puntos si se había
+    pagado con puntos. Devuelve {'refunded_points', 'game_id', 'player_id'}. Lanza ValueError con un mensaje listo para mostrar."""
+    token = str(token or '').strip()
+    run = PromoHordeRun.query.filter_by(token=token).first() if token else None
+    if not run or run.finished_at:
+        raise ValueError('Partida no encontrada.')
+    if (datetime.utcnow() - run.started_at).total_seconds() > HORDE_CANCEL_GRACE_SECONDS:
+        raise ValueError('Esa partida ya no se puede anular.')
+    refunded = int(run.points_spent or 0)
+    run_id, game_id, player_id = run.id, run.game_id, run.player_id   # se leen ANTES del contador: al guardarlo la sesión "vence" el objeto
+    from .locks import check_rate_limit
+    # Por hora y no por día: los contadores se borran a las 6 horas (locks.purge_stale_counters), una ventana de 24 h se perdería a media mañana.
+    if not check_rate_limit(f'hordas_cancel_id:{game_id}:{player_id}', 5, 3600):
+        raise ValueError('Ya anulaste varias partidas en la última hora con este ID. Espera un rato.')
+    # Borrado condicional: si llegan dos anulaciones a la vez, solo una devuelve los puntos.
+    deleted = PromoHordeRun.query.filter(PromoHordeRun.id == run_id, PromoHordeRun.finished_at.is_(None)).delete(synchronize_session=False)
+    if not deleted:
+        db.session.rollback()
+        raise ValueError('Partida no encontrada.')
+    if refunded > 0:
+        from .points import credit_player_points
+        credit_player_points(game_id, player_id, refunded)
+    db.session.commit()
+    return {'refunded_points': refunded, 'game_id': game_id, 'player_id': player_id}
+
+
 def get_horde_player_position(game_id, player_id):
     """Puesto de un ID en el ranking de esta semana, con cuántos diamantes
     le faltan para pasar al de arriba (como el ranking de recargas)."""
-    player_id = str(player_id or '').strip()
+    player_id = canonical_player_id(player_id)
     if not player_id or not get_horde_config(game_id):
         return None
     full_ranking = get_horde_week_ranking(game_id, _horde_week_key(), limit=None)
@@ -1590,7 +1750,7 @@ def get_horde_public_state(game_id, player_id):
     if not config:
         return {'enabled': False}
 
-    player_id = str(player_id or '').strip()
+    player_id = canonical_player_id(player_id)
     week_key = _horde_week_key()
     week_start = _horde_week_start()
     now = now_ve()
@@ -1662,9 +1822,11 @@ def _fill_pending_horde_winners(config, week_key):
     como 3ro, etc. No entrega nada: el premio sale al aprobar."""
     prizes = dict(config.place_packages()) or {1: None}
     winners = PromoHordeWinner.query.filter_by(game_id=config.game_id, week_key=week_key).all()
-    approved = [w for w in winners if w.status == 'approved']
+    # Se respetan los aprobados Y los que se están aprobando ahora mismo ('approving': el premio está en camino): borrarlos haría que ese jugador entrara
+    # de nuevo como pendiente y recibiera el premio dos veces.
+    approved = [w for w in winners if w.status != 'pending']
     for w in winners:
-        if w.status != 'approved':
+        if w.status == 'pending':
             db.session.delete(w)
     db.session.flush()
 
@@ -1722,6 +1884,8 @@ def approve_horde_winner(winner_id):
     winner = PromoHordeWinner.query.get(winner_id)
     if not winner:
         raise ValueError('Ganador no encontrado.')
+    if winner.status == 'pending' and is_horde_banned(winner.game_id, winner.player_id):
+        raise ValueError('Este ID está bloqueado en Hordas. Usa "Rechazar" para que el premio pase al siguiente del ranking.')
     claimed = (
         PromoHordeWinner.query
         .filter(PromoHordeWinner.id == winner.id, PromoHordeWinner.status == 'pending')
@@ -1736,7 +1900,7 @@ def approve_horde_winner(winner_id):
         if package:
             prize_order, _approval = deliver_prize_to_player(
                 Game.query.get(winner.game_id), package, winner.player_id,
-                note=f'Premio Hordas de Diamantes — puesto #{winner.place} semana del {winner.week_key} ({winner.diamonds} diamantes). Aprobado tras revisar repeticiones.',
+                note=f'Premio Hordas de Diamantes — puesto #{winner.place} semana del {winner.week_key} ({winner.diamonds} cristales). Aprobado tras revisar repeticiones.',
                 reference_prefix='HORDAS',
             )
         winner = PromoHordeWinner.query.get(winner_id)
@@ -1747,6 +1911,24 @@ def approve_horde_winner(winner_id):
         return winner
     except Exception:
         db.session.rollback()
+        # Si el pedido del premio YA se creó (falló después, al entregarlo), el ganador NO vuelve a "pendiente": un segundo intento crearía otro pedido y el
+        # jugador cobraría dos veces. Queda aprobado con ese pedido y el admin lo resuelve en Pedidos.
+        orphan = None
+        if winner.package_id:
+            orphan = (
+                Order.query
+                .filter(
+                    Order.game_id == winner.game_id, Order.package_id == winner.package_id, Order.player_id == winner.player_id,
+                    Order.payment_method == 'prize',
+                    Order.notes.like(f'%puesto #{winner.place} semana del {winner.week_key}%'),
+                )
+                .order_by(Order.id.desc()).first()
+            )
+        if orphan is not None:
+            PromoHordeWinner.query.filter_by(id=winner_id).update(
+                {'status': 'approved', 'reviewed_at': datetime.utcnow(), 'prize_order_id': orphan.id}, synchronize_session=False)
+            db.session.commit()
+            raise ValueError(f'El premio quedó registrado pero la entrega automática falló. Revisa el pedido #{orphan.id} en Pedidos (no se creará otro).')
         PromoHordeWinner.query.filter_by(id=winner_id).update({'status': 'pending'}, synchronize_session=False)
         db.session.commit()
         raise
@@ -1777,6 +1959,30 @@ def reject_horde_winner(winner_id, reason=''):
         db.session.commit()
     finally:
         release_lock(lock_key, lock_holder)
+
+
+def refresh_pending_horde_winners(game_id):
+    """Después de bloquear un ID: los ganadores PENDIENTES de ese juego se rearman sin él y los siguientes del ranking suben de puesto. Los ya aprobados
+    no se tocan. Devuelve cuántas semanas se revisaron."""
+    config = PromoHordeConfig.query.filter_by(game_id=game_id).first()
+    if not config:
+        return 0
+    weeks = [w for (w,) in db.session.query(PromoHordeWinner.week_key).filter(
+        PromoHordeWinner.game_id == game_id, PromoHordeWinner.status == 'pending').distinct().all()]
+    done = 0
+    for week_key in weeks:
+        lock_key = f'horde_award:{game_id}:{week_key}'
+        holder = uuid4().hex
+        if not acquire_lock(lock_key, 60, holder):
+            continue
+        try:
+            _fill_pending_horde_winners(config, week_key)
+            db.session.commit()
+            done += 1
+        finally:
+            db.session.rollback()
+            release_lock(lock_key, holder)
+    return done
 
 
 def get_pending_horde_winners(game_id=None):

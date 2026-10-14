@@ -1,0 +1,97 @@
+/* ── 3S Recargas — selector de color moderno (ver static/js/color-picker.js) ─────────────────────────────────────────
+   Botón compacto con el color y su código + panel de cristal (cuadro de color, tono, código, gotero y colores rápidos). */
+
+/* El <input type="color"> original queda en la página pero escondido: ahí se guarda el valor y por ahí se envía el formulario */
+.mcp-native { position: absolute !important; width: 1px !important; height: 1px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; opacity: 0; overflow: hidden; clip: rect(0 0 0 0); pointer-events: none; }
+
+.mcp-trigger {
+    display: inline-flex; align-items: center; gap: 9px; max-width: 100%; padding: 4px 10px 4px 4px; border-radius: 14px; cursor: pointer;
+    color: #fff; font: inherit; font-size: 12.5px; font-weight: 800; letter-spacing: .04em;
+    background: linear-gradient(135deg, rgba(255,255,255,.085), rgba(255,255,255,.02));
+    border: 1px solid rgba(255,255,255,.2); border-top-color: rgba(255,255,255,.34);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.12);
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .15s ease, box-shadow .15s ease, transform .12s ease;
+}
+.mcp-trigger:hover { border-color: rgba(255,255,255,.45); }
+.mcp-trigger:active { transform: scale(.98); }
+.mcp-trigger:focus-visible { outline: 2px solid rgba(255,255,255,.7); outline-offset: 2px; }
+.mcp-trigger[aria-expanded="true"] { border-color: #ff3b4e; box-shadow: 0 0 0 3px rgba(255,59,78,.2), inset 0 1px 1px rgba(255,255,255,.12); }
+.mcp-chip {
+    flex: none; width: 28px; height: 28px; border-radius: 10px; background: var(--mcp-c, #000);
+    border: 1px solid rgba(255,255,255,.4); box-shadow: inset 0 0 0 1px rgba(0,0,0,.25), 0 2px 6px rgba(0,0,0,.35);
+}
+.mcp-hex { font-variant-numeric: tabular-nums; }
+.mcp-caret { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; opacity: .55; }
+.mcp-caret svg { width: 14px; height: 14px; }
+.mcp-trigger[aria-expanded="true"] .mcp-caret { transform: rotate(180deg); }
+/* el código de siempre (junto al cuadro viejo) ya no hace falta: el botón lo muestra */
+.pf-color.has-mcp > span[data-hex-for] { display: none; }
+
+/* Panel: cristal propio (va en el body, no dentro de otro cristal, por eso sí lleva desenfoque) */
+.mcp-pop {
+    position: fixed; z-index: 2000; width: 272px; max-width: calc(100vw - 16px); padding: 10px; border-radius: 20px; color: #fff;
+    font-family: inherit; box-sizing: border-box;
+    background: linear-gradient(135deg, rgba(255,255,255,.09), rgba(255,255,255,.025)), rgba(16,9,11,.8);
+    -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%);
+    border: 1px solid rgba(255,255,255,.2); border-top-color: rgba(255,255,255,.36);
+    box-shadow: 0 24px 60px rgba(0,0,0,.6), inset 0 1px 2px rgba(255,255,255,.18), 0 0 30px rgba(255,0,0,.08);
+    animation: mcpIn .16s ease both; outline: none;
+}
+.mcp-pop[hidden] { display: none; }
+@keyframes mcpIn { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+
+.mcp-sv {
+    position: relative; height: 150px; border-radius: 14px; overflow: hidden; cursor: crosshair; touch-action: none; outline: none;
+    background-color: hsl(var(--mcp-h, 0), 100%, 50%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
+}
+.mcp-sv::before, .mcp-sv::after { content: ""; position: absolute; top:0;right:0;bottom:0;left:0; pointer-events: none; }
+.mcp-sv::before { background: linear-gradient(to right, #fff, rgba(255,255,255,0)); }
+.mcp-sv::after { background: linear-gradient(to top, #000, rgba(0,0,0,0)); }
+.mcp-sv:focus-visible { box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 0 0 2px rgba(255,255,255,.7); }
+.mcp-sv-thumb {
+    position: absolute; z-index: 2; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; pointer-events: none;
+    border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.55);
+}
+
+/* Barra de tono (arcoíris) */
+.mcp-hue {
+    -webkit-appearance: none; appearance: none; display: block; width: 100%; height: 12px; margin: 10px 0 0; padding: 0; border-radius: 99px; cursor: pointer;
+    background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
+}
+.mcp-hue::-webkit-slider-runnable-track { height: 12px; background: transparent; border-radius: 99px; }
+.mcp-hue::-moz-range-track { height: 12px; background: transparent; border-radius: 99px; }
+.mcp-hue::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -3px; border-radius: 50%; background: #fff; border: 3px solid rgba(255,255,255,.95); box-shadow: 0 0 0 1px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.55); }
+.mcp-hue::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.55); }
+.mcp-hue:focus-visible { outline: 2px solid rgba(255,255,255,.7); outline-offset: 3px; }
+
+.mcp-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.mcp-preview { flex: none; width: 34px; height: 34px; border-radius: 11px; border: 1px solid rgba(255,255,255,.4); box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+.mcp-hexinput {
+    flex: 1; min-width: 0; padding: 8px 10px; border-radius: 11px; color: #fff; font: inherit; font-size: 13.5px; font-weight: 800; letter-spacing: .06em;
+    text-transform: uppercase; font-variant-numeric: tabular-nums; outline: none;
+    background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.2);
+}
+.mcp-hexinput:focus { border-color: rgba(255,255,255,.55); }
+.mcp-hexinput.is-bad { border-color: #ff3b4e; }
+.mcp-eye {
+    flex: none; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border-radius: 11px; cursor: pointer; color: #fff;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.2);
+}
+.mcp-eye[hidden] { display: none; }
+.mcp-eye svg { width: 17px; height: 17px; }
+.mcp-eye:hover { background: rgba(255,255,255,.14); }
+
+.mcp-swatches { display: grid; grid-template-columns: repeat(8, 1fr); gap: 7px; margin-top: 10px; }
+.mcp-sw { aspect-ratio: 1; width: 100%; padding: 0; border-radius: 50%; cursor: pointer; border: 2px solid rgba(255,255,255,.25); transition: transform .12s ease; }
+.mcp-sw:hover { transform: scale(1.12); }
+.mcp-sw.is-on { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.35); }
+
+.mcp-done {
+    width: 100%; margin-top: 10px; padding: 9px 12px; border-radius: 12px; cursor: pointer; color: #fff; font: inherit; font-size: 13px; font-weight: 800;
+    background: linear-gradient(180deg, #ff1a2e, #b80016); border: 1px solid rgba(255,255,255,.3); box-shadow: 0 6px 18px rgba(255,22,60,.3), inset 0 1px 1px rgba(255,255,255,.3);
+}
+.mcp-done:hover { filter: brightness(1.08); }
+
+@media (prefers-reduced-motion: reduce) { .mcp-pop { animation: none; } .mcp-trigger, .mcp-sw { transition: none; } }

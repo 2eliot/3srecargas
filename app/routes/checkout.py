@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import hashlib
 import json
 import os
+import re
 import time
 from uuid import uuid4
 from flask import (
@@ -13,6 +14,7 @@ from flask_login import current_user, login_user, logout_user
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
+from ..utils.upload_guard import looks_like_markup
 from ..models import db, Game, Package, Order, Affiliate, AffiliateCommission, Pin, PaymentMethod, User, Discount
 from ..models import Setting
 from ..models import OrderMiniGameOpportunity
@@ -25,7 +27,7 @@ from ..utils.minigames import (
     select_order_minigame,
 )
 from ..utils.points import (
-    award_points_for_order, get_player_points_balance,
+    get_player_points_balance,
     get_points_enabled_games, get_points_redeem_enabled_games, get_points_redeem_options,
     get_points_spin_cost, redeem_points_for_package, spend_points_and_spin,
 )
@@ -83,7 +85,7 @@ def _normalize_game_player_id(game, value):
         return _digits_only(cleaned)
     return cleaned
 from ..utils.reference_extraction import extract_reference_from_image_bytes, extract_reference_from_image_path
-from ..utils.auth_accounts import attach_matching_orders_to_customer, extract_customer_identifier_for_game, get_or_create_scoped_customer
+from ..utils.auth_accounts import attach_matching_orders_to_customer, extract_customer_identifier_for_game, get_or_create_scoped_customer, is_account_user
 
 checkout_bp = Blueprint('checkout_bp', __name__)
 
@@ -102,6 +104,14 @@ DELIVERY_RETRY_SECONDS = 5 * 60
 # que además frenaba la verificación de las órdenes de los demás).
 CUSTOMER_VERIFY_MIN_INTERVAL_SECONDS = 20
 CUSTOMER_VERIFY_MAX_ATTEMPTS = 120
+
+# Topes por IP. Son amplios a propósito (varios clientes comparten una misma IP en los datos móviles): sirven para que
+# nadie llene la cola de órdenes pendientes, el disco de comprobantes ni los límites propios de Pabilo con un programa.
+ORDERS_PER_IP_PER_MINUTE = 10
+ORDERS_PER_IP_PER_HOUR = 60
+COMPLETE_PAYMENT_PER_ORDER_PER_HOUR = 12
+COMPLETE_PAYMENT_PER_IP_PER_HOUR = 40
+AUTO_VERIFY_PER_IP_PER_MINUTE = 120
 
 # Lock en base de datos: solo 1 solicitud a Pabilo al mismo tiempo. Un
 # threading.Lock() normal no alcanza porque en producción la app corre con
@@ -125,6 +135,9 @@ def _normalize_bs_checkout_amount(value):
 
 def save_capture(file):
     if not file or file.filename == '':
+        return None
+    if looks_like_markup(file):
+        # "comprobante.png" que por dentro es HTML/SVG con código: no se guarda
         return None
     filename = secure_filename(file.filename)
     ts = now_ve_naive().strftime('%Y%m%d%H%M%S%f')
@@ -208,6 +221,8 @@ def auto_verify_and_process_order(order, force=False, customer_request=False):
             'manual_review_required': True,
             'message': 'Pago verificado en Pabilo. La orden sigue pendiente de revisión manual.',
             'stop_polling': True,
+            # No hubo trabajo nuevo: el revisor automático no debe gastar un turno en esta orden.
+            'noop': True,
         }
 
     if order.payment_verified_at:
@@ -306,7 +321,8 @@ def auto_verify_and_process_order(order, force=False, customer_request=False):
 
             if not auto_approve_allowed:
                 ensure_minigame_opportunity(order)
-                award_points_for_order(order)
+                # Los puntos y la barra de Recarga Acumulada NO se dan aquí (pago verificado): se dan cuando el pedido queda entregado o el admin lo aprueba
+                # (order_processing.award_points_for_order). Si el pedido se rechaza, no queda nada que quitar.
                 manual_note = '[Pabilo] Orden manual: pago verificado sin aprobación automática.'
                 if manual_note not in (order.notes or ''):
                     order.notes = ((order.notes or '') + '\n' + manual_note).strip()
@@ -361,7 +377,9 @@ def auto_verify_and_process_order(order, force=False, customer_request=False):
                 order.notes = (existing_notes + '\n' + auto_note).strip()
                 db.session.commit()
 
-        verification['checked'] = True
+        # `checked` = se hizo una consulta real. Una referencia demasiado corta o ausente se descarta SIN llamar a Pabilo
+        # (requestable=False): no debe gastar un turno del revisor de fondo, que tiene solo 25 por ciclo.
+        verification['checked'] = verification.get('requestable') is not False
         verification['payment_verified'] = False
         verification['stop_polling'] = False
         if verification.get('rate_limited'):
@@ -757,9 +775,10 @@ def checkout(package_id):
         if stage != 'confirm':
             player_id = request.form.get('player_id', '').strip()
             player_nickname = request.form.get('player_nickname', '').strip()
-            zone_id = request.form.get('zone_id', '').strip()
-            email = request.form.get('email', '').strip()
-            phone = request.form.get('phone', '').strip()
+            zone_id = request.form.get('zone_id', '').strip()[:30]
+            # Un correo y un teléfono nunca llevan comillas, < > ni espacios raros: se limpian al entrar (el admin ve estos datos).
+            email = re.sub(r'[\s<>"\'`\\,;]', '', request.form.get('email', ''))[:120]
+            phone = re.sub(r'[^0-9+\-\s().]', '', request.form.get('phone', '')).strip()[:30]
             payment_method = request.form.get('payment_method', '').strip()
             aff_code = request.form.get('affiliate_code', '').strip()
             if not aff_code:
@@ -878,9 +897,12 @@ def checkout(package_id):
                 )
                 if scoped_user:
                     attach_matching_orders_to_customer(scoped_user, game.id, identifier_value, identity_meta['account_kind'])
-                    if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.id != scoped_user.id:
-                        logout_user()
-                    login_user(scoped_user)
+                    # Una CUENTA registrada conserva su sesión (si no, comprar la sacaría de su perfil): la orden queda
+                    # a nombre del cliente de ese ID y la cuenta la ve cuando enlaza el ID.
+                    if not is_account_user(current_user):
+                        if current_user.is_authenticated and current_user.__class__.__name__ == 'User' and current_user.id != scoped_user.id:
+                            logout_user()
+                        login_user(scoped_user)
 
             session['checkout_data'] = checkout_data
             session['last_payment_method'] = payment_method
@@ -916,6 +938,34 @@ def checkout(package_id):
         expected_confirm_token = (checkout_confirm_tokens.get(pkg_key) or '').strip()
         if not submitted_confirm_token or not expected_confirm_token or submitted_confirm_token != expected_confirm_token:
             return _confirm_fail('La confirmación de pago expiró o ya fue usada. Recarga la página e intenta de nuevo.', code='token_expired')
+
+        # Un reintento de una orden que YA se creó con esta misma confirmación (doble toque, red lenta) no gasta cupo:
+        # más abajo simplemente se le devuelve esa orden.
+        _order_ip = client_ip()
+        _existing_order = Order.query.filter_by(idempotency_key=submitted_confirm_token).first()
+        _already_created = _existing_order is not None
+        if _already_created:
+            # Repetición de una confirmación ya usada: se resuelve AQUÍ, sin guardar el comprobante nuevo ni llamar a la IA de lectura
+            # (antes eso corría en cada repetición y, como estas repeticiones no gastan cupo, se podían usar para llenar el disco y gastar
+            # la cuota de la IA sin límite).
+            _early_data = checkout_data.get(pkg_key) or {}
+            _early_method = (_early_data.get('payment_method') or '').strip()
+            if _early_method:
+                _early_reference = (request.form.get('payment_reference') or '').strip()
+                if _early_method.lower() == 'binance' and is_binance_auto_enabled(current_app._get_current_object()):
+                    _early_reference = ((session.get('binance_codes') or {}).get(pkg_key) or _early_reference).strip().upper()
+                if order_matches_checkout_attempt(
+                    _existing_order, package, _early_method, _early_reference, _early_data, is_wallet=is_wallet,
+                ):
+                    remember_own_order(_existing_order.order_number)
+                    return _confirm_ok(_existing_order.order_number)
+                checkout_confirm_tokens.pop(pkg_key, None)
+                session['checkout_confirm_tokens'] = checkout_confirm_tokens
+                return _confirm_fail('La confirmación anterior ya fue usada para otra orden. Recarga la página y confirma nuevamente para generar una orden nueva.', 'warning')
+        if not _already_created and (
+                not check_rate_limit(f'order_create:{_order_ip}', ORDERS_PER_IP_PER_MINUTE, 60)
+                or not check_rate_limit(f'order_create_h:{_order_ip}', ORDERS_PER_IP_PER_HOUR, 3600)):
+            return _confirm_fail('Demasiadas órdenes seguidas desde tu conexión. Espera un momento e inténtalo de nuevo.', 'warning', code='rate_limited')
 
         data = checkout_data.get(pkg_key) or {}
         payment_method = (data.get('payment_method') or '').strip()
@@ -1066,12 +1116,27 @@ def checkout(package_id):
 
         # Asociar usuario si está autenticado y es un cliente (no admin)
         user_id = None
-        if current_user.is_authenticated and current_user.__class__.__name__ == 'User':
+        customer_user = None
+        if is_account_user(current_user):
+            # La orden se guarda a nombre del cliente de ese ID (igual que si comprara sin cuenta), no de la cuenta.
+            identity_meta = extract_customer_identifier_for_game(game, player_id=data.get('player_id') or '', email=data.get('email') or '')
+            if (identity_meta.get('identifier') or '').strip():
+                customer_user = get_or_create_scoped_customer(
+                    scope_key=identity_meta['scope_key'],
+                    scope_label=identity_meta['scope_label'],
+                    raw_identifier=identity_meta['identifier'],
+                    account_kind=identity_meta['account_kind'],
+                    contact_email=(data.get('email') or '').strip(),
+                    phone=(data.get('phone') or '').strip(),
+                )
+            user_id = customer_user.id if customer_user else None
+        elif current_user.is_authenticated and current_user.__class__.__name__ == 'User':
+            customer_user = current_user
             user_id = current_user.id
 
         customer_phone = (data.get('phone') or '').strip()
-        if not customer_phone and user_id:
-            customer_phone = (current_user.phone or '').strip()
+        if not customer_phone and customer_user:
+            customer_phone = (customer_user.phone or '').strip()
 
         # Evita múltiples órdenes pendientes del mismo checkout.
         # Si ya existe una reciente con la misma identidad, se reutiliza.
@@ -1146,6 +1211,9 @@ def checkout(package_id):
             game_id=game.id,
             package_id=package.id,
             user_id=user_id,
+            # La CUENTA que compró (con la sesión abierta), a cualquier ID que recargue: es su historial de compras y suma a su nivel.
+            # `user_id` sigue siendo el cliente del ID: el historial del ID no depende de qué cuenta le recargó.
+            account_user_id=current_user.id if is_account_user(current_user) else None,
             discount_id=discount.id if discount else None,
             player_id=player_id_value if not is_wallet else None,
             player_nickname=(data.get('player_nickname') or '').strip() or None,
@@ -1529,6 +1597,10 @@ def order_unlock_pin(order_number):
 @checkout_bp.route('/order/<order_number>/auto-verify', methods=['POST'])
 def order_auto_verify(order_number):
     order = Order.query.filter_by(order_number=order_number).first_or_404()
+    if not check_rate_limit(f'auto_verify_ip:{client_ip()}', AUTO_VERIFY_PER_IP_PER_MINUTE, 60):
+        return jsonify({'ok': True, 'checked': False, 'verified': False, 'payment_verified': False,
+                        'message': 'Verificando tu pago automáticamente...', 'stop_polling': False,
+                        'next_retry_in_seconds': 30}), 429
     auto_verify_allowed = is_auto_verify_enabled() and order_supports_background_payment_verification(order)
     if not auto_verify_allowed:
         return jsonify({
@@ -1610,6 +1682,10 @@ def order_complete_payment(order_number):
             'ok': False,
             'message': 'Esta orden no está esperando un pago restante.',
         }), 400
+
+    if (not check_rate_limit(f'complete_payment_order:{order.id}', COMPLETE_PAYMENT_PER_ORDER_PER_HOUR, 3600)
+            or not check_rate_limit(f'complete_payment_ip:{client_ip()}', COMPLETE_PAYMENT_PER_IP_PER_HOUR, 3600)):
+        return jsonify({'ok': False, 'message': 'Demasiados intentos con esta orden. Espera un rato o escríbenos por soporte.'}), 429
 
     manual_reference = (request.form.get('payment_reference') or '').strip()
     capture_file = request.files.get('payment_capture')
@@ -1752,7 +1828,7 @@ def order_complete_payment(order_number):
     auto_approve_allowed = order_qualifies_for_auto_verify(order)
     if not auto_approve_allowed:
         ensure_minigame_opportunity(order)
-        award_points_for_order(order)
+        # Puntos y barra de Recarga Acumulada: al entregar o aprobar el pedido, no al verificar el pago (ver arriba).
         manual_note = '[Pabilo] Orden manual: pago verificado sin aprobación automática.'
         if manual_note not in (order.notes or ''):
             order.notes = ((order.notes or '') + '\n' + manual_note).strip()
@@ -1914,6 +1990,77 @@ def points_balance():
         'balance': balance,
         'spin_cost': get_points_spin_cost(),
     })
+
+
+@checkout_bp.route('/api/points/wallet')
+def points_wallet():
+    """Puntos de la bolsa del PERFIL de quien tiene la sesión abierta (solo cuentas) y los juegos donde se pueden pasar a un ID."""
+    from ..utils import account_points
+    from ..utils.auth_accounts import is_account_user
+
+    user = current_user if current_user.is_authenticated else None
+    is_account = is_account_user(user)
+    balance = account_points.balance(user.id) if is_account else 0
+    response = jsonify({
+        'ok': True, 'logged_in': is_account, 'balance': balance,
+        'games': account_points.usable_games() if balance > 0 else [],
+    })
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@checkout_bp.route('/api/points/transfer', methods=['POST'])
+def points_transfer():
+    """Pasa puntos de la bolsa del perfil a un ID (juego + ID). Los puntos solo funcionan por ID: aquí es donde el perfil elige a cuál."""
+    from ..utils import account_points
+    from ..utils.auth_accounts import is_account_user
+
+    if not is_account_user(current_user if current_user.is_authenticated else None):
+        return jsonify({'ok': False, 'message': 'Inicia sesión con tu cuenta para pasar los puntos de tu perfil.'}), 401
+    if not check_rate_limit(f'points_action:{client_ip()}', POINTS_ACTIONS_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'message': 'Demasiados intentos seguidos. Espera un momento.'}), 429
+    payload = request.get_json(silent=True) or {}
+    try:
+        game_id = int(payload.get('game_id'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Elige un juego válido.'}), 400
+    player_id = str(payload.get('player_id') or '').strip()
+    if not player_id:
+        return jsonify({'ok': False, 'message': 'Ingresa el ID del juego.'}), 400
+    game = Game.query.filter_by(id=game_id, is_active=True).first()
+    if not game:
+        return jsonify({'ok': False, 'message': 'Juego no encontrado.'}), 404
+
+    # El ID tiene que existir de verdad en el juego (cuando hay verificador configurado) ANTES de moverle puntos: así nadie manda sus puntos a un ID
+    # inventado o con un error de dedo. De paso, el nombre real se le muestra para que confirme que es el ID correcto.
+    from .verify import verifiable_game_ids, verify_player_nick
+    player_nick = None
+    if game_id in verifiable_game_ids():
+        verify_payload, verify_status = verify_player_nick(player_id, str(game_id), mode='auto')
+        if not verify_payload.get('ok'):
+            return jsonify({'ok': False, 'message': verify_payload.get('error') or 'No se pudo verificar tu ID.'}), verify_status
+        player_nick = verify_payload.get('nick')
+
+    try:
+        moved = account_points.transfer_to_id(current_user.id, game_id, player_id, payload.get('amount'))
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': str(exc)}), 400
+    except Exception:
+        db.session.rollback()
+        return jsonify({'ok': False, 'message': 'No se pudieron pasar los puntos. Intenta de nuevo.'}), 500
+
+    response = jsonify({
+        'ok': True,
+        'wallet_balance': moved['wallet_balance'],
+        # Mismo formato que /api/points/balance: la ventana de puntos sigue directo con ese ID.
+        'points': {
+            'ok': True, 'game_id': game_id, 'game_name': game.name, 'player_id': player_id, 'player_nick': player_nick,
+            'balance': moved['id_balance'], 'spin_cost': get_points_spin_cost(),
+        },
+    })
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 POINTS_ACTIONS_PER_MINUTE = 12

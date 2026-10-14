@@ -201,7 +201,7 @@ def notify_support_admin_reply(chat, message):
         app, chat.id,
         'Soporte te respondió 💬',
         body,
-        url='/',
+        url='/soporte/',   # al tocar el aviso (o su botón "Ir al chat", ver static/sw.js) se abre el chat, no la portada
     )
 
     # Prioridad al que escribio a proposito para que le avisen; el del

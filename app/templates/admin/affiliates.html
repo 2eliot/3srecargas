@@ -43,18 +43,18 @@
                         </span>
                     </td>
                     <td>
-                        <button class="btn-sm btn-outline" onclick="copyLink('{{ request.host_url }}r/{{ aff.code }}')">
+                        <button class="btn-sm btn-outline" onclick="copyLink({{ ((request.host_url) ~ 'r/' ~ (aff.code))|jsattr }})">
                             Copiar Link
                         </button>
                     </td>
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-outline"
-                                    onclick="openEditAff({{ aff.id }}, '{{ aff.name }}', '{{ aff.email or '' }}', {{ aff.client_discount_rate or 0 }}, {{ aff.commission_rate }}, {{ aff.is_active | lower }}, {{ aff.one_per_player | lower }})">
+                                    onclick="openEditAff({{ aff.id }}, {{ ((aff.name))|jsattr }}, {{ ((aff.email or ''))|jsattr }}, {{ aff.client_discount_rate or 0 }}, {{ aff.commission_rate }}, {{ aff.is_active | lower }}, {{ aff.one_per_player | lower }})">
                                 Editar
                             </button>
                             <button class="btn-sm btn-outline"
-                                    onclick="openBalanceModal({{ aff.id }}, '{{ aff.name }}', {{ aff.balance or 0 }})">
+                                    onclick="openBalanceModal({{ aff.id }}, {{ ((aff.name))|jsattr }}, {{ aff.balance or 0 }})">
                                 Editar monto
                             </button>
                             {% if aff.balance > 0 %}

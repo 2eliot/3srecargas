@@ -3,11 +3,142 @@
 {% block page_title %}Ranking{% endblock %}
 
 {% block content %}
+{#- ───── Cómo funciona ───── -#}
+<div class="admin-card">
+    <div class="card-header"><h3>Rankings mensuales</h3></div>
+    <div style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 8px;">Aquí creas los rankings que quieras y les pones premio a cada puesto. Hay tres tipos:</p>
+        <ul class="form-hint" style="margin:0 0 8px 18px;padding:0;line-height:1.6;">
+            <li><b>Por juego</b>: los IDs que más recargaron ese mes en un juego (Free Fire, Blood Strike, Mobile Legends...). El premio puede ser un <b>paquete</b> o <b>puntos de la tienda</b> que se le entregan al ID ganador.</li>
+            <li><b>Cuentas que más recargan</b>: las cuentas (perfiles) que más recargaron con su sesión abierta. El premio puede ser <b>puntos para el perfil</b> o un texto que tú entregas.</li>
+            <li><b>Perfiles por nivel</b>: las cuentas con más nivel. Mismos premios que el anterior.</li>
+        </ul>
+        <p class="form-hint" style="margin:0;">Cuando empieza un mes nuevo se cierra el anterior: se guardan los ganadores y los premios marcados como <b>automático</b> se entregan solos. Un perfil no gana puntos recargando: solo por el premio de un ranking o porque tú se los pones en <b>Cuentas → su perfil → Puntos del perfil</b>. Para usarlos, el dueño del perfil los pasa a un ID desde "Canjear puntos".</p>
+    </div>
+</div>
+
+{#- ───── Crear un ranking ───── -#}
+<div class="admin-card" id="crearRanking">
+    <div class="card-header"><h3>Crear un ranking</h3><span>{{ boards|length }} de {{ max_boards }}</span></div>
+    <form method="POST" action="{{ url_for('admin_bp.ranking_create') }}" style="padding:0 20px 20px;" id="createBoardForm">
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="newBoardName">Nombre (sale en la pestaña de la tienda)</label>
+                <input type="text" id="newBoardName" name="name" maxlength="{{ name_max }}" required placeholder="Ej: Mobile Legends">
+            </div>
+            <div class="form-group">
+                <label for="newBoardKind">Tipo de ranking</label>
+                <select id="newBoardKind" name="kind">
+                    {% for key, info in kinds.items() %}<option value="{{ key }}">{{ info.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="form-group" id="newBoardGameGroup">
+                <label for="newBoardGame">Juego</label>
+                <select id="newBoardGame" name="game_id">
+                    <option value="">Elige un juego</option>
+                    {% for game in games %}<option value="{{ game.id }}">{{ game.name }}</option>{% endfor %}
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn-primary">Crear ranking</button>
+    </form>
+</div>
+
+{#- ───── Cada ranking ───── -#}
+{% for view in boards %}
+{% set board = view.board %}
+<div class="admin-card board-card" id="board-{{ board.id }}" data-kind="{{ board.kind }}">
+    <details class="settings-section" style="border:none;margin:0;padding:0;background:none;" {% if view.game_id == '' and board.kind == 'game' %}open{% endif %}>
+        <summary class="settings-section-summary" style="padding:14px 20px;">
+            <h3 style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0;">
+                {{ view.name }}
+                <small style="opacity:.6;font-weight:600;">{{ kinds[board.kind].short }}{% if board.kind == 'game' and board.game %} · {{ board.game.name }}{% endif %}</small>
+                {% if board.enabled %}<span class="badge badge-active">Se ve en la tienda</span>{% else %}<span class="badge badge-inactive">Apagado</span>{% endif %}
+            </h3>
+            <span class="settings-chevron">▾</span>
+        </summary>
+
+        <form method="POST" action="{{ url_for('admin_bp.ranking_save', board_id=board.id) }}" class="board-form" data-board-id="{{ board.id }}" data-kind="{{ board.kind }}" style="padding:0 20px 8px;">
+            <label class="check-label" style="margin:4px 0 14px;">
+                <input type="checkbox" name="enabled" value="1" {% if view.enabled %}checked{% endif %}>
+                <b>Mostrar este ranking en la tienda</b>
+            </label>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="bn{{ board.id }}">Nombre (pestaña de la tienda)</label>
+                    <input type="text" id="bn{{ board.id }}" name="name" maxlength="{{ name_max }}" required value="{{ view.name }}">
+                </div>
+                <div class="form-group">
+                    <label for="bu{{ board.id }}">Lo que se cuenta (texto que ve la gente)</label>
+                    <input type="text" id="bu{{ board.id }}" name="units_label" maxlength="{{ units_max }}" value="{{ view.units_label }}" placeholder="Ej: Diamantes recargados">
+                </div>
+                {% if board.kind == 'game' %}
+                <div class="form-group">
+                    <label for="bg{{ board.id }}">Juego de este ranking</label>
+                    <select id="bg{{ board.id }}" name="game_id" class="board-game">
+                        <option value="">Elige un juego</option>
+                        {% for game in games %}<option value="{{ game.id }}" {% if view.game_id == game.id|string %}selected{% endif %}>{{ game.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="form-group">
+                    <label for="bp{{ board.id }}">Puestos que reciben premio</label>
+                    <select id="bp{{ board.id }}" name="prize_places" class="board-places">
+                        {% for n in range(1, max_places + 1) %}<option value="{{ n }}" {% if view.places|string == n|string %}selected{% endif %}>Top {{ n }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <p class="form-hint" style="margin:6px 0 10px;">
+                {% if board.kind == 'game' %}
+                Premio de cada puesto: un <b>paquete</b> de ese juego o <b>puntos</b> (se le entregan al ID ganador si marcas "Automático"), o un <b>texto</b> que tú entregas a mano.
+                {% else %}
+                Premio de cada puesto: <b>puntos de la tienda</b> (se suman al perfil ganador si marcas "Automático"; los usa pasándolos a un ID) o un <b>texto</b> que tú entregas a mano. Solo ganan perfiles públicos que aceptaron salir en rankings.
+                {% endif %}
+            </p>
+            <div class="table-wrap">
+                <table class="admin-table ranking-prize-table">
+                    <thead><tr><th style="width:64px;">Puesto</th><th style="width:210px;">Premio</th><th>Detalle</th><th style="width:120px;">Automático</th></tr></thead>
+                    <tbody>
+                    {% for row in view.rows %}
+                    <tr class="prize-row" data-pos="{{ row.position }}">
+                        <td><b>#{{ row.position }}</b></td>
+                        <td>
+                            <select name="prize_type_{{ row.position }}" class="prize-type">
+                                {% for ptype in prize_types[board.kind] %}<option value="{{ ptype }}" {% if row.type == ptype %}selected{% endif %}>{{ prize_type_labels[ptype] }}</option>{% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <select name="prize_package_{{ row.position }}" class="prize-package" data-selected="{{ row.package_id }}" style="display:none;"><option value="">Elige un paquete</option></select>
+                            <input type="number" name="prize_points_{{ row.position }}" class="prize-points" min="1" max="{{ points_max }}" step="1" value="{{ row.points }}" placeholder="Cantidad de puntos" style="display:none;">
+                            <input type="text" name="prize_text_{{ row.position }}" class="prize-text" maxlength="{{ text_max }}" value="{{ row.text }}" placeholder="Ej: Un set de skins" style="display:none;">
+                            <span class="prize-none form-hint" style="display:none;">Este puesto no tiene premio.</span>
+                        </td>
+                        <td>
+                            <label class="check-label prize-auto-label"><input type="checkbox" name="prize_auto_{{ row.position }}" value="1" class="prize-auto" {% if row.auto %}checked{% endif %}> Automático</label>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 12px;">
+                <button type="submit" class="btn-primary">Guardar ranking</button>
+            </div>
+        </form>
+        <form method="POST" action="{{ url_for('admin_bp.ranking_delete', board_id=board.id) }}" style="padding:0 20px 20px;" onsubmit="return confirm('¿Borrar este ranking? Los ganadores de meses anteriores ya guardados no se tocan.');">
+            <button type="submit" class="btn-sm btn-danger">Borrar este ranking</button>
+        </form>
+    </details>
+</div>
+{% endfor %}
+
+{#- ───── Ganadores provisionales (en vivo) ───── -#}
 <div class="admin-card ranking-live-admin-card">
     <div class="card-header card-header-inline">
         <div>
             <h3>Ganadores Provisionales</h3>
-            <p class="form-hint">Monitorea el top actual del mes en tiempo real y revisa el histórico archivado de ganadores desde el mismo panel.</p>
+            <p class="form-hint">Monitorea el top actual del mes en tiempo real y revisa el histórico archivado de ganadores (y cómo se entregó cada premio) desde el mismo panel.</p>
         </div>
         <span class="badge badge-active" id="rankingAdminSyncStatus">Cargando...</span>
     </div>
@@ -23,6 +154,86 @@
 {% block extra_js %}
 <script>
 (function() {
+    // ── Formularios de los rankings ──────────────────────────────────────────
+    var packagesByGame = {{ packages_by_game|tojson }};
+
+    function setupPrizeRow(row) {
+        var typeSel = row.querySelector('.prize-type');
+        var pkg = row.querySelector('.prize-package');
+        var pts = row.querySelector('.prize-points');
+        var txt = row.querySelector('.prize-text');
+        var none = row.querySelector('.prize-none');
+        var autoLabel = row.querySelector('.prize-auto-label');
+        function refresh() {
+            var t = typeSel.value;
+            pkg.style.display = t === 'package' ? '' : 'none';
+            pts.style.display = t === 'points' ? '' : 'none';
+            txt.style.display = t === 'text' ? '' : 'none';
+            none.style.display = t === 'none' ? '' : 'none';
+            autoLabel.style.visibility = (t === 'package' || t === 'points') ? 'visible' : 'hidden';
+        }
+        typeSel.addEventListener('change', function() {
+            refresh();
+            if (typeSel.value === 'package' || typeSel.value === 'points') {
+                var auto = row.querySelector('.prize-auto');
+                if (auto && !auto.dataset.touched) auto.checked = true;
+            }
+        });
+        row.querySelector('.prize-auto').addEventListener('change', function() { this.dataset.touched = '1'; });
+        refresh();
+    }
+
+    function fillPackages(form) {
+        var gameSel = form.querySelector('.board-game');
+        if (!gameSel) return;
+        var options = packagesByGame[gameSel.value] || [];
+        form.querySelectorAll('.prize-package').forEach(function(select) {
+            var wanted = select.getAttribute('data-selected') || select.value || '';
+            select.innerHTML = '<option value="">Elige un paquete</option>';
+            options.forEach(function(p) {
+                var o = document.createElement('option');
+                o.value = String(p.id);
+                o.textContent = '#' + p.id + ' · ' + p.name + (p.is_automated ? ' · Auto' : '');
+                if (String(p.id) === String(wanted)) o.selected = true;
+                select.appendChild(o);
+            });
+        });
+    }
+
+    function showPlaces(form) {
+        var places = parseInt(form.querySelector('.board-places').value, 10) || 5;
+        form.querySelectorAll('.prize-row').forEach(function(row) {
+            row.style.display = parseInt(row.getAttribute('data-pos'), 10) <= places ? '' : 'none';
+        });
+    }
+
+    document.querySelectorAll('.board-form').forEach(function(form) {
+        form.querySelectorAll('.prize-row').forEach(setupPrizeRow);
+        fillPackages(form);
+        showPlaces(form);
+        var gameSel = form.querySelector('.board-game');
+        if (gameSel) gameSel.addEventListener('change', function() {
+            form.querySelectorAll('.prize-package').forEach(function(s) { s.setAttribute('data-selected', ''); });
+            fillPackages(form);
+        });
+        form.querySelector('.board-places').addEventListener('change', function() { showPlaces(form); });
+    });
+
+    // Crear: el juego solo se pide en el tipo "Por juego".
+    var kindSel = document.getElementById('newBoardKind');
+    var gameGroup = document.getElementById('newBoardGameGroup');
+    function toggleNewGame() { gameGroup.style.display = kindSel.value === 'game' ? '' : 'none'; }
+    if (kindSel && gameGroup) { kindSel.addEventListener('change', toggleNewGame); toggleNewGame(); }
+
+    // Abre solo el ranking al que se llegó con #board-N (después de crear o guardar).
+    var hash = (location.hash || '').slice(1);
+    if (/^board-\d+$/.test(hash)) {
+        var card = document.getElementById(hash);
+        var det = card && card.querySelector('details');
+        if (det) { det.open = true; card.scrollIntoView({ block: 'start' }); }
+    }
+
+    // ── Ganadores provisionales (en vivo) ────────────────────────────────────
     var tabsEl = document.getElementById('rankingAdminTabs');
     var metaEl = document.getElementById('rankingAdminMeta');
     var statusEl = document.getElementById('rankingAdminStatus');
@@ -30,12 +241,7 @@
     var syncEl = document.getElementById('rankingAdminSyncStatus');
     if (!tabsEl || !metaEl || !statusEl || !boardEl || !syncEl) return;
 
-    var state = {
-        items: [],
-        activeKey: '',
-        generatedAt: '',
-        loading: false
-    };
+    var state = { items: [], activeKey: '', generatedAt: '', loading: false };
 
     function escHtml(value) {
         if (value === null || value === undefined) return '';
@@ -47,13 +253,11 @@
             .replace(/'/g, '&#39;');
     }
 
-    function formatReward(value, rankingKey) {
+    function formatReward(value, item) {
         if (value === null || value === undefined || value === '') return 'Sin premio';
         var text = String(value).trim();
         if (!text) return 'Sin premio';
-        if (rankingKey === 'free_fire' && /^\d+(?:[.,]\d+)?$/.test(text)) {
-            return '💎 ' + text;
-        }
+        if (item && item.kind === 'game' && /diamante/i.test(item.units_label || '') && /^\d+(?:[.,]\d+)?$/.test(text)) return '💎 ' + text;
         return text;
     }
 
@@ -85,26 +289,23 @@
     }
 
     function renderArchiveHistory(item) {
-        if (!item.archive_history || !item.archive_history.length) {
-            return '';
-        }
-
+        if (!item.archive_history || !item.archive_history.length) return '';
         var html = '<div class="ranking-admin-archive-stack">';
         item.archive_history.forEach(function(period) {
             html += '<div class="ranking-admin-archive">' +
                 '<div class="ranking-admin-archive-title">Ganadores archivados ' + escHtml(period.label || '') + '</div>' +
                 '<div class="ranking-admin-archive-list">';
-
             (period.entries || []).forEach(function(entry) {
                 html += '<div class="ranking-admin-archive-item">' +
                     '<strong>#' + escHtml(entry.position) + '</strong>' +
                     '<span>' + escHtml(entry.nickname || entry.masked_nickname || 'Jugador***') + '</span>' +
                     '<code>' + escHtml(entry.player_id || entry.masked_player_id || '----') + '</code>' +
+                    (entry.email ? '<span>' + escHtml(entry.email) + '</span>' : '') +
                     '<span title="' + escHtml(item.units_label || 'Total') + '"><strong>' + escHtml(entry.total_units) + '</strong> ' + escHtml(item.units_label || '') + '</span>' +
-                    '<span>' + escHtml(formatReward(entry.prize_label, item.key)) + '</span>' +
+                    '<span>' + escHtml(formatReward(entry.prize_label, item)) + '</span>' +
+                    (entry.prize_detail ? '<span style="opacity:.75">' + escHtml(entry.prize_detail) + '</span>' : '') +
                 '</div>';
             });
-
             html += '</div></div>';
         });
         html += '</div>';
@@ -117,29 +318,25 @@
             setStatus('No hay rankings activos configurados en este momento.', false);
             return;
         }
-
-        metaEl.textContent = 'Mes ' + (item.month_label || '') + ' · ' + item.game_name + ' · ' + String(item.total_players || 0) + ' jugador(es) rankeados · Actualizado ' + (state.generatedAt || '');
-
-        var html = '<div class="table-wrap"><table class="admin-table ranking-admin-table"><thead><tr><th>Puesto</th><th>Jugador</th><th>ID</th><th>' + escHtml(item.units_label || 'Total') + '</th><th>Premio</th></tr></thead><tbody>';
-
+        metaEl.textContent = 'Mes ' + (item.month_label || '') + ' · ' + item.game_name + ' · ' + String(item.total_players || 0) + ' participante(s) · Actualizado ' + (state.generatedAt || '');
+        var isGame = item.kind === 'game';
+        var html = '<div class="table-wrap"><table class="admin-table ranking-admin-table"><thead><tr><th>Puesto</th><th>' + (isGame ? 'Jugador' : 'Perfil') + '</th><th>' + (isGame ? 'ID' : 'Usuario / correo') + '</th><th>' + escHtml(item.units_label || 'Total') + '</th><th>Premio</th></tr></thead><tbody>';
         if (item.leaders && item.leaders.length) {
             item.leaders.forEach(function(entry) {
                 var prizeTone = entry.is_prize_eligible ? ' ranking-admin-prize-cell' : '';
                 html += '<tr>' +
                     '<td><span class="ranking-admin-position">#' + escHtml(entry.position) + '</span></td>' +
                     '<td>' + escHtml(entry.nickname || 'Sin nickname') + '</td>' +
-                    '<td><code class="ref-code">' + escHtml(entry.player_id || '----') + '</code></td>' +
+                    '<td><code class="ref-code">' + escHtml(entry.player_id || '----') + '</code>' + (entry.email ? '<br><small>' + escHtml(entry.email) + '</small>' : '') + '</td>' +
                     '<td><strong>' + escHtml(entry.total_units) + '</strong></td>' +
-                    '<td class="' + prizeTone.trim() + '">' + escHtml(formatReward(entry.prize_label, item.key)) + '</td>' +
+                    '<td class="' + prizeTone.trim() + '">' + escHtml(formatReward(entry.prize_label, item)) + '</td>' +
                 '</tr>';
             });
         } else {
-            html += '<tr><td colspan="5" class="empty-row">Todavía no hay órdenes aprobadas o completadas para este ranking en el mes actual.</td></tr>';
+            html += '<tr><td colspan="5" class="empty-row">Todavía no hay participantes para este ranking en el mes actual.</td></tr>';
         }
-
         html += '</tbody></table></div>';
         html += renderArchiveHistory(item);
-
         statusEl.style.display = 'none';
         statusEl.style.color = '';
         boardEl.innerHTML = html;
@@ -150,17 +347,12 @@
         if (state.loading) return;
         state.loading = true;
         syncEl.textContent = 'Actualizando...';
-
         fetch('/admin/rankings/live', { credentials: 'same-origin' })
             .then(function(response) { return response.json(); })
             .then(function(data) {
-                var items = data && Array.isArray(data.rankings) ? data.rankings.filter(function(item) {
-                    return item && item.enabled;
-                }) : [];
-
+                var items = data && Array.isArray(data.rankings) ? data.rankings.filter(function(item) { return item && item.enabled; }) : [];
                 state.items = items;
                 state.generatedAt = data && data.generated_at ? data.generated_at : '';
-
                 if (!state.items.length) {
                     state.activeKey = '';
                     setStatus('No hay rankings activos configurados en este momento.', false);
@@ -168,14 +360,8 @@
                     syncEl.textContent = 'Sin datos';
                     return;
                 }
-
-                var hasCurrentActive = state.items.some(function(item) {
-                    return item.key === state.activeKey;
-                });
-                if (!hasCurrentActive) {
-                    state.activeKey = state.items[0].key;
-                }
-
+                var hasCurrentActive = state.items.some(function(item) { return item.key === state.activeKey; });
+                if (!hasCurrentActive) state.activeKey = state.items[0].key;
                 renderTabs();
                 renderBoard();
                 syncEl.textContent = 'En línea';
@@ -184,9 +370,7 @@
                 setStatus('No se pudo cargar el monitoreo del ranking.', true);
                 syncEl.textContent = 'Error';
             })
-            .finally(function() {
-                state.loading = false;
-            });
+            .finally(function() { state.loading = false; });
     }
 
     tabsEl.addEventListener('click', function(event) {

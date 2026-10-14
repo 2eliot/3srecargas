@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ tournament.title ~ ' • ' if tournament else '' }}Torneos • 3SRecargas</title>
+{% include '_head_common.html' %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Archivo+Black&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    /* Los textos "slate" de Tailwind son gris con tono azulado: aquí pasan a gris neutro (solo el color de la letra). */
+    tailwind.config = { theme: { extend: { textColor: { slate: { 50: '#fafafa', 100: '#f5f5f5', 200: '#e5e5e5', 300: '#d4d4d4', 400: '#a3a3a3', 500: '#737373', 600: '#525252', 700: '#404040', 800: '#262626', 900: '#171717', 950: '#0a0a0a' } } } } };
+</script>
+<style>
+body {
+    font-family: 'Outfit', sans-serif; background-color: #000000; color: #fafafa; -webkit-tap-highlight-color: transparent;
+    /* el mismo fondo de la portada (negro con brillo rojo arriba y violeta abajo) para que el cristal tenga algo que mostrar */
+    background-image: radial-gradient(ellipse at 50% -10%, rgba(255,0,0,.10), transparent 55%), radial-gradient(ellipse at 85% 110%, rgba(120,0,255,.08), transparent 55%);
+    background-attachment: fixed;
+}
+/* transparente: así el cristal deja ver el fondo que se elige en el admin */
+.mobile-shell { width: 100%; max-width: 440px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; background-color: transparent; position: relative; }
+button, input { touch-action: manipulation; }
+[hidden] { display: none !important; }
+
+/* Cristal IGUAL que el contenedor de "Verificar ID" de la portada (.glass-panel de neon.css): una sola capa con desenfoque; las piezas de adentro no llevan desenfoque. */
+.glass-card {
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
+    backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    -webkit-backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-top: 1px solid rgba(255,255,255,0.35);
+    border-left: 1px solid rgba(255,255,255,0.25);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 30px rgba(255,0,0,0.08);
+}
+@media (min-width: 768px) {
+    .glass-card { backdrop-filter: blur(8px) saturate(200%) brightness(1.2); -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.2); }
+}
+.glass-chip {
+    background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.14);
+    border-top: 1px solid rgba(255,255,255,0.28);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.12);
+}
+.glass-inset {
+    background: rgba(0,0,0,0.22);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-top: 1px solid rgba(255,255,255,0.2);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.08);
+}
+.glass-input-field {
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-top: 1px solid rgba(255,255,255,0.25);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 1px rgba(255,255,255,0.15);
+    color: #fff;
+}
+.glass-input-field::placeholder { color: #a3a3a3; font-weight: 600; }
+.glass-input-field:focus { outline: none; border-color: rgba(255,0,0,0.65); box-shadow: 0 0 0 3px rgba(255,0,0,0.15), inset 0 2px 4px rgba(0,0,0,0.1); }
+
+.torneos-logo { display: flex; justify-content: center; padding: 6px 0 2px; }
+.torneos-logo img { height: 34px; width: auto; object-fit: contain; }
+.torneos-logo span { font-family: 'Archivo Black', 'Arial Black', sans-serif; font-size: 20px; letter-spacing: .04em; color: #fff; }
+.torneos-logo span b { color: #e11d2e; font-weight: inherit; }
+.torneos-trophy { filter: drop-shadow(0 0 18px rgba(255,190,40,.35)); }
+
+.room-bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,.12); overflow: hidden; }
+.room-bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #22c55e, #86efac); transition: width .5s ease; }
+.room.is-full .room-bar > span { background: linear-gradient(90deg, #ef4444, #fca5a5); }
+.room.is-finished .room-bar > span { background: linear-gradient(90deg, #64748b, #cbd5e1); }
+.room { width: 100%; text-align: left; color: inherit; cursor: pointer; font: inherit; transition: transform .15s ease, border-color .2s ease, box-shadow .2s ease, opacity .2s ease; }
+.room:active { transform: scale(.985); }
+.room:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.room.is-locked { opacity: .72; }
+.room.is-finished { opacity: .6; }
+.room.is-soon { opacity: .9; border-color: rgba(96,165,250,.45); }
+.room.is-selected { border-color: rgba(255,255,255,.85); box-shadow: 0 0 0 2px rgba(255,255,255,.25), 0 0 26px rgba(255,255,255,.12), inset 0 1px 1px rgba(255,255,255,.2); opacity: 1; }
+.room { min-width: 0; height: 100%; }
+#roomsList > :only-child, #roomsList > .rooms-empty { grid-column: 1 / -1; }
+.room-name { max-width: 100%; }
+.room-note { font-size: 10.5px; line-height: 1.3; color: #a3a3a3; }
+.room-tap { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #fca5a5; }
+.cd-box { min-width: 64px; padding: 10px 8px; border-radius: 14px; text-align: center; background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.14); border-top-color: rgba(255,255,255,.26); box-shadow: inset 0 1px 1px rgba(255,255,255,.08); }
+.cd-box b { display: block; font-size: 28px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: .02em; color: #fff; }
+.cd-box small { display: block; margin-top: 5px; font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #a3a3a3; }
+.room.is-open { border-color: rgba(74,222,128,.55); box-shadow: 0 0 22px rgba(74,222,128,.12), inset 0 1px 1px rgba(255,255,255,.1); }
+.room.is-open.is-selected { border-color: rgba(134,239,172,.95); box-shadow: 0 0 0 2px rgba(74,222,128,.3), 0 0 26px rgba(74,222,128,.25), inset 0 1px 1px rgba(255,255,255,.2); }
+.room-pill { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; }
+.room.is-open .room-pill { color: #4ade80; background: rgba(74,222,128,.12); border-color: rgba(74,222,128,.4); }
+.room.is-full .room-pill { color: #f87171; background: rgba(248,113,113,.12); border-color: rgba(248,113,113,.4); }
+.room.is-locked .room-pill { color: #fbbf24; background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.35); }
+.room.is-soon .room-pill { color: #93c5fd; background: rgba(96,165,250,.12); border-color: rgba(96,165,250,.4); }
+.room.is-finished .room-pill { color: #cbd5e1; background: rgba(148,163,184,.12); border-color: rgba(148,163,184,.4); }
+.room-mine { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #4ade80; }
+
+/* Resumen de salas (cuántas hay, cuántas con lugar y cuántas llenas) */
+.sum-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .02em; }
+.sum-chip b { font-size: 13px; font-weight: 900; color: #fff; }
+
+/* "Tu lugar": el número grande para que se vea de un vistazo */
+.slot-box { text-align: center; padding: 14px 10px 12px; border-radius: 16px; background: linear-gradient(180deg, rgba(251,191,36,.14), rgba(0,0,0,.2)); border: 1px solid rgba(251,191,36,.45); }
+.slot-box .slot-label { font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #fde68a; }
+.slot-box .slot-num { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-top: 2px; }
+.slot-box .slot-num b { font-family: 'Archivo Black', 'Arial Black', sans-serif; font-weight: 400; font-size: 64px; line-height: 1.05; color: #fff; text-shadow: 0 0 26px rgba(251,191,36,.45); }
+.slot-box .slot-num small { font-size: 15px; font-weight: 800; color: #d4d4d4; }
+.slot-box .slot-room { margin-top: 2px; font-size: 12px; font-weight: 700; color: #d4d4d4; }
+
+/* Aviso de expulsión: caja amarilla que rebota para que lo lean */
+.warn-box { display: flex; gap: 10px; align-items: flex-start; padding: 12px 13px; border-radius: 14px; text-align: left; color: #1c1400; font-size: 12.5px; line-height: 1.45; font-weight: 800;
+    background: linear-gradient(135deg, #fde047, #facc15 55%, #f59e0b); border: 1px solid #fef08a; box-shadow: 0 6px 22px rgba(250,204,21,.35), inset 0 1px 1px rgba(255,255,255,.6);
+    animation: warnBounce 2.4s ease-in-out infinite; }
+.warn-box .warn-ico { flex: none; font-size: 22px; line-height: 1; }
+@keyframes warnBounce { 0%, 55%, 100% { transform: translateY(0); } 62% { transform: translateY(-9px); } 70% { transform: translateY(0); } 78% { transform: translateY(-5px); } 86% { transform: translateY(0); } 92% { transform: translateY(-2px); } }
+
+/* Aviso de "no puedes entrar a esa sala": amarillo suave que se sacude al aparecer */
+.room-alert { display: flex; gap: 10px; align-items: flex-start; padding: 12px 13px; border-radius: 14px; text-align: left; font-size: 12.5px; line-height: 1.45; font-weight: 700;
+    color: #fde68a; background: rgba(250,204,21,.12); border: 1px solid rgba(250,204,21,.55); }
+.room-alert.is-info { color: #e5e5e5; background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.2); }
+.room-alert.is-bad { color: #fca5a5; background: rgba(248,113,113,.1); border-color: rgba(248,113,113,.5); }
+.room-alert.shake { animation: roomShake .5s ease both; }
+@keyframes roomShake { 0%, 100% { transform: translateX(0); } 15% { transform: translateX(-8px); } 30% { transform: translateX(7px); } 45% { transform: translateX(-6px); } 60% { transform: translateX(5px); } 75% { transform: translateX(-3px); } 90% { transform: translateX(2px); } }
+#roomPanel { scroll-margin-top: 12px; animation: panelIn .25s ease both; }
+@keyframes panelIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.link-btn { background: none; border: 0; padding: 4px 0; font: inherit; font-size: 11.5px; font-weight: 800; color: #93c5fd; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.copy-btn { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 6px 10px; border-radius: 8px; }
+.pulse-ring { animation: torneoPulse 1.8s ease-in-out infinite; }
+@keyframes torneoPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(74,222,128,.35); } 50% { box-shadow: 0 0 0 8px rgba(74,222,128,0); } }
+@media (prefers-reduced-motion: reduce) { .pulse-ring, .warn-box, .room-alert.shake, #roomPanel { animation: none; } .room-bar > span, .room { transition: none; } }
+</style>
+</head>
+<body class="bg-black text-slate-100 flex justify-center">
+{# Fondo: el propio de Torneos (Admin → Configuración → Imágenes y fondos → Fondos de pantalla) o, si no hay, el fondo general de la web #}
+{% set torneos_bg = DRAWER_BG_IMAGES.drawer_bg_torneos or SITE_BACKGROUND_IMAGE %}
+{% if torneos_bg %}
+<div aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + torneos_bg) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
+{% endif %}
+<div class="mobile-shell p-4">
+    <a href="{{ url_for('main_bp.index') }}" class="torneos-logo" aria-label="3S Recargas">
+        {% if SITE_LOGO %}<img src="{{ url_for('static', filename='uploads/' + SITE_LOGO) }}" alt="3S Recargas">{% else %}<span>3S<b>RECARGAS</b></span>{% endif %}
+    </a>
+
+    <a href="{{ url_for('main_bp.index') }}" class="inline-flex items-center gap-1.5 glass-chip hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-sm transition mt-1 mb-2 w-fit active:scale-95">
+        <span>←</span> Volver a la tienda
+    </a>
+
+    <header class="w-full flex flex-col items-center text-center pt-2 pb-3">
+        <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] font-extrabold px-3.5 py-1 rounded-full uppercase tracking-wider mb-2 shadow-lg shadow-red-600/30 border border-red-400/30">
+            <span>⚡</span> 3S RECARGAS • Torneos <span>🏆</span>
+        </div>
+        <h1 class="text-2xl font-extrabold tracking-wider text-white" id="pageTitle">🏆 {{ tournament.title|upper if tournament else 'TORNEOS' }}</h1>
+        {% if tournament and tournament.description %}<p class="text-slate-300 text-[12px] mt-1 max-w-xs">{{ tournament.description }}</p>{% endif %}
+    </header>
+
+    <main class="w-full flex flex-col items-center gap-3.5">
+        {% if preview %}
+        <div class="glass-card w-full p-3 rounded-2xl text-center text-amber-300 text-[12px] font-bold">
+            Vista previa del administrador: este torneo todavía no es visible para los clientes (está en «{{ {'draft': 'Preparando', 'finished': 'Terminado'}.get(tournament.status, tournament.status) }}»).
+        </div>
+        {% endif %}
+
+        {% if tournament %}
+        <section class="glass-card w-full p-4 rounded-2xl" id="statusCard" aria-live="polite">
+            <div class="flex items-center justify-between gap-2">
+                <div class="text-left">
+                    <h2 class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estado</h2>
+                    <div id="statusLine" class="text-sm font-black tracking-wide mt-0.5 text-slate-200">Cargando...</div>
+                </div>
+                <div class="text-right">
+                    <h2 class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Inscritos</h2>
+                    <div id="totalLine" class="text-sm font-black tracking-wide mt-0.5 text-white">--</div>
+                </div>
+            </div>
+            <div id="roomsSummary" class="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-white/10" hidden></div>
+        </section>
+
+        <section id="countdownCard" class="glass-card w-full p-4 rounded-2xl text-center" style="border-color: rgba(96,165,250,.5);" hidden>
+            <h2 class="text-[10px] uppercase tracking-widest text-slate-300 font-extrabold">Las inscripciones se abren en</h2>
+            <div id="countdown" class="flex justify-center gap-2 mt-3" role="timer" aria-label="Cuenta regresiva para abrir las inscripciones">
+                <div class="cd-box" id="cdDBox"><b id="cdD">00</b><small>días</small></div>
+                <div class="cd-box"><b id="cdH">00</b><small>horas</small></div>
+                <div class="cd-box"><b id="cdM">00</b><small>min</small></div>
+                <div class="cd-box"><b id="cdS">00</b><small>seg</small></div>
+            </div>
+            <p id="opensLabel" class="text-[11px] text-slate-300 mt-3"></p>
+            <p class="text-[11px] text-slate-400 mt-1">Mientras esperas, toca la sala y ve verificando tu ID: así entras más rápido cuando abra.</p>
+        </section>
+
+        <section id="noVerifyCard" class="glass-card w-full p-4 rounded-2xl text-center text-amber-300 text-[12px] font-bold leading-relaxed" hidden>
+            La verificación de ID no está activa para este juego, así que todavía no se puede inscribir nadie. Inténtalo más tarde o escríbenos por soporte.
+        </section>
+
+        <section id="removedCard" class="glass-card w-full p-4 rounded-2xl text-center text-red-300 text-sm font-bold" hidden>
+            Te sacaron de la lista de este torneo. Si crees que es un error, escríbenos por soporte.
+        </section>
+
+        <section id="myRoomCard" class="glass-card w-full p-4 rounded-2xl flex flex-col gap-3" style="border-color: rgba(74,222,128,.55);" hidden>
+            <div class="flex items-center gap-2">
+                <div class="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-400/40 flex items-center justify-center text-lg pulse-ring">✅</div>
+                <div class="text-left min-w-0">
+                    <h2 class="text-sm font-extrabold tracking-wide text-white">¡Estás dentro!</h2>
+                    <p id="myNick" class="text-[11px] text-slate-300 truncate"></p>
+                </div>
+            </div>
+            <div class="slot-box" aria-live="polite">
+                <div class="slot-label">Tu lugar</div>
+                <div class="slot-num"><b id="mySlot">#1</b><small id="mySlotOf"></small></div>
+                <div class="slot-room" id="mySlotRoom"></div>
+            </div>
+            <div class="glass-inset rounded-xl p-3 flex flex-col gap-2.5">
+                <div>
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Tu sala</div>
+                    <div id="myRoomName" class="text-base font-black text-white"></div>
+                </div>
+                <div class="flex items-end justify-between gap-2">
+                    <div class="min-w-0"><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">ID de la sala</div><div id="myRoomCode" class="text-sm font-black font-mono text-white break-all"></div></div>
+                    <button type="button" class="copy-btn glass-chip text-slate-200" data-copy="myRoomCode">Copiar</button>
+                </div>
+                <div class="flex items-end justify-between gap-2">
+                    <div class="min-w-0"><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Clave de la sala</div><div id="myRoomPass" class="text-sm font-black font-mono text-white break-all"></div></div>
+                    <button type="button" class="copy-btn glass-chip text-slate-200" data-copy="myRoomPass">Copiar</button>
+                </div>
+            </div>
+            <div class="warn-box" role="note">
+                <span class="warn-ico" aria-hidden="true">⚠️</span>
+                <p>Entra a la sala con el MISMO ID y nombre con el que te inscribiste. Quien esté dentro y no aparezca en la lista de esta sala será expulsado.</p>
+            </div>
+            <p class="text-slate-400 text-[11px] leading-relaxed">Si sales de esta página, vuelve a entrar, toca tu sala en la lista de abajo y escribe tu ID para ver tus datos otra vez.</p>
+        </section>
+
+        <section class="w-full flex flex-col gap-2.5" id="roomsSection">
+            <div>
+                <h2 class="text-[10px] uppercase tracking-widest text-white font-extrabold">Salas</h2>
+                <p id="roomsHint" class="text-slate-400 text-[11px] mt-1">Toca la sala donde quieres participar. Se llenan en orden: solo puedes entrar a la sala activa.</p>
+            </div>
+            <div id="roomsList" class="grid grid-cols-2 gap-2.5"></div>
+        </section>
+
+        <section id="roomPanel" class="glass-card w-full p-4 rounded-2xl flex flex-col gap-3" hidden aria-live="polite">
+            <div class="flex items-center justify-between gap-2">
+                <h2 id="panelTitle" class="text-sm font-extrabold tracking-wide text-white truncate"></h2>
+                <button type="button" id="panelClose" class="flex-shrink-0 glass-chip text-slate-300 hover:text-white text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-lg">Cerrar</button>
+            </div>
+
+            <div id="panelAlert" class="room-alert" role="alert" hidden><span aria-hidden="true" id="panelAlertIco">⚠️</span><p id="panelAlertText"></p></div>
+            <button type="button" id="goActiveBtn" class="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold text-xs uppercase tracking-wider px-5 py-3 rounded-xl shadow-lg shadow-red-600/30 active:scale-95 transition" hidden></button>
+
+            <div id="prizesBlock" hidden>
+                <h3 class="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Premios (para los mejores de cada sala)</h3>
+                <ul id="prizesList" class="flex flex-col gap-1.5"></ul>
+            </div>
+
+            <div id="joinForm" class="flex flex-col gap-3" hidden>
+                <p id="joinIntro" class="text-slate-300 text-[11px] leading-relaxed"></p>
+                <div class="w-full flex gap-2">
+                    <input type="tel" inputmode="numeric" id="playerIdInput" placeholder="Tu ID de juego..." autocomplete="off"
+                           class="glass-input-field flex-1 min-w-0 rounded-xl px-3 py-2.5 text-xs font-mono">
+                    {% if verifiable %}
+                    <button type="button" id="verifyIdBtn" class="flex-shrink-0 glass-chip hover:bg-white/10 text-slate-200 hover:text-white font-extrabold text-[10px] px-3.5 rounded-xl uppercase tracking-wider">🔍 Verificar</button>
+                    {% endif %}
+                </div>
+                <p id="verifyIdMsg" class="text-[11px] font-bold min-h-[14px]"></p>
+                <button type="button" id="joinBtn" class="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold text-xs uppercase tracking-wider px-5 py-3 rounded-xl shadow-lg shadow-red-600/30 active:scale-95 transition disabled:opacity-50 disabled:active:scale-100" disabled>
+                    Unirme al torneo
+                </button>
+                <p id="joinMsg" class="text-[11px] font-bold min-h-[16px]" role="status"></p>
+                <button type="button" id="modeToggle" class="link-btn self-start" hidden></button>
+            </div>
+        </section>
+
+        {% elif tournaments %}
+        <section class="w-full flex flex-col gap-2.5">
+            <h2 class="text-[10px] uppercase tracking-widest text-white font-extrabold">Elige un torneo</h2>
+            {% for t in tournaments %}
+            <a href="{{ url_for('promos_bp.torneo_page', tournament_id=t.id) }}" class="glass-card w-full p-4 rounded-2xl flex items-center justify-between gap-3 active:scale-[.98] transition">
+                <span class="min-w-0 text-left">
+                    <strong class="block text-sm text-white truncate">{{ t.title }}</strong>
+                    <small class="block text-[11px] text-slate-400 truncate">{{ t.game.name if t.game else '' }}{% if t.description %} · {{ t.description }}{% endif %}</small>
+                </span>
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-right {{ 'text-sky-300' if t.id in scheduled_labels else 'text-emerald-300' if t.status == 'open' else 'text-amber-300' }}">{% if t.id in scheduled_labels %}Abre el<br>{{ scheduled_labels[t.id] }}{% else %}{{ 'Abierto' if t.status == 'open' else 'Cerrado' }}{% endif %}</span>
+            </a>
+            {% endfor %}
+        </section>
+
+        {% else %}
+        <section id="torneosSoon" class="glass-card w-full p-6 rounded-2xl text-center flex flex-col items-center gap-3">
+            <div class="torneos-trophy text-6xl leading-none" aria-hidden="true">🏆</div>
+            <h2 class="text-lg font-extrabold tracking-wide text-white">¡Muy pronto!</h2>
+            <p class="text-slate-300 text-sm leading-relaxed max-w-xs">
+                No hay ningún torneo abierto ahora mismo. Cuando haya uno, lo anunciamos en nuestro canal de WhatsApp con el link para inscribirte.
+            </p>
+            <a href="{{ url_for('main_bp.index') }}" class="mt-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold text-xs uppercase tracking-wider px-5 py-3 rounded-xl shadow-lg shadow-red-600/30 active:scale-95 transition">
+                Ir a la tienda
+            </a>
+        </section>
+        {% endif %}
+    </main>
+</div>
+
+{% if tournament %}
+<script>
+(function () {
+    const TID = {{ tournament.id }};
+    const GAME_ID = {{ tournament.game_id }};
+    const VERIFIABLE = {{ 'true' if verifiable else 'false' }};
+    const GAME_NAME = {{ (tournament.game.name if tournament.game else 'juego')|tojson }};
+    const STORE_KEY = 'torneo_player_' + TID;
+    const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const $ = id => document.getElementById(id);
+    const input = $('playerIdInput'), verifyBtn = $('verifyIdBtn'), verifyMsg = $('verifyIdMsg'), joinBtn = $('joinBtn'), joinMsg = $('joinMsg');
+    let verifiedId = null, lastState = null, joining = false, entering = false;
+    let selected = null;        // posición de la sala que la persona tocó
+    let mode = 'join';          // 'join' (inscribirme) o 'enter' (ya estoy inscrito: entrar con mi ID)
+    let panelMode = 'join';     // lo que realmente se muestra (una sala llena solo permite 'enter')
+    let firstRender = true;
+
+    function say(el, text, kind) {
+        el.textContent = text || '';
+        el.className = el.className.replace(/\btext-(red|emerald|amber|slate)-\d+\b/g, '').trim() + ' ' + ({ bad: 'text-red-400', ok: 'text-emerald-400', warn: 'text-amber-300' }[kind] || 'text-slate-400');
+    }
+    function readStored() { try { return localStorage.getItem(STORE_KEY) || ''; } catch (e) { return ''; } }
+    function writeStored(v) { try { localStorage.setItem(STORE_KEY, v); } catch (e) { /* sin almacenamiento: no pasa nada */ } }
+    function currentPlayer() { return (input.value || '').trim(); }
+    function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+    function scrollTo(el, block) { if (el) el.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: block || 'start' }); }
+    function myEntry() { return lastState && lastState.entry && !lastState.entry.removed ? lastState.entry : null; }
+
+    // Cuenta regresiva: el servidor manda cuántos segundos faltan (así no depende del reloj del celular); al llegar a 0 se vuelve a preguntar
+    // y las inscripciones se abren solas, sin recargar la página.
+    let opensAt = null, cdTimer = null, cdRefreshing = false;
+    const pad2 = n => String(n).padStart(2, '0');
+    function tickCountdown() {
+        if (opensAt === null) return;
+        const left = Math.max(0, Math.ceil((opensAt - Date.now()) / 1000));
+        const d = Math.floor(left / 86400), h = Math.floor(left % 86400 / 3600), m = Math.floor(left % 3600 / 60), sec = left % 60;
+        $('cdD').textContent = pad2(d); $('cdH').textContent = pad2(h); $('cdM').textContent = pad2(m); $('cdS').textContent = pad2(sec);
+        $('cdDBox').hidden = d === 0;
+        if (left === 0 && !cdRefreshing) {
+            cdRefreshing = true;
+            refresh(readStored()).then(() => setTimeout(() => { cdRefreshing = false; }, 1500));
+        }
+    }
+    function setCountdown(seconds, label) {
+        const card = $('countdownCard');
+        if (seconds === null || seconds === undefined) { opensAt = null; card.hidden = true; return; }
+        opensAt = Date.now() + seconds * 1000;
+        $('opensLabel').textContent = label ? 'Abre el ' + label + ' (hora de Venezuela)' : '';
+        card.hidden = false;
+        if (!cdTimer) cdTimer = setInterval(tickCountdown, 1000);
+        tickCountdown();
+    }
+
+    // ───── salas ─────
+    const roomAt = pos => (lastState ? lastState.rooms.find(r => r.position === pos) : null) || null;
+    const activeRoom = () => (lastState ? lastState.rooms.find(r => r.base === 'open') : null) || null;
+    function previousOpenChain(index) {   // la sala anterior que todavía frena a esta (las terminadas no frenan a nadie)
+        for (let i = index - 1; i >= 0; i--) if (lastState.rooms[i].base !== 'finished') return lastState.rooms[i];
+        return null;
+    }
+    function pillText(r) { return { open: 'Abierta', full: 'Llena', locked: 'Bloqueada', soon: 'Próximamente', finished: 'Terminada' }[r.state] || ''; }
+
+    function renderSummary(state) {
+        const box = $('roomsSummary'), sm = state.rooms_summary || { total: 0 };
+        box.textContent = '';
+        if (!sm.total) { box.hidden = true; return; }
+        box.hidden = false;
+        const add = (cls, num, text) => {
+            const chip = document.createElement('span'); chip.className = 'sum-chip glass-chip ' + cls;
+            const b = document.createElement('b'); b.textContent = num; chip.appendChild(b); chip.appendChild(document.createTextNode(' ' + text)); box.appendChild(chip);
+        };
+        add('text-slate-200', sm.total, sm.total === 1 ? 'sala' : 'salas');
+        add('text-emerald-300', sm.available, sm.available === 1 ? 'disponible' : 'disponibles');
+        add('text-red-300', sm.full, sm.full === 1 ? 'llena' : 'llenas');
+        if (sm.finished) add('text-slate-300', sm.finished, sm.finished === 1 ? 'terminada' : 'terminadas');
+    }
+
+    function renderRooms(state) {
+        const rooms = $('roomsList'); rooms.textContent = '';
+        const entry = state.entry && !state.entry.removed ? state.entry : null;
+        if (!state.rooms.length) {
+            const empty = document.createElement('div'); empty.className = 'rooms-empty glass-card rounded-2xl p-4 text-center text-slate-300 text-xs'; empty.textContent = 'Las salas se publican en un momento.'; rooms.appendChild(empty);
+        }
+        state.rooms.forEach((r, i) => {
+            const card = document.createElement('button'); card.type = 'button';
+            card.className = 'room glass-card rounded-2xl p-3 flex flex-col items-stretch gap-2 is-' + r.state + (selected === r.position ? ' is-selected' : '');
+            card.dataset.pos = r.position; card.setAttribute('aria-pressed', selected === r.position ? 'true' : 'false');
+            card.setAttribute('aria-label', r.name + ', ' + pillText(r) + ', ' + r.count + ' de ' + r.max + ' jugadores');
+            const prev = previousOpenChain(i);
+            const mine = entry && entry.room.position === r.position;
+            const noteText = r.base === 'finished' ? 'Esta sala ya terminó'
+                : r.base === 'locked' ? (prev ? 'Se abre cuando se llene «' + prev.name + '»' : 'Todavía no se abre')
+                : r.base === 'full' ? 'Llena · ¿ya estás dentro? toca'
+                : (state.accepting ? 'Toca para inscribirte' : state.scheduled ? 'Se abre con el torneo' : '');
+            const bar = document.createElement('div'); bar.className = 'room-bar'; const fill = document.createElement('span'); fill.style.width = Math.min(100, Math.round(r.count * 100 / Math.max(1, r.max))) + '%'; bar.appendChild(fill);
+            const note = document.createElement('span'); note.className = 'room-note' + (r.base === 'open' ? ' room-tap' : ''); note.textContent = noteText;
+            const pill = document.createElement('span'); pill.className = 'room-pill'; pill.textContent = pillText(r);
+            const mineTag = () => { const m = document.createElement('span'); m.className = 'room-mine'; m.textContent = '✅ Tu sala'; return m; };
+            if (state.rooms.length === 1) {
+                // una sola sala: tarjeta ancha (nombre y estado en una línea, barra y cupos debajo)
+                card.className = card.className.replace('p-3 ', 'p-3.5 ') + ' is-wide';
+                const top = document.createElement('div'); top.className = 'flex items-center justify-between gap-2';
+                const name = document.createElement('strong'); name.className = 'text-sm text-white truncate'; name.textContent = r.name;
+                const right = document.createElement('span'); right.className = 'flex items-center gap-2 flex-shrink-0';
+                if (mine) right.appendChild(mineTag());
+                right.appendChild(pill); top.appendChild(name); top.appendChild(right);
+                const meta = document.createElement('div'); meta.className = 'flex items-center justify-between gap-2 text-[11px] text-slate-400';
+                const cnt = document.createElement('span'); cnt.textContent = r.count + ' de ' + r.max + ' jugadores';
+                note.className += ' text-right'; meta.appendChild(cnt); meta.appendChild(note);
+                card.appendChild(top); card.appendChild(bar); card.appendChild(meta);
+            } else {
+                // varias salas: cuadrícula de 2 columnas con tarjetas compactas (nombre, estado, barra, cupos y nota apilados)
+                const name = document.createElement('strong'); name.className = 'room-name text-[13.5px] leading-tight text-white truncate'; name.textContent = r.name;
+                const tags = document.createElement('span'); tags.className = 'flex items-center flex-wrap gap-x-2 gap-y-1';
+                tags.appendChild(pill); if (mine) tags.appendChild(mineTag());
+                const cnt = document.createElement('span'); cnt.className = 'text-[11px] text-slate-300 font-bold'; cnt.textContent = r.count + ' de ' + r.max + ' jugadores';
+                card.appendChild(name); card.appendChild(tags); card.appendChild(bar); card.appendChild(cnt); if (noteText) card.appendChild(note);
+            }
+            rooms.appendChild(card);
+        });
+    }
+
+    // ───── panel de la sala que se tocó ─────
+    function showAlert(kind, ico, text, shake) {
+        const box = $('panelAlert');
+        box.className = 'room-alert is-' + kind;
+        $('panelAlertIco').textContent = ico; $('panelAlertText').textContent = text; box.hidden = !text;
+        if (shake && !REDUCED) { box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake'); }
+    }
+    function fillPrizes(state) {
+        const prizes = state.prizes || [];
+        const list = $('prizesList'); list.textContent = '';
+        prizes.forEach(p => {
+            const li = document.createElement('li');
+            li.className = 'glass-inset rounded-xl px-3 py-2 flex items-center justify-between gap-2 text-xs';
+            const a = document.createElement('span'); a.className = 'font-extrabold text-amber-300'; a.textContent = (p.place === 1 ? '🥇 ' : p.place === 2 ? '🥈 ' : p.place === 3 ? '🥉 ' : '🏅 ') + 'Puesto ' + p.place;
+            const b = document.createElement('span'); b.className = 'font-bold text-white text-right'; b.textContent = p.name;
+            li.appendChild(a); li.appendChild(b); list.appendChild(li);
+        });
+        return prizes.length > 0;
+    }
+
+    function renderPanel() {
+        const panel = $('roomPanel'), state = lastState;
+        const r = state && selected !== null ? roomAt(selected) : null;
+        if (!r) { panel.hidden = true; return; }
+        panel.hidden = false;
+        $('panelTitle').textContent = r.name;
+        const active = activeRoom(), open = state.status === 'open';
+        const canGoActive = open && active && active.position !== r.position;
+        let alertKind = '', alertIco = '⚠️', alertText = '', shake = false, showForm = false, showPrizes = false;
+        const idx = state.rooms.findIndex(x => x.position === r.position);
+
+        if (r.base === 'finished') {
+            alertKind = 'info'; alertIco = '🏁'; alertText = r.name + ' ya terminó.' + (canGoActive ? ' La sala activa es ' + active.name + '.' : '');
+        } else if (r.base === 'locked') {
+            alertKind = 'warn';
+            if (!open) { alertText = r.name + ' todavía no se abre.'; alertKind = 'info'; }
+            else if (state.scheduled && active) alertText = 'No puedes unirte a ' + r.name + ' todavía: las salas se llenan en orden. Cuando abran las inscripciones, entra a ' + active.name + '; ' + r.name + ' se abre cuando se llene la anterior.';
+            else if (active) { alertText = 'No puedes unirte a ' + r.name + ' porque ' + active.name + ' todavía no está llena. ¡Apúrate a entrar a ' + active.name + ', que es la sala activa!'; shake = true; }
+            else alertText = 'No puedes unirte a ' + r.name + ' todavía.';
+        } else if (r.base === 'full') {
+            alertKind = 'info'; alertIco = '🔴'; alertText = r.name + ' ya está llena.' + (canGoActive ? ' Ahora la sala activa es ' + active.name + '.' : '') + ' Si ya estás inscrito en ella, escribe tu ID para entrar.';
+            showForm = true;
+        } else {   // abierta
+            showForm = true;
+            if (!open) { alertKind = 'info'; alertIco = '🔒'; alertText = 'Las inscripciones están cerradas. Si ya estabas inscrito en esta sala, escribe tu ID para entrar.'; }
+            else if (!state.verification_ok) { alertKind = 'warn'; alertText = 'La verificación de ID no está activa para este juego, así que todavía no se puede inscribir nadie.'; showForm = r.count > 0; }
+            else showPrizes = true;
+        }
+        const canJoin = r.base === 'open' && open && state.verification_ok;
+        panelMode = canJoin ? mode : 'enter';
+        showAlert(alertKind, alertIco, alertText, shake);
+        const go = $('goActiveBtn');
+        go.hidden = !(canGoActive && (r.base === 'locked' || r.base === 'full' || r.base === 'finished'));
+        go.textContent = canGoActive ? 'Ir a ' + active.name + ' (sala activa) →' : '';
+        $('prizesBlock').hidden = !(showPrizes && panelMode === 'join' && fillPrizes(state));
+        $('joinForm').hidden = !showForm;
+        if (showForm) {
+            if (panelMode === 'join') {
+                $('joinIntro').textContent = 'Inscríbete gratis en ' + r.name + '. Escribe tu ID de ' + GAME_NAME + (VERIFIABLE ? ', verifícalo' : '') + ' y toca «Unirme». Entras por orden de llegada.';
+                joinBtn.textContent = 'Unirme a ' + r.name;
+                if (verifyBtn) verifyBtn.hidden = false;
+            } else {
+                $('joinIntro').textContent = 'Escribe el ID con el que te inscribiste en ' + r.name + ' para ver otra vez los datos de tu sala.';
+                joinBtn.textContent = 'Entrar a mi sala';
+                if (verifyBtn) verifyBtn.hidden = true;
+                verifyMsg.textContent = '';
+            }
+            const tog = $('modeToggle');
+            tog.hidden = !(canJoin && r.count > 0);
+            tog.textContent = panelMode === 'join' ? '¿Ya estás inscrito en esta sala? Entra con tu ID' : '← Quiero inscribirme en esta sala';
+        }
+        updateJoinButton();
+    }
+
+    function selectRoom(pos) {
+        const mine = myEntry();
+        if (mine && mine.room.position === pos) { selected = null; renderRooms(lastState); renderPanel(); scrollTo($('myRoomCard'), 'center'); return; }
+        selected = pos; mode = 'join';
+        joinMsg.dataset.sticky = ''; say(joinMsg, '', ''); say(verifyMsg, '', '');
+        renderRooms(lastState); renderPanel();
+        scrollTo($('roomPanel'), 'start');
+    }
+    function closePanel() { selected = null; if (lastState) { renderRooms(lastState); renderPanel(); } }
+
+    function render(state) {
+        lastState = state;
+        const accepting = !!state.accepting;
+        let label = state.status_label, tone = 'text-slate-200';
+        if (state.scheduled) { label = '⏳ Próximamente'; tone = 'text-sky-300'; }
+        else if (state.status === 'open' && accepting) { label = '🟢 Inscripciones abiertas'; tone = 'text-emerald-400'; }
+        else if (state.status === 'open' && state.all_full) { label = '🔴 Cupos agotados'; tone = 'text-red-400'; }
+        else if (state.status === 'closed') { label = '🔒 Inscripciones cerradas'; tone = 'text-amber-300'; }
+        else if (state.status === 'draft') { label = '🛠️ En preparación (solo lo ves tú)'; tone = 'text-amber-300'; }
+        else if (state.status === 'finished') { label = 'Torneo terminado'; }
+        $('statusLine').textContent = label;
+        $('statusLine').className = 'text-sm font-black tracking-wide mt-0.5 ' + tone;
+        $('totalLine').textContent = state.total + ' / ' + state.capacity;
+        renderSummary(state);
+
+        // cuenta regresiva (torneo publicado con una hora de apertura que todavía no llega)
+        setCountdown(state.scheduled ? state.opens_in : null, state.opens_label);
+
+        // tu sala
+        const entry = state.entry;
+        $('myRoomCard').hidden = !(entry && !entry.removed);
+        $('removedCard').hidden = !(entry && entry.removed);
+        $('noVerifyCard').hidden = !(!state.verification_ok && !(entry && !entry.removed) && state.status !== 'finished');
+        if (entry && !entry.removed) {
+            $('myNick').textContent = (entry.nick ? entry.nick + ' · ' : '') + 'ID ' + entry.player_id;
+            $('myRoomName').textContent = entry.room.name;
+            $('myRoomCode').textContent = entry.room.code || '—';
+            $('myRoomPass').textContent = entry.room.password || '(sin clave)';
+            $('mySlot').textContent = '#' + entry.slot;
+            $('mySlotOf').textContent = entry.room.max ? 'de ' + entry.room.max : '';
+            $('mySlotRoom').textContent = 'en ' + entry.room.name;
+        }
+
+        // con una sola sala y sin estar inscrito, ya se deja elegida (un toque menos)
+        if (firstRender) { firstRender = false; if (state.rooms.length === 1 && !(entry && !entry.removed)) selected = state.rooms[0].position; }
+        // si la sala elegida ya no existe se cierra el panel
+        if (selected !== null && !roomAt(selected)) selected = null;
+        renderRooms(state);
+        renderPanel();
+    }
+
+    function updateJoinButton() {
+        const state = lastState;
+        if (!state || joinBtn.closest('#joinForm').hidden) return;
+        if (panelMode === 'enter') {
+            joinBtn.disabled = entering || currentPlayer() === '';
+            if (joinMsg.dataset.sticky !== '1') say(joinMsg, '', '');
+            return;
+        }
+        const ready = !!state.accepting && !joining && currentPlayer() !== '' && (!VERIFIABLE || verifiedId === currentPlayer());
+        joinBtn.disabled = !ready;
+        if (state.scheduled) {
+            say(joinMsg, 'Todavía no abre. Cuando llegue la hora podrás tocar «Unirme».', 'warn');
+        } else if (!state.accepting) {
+            say(joinMsg, state.status === 'closed' ? 'Las inscripciones están cerradas.' : state.all_full ? 'Se llenaron todos los cupos.' : state.status === 'draft' ? '' : 'Todavía no se abren las inscripciones.', 'warn');
+        } else if (joinMsg.dataset.sticky !== '1') {
+            say(joinMsg, '', '');
+        }
+    }
+
+    async function refresh(playerId) {
+        try {
+            const res = await fetch('/promos/api/torneos/' + TID + '/estado?player_id=' + encodeURIComponent(playerId || ''), { cache: 'no-store' });
+            const data = await res.json();
+            if (data && data.ok) render(data);
+        } catch (e) { /* sin conexión: se reintenta en el siguiente ciclo */ }
+    }
+
+    // Volver a entrar: la persona toca la sala donde está inscrita y escribe su ID; si está en esa sala ve sus datos, si no, se le avisa.
+    async function enterRoom() {
+        const playerId = currentPlayer(), r = selected !== null ? roomAt(selected) : null;
+        if (!playerId || entering || !r) return;
+        entering = true; joinBtn.disabled = true; joinMsg.dataset.sticky = ''; say(joinMsg, 'Buscando tu inscripción...', '');
+        try {
+            const res = await fetch('/promos/api/torneos/' + TID + '/estado?player_id=' + encodeURIComponent(playerId) + '&room=' + r.position, { cache: 'no-store' });
+            const data = await res.json();
+            joinMsg.dataset.sticky = '1';
+            if (!data.ok) say(joinMsg, data.error || 'No se pudo consultar. Intenta de nuevo.', 'bad');
+            else if (data.entry && data.entry.removed) say(joinMsg, 'Te sacaron de la lista de este torneo. Si crees que es un error, escríbenos por soporte.', 'bad');
+            else if (data.entry) { writeStored(playerId); joinMsg.dataset.sticky = ''; selected = null; render(data); scrollTo($('myRoomCard'), 'center'); }
+            else say(joinMsg, 'No estás inscrito en ' + r.name + '. Revisa que tu ID esté bien escrito.', 'bad');
+        } catch (e) { joinMsg.dataset.sticky = '1'; say(joinMsg, 'Error de conexión, intenta de nuevo.', 'bad'); }
+        entering = false; updateJoinButton();
+    }
+
+    async function joinRoom() {
+        const playerId = currentPlayer(), r = selected !== null ? roomAt(selected) : null;
+        if (!playerId || joining || !r) return;
+        joining = true; joinBtn.disabled = true; joinBtn.textContent = 'Uniéndote...'; joinMsg.dataset.sticky = ''; say(joinMsg, '', '');
+        try {
+            const res = await fetch('/promos/api/torneos/' + TID + '/unirme', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: playerId, room_position: r.position }) });
+            const data = await res.json();
+            if (!data.ok) {
+                if (data && data.rooms) { data.entry = lastState ? lastState.entry : null; render(data); }   // se actualizan los cupos sin perder tu sala
+                joinMsg.dataset.sticky = '1'; say(joinMsg, data.error || 'No se pudo completar la inscripción.', 'bad');
+                if (!data.rooms && data.error) say(joinMsg, data.error, 'bad');
+            } else { writeStored(playerId); joinMsg.dataset.sticky = ''; selected = null; render(data); scrollTo($('myRoomCard'), 'center'); }
+        } catch (e) { joinMsg.dataset.sticky = '1'; say(joinMsg, 'Error de conexión, intenta de nuevo.', 'bad'); }
+        joining = false; updateJoinButton();
+        if (!$('joinForm').hidden && panelMode === 'join' && selected !== null) { const rr = roomAt(selected); joinBtn.textContent = 'Unirme a ' + (rr ? rr.name : 'la sala'); }
+    }
+
+    $('roomsList').addEventListener('click', e => { const b = e.target.closest('.room'); if (b && lastState) selectRoom(Number(b.dataset.pos)); });
+    $('panelClose').addEventListener('click', closePanel);
+    $('goActiveBtn').addEventListener('click', () => { const a = activeRoom(); if (a) selectRoom(a.position); });
+    $('modeToggle').addEventListener('click', () => { mode = panelMode === 'join' ? 'enter' : 'join'; joinMsg.dataset.sticky = ''; say(joinMsg, '', ''); renderPanel(); });
+    joinBtn.addEventListener('click', () => { if (panelMode === 'enter') enterRoom(); else joinRoom(); });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && !joinBtn.disabled) { e.preventDefault(); joinBtn.click(); } });
+
+    if (verifyBtn) {
+        input.addEventListener('input', () => {
+            if (verifiedId !== null && currentPlayer() !== verifiedId) { verifiedId = null; say(verifyMsg, '', ''); }
+            joinMsg.dataset.sticky = ''; updateJoinButton();
+        });
+        verifyBtn.addEventListener('click', async () => {
+            const playerId = currentPlayer();
+            if (!playerId) { say(verifyMsg, 'Escribe tu ID primero.', 'bad'); return; }
+            verifyBtn.disabled = true; verifyBtn.textContent = '⏳ Verificando...'; say(verifyMsg, 'Consultando...', '');
+            try {
+                const res = await fetch('/promos/api/verify-player?game_id=' + GAME_ID + '&player_id=' + encodeURIComponent(playerId));
+                const data = await res.json();
+                if (!data.ok) { verifiedId = null; say(verifyMsg, data.error || 'No se pudo verificar tu ID.', 'bad'); }
+                else { verifiedId = playerId; say(verifyMsg, '✅ ' + data.nick, 'ok'); }
+            } catch (e) { verifiedId = null; say(verifyMsg, 'Error de conexión, intenta de nuevo.', 'bad'); }
+            verifyBtn.disabled = false; verifyBtn.textContent = '🔍 Verificar';
+            updateJoinButton();
+        });
+    } else {
+        input.addEventListener('input', () => { joinMsg.dataset.sticky = ''; updateJoinButton(); });
+    }
+
+    document.querySelectorAll('[data-copy]').forEach(btn => btn.addEventListener('click', async () => {
+        const text = $(btn.getAttribute('data-copy')).textContent.trim();
+        try { await navigator.clipboard.writeText(text); btn.textContent = '¡Copiado!'; }
+        catch (e) { const r = document.createRange(); r.selectNodeContents($(btn.getAttribute('data-copy'))); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = 'Seleccionado'; }
+        setTimeout(() => { btn.textContent = 'Copiar'; }, 1600);
+    }));
+
+    // Al volver a abrir el link con el mismo celular, se recuerda el ID y se muestra directo la sala (si ya estaba inscrito).
+    const stored = readStored();
+    if (stored) input.value = stored;
+    refresh(stored).then(() => { if (stored && lastState && lastState.entry && !lastState.entry.removed) { verifiedId = stored; } });
+    // Los cupos se actualizan solos (cada 10 s, y solo con la pestaña a la vista).
+    setInterval(() => { if (!document.hidden && !joining && !entering) refresh(readStored() || (lastState && lastState.entry ? lastState.entry.player_id : '')); }, 10000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(readStored()); });
+})();
+</script>
+{% endif %}
+</body>
+</html>

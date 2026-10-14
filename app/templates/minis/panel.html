@@ -61,7 +61,7 @@ body::before {
             </button>
             {% endif %}
             {% if mini_whatsapp_group_url %}
-            <a href="{{ mini_whatsapp_group_url }}" target="_blank" rel="noopener"
+            <a href="{{ mini_whatsapp_group_url|safe_href }}" target="_blank" rel="noopener"
                class="rdm-btn red-glow-pill rdm-btn-link">Únete al grupo de WhatsApp de los minis</a>
             <p class="rdm-sub" style="margin:8px 0 0; text-align:left; max-width:none;">
                 Ahí mandamos más instrucciones y formación para hacer tus videos.
@@ -278,7 +278,7 @@ body::before {
             </div>
             <div class="mn-course-list">
                 {% for v in course_videos %}
-                <a href="{{ v.youtube_url }}" target="_blank" rel="noopener" class="mn-course-item">
+                <a href="{{ v.youtube_url|safe_href }}" target="_blank" rel="noopener" class="mn-course-item">
                     <strong>▶ {{ v.title }}</strong>
                     {% if v.description %}<p>{{ v.description }}</p>{% endif %}
                 </a>
@@ -354,7 +354,7 @@ body::before {
             </div>
             <p class="rdm-sub" style="margin:0; text-align:left; max-width:none; white-space:pre-line;">{{ mini_rules_text }}</p>
             {% if mini_rules_video_url %}
-            <a href="{{ mini_rules_video_url }}" target="_blank" rel="noopener" class="rdm-btn red-glow-pill" style="margin-top:14px;">Ver video de las reglas</a>
+            <a href="{{ mini_rules_video_url|safe_href }}" target="_blank" rel="noopener" class="rdm-btn red-glow-pill" style="margin-top:14px;">Ver video de las reglas</a>
             {% endif %}
         </div>
     </div>
@@ -526,6 +526,7 @@ body::before {
     if (copyBtn) {
         copyBtn.addEventListener('click', function () {
             var link = window.location.origin + '/r/{{ affiliate.code }}';
+            if (!navigator.clipboard || !navigator.clipboard.writeText) return;   // navegador viejo o página sin HTTPS: no hay portapapeles
             navigator.clipboard.writeText(link).then(function () {
                 var prev = copyBtn.textContent;
                 copyBtn.textContent = '¡Copiado!';

@@ -198,7 +198,7 @@
         if (!chat) return;
         applyTyping(!!chat.ai_typing);
         if (codeEl) codeEl.textContent = chat.code || '';
-        if (presenceEl && chat.status === 'closed') presenceEl.textContent = 'Chat cerrado';
+        if (presenceEl && chat.status === 'closed') { presenceEl.textContent = 'Chat cerrado'; presenceEl.hidden = false; }
     }
 
     // Deja el hilo al final y el cursor listo para escribir.
@@ -253,12 +253,96 @@
     // ahi es donde se van las peticiones que nadie va a leer.
     function startPolling() {
         if (state.timer) return;
+        setTimeout(offerPush, 2500);   // ya hay chat: se ofrece (una vez) avisar al teléfono cuando soporte responda
         state.timer = setInterval(function () {
             if (document.visibilityState === 'visible') poll();
         }, 5000);
         document.addEventListener('visibilitychange', function () {
             if (document.visibilityState === 'visible') poll();
         });
+    }
+
+    // ── Avisos al teléfono cuando soporte responde ───────────────────────
+    //
+    // Si el cliente acepta, el navegador le muestra "Soporte te respondió" (con el botón "Ir al chat") aunque tenga la página cerrada. La
+    // suscripción se liga a ESTE chat con su token (el servidor la guarda en push_subscriptions.chat_id y el aviso sale cuando el equipo escribe).
+    var PUSH_ASKED_KEY = 'store:support-push-asked';
+
+    function pushSupported() {
+        return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+    }
+
+    function keyToBytes(base64String) {
+        var padding = '='.repeat((4 - base64String.length % 4) % 4);
+        var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        var raw = window.atob(base64);
+        var out = new Uint8Array(raw.length);
+        for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+        return out;
+    }
+
+    function linkPush(registration) {
+        return registration.pushManager.getSubscription().then(function (existing) {
+            if (existing) return existing;
+            return fetch('/push/vapid-public-key').then(function (r) { return r.json(); }).then(function (data) {
+                return registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(data.publicKey) });
+            });
+        }).then(function (subscription) {
+            var raw = subscription.toJSON();
+            return fetch('/push/subscribe', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: headers({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ endpoint: raw.endpoint, keys: raw.keys, support_token: state.token })
+            });
+        });
+    }
+
+    function enablePush() {
+        navigator.serviceWorker.register('/sw.js').then(function (registration) {
+            return Notification.requestPermission().then(function (permission) {
+                return permission === 'granted' ? linkPush(registration) : null;
+            });
+        }).catch(function () {});
+    }
+
+    function offerPush() {
+        if (!pushSupported() || !state.hasChat || !state.token) return;
+        if (Notification.permission === 'granted') {
+            // Ya dio el permiso en otra página de la tienda: solo se liga este chat a su dispositivo, sin preguntar nada.
+            navigator.serviceWorker.register('/sw.js').then(linkPush).catch(function () {});
+            return;
+        }
+        if (Notification.permission !== 'default' || document.getElementById('scPushOffer')) return;
+        var asked = '';
+        try { asked = localStorage.getItem(PUSH_ASKED_KEY) || ''; } catch (_) {}
+        if (asked) return;
+
+        var box = document.createElement('div');
+        box.id = 'scPushOffer';
+        box.className = 'sc-msg system sc-push-offer';
+        var text = document.createElement('span');
+        text.className = 'sc-msg-body';
+        text.textContent = '🔔 ¿Quieres que te avisemos en tu teléfono cuando soporte te responda?';
+        box.appendChild(text);
+        var row = document.createElement('div');
+        row.className = 'sc-actions';
+        function remember() { try { localStorage.setItem(PUSH_ASKED_KEY, '1'); } catch (_) {} }
+        var yes = document.createElement('button');
+        yes.type = 'button';
+        yes.className = 'sc-act primary';
+        yes.textContent = 'Activar avisos';
+        yes.addEventListener('click', function () { remember(); box.remove(); enablePush(); });
+        var no = document.createElement('button');
+        no.type = 'button';
+        no.className = 'sc-act';
+        no.textContent = 'Ahora no';
+        no.addEventListener('click', function () { remember(); box.remove(); });
+        row.appendChild(yes);
+        row.appendChild(no);
+        box.appendChild(row);
+        thread.appendChild(box);
+        scrollDown();
     }
 
     // ── Abrir el chat ────────────────────────────────────────────────────
@@ -273,6 +357,19 @@
         var err = new Error(message);
         err.fromServer = true;
         return err;
+    }
+
+    // Aviso pasajero dentro del chat (7 s), sin ventanas del sistema: antes un fallo de red hacía "desaparecer" el mensaje sin explicar nada.
+    function sendNotice(text) {
+        var n = document.createElement('div');
+        n.className = 'sc-msg system';
+        var b = document.createElement('span');
+        b.className = 'sc-msg-body';
+        b.textContent = text;
+        n.appendChild(b);
+        thread.appendChild(n);
+        scrollDown();
+        setTimeout(function () { if (n.parentNode) n.parentNode.removeChild(n); }, 7000);
     }
 
     function startChat(message, hasAttachment) {
@@ -376,7 +473,7 @@
                 // escribir por un fallo de red es la peor forma de
                 // recibir a quien ya viene molesto.
                 if (input) input.value = body;
-                if (err && err.fromServer) alert(err.message);
+                sendNotice(err && err.fromServer ? err.message : 'No se pudo enviar. Revisa tu internet y toca enviar otra vez.');
             });
     });
 
@@ -385,7 +482,8 @@
         input.addEventListener('keydown', function (evt) {
             if (evt.key === 'Enter' && !evt.shiftKey) {
                 evt.preventDefault();
-                composer.requestSubmit();
+                if (composer.requestSubmit) composer.requestSubmit();
+                else composer.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));   // navegadores viejos sin requestSubmit
             }
         });
         // La caja crece con el texto, como en cualquier mensajeria.

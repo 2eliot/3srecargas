@@ -35,15 +35,15 @@
                 <tr>
                     <td><strong>{{ aff.name }}</strong></td>
                     <td>{{ aff.email or '—' }}<br><small>{{ aff.whatsapp_phone or '' }}</small></td>
-                    <td><a href="{{ aff.channel_url }}" target="_blank" rel="noopener">Ver canal</a></td>
+                    <td><a href="{{ aff.channel_url|safe_href }}" target="_blank" rel="noopener">Ver canal</a></td>
                     <td style="max-width:220px;">{{ aff.application_note or '—' }}</td>
                     <td>{{ aff.created_at.strftime('%d/%m/%Y') if aff.created_at else '' }}</td>
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-success"
-                                    onclick="openApproveModal({{ aff.id }}, '{{ aff.code }}')">Aprobar</button>
+                                    onclick="openApproveModal({{ aff.id }}, {{ ((aff.code))|jsattr }})">Aprobar</button>
                             <button class="btn-sm btn-danger"
-                                    onclick="openRejectModal({{ aff.id }}, '{{ aff.name }}')">Rechazar</button>
+                                    onclick="openRejectModal({{ aff.id }}, {{ ((aff.name))|jsattr }})">Rechazar</button>
                         </div>
                     </td>
                 </tr>
@@ -154,21 +154,21 @@
                         <div class="action-btns">
                             {% if progress and progress.unpaid %}
                             <button class="btn-sm btn-success"
-                                    onclick="openRankModal({{ aff.id }}, '{{ progress.unpaid[0].name }}', {{ progress.unpaid[0].bonus_amount }})">
+                                    onclick="openRankModal({{ aff.id }}, {{ ((progress.unpaid[0].name))|jsattr }}, {{ progress.unpaid[0].bonus_amount }})">
                                 Pagar {{ progress.unpaid[0].name }}
                             </button>
                             {% else %}
                             <span class="badge badge-inactive">Al día</span>
                             {% endif %}
                             <button class="btn-sm btn-outline"
-                                    onclick="openMiniCommissionModal({{ aff.id }}, '{{ aff.name }}', {{ aff.commission_rate }}, {{ aff.client_discount_rate or 0 }}, {{ aff.is_active | lower }}, {{ aff.one_per_player | lower }})">Editar %</button>
+                                    onclick="openMiniCommissionModal({{ aff.id }}, {{ ((aff.name))|jsattr }}, {{ aff.commission_rate }}, {{ aff.client_discount_rate or 0 }}, {{ aff.is_active | lower }}, {{ aff.one_per_player | lower }})">Editar %</button>
                             <button class="btn-sm btn-outline"
-                                    onclick="openPasswordModal({{ aff.id }}, '{{ aff.name }}')">Cambiar clave</button>
+                                    onclick="openPasswordModal({{ aff.id }}, {{ ((aff.name))|jsattr }})">Cambiar clave</button>
                             <button class="btn-sm btn-outline"
-                                    onclick="openNoteModal({{ aff.id }}, '{{ aff.name }}')">📩 Enviar nota</button>
+                                    onclick="openNoteModal({{ aff.id }}, {{ ((aff.name))|jsattr }})">📩 Enviar nota</button>
                             <form method="POST" action="{{ url_for('admin_bp.mini_delete', aff_id=aff.id) }}" style="display:inline">
                                 <button class="btn-sm btn-danger" type="submit"
-                                        onclick="return confirm('¿Eliminar la cuenta mini de {{ aff.name }}? Esta acción no se puede deshacer.')">Eliminar</button>
+                                        onclick="return confirm({{ ('¿Eliminar la cuenta mini de ' ~ (aff.name) ~ '? Esta acción no se puede deshacer.')|jsattr }})">Eliminar</button>
                             </form>
                         </div>
                     </td>
@@ -398,7 +398,7 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-outline"
-                                    onclick="openRankEditModal({{ r.id }}, '{{ r.name }}', {{ r.uses_required }}, {{ r.bonus_amount }}, {{ r.sort_order }})">Editar</button>
+                                    onclick="openRankEditModal({{ r.id }}, {{ ((r.name))|jsattr }}, {{ r.uses_required }}, {{ r.bonus_amount }}, {{ r.sort_order }})">Editar</button>
                             <form method="POST" action="{{ url_for('admin_bp.mini_rank_delete', rank_id=r.id) }}" style="display:inline">
                                 <button class="btn-sm btn-danger" type="submit" onclick="return confirm('¿Borrar este rango?')">Borrar</button>
                             </form>
@@ -551,7 +551,7 @@
                 {% for v in pending_videos %}
                 <tr>
                     <td>{{ v.affiliate.name if v.affiliate else '—' }}</td>
-                    <td><a href="{{ v.url }}" target="_blank" rel="noopener">{{ v.platform|capitalize }}</a></td>
+                    <td><a href="{{ v.url|safe_href }}" target="_blank" rel="noopener">{{ v.platform|capitalize }}</a></td>
                     <td>{{ v.views_declared }}</td>
                     <td>${{ '%.2f'|format(suggested_reward_for_views(v.views_declared)) }}</td>
                     <td>{{ v.created_at.strftime('%d/%m/%Y') if v.created_at else '' }}</td>
@@ -579,7 +579,7 @@
                 {% for v in reviewed_videos %}
                 <tr>
                     <td>{{ v.affiliate.name if v.affiliate else '—' }}</td>
-                    <td><a href="{{ v.url }}" target="_blank" rel="noopener">{{ v.platform|capitalize }}</a></td>
+                    <td><a href="{{ v.url|safe_href }}" target="_blank" rel="noopener">{{ v.platform|capitalize }}</a></td>
                     <td><span class="badge {% if v.status == 'approved' %}badge-active{% else %}badge-danger{% endif %}">{{ 'Aprobado' if v.status == 'approved' else 'Rechazado' }}</span></td>
                     <td>${{ '%.2f'|format(v.reward_amount or 0) }}</td>
                 </tr>
@@ -631,7 +631,7 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-success" type="button"
-                                    onclick="openWithdrawalApproveModal({{ w.id }}, '{{ w.affiliate.name if w.affiliate else '' }}', {{ '%.2f'|format(w.amount) }})">Aprobar</button>
+                                    onclick="openWithdrawalApproveModal({{ w.id }}, {{ ((w.affiliate.name if w.affiliate else ''))|jsattr }}, {{ '%.2f'|format(w.amount) }})">Aprobar</button>
                             <button class="btn-sm btn-danger" onclick="openWithdrawalRejectModal({{ w.id }})">Rechazar</button>
                         </div>
                     </td>

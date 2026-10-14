@@ -1785,7 +1785,8 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
     border-radius: 10px;
     background: var(--bg-secondary);
 }
-.logo-preview img {
+.logo-preview img,
+.logo-preview video {
     width: 56px;
     height: 56px;
     object-fit: cover;
@@ -1888,3 +1889,76 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
 body.is-embed .admin-main { margin-left: 0; padding-top: 0; min-height: 0; }
 body.is-embed .admin-content { padding: 0; max-width: none; }
 body.is-embed .admin-flashes { top: 8px; right: 8px; }
+
+/* ── Imágenes y fondos del sitio (Configuración): grupos con tarjetas parejas ─────────────────────────────────────
+   Antes era una sola cuadrícula de dos columnas con cajas grandes de "toca aquí para subir foto" y las miniaturas debajo
+   (las filas quedaban desparejas). Ahora cada tipo de imagen va en un grupo con título y cada una en una tarjeta del mismo estilo:
+   nombre y ayuda arriba; abajo la miniatura de lo que hay puesto (o "Sin imagen"), el botón de subir y la casilla de quitar. */
+.img-intro { margin: 0 0 12px; max-width: 760px; line-height: 1.55; }
+.img-tips { margin: 0 0 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary); }
+.img-tips > summary { cursor: pointer; list-style: none; padding: 9px 12px; font-size: 12.5px; font-weight: 700; color: var(--text-primary); }
+.img-tips > summary::-webkit-details-marker { display: none; }
+.img-tips > summary::before { content: '▸'; display: inline-block; margin-right: 8px; transition: transform .2s ease; }
+.img-tips[open] > summary::before { transform: rotate(90deg); }
+.img-tips ul { margin: 0; padding: 0 14px 12px 32px; display: grid; gap: 6px; font-size: 12.5px; line-height: 1.55; color: var(--text-muted); }
+.img-tips strong { color: var(--text-primary); }
+.img-group { margin-top: 22px; }
+.img-group-head { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.img-group-head h4 { margin: 0; font-size: 14px; font-weight: 800; color: var(--text-primary); }
+.img-group-head p { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
+.img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 12px; align-items: stretch; }
+.img-tile { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-secondary); }
+.img-tile.is-wide, .img-tile-link { grid-column: 1 / -1; }
+.img-tile-head { display: flex; align-items: flex-start; gap: 10px; }
+.img-tile-headtext { min-width: 0; flex: 1; }
+.img-tile-head label { display: block; margin: 0; font-size: 13px; font-weight: 800; color: var(--text-primary); }
+.img-tile-head small { display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.4; color: var(--text-muted); }
+/* El MISMO icono (subir imagen, de línea) en todas las tarjetas, en vez de emojis distintos */
+.img-tile-ico { flex: 0 0 auto; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px;
+    color: #c4b5fd; background: rgba(139,92,246,.14); border: 1px solid rgba(139,92,246,.35); }
+.img-tile-ico svg { width: 19px; height: 19px; }
+.img-tile .img-tile-thumb.is-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.img-tile-thumb.is-empty svg { width: 20px; height: 20px; color: var(--text-muted); opacity: .6; }
+.img-tile-body { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.img-tile.is-wide .img-tile-body { flex-wrap: wrap; }
+.img-tile .img-tile-thumb {
+    flex: 0 0 auto; width: 76px; height: 76px; margin: 0; padding: 0; display: grid; place-items: center; overflow: hidden;
+    border: 1px solid var(--border); border-radius: 10px; background: repeating-conic-gradient(#262636 0 25%, #1c1c29 0 50%) 0 0 / 14px 14px;
+}
+.img-tile .img-tile-thumb img, .img-tile .img-tile-thumb video { width: 100%; height: 100%; border-radius: 0; object-fit: cover; }
+.img-tile .img-tile-thumb.is-contain img { object-fit: contain; padding: 5px; }
+.img-tile .img-tile-thumb.is-round, .img-tile .img-tile-thumb.is-round img { border-radius: 50%; }
+.img-tile .img-tile-thumb.is-tall { width: 54px; height: 96px; }
+.img-tile .img-tile-thumb.is-wide { width: min(100%, 220px); height: 46px; }
+.img-tile .img-tile-thumb.is-empty { border-style: dashed; background: rgba(255,255,255,.03); }
+.img-tile-thumb.is-empty span { padding: 4px; text-align: center; font-size: 10.5px; line-height: 1.2; color: var(--text-muted); }
+.img-tile-side { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 8px; }
+.img-tile .admin-dropzone { gap: 10px; padding: 8px 10px; }
+.img-tile .admin-dropzone-title { font-size: 12px; }
+.img-tile .admin-dropzone-sub { white-space: normal; line-height: 1.3; }
+.img-tile .admin-dropzone-btn { padding: 7px 12px; }
+.img-tile-remove { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--text-muted); cursor: pointer; }
+.img-tile-remove:hover { color: var(--text-primary); }
+.img-tile-link input[type="text"] { width: 100%; }
+
+/* ── Configuración: botón de guardar de cada sección, tarjetas de redes sociales y vista de los videos ─────────────── */
+.settings-save { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+.settings-save-status { font-size: 12.5px; font-weight: 700; opacity: 0; transition: opacity .25s ease; text-align: right; }
+.settings-save-status.is-on { opacity: 1; }
+.settings-save-status.is-ok { color: var(--success); }
+.settings-save-status.is-bad { color: #fca5a5; }
+.settings-save-btn { display: inline-flex; align-items: center; gap: 8px; }
+.settings-save-btn svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.settings-save-btn:disabled { opacity: .6; cursor: progress; }
+.social-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px; }
+.social-field { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-secondary); }
+.social-field input { width: 100%; }
+.img-tile-view { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #c4b5fd; text-decoration: none; }
+.img-tile-view svg { width: 15px; height: 15px; }
+.img-tile-view:hover { color: #fff; }
+.img-tile .img-tile-thumb.is-clip { position: relative; width: 170px; height: 96px; }
+.img-tile .img-tile-thumb.is-clip::after {
+    content: ''; position: absolute; inset: 0; margin: auto; width: 32px; height: 32px; border-radius: 50%; pointer-events: none;
+    background: rgba(0,0,0,.6) center / 14px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fff'%3E%3Cpath d='M8 5v14l11-7z'/%3E%3C/svg%3E");
+    border: 1px solid rgba(255,255,255,.35);
+}

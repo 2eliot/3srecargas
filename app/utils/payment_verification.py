@@ -40,12 +40,25 @@ def normalize_reference_last5(reference):
     return raw[-6:] if raw else ''
 
 
+# Pabilo busca el pago por el FINAL de la referencia: con 4 o 5 dígitos podía devolver el pago de otra persona que
+# todavía no se había reclamado y dárselo a quien escribió esos dígitos. Por eso se exige un mínimo y no se prueban
+# terminaciones más cortas que él. Una referencia más corta no se consulta sola: queda para revisión manual.
+MIN_REFERENCE_LENGTH = 6
+
+
+def reference_is_long_enough(reference):
+    # Se cuentan solo los caracteres que importan: los ceros del principio no cuentan (0000000012 son 2, no 10); un relleno de ceros
+    # podía hacer pasar una referencia corta por larga.
+    significant = ''.join(ch for ch in str(reference or '') if ch.isalnum()).lstrip('0')
+    return len(significant) >= MIN_REFERENCE_LENGTH
+
+
 def _generate_reference_variants(reference):
     """Genera variantes de la referencia para probar contra Pabilo:
-    referencia completa, últimos 6, últimos 5, últimos 4 dígitos.
-    Elimina duplicados y solo incluye variantes >= 4 caracteres."""
+    la referencia completa y sus últimos 6 dígitos (nunca menos de MIN_REFERENCE_LENGTH).
+    Elimina duplicados."""
     ref = str(reference or '').strip()
-    if not ref:
+    if not ref or not reference_is_long_enough(ref):
         return []
 
     digits = ''.join(ch for ch in ref if ch.isdigit())
@@ -55,12 +68,11 @@ def _generate_reference_variants(reference):
     if ref not in variants:
         variants.append(ref)
 
-    # Si hay dígitos, agregar truncamientos (últimos N dígitos)
+    # Si hay dígitos, agregar el truncamiento de los últimos 6
     if digits:
-        for n in (6, 5, 4):
-            truncated = digits[-n:] if len(digits) >= n else None
-            if truncated and truncated not in variants and len(truncated) >= 4:
-                variants.append(truncated)
+        truncated = digits[-MIN_REFERENCE_LENGTH:] if len(digits) >= MIN_REFERENCE_LENGTH else None
+        if truncated and truncated not in variants:
+            variants.append(truncated)
 
     return variants
 
@@ -554,7 +566,18 @@ def verify_order_payment(order, force_reference=False):
                 'message': payload_error,
             }
     else:
-        reference_candidates = get_order_reference_candidates(order)
+        all_candidates = get_order_reference_candidates(order)
+        reference_candidates = [c for c in all_candidates if reference_is_long_enough(c['reference'])]
+        if all_candidates and not reference_candidates:
+            return {
+                'ok': False,
+                'verified': False,
+                'requestable': False,
+                'message': (
+                    f'La referencia tiene menos de {MIN_REFERENCE_LENGTH} caracteres: no se consulta sola en Pabilo '
+                    '(podría coincidir con el pago de otra persona). Un operador la revisa a mano.'
+                ),
+            }
         if not reference_candidates:
             return {
                 'ok': False,
@@ -794,6 +817,12 @@ def verify_remainder_reference(order, reference):
     reference = str(reference or '').strip()
     if not order or not reference:
         return {'ok': False, 'verified': False, 'message': 'Falta la referencia del pago restante.'}
+    if not reference_is_long_enough(reference):
+        return {
+            'ok': False,
+            'verified': False,
+            'message': f'La referencia del pago restante debe tener al menos {MIN_REFERENCE_LENGTH} dígitos. Escríbela completa o sube el comprobante.',
+        }
 
     payment_method = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
     if not payment_method:

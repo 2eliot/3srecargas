@@ -1,0 +1,159 @@
+{% extends 'admin/base.html' %}
+{% block title %}Ajustes de perfiles{% endblock %}
+{% block page_title %}Ajustes de perfiles{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 14px;"><a href="{{ url_for('admin_bp.accounts') }}" class="link-sm">← Volver a las cuentas</a></p>
+
+{#- ───── El ranking de cuentas y el de niveles ahora se crean y se premian en Dinámicas → Ranking ───── -#}
+<div class="admin-card" id="accountRankingCard">
+    <div class="card-header"><h3>Ranking de cuentas y de niveles</h3></div>
+    <div style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 12px;">Los rankings de <b>cuentas que más recargan</b> y de <b>perfiles por nivel</b> (con el premio de cada puesto, incluidos <b>puntos de la tienda para el perfil</b>) ahora se crean, se encienden y se premian en <b>Dinámicas → Ranking</b>, junto con los rankings de los juegos.</p>
+        <a href="{{ url_for('admin_bp.rankings') }}" class="btn-primary" style="text-decoration:none; display:inline-block;">Ir a Dinámicas → Ranking</a>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Niveles del mes</h3>
+        <span>{% if refreshed_at %}Último cálculo: {{ refreshed_at[:16]|replace('T', ' ') }} (UTC){% else %}Aún no se ha calculado{% endif %}</span>
+    </div>
+    <form method="POST" style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 14px;">Diamantes que hay que recargar <b>en el mes</b> para tener cada nivel. El nivel se reinicia cada mes. Cada nivel debe pedir más que el anterior (Bronce siempre es 0).</p>
+        <div class="form-grid-2">
+            {% for key, name, c1, c2 in levels %}
+            <div class="form-group">
+                <label for="lvl_{{ key }}"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,{{ c1 }},{{ c2 }});margin-right:6px;"></span>{{ name }}</label>
+                <input type="number" id="lvl_{{ key }}" name="level_{{ key }}" min="0" max="10000000" value="{{ thresholds[key] }}" {% if key == 'bronce' %}readonly{% endif %}>
+            </div>
+            {% endfor %}
+            <div class="form-group">
+                <label for="whale">Insignia "Ballena": diamantes en un solo mes</label>
+                <input type="number" id="whale" name="whale" min="1" max="10000000" value="{{ whale }}">
+            </div>
+            <div class="form-group">
+                <label for="like_limit">Me gusta que una cuenta puede dar por día</label>
+                <input type="number" id="like_limit" name="like_limit" min="1" max="1000" value="{{ like_limit }}">
+            </div>
+        </div>
+        <div class="form-group"><button type="submit" class="btn-primary">Guardar ajustes</button></div>
+    </form>
+    <form method="POST" action="{{ url_for('admin_bp.account_social_refresh') }}" style="padding:0 20px 20px;">
+        <button type="submit" class="btn-sm btn-outline">Recalcular ahora (niveles, puestos e insignias)</button>
+    </form>
+</div>
+
+{#- ───── Niveles por números (como Steam) ───── -#}
+{%- set F = xp_form -%}
+{%- macro thousands(n) -%}{{ '{:,}'.format(n or 0)|replace(',', '.') }}{%- endmacro -%}
+<div class="admin-card" id="xpCard">
+    <div class="card-header">
+        <h3>Niveles por números (como Steam)</h3>
+        <span>Nivel 1, 2, 3... que sube con la actividad. Se ve junto al nombre de cada perfil.</span>
+    </div>
+    <form method="POST" action="{{ url_for('admin_bp.account_xp_settings') }}" style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 14px;">Aquí tú pones <b>cuántos puntos da cada cosa</b>. Con los puntos se sube de nivel (no se pierde nunca, a diferencia del nivel del mes). Si pones <b>0</b> en una acción, deja de dar puntos. Los me gusta y seguidores tienen un <b>tope por día</b> para que nadie suba de nivel creando cuentas falsas. Las recargas cuentan cuando las hace la cuenta con su sesión abierta (a cualquier ID).</p>
+
+        <h4 style="margin:0 0 8px;font-size:14px;">1. Puntos por cada acción</h4>
+        <div class="table-wrap">
+            <table class="admin-table">
+                <thead><tr><th>Acción</th><th style="width:140px;">Puntos</th><th style="width:170px;">Tope por día</th></tr></thead>
+                <tbody>
+                    {% for key, text, help, default, cap in xp_points %}
+                    <tr>
+                        <td><b>{{ text }}</b><br><small style="opacity:.65">{{ help }}</small></td>
+                        <td><input type="number" name="xp_points_{{ key }}" min="0" max="{{ xp_max }}" value="{{ F.get('xp_points_' ~ key, xp_cfg.points[key]) }}" style="width:110px;" aria-label="Puntos: {{ text }}"></td>
+                        <td>{% if cap is not none %}<input type="number" name="xp_cap_{{ key }}" min="0" max="1000" value="{{ F.get('xp_cap_' ~ key, xp_cfg.caps[key]) }}" style="width:90px;" aria-label="Tope por día: {{ text }}"> <small style="opacity:.65">(0 = sin tope)</small>{% else %}<small style="opacity:.55">sin tope</small>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <h4 style="margin:18px 0 8px;font-size:14px;">2. Cuántos puntos hacen falta para cada nivel</h4>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="xp_first">Puntos para pasar del nivel 1 al 2</label>
+                <input type="number" id="xp_first" name="xp_curve_first" min="1" max="1000000" value="{{ F.get('xp_curve_first', xp_cfg.curve.first) }}">
+            </div>
+            <div class="form-group">
+                <label for="xp_step">Cuánto más cuesta cada nivel que el anterior</label>
+                <input type="number" id="xp_step" name="xp_curve_step" min="0" max="1000000" value="{{ F.get('xp_curve_step', xp_cfg.curve.step) }}">
+            </div>
+            <div class="form-group">
+                <label for="xp_max">Nivel máximo</label>
+                <input type="number" id="xp_max" name="xp_curve_max_level" min="10" max="500" value="{{ F.get('xp_curve_max_level', xp_cfg.curve.max_level) }}">
+            </div>
+        </div>
+        <p class="form-hint" style="margin:6px 0 10px;">Ejemplo con lo guardado ahora: del nivel 1 al 2 hacen falta <b>{{ thousands(xp_cfg.curve.first) }}</b> puntos, del 2 al 3 hacen falta <b>{{ thousands(xp_cfg.curve.first + xp_cfg.curve.step) }}</b>, y así cada nivel pide {{ thousands(xp_cfg.curve.step) }} más que el anterior.</p>
+        <div class="table-wrap">
+            <table class="admin-table">
+                <thead><tr><th>Nivel</th><th>Puntos totales para llegar</th><th>Puntos que cuesta ese nivel</th><th>Color</th></tr></thead>
+                <tbody>
+                    {% for r in xp_preview %}
+                    <tr><td><b>{{ r.level }}</b></td><td>{{ thousands(r.total) }}</td><td>{{ thousands(r.jump) }}</td><td>{{ r.tier }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="form-hint" style="margin:8px 0 0;">Esta tabla muestra lo que está <b>guardado</b>: cambia los números, toca "Guardar niveles" y se actualiza. El color del número cambia cada 10 niveles:
+            {% for from_level, name, c1, c2 in xp_tiers %}<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px;white-space:nowrap;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,{{ c1 }},{{ c2 }});"></span>{{ from_level }}+ {{ name }}</span>{% endfor %}
+        </p>
+
+        <h4 style="margin:18px 0 8px;font-size:14px;">3. Misiones (se completan solas)</h4>
+        <p class="form-hint" style="margin:0 0 8px;">Las misiones de <b>hoy</b> se reinician cada día y las de la <b>semana</b> cada lunes (hora de Venezuela). Solo las ve su dueño en su perfil. Solo cuentan desde el día que se activó este sistema ({{ xp_cfg.start[8:10] ~ '/' ~ xp_cfg.start[5:7] ~ '/' ~ xp_cfg.start[:4] if xp_cfg.start else 'hoy' }}); no regalan puntos por días anteriores.</p>
+        <div class="table-wrap">
+            <table class="admin-table">
+                <thead><tr><th style="width:70px;">Activa</th><th>Misión</th><th style="width:110px;">Meta</th><th style="width:130px;">Puntos que da</th></tr></thead>
+                <tbody>
+                    {% for key, period, metric, label, target, xp in xp_missions %}
+                    {% set m = xp_cfg.missions[key] %}
+                    <tr>
+                        <td><input type="checkbox" name="xp_m_{{ key }}_on" value="1" {% if ((F.get('xp_m_' ~ key ~ '_on') == '1') if F else m.enabled) %}checked{% endif %} aria-label="Activa: {{ xp_label(label, m.target) }}"></td>
+                        <td><b>{{ xp_label(label, F.get('xp_m_' ~ key ~ '_target', m.target)) }}</b><br><small style="opacity:.65">{{ 'Diaria' if period == 'day' else 'Semanal' }}</small></td>
+                        <td><input type="number" name="xp_m_{{ key }}_target" min="1" max="1000" value="{{ F.get('xp_m_' ~ key ~ '_target', m.target) }}" style="width:80px;" aria-label="Meta"></td>
+                        <td><input type="number" name="xp_m_{{ key }}_xp" min="0" max="{{ xp_max }}" value="{{ F.get('xp_m_' ~ key ~ '_xp', m.xp) }}" style="width:100px;" aria-label="Puntos de la misión"></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="form-group" style="margin-top:14px;"><button type="submit" class="btn-primary">Guardar niveles</button> <small style="opacity:.65;margin-left:8px;">Al guardar se recalculan todos los niveles.</small></div>
+    </form>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Insignias</h3><span>{{ total_accounts }} cuentas activas</span></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Insignia</th><th>Cómo se gana</th><th>Rareza</th><th>La tienen</th></tr></thead>
+            <tbody>
+                {% for b in badges %}
+                <tr>
+                    <td>{{ b.icon }} <b>{{ b.name }}</b></td>
+                    <td>{{ b.desc }}</td>
+                    <td>{{ b.rarity }}</td>
+                    <td>{{ b.count }} <small style="opacity:.6">({{ b.percent }} %)</small></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Cómo funciona</h3></div>
+    <div style="padding:0 20px 20px;font-size:13px;line-height:1.6;">
+        <ul style="margin:0;padding-left:18px;">
+            <li>Los números (diamantes, nivel, ranking, insignias) salen <b>solo de las compras que hace cada cuenta</b> con su sesión abierta. Las cuentas no dependen de ningún ID.</li>
+            <li>Cuentan órdenes aprobadas o completadas y pagadas (no premios), con los diamantes del nombre del paquete (igual que el Ranking mensual).</li>
+            <li>Me gusta y seguir <b>no dan diamantes ni descuentos</b>: solo puntos de reputación. Solo pueden usarlos cuentas con al menos una recarga completada.</li>
+            <li>Reputación = me gusta ×1 + seguidores ×2 + insignias ×5 + meses en el top 3 ×20 + perfil completo 10.</li>
+            <li>El <b>nivel por números</b> es aparte del nivel del mes: suma los puntos que tú pones arriba y no se reinicia. Se ve junto al nombre en el perfil, en el Top de perfiles (pestaña "Nivel") y en "Mi red". Quien apaga "mostrar mis estadísticas" no muestra su nivel.</li>
+            <li>Al empezar cada mes se cierra el anterior: los 3 primeros reciben la insignia <b>Top 3 del mes</b> y un premio en su vitrina (el primero, "Campeón de &lt;mes&gt;" como título).</li>
+            <li>Los perfiles no muestran IDs, redes sociales ni comentarios (regla de la tienda). Puedes ocultar o restablecer cualquier perfil desde el detalle de la cuenta.</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

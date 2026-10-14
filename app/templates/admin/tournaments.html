@@ -1,0 +1,109 @@
+{% extends 'admin/base.html' %}
+{% block title %}Torneos{% endblock %}
+{% block page_title %}Torneos{% endblock %}
+
+{% block extra_css %}
+<style>
+.tn-state { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.tn-state.is-draft { background: rgba(245,158,11,.15); color: #fcd34d; }
+.tn-state.is-open { background: rgba(34,197,94,.15); color: #4ade80; }
+.tn-state.is-scheduled { background: rgba(96,165,250,.16); color: #93c5fd; }
+.tn-state.is-closed { background: rgba(239,68,68,.15); color: #fca5a5; }
+.tn-state.is-finished { background: rgba(100,100,100,.18); color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-card" style="margin-bottom:18px">
+    <div class="card-header">
+        <h3>Crear un torneo</h3>
+        <span>Gratis, por orden de llegada, con salas</span>
+    </div>
+    <form method="POST" action="{{ url_for('admin_tournaments_bp.create') }}" style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 14px;">
+            Cómo funciona: publicas el link del torneo en tu canal de WhatsApp y, cuando llegue la hora, abres las inscripciones. Cada persona verifica su ID y la web la mete
+            en la primera sala con lugar; cuando se llena, se abre la siguiente. Los datos de la sala (ID y clave) solo los ve quien ya se inscribió.
+        </p>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="tn_title">Nombre del torneo</label>
+                <input type="text" id="tn_title" name="title" maxlength="120" required placeholder="Ej: Torneo Free Fire del sábado">
+            </div>
+            <div class="form-group">
+                <label for="tn_game">Juego</label>
+                <select id="tn_game" name="game_id" required>
+                    {% for g in games %}<option value="{{ g.id }}">{{ g.name }}{% if g.id in verifiable_ids %} ✓ verifica ID{% else %} (sin verificación de ID){% endif %}</option>{% endfor %}
+                </select>
+                <p class="form-hint">En los torneos el ID siempre se verifica (así se sabe que quien entra a la sala es quien se inscribió). Un juego sin ✓ no se puede abrir hasta activar su verificación en Configuración → Verificación de ID.</p>
+            </div>
+            <div class="form-group">
+                <label for="tn_desc">Texto para los clientes (opcional)</label>
+                <input type="text" id="tn_desc" name="description" maxlength="300" placeholder="Ej: Sábado 8:00 PM · Cupos limitados">
+            </div>
+            <div class="form-group">
+                <label for="tn_ip">Inscripciones por conexión</label>
+                <input type="number" id="tn_ip" name="max_per_ip" min="0" max="50" value="5">
+                <p class="form-hint">Cuántas personas se pueden inscribir desde la misma conexión (evita que alguien llene las salas). 0 = sin límite.</p>
+            </div>
+            <div class="form-group">
+                <label for="tn_opens">Se abre el (opcional)</label>
+                <input type="datetime-local" id="tn_opens" name="opens_at">
+                <p class="form-hint">Hora de Venezuela. Si la pones, al publicar el torneo tus clientes verán una cuenta regresiva y las inscripciones se abren solas a esa hora. Si la dejas vacía, lo abres tú a mano.</p>
+            </div>
+        </div>
+        <div class="form-group"><button type="submit" class="btn-primary">Crear torneo</button></div>
+    </form>
+</div>
+
+<div class="admin-card" style="margin-bottom:18px">
+    <div class="card-header"><h3>Mis torneos</h3><span>{{ rows|length }}</span></div>
+    {% if rows %}
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Torneo</th><th>Juego</th><th>Estado</th><th>Salas</th><th>Inscritos</th><th></th></tr></thead>
+            <tbody>
+                {% for row in rows %}
+                {% set t = row.t %}
+                <tr>
+                    <td><b>{{ t.title }}</b>{% if t.description %}<br><small style="opacity:.65">{{ t.description }}</small>{% endif %}</td>
+                    <td>{{ t.game.name if t.game else '' }}</td>
+                    <td><span class="tn-state is-{{ row.state_key }}">{{ row.state_text }}</span>{% if row.opens_label and t.status == 'draft' %}<br><small style="opacity:.65">Abrirá el {{ row.opens_label }}</small>{% endif %}</td>
+                    <td>{{ row.rooms }}</td>
+                    <td>{{ row.joined }} / {{ row.capacity }}</td>
+                    <td><a class="btn-sm btn-outline" href="{{ url_for('admin_tournaments_bp.detail', tournament_id=t.id) }}">Abrir</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="form-hint" style="padding:0 20px 20px;">Todavía no has creado ningún torneo.</p>
+    {% endif %}
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Historial de ganadores</h3><span>Los últimos premios entregados</span></div>
+    {% if history %}
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Fecha</th><th>Torneo</th><th>Sala</th><th>Puesto</th><th>ID</th><th>Nombre</th><th>Premio</th></tr></thead>
+            <tbody>
+                {% for w in history %}
+                <tr>
+                    <td>{{ w.delivered_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ w.tournament.title if w.tournament else '' }}</td>
+                    <td>{{ w.room.name if w.room else '' }}</td>
+                    <td>#{{ w.place }}</td>
+                    <td><code>{{ w.player_id }}</code></td>
+                    <td>{{ w.player_nick or '—' }}</td>
+                    <td>{{ w.package.name if w.package else '' }}{% if w.prize_order %} <small style="opacity:.65">· orden #{{ w.prize_order.order_number }}</small>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="form-hint" style="padding:0 20px 20px;">Cuando entregues el premio a un ganador aparecerá aquí con la fecha, su ID y su nombre.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,243 @@
+{% extends 'admin/base.html' %}
+{% block title %}Cuenta #{{ account.id }}{% endblock %}
+{% block page_title %}Cuenta: {{ account.display_name or ('#' ~ account.id) }}{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 14px;"><a href="{{ url_for('admin_bp.accounts') }}" class="link-sm">← Volver a las cuentas</a></p>
+
+{% if temp_password %}
+<div class="admin-card" style="border-color:#fbbf24;">
+    <div class="card-header"><h3>Nueva contraseña lista</h3></div>
+    <div style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 10px;">Cópiala ahora y envíasela a la persona (por WhatsApp o soporte). <b>No se vuelve a mostrar</b> y la anterior ya no sirve. Dile que la cambie desde su perfil cuando entre.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <code id="tempPassword" style="font-size:20px;letter-spacing:.08em;padding:8px 14px;border-radius:8px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.5);user-select:all;">{{ temp_password }}</code>
+            <button type="button" class="btn-sm btn-outline" id="copyTempPassword">Copiar</button>
+        </div>
+    </div>
+</div>
+<script>
+    (function () {
+        var btn = document.getElementById('copyTempPassword'), code = document.getElementById('tempPassword');
+        if (!btn || !code) return;
+        btn.addEventListener('click', function () {
+            var text = code.textContent.trim();
+            function done() { btn.textContent = '¡Copiada!'; setTimeout(function () { btn.textContent = 'Copiar'; }, 1800); }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done, function () { window.getSelection().selectAllChildren(code); });
+            } else {
+                window.getSelection().selectAllChildren(code);
+            }
+        });
+    })();
+</script>
+{% endif %}
+
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Resumen</h3>
+        <span>
+            {% if account.is_active %}<span class="badge badge-active">Activa</span>{% else %}<span class="badge badge-danger">Desactivada</span>{% endif %}
+            {% if account.is_registered_account %}<span class="badge badge-auto">Correo y contraseña</span>{% else %}<span class="badge badge-warning">Google</span>{% endif %}
+        </span>
+    </div>
+    <div style="padding:0 20px 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;font-size:13px;">
+        <div><span style="opacity:.6">Número</span><br><b>#{{ account.id }}</b></div>
+        <div><span style="opacity:.6">Usuario</span><br><b>{{ account.username if account.has_chosen_username else 'sin elegir' }}</b></div>
+        <div><span style="opacity:.6">Correo</span><br><b>{{ account.email if account.is_registered_account else (account.account_identifier or account.contact_email or '—') }}</b></div>
+        <div><span style="opacity:.6">Registro</span><br><b>{{ account.created_at|datetime_ve('%d/%m/%Y %H:%M') if account.created_at else '—' }}</b></div>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Datos</h3></div>
+    <form method="POST" action="{{ url_for('admin_bp.account_update', user_id=account.id) }}" style="padding:0 20px 20px;">
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="accUsername">Nombre de usuario</label>
+                <input type="text" id="accUsername" name="username" maxlength="20" value="{{ account.username if account.has_chosen_username else '' }}" placeholder="{{ 'Sin elegir' if not account.has_chosen_username else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="accEmail">Correo {% if not account.is_registered_account %}(el de Google, no se cambia){% endif %}</label>
+                {% if account.is_registered_account %}
+                <input type="email" id="accEmail" name="email" maxlength="120" value="{{ account.email }}" required>
+                {% else %}
+                <input type="email" id="accEmail" value="{{ account.account_identifier or account.contact_email or '' }}" disabled>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="accPhone">Teléfono (opcional)</label>
+                <input type="text" id="accPhone" name="phone" maxlength="20" value="{{ account.phone or '' }}">
+            </div>
+        </div>
+        <div class="form-group"><button type="submit" class="btn-primary">Guardar datos</button></div>
+    </form>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Contraseña</h3></div>
+    <div style="padding:0 20px 20px;">
+        {% if account.is_registered_account %}
+        <p class="form-hint" style="margin:0 0 14px;">Si la persona olvidó su contraseña, escribe una nueva o genera una temporal. La contraseña actual no se puede ver (se guarda cifrada).</p>
+        <form method="POST" action="{{ url_for('admin_bp.account_password', user_id=account.id) }}" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px;">
+            <input type="hidden" name="mode" value="manual">
+            <div class="form-group" style="margin:0;flex:1 1 240px;">
+                <label for="accNewPassword">Nueva contraseña (mínimo 8 caracteres)</label>
+                <input type="text" id="accNewPassword" name="new_password" minlength="8" maxlength="128" required autocomplete="off">
+            </div>
+            <button type="submit" class="btn-primary" style="height:40px;" onclick="return confirm('¿Cambiar la contraseña de esta cuenta?')">Cambiar contraseña</button>
+        </form>
+        <form method="POST" action="{{ url_for('admin_bp.account_password', user_id=account.id) }}">
+            <input type="hidden" name="mode" value="generate">
+            <button type="submit" class="btn-sm btn-outline" onclick="return confirm('Se creará una contraseña temporal y la anterior dejará de servir. ¿Continuar?')">Generar contraseña temporal</button>
+        </form>
+        {% else %}
+        <p class="form-hint" style="margin:0;">Esta cuenta entra con Google, por eso no tiene contraseña. Si no puede entrar, el problema es de su cuenta de Google.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Perfil público</h3>
+        <span>
+            {% if profile and profile.moderation_hidden %}<span class="badge badge-danger">Oculto por el admin</span>
+            {% elif profile and not profile.is_public %}<span class="badge badge-inactive">Privado</span>
+            {% else %}<span class="badge badge-active">Público</span>{% endif %}
+        </span>
+    </div>
+    <div style="padding:0 20px 20px;">
+        {% if account.has_chosen_username %}
+        <p class="form-hint" style="margin:0 0 12px;">Es la página que ven los demás (estilo Discord) con su foto, banner, fondo y marcos. Si hay algo inapropiado puedes <b>ocultarla</b> (nadie más la ve) o <b>restablecerla</b> (borra sus imágenes y textos). Su dueño no recibe aviso.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+            <a href="{{ url_for('profiles_bp.public_profile', username=account.username) }}" target="_blank" rel="noopener" class="btn-sm btn-outline">Ver perfil ↗</a>
+            <form method="POST" action="{{ url_for('admin_bp.account_profile_toggle', user_id=account.id) }}" style="display:inline">
+                {% if profile and profile.moderation_hidden %}
+                <button type="submit" class="btn-sm btn-success">Mostrar perfil otra vez</button>
+                {% else %}
+                <button type="submit" class="btn-sm btn-danger" onclick="return confirm('¿Ocultar el perfil público de esta cuenta?')">Ocultar perfil</button>
+                {% endif %}
+            </form>
+            <form method="POST" action="{{ url_for('admin_bp.account_profile_reset', user_id=account.id) }}" style="display:inline">
+                <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Se borran las fotos, banner, fondo, marcos y textos de este perfil. ¿Continuar?')">Restablecer perfil</button>
+            </form>
+        </div>
+        {% if profile and (profile.display_name or profile.bio) %}
+        <p class="form-hint" style="margin:14px 0 0;"><b>Nombre:</b> {{ profile.display_name or '—' }}<br><b>Acerca de mí:</b> {{ profile.bio or '—' }}</p>
+        {% endif %}
+        {% else %}
+        <p class="form-hint" style="margin:0;">Todavía no tiene perfil público: no ha elegido su nombre de usuario (sale en la dirección del perfil).</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Vitrina de premios</h3><span>{{ awards|length }}</span></div>
+    <div style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 12px;">Premios que se ven en el perfil público (sorteos, eventos...). Los de "Campeón / Top 3" del mes se agregan solos. Marca <b>Título</b> para que el más reciente salga junto al nombre.</p>
+        {% if awards %}
+        <div class="table-wrap" style="margin-bottom:14px;">
+            <table class="admin-table">
+                <thead><tr><th>Premio</th><th>Tipo</th><th>Fecha</th><th></th></tr></thead>
+                <tbody>
+                {% for aw in awards %}
+                <tr>
+                    <td><b>{{ aw.title }}</b>{% if aw.is_title %} <span class="badge badge-warning">Título</span>{% endif %}{% if aw.description %}<br><small style="opacity:.7">{{ aw.description }}</small>{% endif %}</td>
+                    <td>{{ 'Manual' if aw.kind == 'manual' else ('Automático ' ~ aw.month_key) }}</td>
+                    <td>{{ aw.awarded_at|datetime_ve('%d/%m/%Y') if aw.awarded_at else '—' }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin_bp.account_award_delete', user_id=account.id, award_id=aw.id) }}" style="display:inline">
+                            <button type="submit" class="btn-sm btn-danger" onclick="return confirm('¿Quitar este premio de la vitrina?')">Quitar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        <form method="POST" action="{{ url_for('admin_bp.account_award_add', user_id=account.id) }}" enctype="multipart/form-data" style="display:grid;gap:10px;">
+            <div class="form-grid-2">
+                <div class="form-group"><label for="awTitle">Título del premio</label><input type="text" id="awTitle" name="title" maxlength="80" required placeholder="Ganador del sorteo de octubre"></div>
+                <div class="form-group"><label for="awImage">Imagen (opcional, máx. 1 MB)</label><input type="file" id="awImage" name="image" accept="image/png,image/jpeg,image/webp,image/gif"></div>
+            </div>
+            <div class="form-group"><label for="awDesc">Descripción (opcional)</label><input type="text" id="awDesc" name="description" maxlength="200"></div>
+            <label style="display:flex;gap:8px;align-items:center;font-size:13px;"><input type="checkbox" name="is_title" value="1"> Mostrar como <b>título</b> junto al nombre</label>
+            <div><button type="submit" class="btn-primary">Agregar a la vitrina</button></div>
+        </form>
+    </div>
+</div>
+
+<div class="admin-card" id="accountPointsCard">
+    <div class="card-header"><h3>Puntos del perfil</h3><span><b>{{ points_balance|string|replace(',', '.') }}</b> puntos</span></div>
+    <div style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 12px;">Los puntos de la tienda se ganan recargando <b>por ID</b> y quedan guardados en ese ID. Un perfil solo recibe puntos como <b>premio de un ranking</b> o <b>porque tú se los pones aquí</b> (por ejemplo, por una dinámica de perfil). Para usarlos, el dueño del perfil los pasa a un ID desde "Canjear puntos".</p>
+        <form method="POST" action="{{ url_for('admin_bp.account_points_adjust', user_id=account.id) }}" style="display:grid;gap:10px;" onsubmit="if (this.dataset.sent) { return false; } this.dataset.sent = '1';">
+            <div class="form-grid-2">
+                <div class="form-group"><label for="ptAmount">Cantidad de puntos</label><input type="number" id="ptAmount" name="amount" min="1" max="{{ points_max }}" step="1" required placeholder="Ej: 500"></div>
+                <div class="form-group"><label for="ptNote">Motivo (opcional)</label><input type="text" id="ptNote" name="note" maxlength="150" placeholder="Ej: Ganó el sorteo de perfiles"></div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <button type="submit" name="action" value="add" class="btn-primary">Dar puntos</button>
+                <button type="submit" name="action" value="remove" class="btn-sm btn-danger" onclick="return confirm('¿Quitar estos puntos del perfil?')">Quitar puntos</button>
+            </div>
+        </form>
+        {% if points_log %}
+        <div class="table-wrap" style="margin-top:14px;">
+            <table class="admin-table">
+                <thead><tr><th>Fecha</th><th>Movimiento</th><th>Saldo</th><th>Detalle</th></tr></thead>
+                <tbody>
+                {% for row in points_log %}
+                <tr>
+                    <td>{{ row.created_at|datetime_ve('%d/%m/%Y %H:%M') if row.created_at else '—' }}</td>
+                    <td><b style="color:{{ '#4ade80' if row.delta > 0 else '#f87171' }}">{{ '+' if row.delta > 0 else '' }}{{ row.delta }}</b></td>
+                    <td>{{ row.balance_after }}</td>
+                    <td>{{ row.note or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Estado de la cuenta</h3></div>
+    <form method="POST" action="{{ url_for('admin_bp.account_toggle', user_id=account.id) }}" style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 12px;">
+            {% if account.is_active %}Una cuenta desactivada no puede iniciar sesión (si ya tenía sesión abierta, también se cierra). No se borra nada: su historial de compras sigue ahí.
+            {% else %}Esta cuenta está desactivada y no puede iniciar sesión.{% endif %}
+        </p>
+        {% if account.is_active %}
+        <button type="submit" class="btn-sm btn-danger" onclick="return confirm('¿Desactivar esta cuenta?')">Desactivar cuenta</button>
+        {% else %}
+        <button type="submit" class="btn-sm btn-success">Activar cuenta</button>
+        {% endif %}
+    </form>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Órdenes de esta cuenta</h3><span>las últimas 15</span></div>
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Orden</th><th>Juego</th><th>Paquete</th><th>Monto</th><th>Estado</th><th>Fecha</th><th></th></tr></thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td>#{{ order.order_number }}</td>
+                    <td>{{ order.game.name if order.game else '—' }}</td>
+                    <td>{{ order.package.name if order.package else '—' }}</td>
+                    <td>${{ '%.2f'|format(order.amount|float) }}</td>
+                    <td><span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span></td>
+                    <td>{{ order.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                    <td><a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Ver</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="empty-row">Sin órdenes todavía (aparecen las compras que haga con su cuenta).</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

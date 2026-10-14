@@ -92,7 +92,7 @@
                     <span class="admin-order-card__label">Comprobante</span>
                     {% if order.payment_capture %}
                     <button class="btn-sm btn-secondary" type="button"
-                            onclick="openCaptureModal('{{ url_for('static', filename='uploads/' + order.payment_capture) }}', '{{ order.order_number }}')">
+                            onclick="openCaptureModal({{ ((url_for('static', filename='uploads/' + order.payment_capture)))|jsattr }}, {{ ((order.order_number))|jsattr }})">
                         Ver comprobante
                     </button>
                     {% else %}

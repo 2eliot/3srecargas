@@ -27,6 +27,54 @@
     var el = B.el, botSays = B.botSays, userSays = B.userSays, typing = B.typing, addActions = B.addActions;
     var scrollDown = B.scrollDown, lock = B.lock, note = B.note, talkToSupport = B.talkToSupport;
 
+    // ── Compra a medias: se guarda 2 horas ───────────────────────────────
+    //
+    // La compra del chat vive en la página. Si el teléfono la cierra en segundo plano (al ir a pagar en la app del banco) o el cliente la
+    // recarga, antes todo se perdía y había que empezar de cero. Ahora cada paso guarda los datos de la compra en ESTE navegador:
+    // al volver se ofrece "continuar" (se vuelve a pedir el pago con los mismos datos) y si pasan 2 horas sin tocarla se descarta sola.
+    // Mientras haya una compra en marcha la página tampoco se recarga sola (version-watch.js pregunta a window.nxHoldReload).
+    var DRAFT_KEY = 'store:support-buy-draft';
+    var DRAFT_TTL_MS = 2 * 60 * 60 * 1000;
+    var activeUntil = 0;
+
+    window.nxHoldReload = function () { return activeUntil > Date.now(); };
+
+    function readDraft() {
+        try {
+            var raw = localStorage.getItem(DRAFT_KEY);
+            var d = raw ? JSON.parse(raw) : null;
+            if (!d || !d.at || !d.gameId || !d.pkgId || Date.now() - d.at > DRAFT_TTL_MS) {
+                if (raw) localStorage.removeItem(DRAFT_KEY);
+                return null;
+            }
+            return d;
+        } catch (_) { return null; }
+    }
+
+    function saveDraft(P) {
+        if (!P || P.receipt) return;   // la compra con un comprobante ya mandado no se puede guardar (la foto no se guarda)
+        activeUntil = Date.now() + DRAFT_TTL_MS;
+        try {
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({
+                at: Date.now(), gameId: P.game.id, pkgId: P.pkg.id, playerId: P.playerId || '', nick: P.nick || '', zone: P.zone || '',
+                email: P.email || '', method: P.method ? P.method.code : '', code: P.code || ''
+            }));
+        } catch (_) { /* sin almacenamiento: la compra sigue, solo que no se podrá retomar */ }
+    }
+
+    function clearDraft() {
+        activeUntil = 0;
+        try { localStorage.removeItem(DRAFT_KEY); } catch (_) { /* nada */ }
+    }
+
+    function agoText(ms) {
+        var minutes = Math.max(1, Math.round(ms / 60000));
+        if (minutes < 60) return 'hace ' + minutes + ' min';
+        var hours = Math.floor(minutes / 60);
+        var rest = minutes % 60;
+        return 'hace ' + hours + ' h' + (rest ? ' ' + rest + ' min' : '');
+    }
+
     var MAX_PHOTO_BYTES = 15 * 1024 * 1024;
     var FIRST_CHECK_MS = 6000;       // igual que la pagina de la orden
     var DEFAULT_CHECK_MS = 30000;
@@ -149,7 +197,45 @@
             code: '', quote: null, ocrRef: '',
             receipt: receipt && receipt.file ? receipt : null   // comprobante que ya está en el chat
         };
+        saveDraft(P);
         askId(P);
+    }
+
+    // Al abrir la página: si quedó una compra sin terminar (menos de 2 horas), se ofrece continuarla.
+    function resumeDraft() {
+        var d = readDraft();
+        if (!d || window.SUPPORT_AUTO_MESSAGE) return;
+        activeUntil = d.at + DRAFT_TTL_MS;   // mientras decide, la página no se recarga sola
+        Promise.all([request('/soporte/bot/paquetes/' + encodeURIComponent(d.gameId)), request('/soporte/bot/pago/metodos')]).then(function (res) {
+            var pk = res[0].data;
+            if (!pk || !pk.ok || !pk.game) { clearDraft(); return; }
+            var cur = pk.currencies || { usd: true, bs: true };
+            pk.game.currencies = cur;
+            var pkg = (pk.packages || []).filter(function (p) { return p.id === d.pkgId; })[0];
+            if (!pkg || !pkg.available) { clearDraft(); return; }
+            var methods = res[1].data && res[1].data.ok ? res[1].data.methods || [] : [];
+            var P = {
+                game: pk.game, pkg: pkg, cur: cur, playerId: d.playerId, nick: d.nick, zone: d.zone, email: d.email,
+                method: methods.filter(function (m) { return m.code === d.method; })[0] || null, methods: methods.length ? methods : null,
+                code: d.code, quote: null, ocrRef: '', receipt: null
+            };
+            var bubble = botSays('Tienes una compra sin terminar (' + agoText(Date.now() - d.at) + '): ' + pk.game.name + ' · ' + pkg.name +
+                '. Si ya pagaste, continúa y adjunta tu comprobante. ¿La seguimos?', true);
+            addActions(bubble, [
+                { label: 'Continuar mi compra', primary: true, action: function () { lock(bubble, null); userSays('Continuar mi compra'); continueDraft(P); } },
+                { label: 'Empezar de nuevo', action: function () { lock(bubble, null); userSays('Empezar de nuevo'); clearDraft(); B.chooseGame(); } }
+            ]);
+        }).catch(function () { /* sin red: el borrador se conserva para la próxima vez */ });
+    }
+
+    // Retoma la compra en el primer paso que falte; con todos los datos, vuelve a pedir el pago y muestra los datos otra vez.
+    function continueDraft(P) {
+        var kind = P.game.id_kind;
+        var hasId = kind === 'player' ? !!P.playerId : !!P.email;
+        if (!hasId) { askId(P); return; }
+        if (kind === 'player' && P.game.requires_zone && !P.zone) { askZone(P); return; }
+        if (!P.method) { chooseMethod(P); return; }
+        prepare(P);
     }
 
     // La foto del comprobante que el cliente mandó al chat, para usarla en la orden.
@@ -260,6 +346,7 @@
     }
 
     function afterId(P) {
+        saveDraft(P);
         if (P.game.requires_zone && P.game.id_kind === 'player') askZone(P);
         else chooseMethod(P);
     }
@@ -331,6 +418,7 @@
     // ── Codigo de descuento (opcional) ───────────────────────────────────
 
     function extras(P) {
+        saveDraft(P);
         var token = B.nextFlow();
         var bubble = botSays((P.receipt ? 'Antes de crear tu orden' : 'Antes de pagar') + ': ¿tienes un código de descuento? Es opcional.');
         var state = el('div', 'sc-extras');
@@ -410,6 +498,7 @@
     }
 
     function prepare(P) {
+        saveDraft(P);
         var token = B.nextFlow();
         var stop = typing('Preparando tu pago…');
         initAndQuote(P).then(function (q) {
@@ -530,6 +619,7 @@
             lock(bubble, null);
             userSays('Cancelar compra');
             botSays('Listo, cancelé la compra. Cuando quieras retomarla, toca "Comprar recarga".');
+            clearDraft();
             B.nextFlow();
         } });
         addActions(bubble, actions);
@@ -736,6 +826,8 @@
 
     function orderCreated(P, data) {
         var number = data.order_number;
+        clearDraft();   // la orden ya existe: no queda compra a medias
+        activeUntil = Date.now() + 20 * 60 * 1000;   // y 20 min más sin recargar la página solos, mientras se verifica el pago aquí
         // La campanita del sitio sigue las ordenes hechas en este navegador.
         try {
             if (window.SiteNotifications && window.SiteNotifications.registerOrder) {
@@ -845,6 +937,8 @@
                 addActions(bubble, [{ label: 'Reintentar', primary: true, action: function () { lock(bubble, null); underpaid(P, number, null); } }]);
             });
     }
+
+    resumeDraft();
 
     window.SupportBuy = { start: start, startWithReceipt: startWithReceipt };
 })();

@@ -1,0 +1,93 @@
+/* ── 3S Recargas — selector de fecha y hora del panel (ver static/js/datetime-picker.js) ───────────────────────────────────────────────
+   Reemplaza el calendario del navegador (blanco y en inglés) por uno oscuro, en español y con el color del panel. */
+
+.dtp { position: relative; display: block; width: 100%; }
+/* El campo original queda en la página pero escondido: ahí vive el valor y por ahí se envía el formulario (y funcionan required/min/max) */
+.dtp-native { position: absolute !important; left: 0; bottom: 0; width: 1px !important; height: 1px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; opacity: 0; overflow: hidden; pointer-events: none; }
+
+.dtp-trigger {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 40px 9px 12px; text-align: left; cursor: pointer;
+    font: inherit; font-size: 14px; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    transition: border-color var(--transition), box-shadow var(--transition);
+    -webkit-tap-highlight-color: transparent;
+}
+.dtp-trigger:hover { border-color: rgba(139,92,246,.55); }
+.dtp-trigger:focus-visible, .dtp-trigger[aria-expanded="true"] { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.dtp-ico { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; color: #c4b5fd; }
+.dtp-ico svg { width: 18px; height: 18px; }
+.dtp-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.dtp-text.is-placeholder { color: var(--text-muted); font-weight: 400; }
+.dtp-clear {
+    position: absolute; right: 8px; top: 50%; width: 26px; height: 26px; margin-top: -13px; display: none; place-items: center; padding: 0; cursor: pointer;
+    color: var(--text-muted); background: transparent; border: 0; border-radius: 8px;
+}
+.dtp-clear svg { width: 14px; height: 14px; }
+.dtp-clear:hover { color: #fff; background: rgba(255,255,255,.08); }
+.dtp.has-value .dtp-clear { display: inline-grid; }
+
+/* Panel */
+.dtp-pop {
+    position: fixed; z-index: 3000; width: 312px; max-width: calc(100vw - 16px); padding: 12px; box-sizing: border-box; border-radius: 16px; color: var(--text-primary);
+    font-family: inherit; background: linear-gradient(180deg, rgba(139,92,246,.08), rgba(139,92,246,0) 120px), #16162b;
+    border: 1px solid rgba(139,92,246,.4); box-shadow: 0 24px 60px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.03) inset;
+    animation: dtpIn .16s ease both; outline: none;
+}
+@keyframes dtpIn { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+.dtp-pop button { font-family: inherit; }
+.dtp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.dtp-title { flex: 1; text-align: center; font-size: 14.5px; font-weight: 800; letter-spacing: .01em; }
+.dtp-nav {
+    flex: none; width: 32px; height: 32px; display: inline-grid; place-items: center; padding: 0; cursor: pointer; color: var(--text-primary);
+    background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 10px; transition: border-color .15s ease, background .15s ease;
+}
+.dtp-nav svg { width: 16px; height: 16px; }
+.dtp-nav:hover { border-color: var(--accent); background: rgba(139,92,246,.14); }
+.dtp-week { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 4px; }
+.dtp-week span { text-align: center; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); padding: 4px 0; }
+.dtp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dtp-day {
+    height: 38px; padding: 0; cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--text-primary); background: transparent; border: 1px solid transparent; border-radius: 10px;
+    transition: background .12s ease, border-color .12s ease;
+}
+.dtp-day:hover:not(:disabled) { background: rgba(139,92,246,.2); }
+.dtp-day:focus-visible { outline: none; border-color: #c4b5fd; }
+.dtp-day.is-out { color: var(--text-muted); opacity: .45; }
+.dtp-day.is-past:not(.is-sel) { color: var(--text-muted); }
+.dtp-day.is-today:not(.is-sel) { border-color: rgba(139,92,246,.7); color: #c4b5fd; }
+.dtp-day.is-sel { color: #fff; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); box-shadow: 0 4px 14px rgba(139,92,246,.45); }
+.dtp-day:disabled { opacity: .22; cursor: not-allowed; }
+.dtp-quick { display: flex; gap: 8px; margin-top: 10px; }
+.dtp-quick button { flex: 1; padding: 7px 10px; font-size: 12px; font-weight: 700; cursor: pointer; color: var(--text-primary); background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 10px; }
+.dtp-quick button:hover { border-color: var(--accent); background: rgba(139,92,246,.14); }
+
+/* Hora */
+.dtp-time { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.dtp-time-label { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.dtp-time-label svg { width: 15px; height: 15px; color: #c4b5fd; }
+.dtp-time-label small { font-size: 10.5px; font-weight: 600; letter-spacing: 0; text-transform: none; opacity: .8; }
+.dtp-time-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.dtp-step { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.dtp-step button { width: 54px; height: 22px; display: inline-grid; place-items: center; padding: 0; cursor: pointer; color: var(--text-muted); background: transparent; border: 0; border-radius: 8px; }
+.dtp-step button svg { width: 15px; height: 15px; }
+.dtp-step button:hover { color: #fff; background: rgba(139,92,246,.2); }
+.dtp-num {
+    width: 54px; height: 40px; padding: 0; text-align: center; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; color: #fff;
+    background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px;
+}
+.dtp-num:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.dtp-colon { font-size: 22px; font-weight: 900; color: var(--text-muted); padding-bottom: 2px; }
+.dtp-ampm { display: flex; flex-direction: column; gap: 4px; margin-left: 4px; }
+.dtp-ampm button { width: 50px; height: 28px; padding: 0; cursor: pointer; font-size: 12px; font-weight: 800; letter-spacing: .04em; color: var(--text-muted); background: transparent; border: 1px solid var(--border); border-radius: 8px; }
+.dtp-ampm button.is-on { color: #fff; border-color: transparent; background: linear-gradient(135deg, var(--accent), var(--accent-dark)); }
+.dtp-ampm button:not(.is-on):hover { border-color: var(--accent); color: #fff; }
+
+.dtp-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.dtp-link { padding: 7px 4px; font-size: 12.5px; font-weight: 700; cursor: pointer; color: var(--text-muted); background: transparent; border: 0; }
+.dtp-link:hover { color: #fca5a5; }
+.dtp-done { padding: 8px 20px; font-size: 13px; font-weight: 800; cursor: pointer; color: #fff; border: 0; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+.dtp-done:hover { filter: brightness(1.12); }
+
+/* Celular: sube como una hoja pegada abajo */
+.dtp-pop.is-sheet { left: 8px !important; right: 8px; bottom: 8px; top: auto !important; width: auto; max-width: none; max-height: calc(100vh - 16px); overflow: auto; border-radius: 20px; animation: dtpSheet .2s ease both; }
+@keyframes dtpSheet { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .dtp-pop, .dtp-pop.is-sheet { animation: none; } }

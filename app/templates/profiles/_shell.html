@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Perfiles{% endblock %} — 3S Recargas</title>
+    {% include '_head_common.html' %}
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;700;800;900&family=Archivo+Black&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ static_v('css/main.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/neon.css') }}">
+    <link rel="stylesheet" href="{{ static_v('css/profile.css') }}">
+</head>
+<body class="pf-page">
+    {% if DRAWER_BG_IMAGES.drawer_bg_login %}
+    <div aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_login) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
+    {% endif %}
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="{{ url_for('main_bp.index') }}" class="logo-link">
+                {% if SITE_LOGO %}
+                    <img src="{{ url_for('static', filename='uploads/' + SITE_LOGO) }}" alt="Logo" class="logo-img">
+                {% else %}
+                    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="3S Recargas" class="logo-img"
+                         onerror="this.style.display='none';document.getElementById('logo-text').style.display='flex'">
+                    <span class="logo-text" id="logo-text">3S<span>Recargas</span></span>
+                {% endif %}
+            </a>
+        </div>
+    </header>
+    {% block content %}{% endblock %}
+{% include '_version_watch.html' %}
+</body>
+</html>

@@ -10,10 +10,10 @@ de entrega automática que el resto de la tienda.
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from ..models import (
-    Game, MiniGameCounter, Package, PlayerPoints, PointsPrizeMapping,
+    Game, MiniGameCounter, Order, Package, PlayerPoints, PointsPrizeMapping,
     PointsRedeemLog, PointsRedeemOption, PointsSpinLog, Setting, db,
 )
 from .locks import acquire_lock, release_lock
@@ -38,6 +38,8 @@ def _spend_points_atomic(game_id, player_id, cost):
     ).rowcount
     return spent == 1
 
+# Tope de puntos por orden: un error de dedo en el admin (puntos del paquete o puntos por dólar) no debe poder desbordar el saldo (entero de 32 bits en Postgres).
+MAX_POINTS_PER_ORDER = 1_000_000
 DEFAULT_POINTS_PER_DOLLAR = 10
 DEFAULT_POINTS_SPIN_COST = 5
 DEFAULT_POINTS_WIN_INTERVAL = 20
@@ -106,8 +108,8 @@ def calculate_points_for_purchase(amount, package=None):
     Si no, se calcula con el rate global sobre lo que efectivamente pagó."""
     fixed = get_package_fixed_points(package)
     if fixed is not None:
-        return fixed
-    return int(round(float(amount or 0) * get_points_per_dollar_rate()))
+        return min(fixed, MAX_POINTS_PER_ORDER)
+    return min(int(round(float(amount or 0) * get_points_per_dollar_rate())), MAX_POINTS_PER_ORDER)
 
 
 def package_points_preview(package):
@@ -163,15 +165,10 @@ def award_points_for_order(order):
     if points <= 0:
         return None
 
-    record = PlayerPoints.query.filter_by(game_id=order.game_id, player_id=order.player_id).first()
-    if not record:
-        record = PlayerPoints(game_id=order.game_id, player_id=order.player_id, points_balance=0)
-        db.session.add(record)
-        db.session.flush()
-
-    record.points_balance = int(record.points_balance or 0) + points
-    record.updated_at = datetime.utcnow()
-    return record
+    # Suma atómica en la base (no "leer, sumar en Python y escribir"): un giro o canje del mismo ID a la vez no se pisa, y dos primeras órdenes del mismo ID
+    # no chocan al crear la fila.
+    credit_player_points(order.game_id, order.player_id, points)
+    return points
 
 
 def get_points_enabled_games():
@@ -201,6 +198,30 @@ def get_player_points_balance(game_id, player_id):
     return int(record.points_balance) if record else 0
 
 
+def credit_player_points(game_id, player_id, amount):
+    """Suma `amount` puntos al saldo del ID (juego, player_id), creándolo si hace falta. Es una suma atómica en la base (dos premios a la vez no
+    se pisan). NO hace commit: quien llama decide. Se usa para los premios de ranking en puntos y para pasar los puntos de un perfil a un ID.
+    Devuelve el saldo nuevo."""
+    from .account_points import insert_ignore
+
+    amount = int(amount)
+    player_id = str(player_id or '').strip()
+    if amount <= 0 or not player_id:
+        raise ValueError('Puntos o ID no válidos.')
+    insert_ignore(PlayerPoints, {'game_id': int(game_id), 'player_id': player_id, 'points_balance': 0,
+                                 'created_at': datetime.utcnow(), 'updated_at': datetime.utcnow()})
+    db.session.execute(
+        update(PlayerPoints)
+        .where(PlayerPoints.game_id == int(game_id), PlayerPoints.player_id == player_id)
+        .values(points_balance=PlayerPoints.points_balance + amount, updated_at=datetime.utcnow())
+    )
+    # Saldo leído directo de la base: el objeto que la sesión ya tenga en memoria quedó viejo con el UPDATE de arriba.
+    value = db.session.execute(
+        select(PlayerPoints.points_balance).where(PlayerPoints.game_id == int(game_id), PlayerPoints.player_id == player_id)
+    ).scalar()
+    return int(value or 0)
+
+
 def spend_points_and_spin(game_id, player_id):
     """Gasta los puntos de un giro y resuelve el resultado. Lanza
     ValueError con un mensaje listo para mostrar si algo no procede."""
@@ -219,7 +240,7 @@ def spend_points_and_spin(game_id, player_id):
     # el contador de premios y el saldo no se pisen entre peticiones paralelas.
     lock_key = f'points_spin:{game_id}:{player_id}'
     lock_holder = f'spin-{datetime.utcnow().timestamp()}'
-    if not acquire_lock(lock_key, 15, lock_holder):
+    if not acquire_lock(lock_key, 150, lock_holder):   # más que lo que tarda la entrega más lenta (el bot tiene hasta 120 s)
         raise ValueError('Tu giro anterior todavía se está procesando. Espera un momento.')
 
     try:
@@ -339,7 +360,7 @@ def redeem_points_for_package(game_id, player_id, option_id):
     # entregando DOS paquetes por el precio de uno.
     lock_key = f'points_redeem:{game_id}:{player_id}'
     lock_holder = f'redeem-{datetime.utcnow().timestamp()}'
-    if not acquire_lock(lock_key, 20, lock_holder):
+    if not acquire_lock(lock_key, 150, lock_holder):   # más que lo que tarda la entrega más lenta (el bot tiene hasta 120 s)
         raise ValueError('Tu canje anterior todavía se está procesando. Espera un momento.')
 
     try:
@@ -361,24 +382,45 @@ def redeem_points_for_package(game_id, player_id, option_id):
                 f'puntos y tienes {balance}.'
             )
 
-        from .order_processing import deliver_prize_to_player
-
-        game = Game.query.get(game_id)
-        prize_order, approval = deliver_prize_to_player(
-            game, option.package, player_id,
-            note=f'Premio canjeado con puntos ({option.points_cost} pts, canje directo).',
-            reference_prefix='CANJE',
-        )
-
+        # El descuento y el registro del canje se guardan JUNTOS y ANTES de entregar: el registro es lo que cuenta el límite de 24 h, y si se anotaba
+        # después, un segundo canje que llegara mientras el bot entregaba (puede tardar casi 2 minutos) pasaba el límite.
         log = PointsRedeemLog(
             game_id=game_id,
             player_id=player_id,
             option_id=option.id,
             package_id=option.package_id,
             points_spent=option.points_cost,
-            prize_order_id=prize_order.id if prize_order else None,
+            prize_order_id=None,
         )
         db.session.add(log)
+        db.session.commit()
+        log_id = log.id
+        cost = int(option.points_cost)
+
+        from .order_processing import deliver_prize_to_player
+
+        game = Game.query.get(game_id)
+        try:
+            prize_order, approval = deliver_prize_to_player(
+                game, option.package, player_id,
+                note=f'Premio canjeado con puntos ({option.points_cost} pts, canje directo). [CJ#{log_id}]',
+                reference_prefix='CANJE',
+            )
+        except Exception:
+            db.session.rollback()
+            # ¿llegó a crearse la orden antes de fallar? Entonces el canje sí cuenta (la orden queda en Órdenes). Si no, no se entregó nada: se devuelven
+            # los puntos y se borra el registro para que pueda intentar de nuevo.
+            prize_order = Order.query.filter(
+                Order.payment_method == 'prize', Order.game_id == game_id, Order.player_id == player_id, Order.notes.like(f'%[CJ#{log_id}]%'),
+            ).first()
+            if prize_order is None:
+                credit_player_points(game_id, player_id, cost)
+                PointsRedeemLog.query.filter_by(id=log_id).delete(synchronize_session=False)
+                db.session.commit()
+                raise
+            approval = {'ok': False}
+        PointsRedeemLog.query.filter_by(id=log_id).update(
+            {'prize_order_id': prize_order.id if prize_order else None}, synchronize_session=False)
         db.session.commit()
     finally:
         release_lock(lock_key, lock_holder)

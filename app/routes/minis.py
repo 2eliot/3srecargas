@@ -16,6 +16,7 @@ from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy.exc import IntegrityError
 
 from ..models import Affiliate, AffiliateWithdrawal, MiniCourseVideo, MiniNotification, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod, Setting, db
+from ..utils.locks import client_ip
 from ..utils.mini_influencers import (
     clear_attempts,
     count_qualifying_uses,
@@ -47,10 +48,8 @@ CODE_PATTERN = re.compile(r'^[A-Z0-9_-]{3,20}$')
 
 
 def _client_ip():
-    """IP real del cliente. La app corre detrás de nginx, así que la
-    cabecera del proxy es la que tiene la IP de verdad."""
-    forwarded = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
-    return forwarded or (request.remote_addr or '')
+    """IP real del cliente (misma función segura que usan todos los topes: ver utils/locks.py)."""
+    return client_ip()
 
 
 def _current_mini_ok():
@@ -127,10 +126,12 @@ def mini_register_submit():
         return jsonify({'ok': False, 'message': 'Demasiados intentos seguidos. Espera unos minutos.'}), 429
 
     data = request.get_json(silent=True) or {}
-    channel_name = (data.get('channel_name') or '').strip()[:100]
+    # Estos textos los escribe cualquiera y los ve el admin: sin caracteres de control ni < > (no hacen falta en un nombre de canal)
+    # y el link siempre como http(s) (un "javascript:..." queda convertido en https://javascript:..., que no ejecuta nada).
+    channel_name = re.sub(r'[\x00-\x1f\x7f<>]', '', str(data.get('channel_name') or '')).strip()[:100]
     email = (data.get('email') or '').strip().lower()
     password = data.get('password') or ''
-    channel_url = (data.get('channel_url') or '').strip()[:255]
+    channel_url = re.sub(r'[\x00-\x20\x7f<>"\']', '', normalize_video_url(str(data.get('channel_url') or '')))[:255]
     whatsapp_phone = (data.get('whatsapp_phone') or '').strip()[:50]
     application_note = (data.get('application_note') or '').strip()[:1000]
     desired_code = (data.get('code') or '').strip().upper()

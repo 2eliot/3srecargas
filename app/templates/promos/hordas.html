@@ -4,11 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Hordas de Diamantes • 3SRecargas</title>
+{% include '_head_common.html' %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+    /* Los textos "slate" de Tailwind son gris con tono azulado: aquí pasan a gris neutro (solo el color de la letra). */
+    tailwind.config = { theme: { extend: { textColor: { slate: { 50: '#fafafa', 100: '#f5f5f5', 200: '#e5e5e5', 300: '#d4d4d4', 400: '#a3a3a3', 500: '#737373', 600: '#525252', 700: '#404040', 800: '#262626', 900: '#171717', 950: '#0a0a0a' } } } } };
+</script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap');
-body { font-family: 'Outfit', sans-serif; background-color: #000; color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+body {
+    font-family: 'Outfit', sans-serif; background-color: #000; color: #fafafa; -webkit-tap-highlight-color: transparent;
+    /* el mismo fondo de la portada (negro con brillo rojo arriba y violeta abajo) para que el cristal tenga algo que mostrar */
+    background-image: radial-gradient(ellipse at 50% -10%, rgba(255,0,0,.10), transparent 55%), radial-gradient(ellipse at 85% 110%, rgba(120,0,255,.08), transparent 55%);
+    background-attachment: fixed;
+}
 body.is-playing { overflow: hidden; }
 .mobile-shell { width: 100%; max-width: 440px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; position: relative; }
 button, input, select { touch-action: manipulation; }
@@ -24,11 +36,40 @@ button, input, select { touch-action: manipulation; }
     background: linear-gradient(135deg, rgba(255,0,0,0.35) 0%, rgba(255,0,0,0.12) 45%, rgba(20,0,0,0.05) 100%);
     border-color: rgba(255,60,60,0.6);
 }
+/* Cristal IGUAL que el contenedor de "Verificar ID" de la portada (.glass-panel de neon.css): fondo casi transparente, desenfoque, borde de
+   luz y las mismas sombras. Las piezas de adentro NO llevan desenfoque propio (uno dentro de otro no ve la página). */
 .glass-card {
-    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 45%, rgba(10,10,15,0.04) 100%);
-    border: 1px solid rgba(255,60,60,0.45);
-    border-top: 1px solid rgba(255,150,150,0.5);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.3), inset 0 1px 2px rgba(255,255,255,0.15);
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
+    backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    -webkit-backdrop-filter: blur(4px) saturate(180%) brightness(1.15);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-top: 1px solid rgba(255,255,255,0.35);
+    border-left: 1px solid rgba(255,255,255,0.25);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 30px rgba(255,0,0,0.08);
+}
+@media (min-width: 768px) {
+    .glass-card { backdrop-filter: blur(8px) saturate(200%) brightness(1.2); -webkit-backdrop-filter: blur(8px) saturate(200%) brightness(1.2); }
+}
+.glass-chip {
+    background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.14);
+    border-top: 1px solid rgba(255,255,255,0.28);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.12);
+}
+.glass-inset {
+    background: rgba(0,0,0,0.22);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-top: 1px solid rgba(255,255,255,0.2);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.08);
+}
+.glass-inset.is-prize { border-color: rgba(245,158,11,0.45); border-top-color: rgba(251,191,36,0.55); }
+.glass-overlay { background: rgba(0,0,0,0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.glass-window {
+    background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-top: 1px solid rgba(255,255,255,0.35);
+    border-left: 1px solid rgba(255,255,255,0.25);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 30px rgba(255,0,0,0.08);
 }
 /* Igual a la barra "Ingresa tu ID" de la tienda. Al escribir solo se
    aclara un poco el borde (antes se prendía un brillo rojo fuerte). */
@@ -42,7 +83,7 @@ button, input, select { touch-action: manipulation; }
     letter-spacing: .04em;
     outline: none;
 }
-.glass-input-field::placeholder { color: #94a3b8; font-weight: 600; }
+.glass-input-field::placeholder { color: #a3a3a3; font-weight: 600; }
 .glass-input-field:focus {
     border-color: rgba(255,255,255,0.35);
     border-top-color: rgba(255,255,255,0.45);
@@ -60,9 +101,10 @@ button, input, select { touch-action: manipulation; }
 #playBtn:disabled, #againBtn:disabled { filter: saturate(.6) brightness(.8); }
 /* Contenedor del ID, como el paso "1 Player ID" de la tienda. */
 .id-box {
-    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 60%);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-top: 1px solid rgba(255,255,255,0.22);
+    background: linear-gradient(135deg, rgba(255,255,255,0.01) 0%, rgba(255,255,255,0.001) 100%);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-top: 1px solid rgba(255,255,255,0.2);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.12), 0 4px 15px rgba(0,0,0,0.05);
 }
 .id-step {
     width: 22px; height: 22px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center;
@@ -80,13 +122,13 @@ button, input, select { touch-action: manipulation; }
 .verify-btn.is-ok { background: linear-gradient(135deg, #16a34a, #15803d); box-shadow: 0 4px 16px rgba(22,163,74,0.4), inset 0 1.5px 2px rgba(255,255,255,0.45); }
 .replay-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,.85); border-top: 1px solid rgba(255,255,255,.15); z-index: 3; }
 .replay-result { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); width: min(92%, 520px); padding: 12px 14px; border-radius: 14px; background: rgba(0,0,0,.9); border: 1px solid rgba(250,204,21,.5); font-size: 12px; z-index: 3; }
-.rank-more-btn { width: 100%; text-align: center; padding: 8px; border-radius: 12px; border: 1px dashed rgba(255,255,255,.18); color: #cbd5e1; font-size: 11px; font-weight: 800; }
+.rank-more-btn { width: 100%; text-align: center; padding: 8px; border-radius: 12px; border: 1px dashed rgba(255,255,255,.18); color: #d4d4d4; font-size: 11px; font-weight: 800; }
 .lookup-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.1); overflow: hidden; }
 .lookup-bar > div { height: 100%; background: linear-gradient(90deg, #22d3ee, #a855f7); }
 .rank-row.is-me { border-color: rgba(34,211,238,.7) !important; background: rgba(34,211,238,.08) !important; }
 
 /* ── Pantalla de juego ── */
-#gameOverlay { position: fixed; inset: 0; z-index: 60; background: #000; touch-action: none; }
+#gameOverlay { position: fixed; top:0;right:0;bottom:0;left:0; z-index: 60; background: #000; touch-action: none; }
 /* Al dejar el dedo presionado, el teléfono intentaba seleccionar texto (todo
    se ponía azul) o abrir el menú de copiar/guardar imagen: se bloquea en
    toda la pantalla de juego. */
@@ -115,28 +157,34 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
 .joy-hint { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font-size: 10px; font-weight: 800;
     letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.28); pointer-events: none; }
 .hud-btn { flex-shrink: 0; pointer-events: auto; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.2); border-radius: 10px; width: 36px; height: 30px; font-size: 14px; }
-.game-modal { position: absolute; inset: 0; background: rgba(0,0,0,.78); display: flex; align-items: center; justify-content: center; padding: 18px; }
-.game-modal-card { width: 100%; max-width: 360px; background: linear-gradient(180deg, #0c0c10, #000); border: 2px solid rgba(239,68,68,.6); border-radius: 18px; padding: 18px; text-align: center; box-shadow: 0 0 30px rgba(239,68,68,.2); }
-.upgrade-card { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); }
+/* Ventanas del juego (pausa, mejora, fin de partida): cristal igual que las ventanas de la tienda. El juego está detenido mientras se ven. */
+.game-modal { position: absolute; top:0;right:0;bottom:0;left:0; background: rgba(0,0,0,.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; padding: 18px; }
+.game-modal-card { width: 100%; max-width: 360px; background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%); border: 1px solid rgba(255,255,255,0.18); border-top: 1px solid rgba(255,255,255,0.35); border-left: 1px solid rgba(255,255,255,0.25); border-radius: 20px; padding: 18px; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), 0 0 30px rgba(255,0,0,0.08); }
+.upgrade-card { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.18); border-top-color: rgba(255,255,255,.3); background: linear-gradient(135deg, rgba(255,255,255,.07), rgba(255,255,255,.015)); box-shadow: inset 0 1px 1px rgba(255,255,255,.12); }
 .upgrade-card:active { transform: scale(.98); }
 .upgrade-card .u-icon { font-size: 26px; width: 38px; text-align: center; }
 </style>
 </head>
 <body class="bg-black text-slate-100 flex justify-center">
-<div class="mobile-shell p-4" {% if replay %}hidden{% endif %}>
-    <a href="{{ url_for('main_bp.index') }}" class="inline-flex items-center gap-1.5 bg-black border border-red-500/40 hover:border-red-500 text-slate-300 hover:text-white text-[11px] font-bold px-3.5 py-2 rounded-xl mt-1 mb-2 w-fit active:scale-95">
+{# Fondo: el propio de Hordas (Admin → Configuración → Fondos de los accesos) o, si no hay, el fondo general de la web #}
+{% set hordas_bg = DRAWER_BG_IMAGES.drawer_bg_hordas or SITE_BACKGROUND_IMAGE %}
+{% if hordas_bg %}
+<div aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + hordas_bg) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
+{% endif %}
+<div class="mobile-shell p-3" {% if replay %}hidden{% endif %}>
+    <a href="{{ url_for('main_bp.index') }}" class="inline-flex items-center gap-1.5 glass-chip hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-bold px-3.5 py-2 rounded-xl mt-1 mb-1 w-fit active:scale-95">
         <span>←</span> Volver a la tienda
     </a>
 
-    <header class="w-full flex flex-col items-center text-center pt-2 pb-3">
-        <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] font-extrabold px-3.5 py-1 rounded-full uppercase tracking-wider mb-2 shadow-lg shadow-red-600/30 animate-pulse border border-red-400/30">
+    <header class="w-full flex flex-col items-center text-center pt-1 pb-2">
+        <div class="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-[10px] font-extrabold px-3.5 py-1 rounded-full uppercase tracking-wider mb-1.5 shadow-lg shadow-red-600/30 animate-pulse border border-red-400/30">
             <span>⚡</span> 3S RECARGAS • Juego Gratis <span>🔥</span>
         </div>
-        <h1 class="text-2xl font-extrabold tracking-wider text-white">💎 HORDAS DE DIAMANTES</h1>
-        <p class="text-slate-400 text-[11px] mt-1">Sobrevive a las hordas, junta diamantes y sube en el ranking semanal</p>
+        <h1 class="text-xl font-extrabold tracking-wider text-white">💎 HORDAS DE DIAMANTES</h1>
+        <p class="text-slate-400 text-[11px] mt-0.5">Sobrevive a las hordas, junta cristales y sube en el ranking semanal</p>
     </header>
 
-    <main class="w-full flex flex-col items-center gap-4">
+    <main class="w-full flex flex-col items-center gap-2.5">
         {% if not games %}
         <div class="glass-card w-full p-6 rounded-2xl text-center text-slate-300 text-sm">
             Este juego no está activo en este momento. Vuelve pronto.
@@ -157,49 +205,49 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
         </div>
         {% endif %}
 
-        <div class="glass-card w-full p-3.5 rounded-2xl text-center">
+        <div class="glass-card w-full p-2.5 rounded-2xl text-center">
             <div class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Premio de la semana</div>
-            <div id="prizeLine" class="text-base font-black text-amber-400 mt-1">Cargando...</div>
-            <div id="weekCountdown" class="text-xs font-black text-red-400 mt-1.5"></div>
+            <div id="prizeLine" class="text-sm font-black text-amber-400 mt-0.5 leading-tight">Cargando...</div>
+            <div id="weekCountdown" class="text-xs font-black text-red-400 mt-1"></div>
         </div>
 
-        <div class="glass-card w-full p-4 rounded-2xl flex flex-col gap-2.5">
-            <div class="id-box rounded-2xl p-3">
-                <div class="flex items-center gap-2 mb-2">
+        <div class="glass-card w-full p-2.5 rounded-2xl flex flex-col gap-2">
+            <div class="id-box rounded-xl p-2">
+                <div class="flex items-center gap-2 mb-1.5">
                     <span class="id-step">1</span>
                     <span class="text-sm font-black text-white">Ingresa tu ID</span>
                 </div>
                 <div class="w-full flex gap-2">
                     <input type="tel" inputmode="numeric" id="playerIdInput" placeholder="Ingresa tu ID"
-                           class="glass-input-field flex-1 min-w-0 rounded-xl px-4 py-3.5 text-sm focus:outline-none">
+                           class="glass-input-field flex-1 min-w-0 rounded-xl px-4 py-2.5 text-sm focus:outline-none">
                     <button type="button" id="verifyIdBtn" class="verify-btn flex-shrink-0 font-black text-[11px] px-4 rounded-xl uppercase tracking-wider">Verificar</button>
                 </div>
-                <p id="verifyIdMsg" class="text-[11px] font-bold mt-1.5 min-h-[14px]"></p>
+                <p id="verifyIdMsg" class="text-[11px] font-bold mt-1 min-h-[12px]"></p>
             </div>
             {% if characters|length > 1 %}
             <div>
-                <span class="text-[10px] uppercase tracking-widest text-slate-400 font-bold block mb-1.5">Elige tu personaje</span>
-                <div id="characterPicker" class="grid gap-2" style="grid-template-columns: repeat({{ characters|length }}, minmax(0, 1fr));">
+                <span class="text-[10px] uppercase tracking-widest text-slate-400 font-bold block mb-1">Elige tu personaje</span>
+                <div id="characterPicker" class="grid gap-1.5" style="grid-template-columns: repeat({{ characters|length }}, minmax(0, 1fr));">
                     {% for ch in characters %}
-                    <button type="button" class="char-option glass-game-btn rounded-xl p-2 flex flex-col items-center gap-1" data-slot="{{ ch.slot }}">
-                        <img src="{{ ch.cover_url }}" alt="" class="w-full aspect-square object-cover rounded-lg" draggable="false">
+                    <button type="button" class="char-option glass-game-btn rounded-xl p-1.5 flex flex-col items-center gap-0.5" data-slot="{{ ch.slot }}">
+                        <img src="{{ ch.cover_url }}" alt="" class="w-[80%] aspect-square object-cover rounded-lg" draggable="false">
                         <span class="text-[10px] font-extrabold text-slate-200 truncate max-w-full">{{ ch.name }}</span>
                     </button>
                     {% endfor %}
                 </div>
             </div>
             {% endif %}
-            <button id="playBtn" class="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-black text-sm py-3 rounded-xl shadow-lg shadow-red-600/30 uppercase tracking-wider">▶ Jugar</button>
+            <button id="playBtn" class="w-full bg-gradient-to-r from-red-600 via-rose-600 to-red-700 text-white font-black text-sm py-2.5 rounded-xl shadow-lg shadow-red-600/30 uppercase tracking-wider">▶ Jugar</button>
             <div class="flex items-center justify-between text-[11px] font-bold text-slate-300">
                 <span id="runsLeftLabel">Partidas de hoy: --</span>
                 <span id="myWeekLabel"></span>
             </div>
-            <p id="pointsLabel" class="text-[11px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2" hidden></p>
-            <p id="playMsg" class="text-[11px] font-bold min-h-[14px]"></p>
+            <p id="pointsLabel" class="text-[11px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl px-2.5 py-1.5" hidden></p>
+            <p id="playMsg" class="text-[11px] font-bold min-h-[12px]"></p>
         </div>
 
-        <div class="glass-card w-full p-3.5 rounded-2xl">
-            <h2 class="text-xs font-extrabold text-white flex items-center justify-between mb-2">
+        <div class="glass-card w-full p-2.5 rounded-2xl">
+            <h2 class="text-xs font-extrabold text-white flex items-center justify-between mb-1.5">
                 <span>🏆 Ranking de la semana</span>
                 <span id="playersCount" class="text-[10px] text-slate-400 font-bold"></span>
             </h2>
@@ -207,11 +255,11 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
             <div id="rankingMoreBox" class="flex flex-col gap-1.5 mt-1.5" hidden></div>
             <button type="button" id="rankingMoreBtn" class="rank-more-btn mt-1.5" hidden></button>
 
-            <div class="bg-black border border-zinc-800 rounded-xl p-3 mt-3">
-                <div class="text-[11px] font-extrabold text-white mb-2">🔎 Tu posición actual</div>
+            <div class="glass-inset rounded-xl p-2 mt-2">
+                <div class="text-[11px] font-extrabold text-white mb-1.5">🔎 Tu posición actual</div>
                 <div class="flex gap-2">
                     <input type="tel" inputmode="numeric" id="lookupIdInput" placeholder="Busca tu ID de juego..."
-                           class="glass-input-field flex-1 min-w-0 rounded-xl px-4 py-3 text-sm focus:outline-none">
+                           class="glass-input-field flex-1 min-w-0 rounded-xl px-4 py-2.5 text-sm focus:outline-none">
                     <button type="button" id="lookupBtn" class="flex-shrink-0 bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold text-[11px] px-4 rounded-xl uppercase">Ver</button>
                 </div>
                 <p id="lookupMsg" class="text-[11px] font-bold mt-1.5 min-h-[14px]"></p>
@@ -219,22 +267,22 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
             </div>
         </div>
 
-        <div id="pastWinnersContainer" class="glass-card w-full p-3.5 rounded-2xl" hidden>
-            <h2 class="text-xs font-extrabold text-white mb-2">👑 Ganadores anteriores</h2>
+        <div id="pastWinnersContainer" class="glass-card w-full p-2.5 rounded-2xl" hidden>
+            <h2 class="text-xs font-extrabold text-white mb-1.5">👑 Ganadores anteriores</h2>
             <div id="pastWinnersBox" class="flex flex-col gap-1.5"></div>
         </div>
 
-        <div class="glass-card w-full p-3.5 rounded-2xl text-[11px] text-slate-300 leading-relaxed">
-            <h2 class="text-xs font-extrabold text-white mb-1.5">🎮 Cómo jugar</h2>
+        <div class="glass-card w-full p-2.5 rounded-2xl text-[10.5px] text-slate-300 leading-snug">
+            <h2 class="text-xs font-extrabold text-white mb-1">🎮 Cómo jugar</h2>
             <p>• Se juega solo en teléfono, en vertical 📱.</p>
             <p>• 🕹️ Muévete con el <b>joystick</b> de abajo: pon el pulgar en la franja inferior y arrástralo hacia donde quieras ir (más lejos, más rápido). Disparas solo al enemigo más cercano.</p>
-            <p>• Los enemigos sueltan 💎: pasa cerca para recogerlos.</p>
+            <p>• Los enemigos sueltan cristales 💎: pasa cerca para recogerlos.</p>
             <p>• 🔥 Desde la oleada 6 <b class="text-red-400">el borde quema</b>: si te quedas pegado a la orilla pierdes vida. Además, algunos monstruos te cortan el paso: no sirve solo dar vueltas.</p>
             <p>• ❤️ Cada oleada empieza con tu vida llena. Al terminar cada oleada eliges una mejora. Cada 5 oleadas sale un jefe, y desde la oleada 5 algunos enemigos (los azules) te disparan: esquiva sus balas.</p>
             <p>• Los grandes tienen poderes: cuando brillan, algo viene. Los morados te embisten en línea recta (quítate del camino amarillo) y el jefe dispara en círculo, invoca esbirros o también embiste.</p>
             <p id="howToPoints" {% if not (games and horde_extra_cost) %}hidden{% endif %}>• ¿Se acabaron tus partidas gratis del día? Sigue jugando canjeando los puntos que ganas con tus recargas en ese ID ({{ horde_extra_cost }} pts por partida) y sube más en el top.</p>
             <p>• Antes de entregar los premios revisamos las partidas de los ganadores. Si hay trampa, ese ID queda bloqueado y el premio pasa al siguiente.</p>
-            <p>• Todos los diamantes de tus partidas de la semana suman en el ranking. La semana cierra el domingo a las 11:59 PM (Venezuela).</p>
+            <p>• Todos los cristales de tus partidas de la semana suman en el ranking. La semana cierra el domingo a las 11:59 PM (Venezuela).</p>
         </div>
         {% endif %}
     </main>
@@ -242,9 +290,9 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
     <footer class="text-[10px] text-slate-500 text-center py-2 mt-2">🛡 3SRecargas • Hordas de Diamantes</footer>
 </div>
 
-<div id="noPointsModal" class="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-5" hidden>
-    <div class="relative w-full max-w-[360px] bg-gradient-to-b from-zinc-950 to-black border-2 border-amber-500/60 rounded-2xl p-5 text-center shadow-[0_0_30px_rgba(245,158,11,0.2)]">
-        <button type="button" id="noPointsClose" class="absolute top-2.5 right-3 w-8 h-8 rounded-full bg-zinc-900 border border-zinc-700 text-slate-300 text-sm font-black" aria-label="Cerrar">✕</button>
+<div id="noPointsModal" class="fixed inset-0 z-[70] glass-overlay flex items-center justify-center p-5" hidden>
+    <div class="relative w-full max-w-[360px] glass-window rounded-2xl p-5 text-center">
+        <button type="button" id="noPointsClose" class="absolute top-2.5 right-3 w-8 h-8 rounded-full glass-chip text-slate-300 text-sm font-black" aria-label="Cerrar">✕</button>
         <div class="text-4xl mb-1">⭐</div>
         <h3 class="text-lg font-black text-white">Te faltan puntos</h3>
         <p id="noPointsText" class="text-[12px] text-slate-300 font-bold mt-2 leading-relaxed"></p>
@@ -294,10 +342,10 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
     <div class="game-modal" id="pauseModal" hidden>
         <div class="game-modal-card">
             <h3 class="text-lg font-black text-white mb-1">⏸ Pausa</h3>
-            <p class="text-[11px] text-slate-400 mb-4">Si terminas ahora, se guardan los diamantes que ya juntaste.</p>
+            <p class="text-[11px] text-slate-400 mb-4">Si terminas ahora, se guardan los cristales que ya juntaste.</p>
             <div class="flex flex-col gap-2">
                 <button type="button" id="resumeBtn" class="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-sm py-3 rounded-xl uppercase">▶ Continuar</button>
-                <button type="button" id="quitBtn" class="w-full bg-zinc-900 border border-zinc-700 text-slate-200 font-bold text-xs py-2.5 rounded-xl uppercase">Terminar partida</button>
+                <button type="button" id="quitBtn" class="w-full glass-chip text-slate-200 font-bold text-xs py-2.5 rounded-xl uppercase">Terminar partida</button>
             </div>
         </div>
     </div>
@@ -314,15 +362,15 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
         <div class="game-modal-card">
             <div class="text-3xl mb-1">💀</div>
             <h3 id="overTitle" class="text-lg font-black text-white">¡Fin de la partida!</h3>
-            <div class="bg-black border border-cyan-500/40 rounded-xl p-3 my-3">
-                <div class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Diamantes de esta partida</div>
+            <div class="glass-inset rounded-xl p-3 my-3" style="border-color:rgba(34,211,238,.4);">
+                <div class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Cristales de esta partida</div>
                 <div id="overDiamonds" class="text-3xl font-black text-cyan-300">0</div>
                 <div id="overStatus" class="text-[11px] font-bold text-slate-300 mt-1">Guardando...</div>
             </div>
             <div class="flex flex-col gap-2">
                 <button type="button" id="againBtn" class="w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-sm py-3 rounded-xl uppercase" hidden>▶ Jugar otra vez</button>
                 <button type="button" id="retrySaveBtn" class="w-full bg-amber-600 text-white font-black text-xs py-2.5 rounded-xl uppercase" hidden>Reintentar guardar</button>
-                <button type="button" id="exitBtn" class="w-full bg-zinc-900 border border-zinc-700 text-slate-200 font-bold text-xs py-2.5 rounded-xl uppercase">Salir</button>
+                <button type="button" id="exitBtn" class="w-full glass-chip text-slate-200 font-bold text-xs py-2.5 rounded-xl uppercase">Salir</button>
             </div>
         </div>
     </div>
@@ -380,7 +428,7 @@ function renderPrizes(prizes) {
     const names = ['1er lugar', '2do lugar', '3er lugar'];
     if (!prizes || !prizes.length) { $('prizeLine').textContent = '🏆 El #1 gana premio'; return; }
     $('prizeLine').innerHTML = prizes.map((p) => `
-        <div class="flex items-center justify-center gap-1.5 ${p.place === 1 ? 'text-base' : 'text-sm text-amber-300/90'}">
+        <div class="flex items-center justify-center gap-1.5 ${p.place === 1 ? 'text-sm' : 'text-xs text-amber-300/90'}">
             <span>${medals[p.place - 1]}</span>
             <span class="text-slate-300 font-bold text-[11px]">${names[p.place - 1]}:</span>
             <span>${escapeHtml(p.label)}</span>
@@ -391,19 +439,19 @@ function renderRanking(data) {
     const box = $('rankingBox');
     $('playersCount').textContent = data.total_players ? `${data.total_players} jugador(es)` : '';
     if (!data.ranking.length) {
-        box.innerHTML = '<div class="bg-black border border-zinc-900 rounded-xl p-2.5 text-center text-slate-400 text-xs">Nadie ha jugado esta semana. ¡Sé el primero!</div>';
+        box.innerHTML = '<div class="glass-inset rounded-xl p-2 text-center text-slate-400 text-xs">Nadie ha jugado esta semana. ¡Sé el primero!</div>';
         return;
     }
     const medals = ['🥇', '🥈', '🥉'];
     const prizePlaces = new Set((data.prizes || []).map((p) => p.place));
     const rowHtml = (r) => `
-        <div class="rank-row bg-black border ${prizePlaces.has(r.place) ? 'border-amber-500/50' : 'border-zinc-800'} rounded-xl px-2.5 py-2 ${r.is_me ? 'is-me' : ''}">
+        <div class="rank-row glass-inset ${prizePlaces.has(r.place) ? 'is-prize' : ''} rounded-xl px-2.5 py-1.5 ${r.is_me ? 'is-me' : ''}">
             <span class="text-sm font-black text-center">${medals[r.place - 1] || '#' + r.place}</span>
             <span class="min-w-0">
                 <span class="block text-[12px] font-black text-white truncate">${escapeHtml(r.nick)}${r.is_me ? ' <span class="text-cyan-300">(tú)</span>' : ''}</span>
                 <span class="block text-[10px] font-bold text-slate-500">ID: ${escapeHtml(r.player_id)}</span>
             </span>
-            <span class="text-sm font-black text-cyan-300">💎 ${r.diamonds}</span>
+            <span class="text-sm font-black text-cyan-300">💎 ${r.diamonds} <small class="text-[10px] font-bold text-cyan-200">cristales</small></span>
         </div>`;
     // Top 4 a la vista; el resto dentro del desplegable (se queda abierto
     // o cerrado aunque el ranking se refresque).
@@ -450,12 +498,12 @@ async function lookupPosition() {
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || 'No se pudo buscar.');
         const p = data.position;
-        if (!p) { msg.textContent = 'Ese ID todavía no tiene diamantes esta semana. ¡Juega para entrar al ranking!'; return; }
+        if (!p) { msg.textContent = 'Ese ID todavía no tiene cristales esta semana. ¡Juega para entrar al ranking!'; return; }
         msg.textContent = '';
         const medal = ['🥇', '🥈', '🥉'][p.place - 1] || '';
         const hint = p.place === 1
             ? '¡Vas de primero! Sigue jugando para que nadie te alcance.'
-            : `Te faltan 💎 ${p.missing} para pasar al puesto #${p.place - 1}.`;
+            : `Te faltan 💎 ${p.missing} cristales para pasar al puesto #${p.place - 1}.`;
         out.innerHTML = `
             <div class="flex items-center justify-between gap-2">
                 <span class="min-w-0">
@@ -464,14 +512,14 @@ async function lookupPosition() {
                 </span>
                 <span class="text-right flex-shrink-0">
                     <span class="block text-lg font-black text-amber-400">${medal} #${p.place}</span>
-                    <span class="block text-[12px] font-black text-cyan-300">💎 ${p.diamonds}</span>
+                    <span class="block text-[12px] font-black text-cyan-300">💎 ${p.diamonds} cristales</span>
                 </span>
             </div>
             <div class="lookup-bar mt-2"><div style="width:${p.progress_percent}%"></div></div>
             <div class="text-[11px] font-bold text-slate-300 mt-1.5">${hint}</div>`;
         out.hidden = false;
     } catch (e) {
-        msg.textContent = e.message || 'ID no encontrado.';
+        msg.textContent = (e && (e.name === 'TypeError' || e.name === 'AbortError')) ? 'Sin conexión. Revisa tu internet e intenta de nuevo.' : ((e && e.message) || 'ID no encontrado.');
     } finally {
         btn.disabled = false; btn.textContent = 'Ver';
     }
@@ -485,9 +533,9 @@ function renderPastWinners(list) {
     if (!list || !list.length) { container.hidden = true; return; }
     container.hidden = false;
     $('pastWinnersBox').innerHTML = list.map((w) => `
-        <div class="bg-black border border-amber-500/30 rounded-xl px-2.5 py-2 flex items-center justify-between gap-2 text-[11px]">
+        <div class="glass-inset is-prize rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px]">
             <span class="min-w-0 truncate"><span class="text-amber-400 font-black">#${w.place}</span> <span class="font-black text-white">${escapeHtml(w.nick)}</span> <span class="text-slate-500">· ${escapeHtml(w.player_id)}</span></span>
-            <span class="flex-shrink-0 text-slate-400 font-bold">Sem. ${escapeHtml(w.week_key)} · 💎 ${w.diamonds}</span>
+            <span class="flex-shrink-0 text-slate-400 font-bold">Sem. ${escapeHtml(w.week_key)} · 💎 ${w.diamonds} cristales</span>
         </div>`).join('');
 }
 
@@ -535,7 +583,7 @@ function showBanned(banned) {
 
 function showNoPoints(balance) {
     $('noPointsText').textContent =
-        `La partida extra cuesta ${extraRunCost} pts y este ID tiene ${balance ?? 0}. Ya usaste tus partidas gratis de hoy.`;
+        `La partida extra cuesta ${extraRunCost} pts y este ID tiene ${balance == null ? 0 : balance}. Ya usaste tus partidas gratis de hoy.`;
     $('noPointsModal').hidden = false;
 }
 $('noPointsClose').addEventListener('click', () => { $('noPointsModal').hidden = true; });
@@ -561,7 +609,7 @@ async function refreshState() {
             : `${data.runs_per_day} partidas gratis por día`;
         updatePlayButton();
         $('myWeekLabel').textContent = playerId && data.my_total
-            ? `Tu semana: 💎 ${data.my_total}${data.my_rank ? ` (#${data.my_rank})` : ''}`
+            ? `Tu semana: 💎 ${data.my_total} cristales${data.my_rank ? ` (#${data.my_rank})` : ''}`
             : '';
         renderRanking(data);
         renderPastWinners(data.past_winners);
@@ -790,7 +838,7 @@ const UPGRADES = [
     { id: 'multi',  icon: '🔱', name: 'Bala extra',      desc: '+1 bala por disparo',              apply: (p) => { p.multishot += 1; }, max: 5 },
     { id: 'heal',   icon: '❤️', name: 'Curación',        desc: 'Recupera 40 de vida',              apply: (p) => { p.hp = Math.min(p.maxHp, p.hp + 40); } },
     { id: 'maxhp',  icon: '🛡️', name: 'Más vida',        desc: '+25 de vida máxima',               apply: (p) => { p.maxHp += 25; p.hp += 25; } },
-    { id: 'magnet', icon: '🧲', name: 'Imán',            desc: 'Atrae diamantes desde más lejos',  apply: (p) => { p.magnet *= 1.5; }, max: 4 },
+    { id: 'magnet', icon: '🧲', name: 'Imán',            desc: 'Atrae cristales desde más lejos',  apply: (p) => { p.magnet *= 1.5; }, max: 4 },
     { id: 'pierce', icon: '🗡️', name: 'Perforación',     desc: 'Las balas atraviesan 1 enemigo más', apply: (p) => { p.pierce += 1; }, max: 3 },
     // Poderes estilo Archero
     { id: 'diagonal', icon: '↗️', name: 'Disparo diagonal', desc: '+2 disparos en diagonal',          apply: (p) => { p.diagonal += 1; }, max: 2 },
@@ -1839,7 +1887,7 @@ const MONSTER_DRAW = {
     boss(g, R, body, edge) {
         for (let i = 0; i < 7; i++) {
             const a = Math.PI * 0.45 + (i / 6) * Math.PI * 1.1;
-            spike(g, R, a, R * (i % 2 ? 0.35 : 0.5), R * 0.12, '#94a3b8', '#000');
+            spike(g, R, a, R * (i % 2 ? 0.35 : 0.5), R * 0.12, '#a3a3a3', '#000');
         }
         horn(g, R, -1, R * 0.6, '#fafaf9');
         horn(g, R, 1, R * 0.6, '#fafaf9');
@@ -1869,7 +1917,7 @@ const MONSTER_DRAW = {
         g.lineCap = 'butt';
         bodyFill(g, R, body, edge, 4, 0.04, 0);
         // Un solo ojo gigante.
-        g.fillStyle = '#f8fafc';
+        g.fillStyle = '#fafafa';
         g.beginPath(); g.arc(R * 0.2, 0, R * 0.55, 0, Math.PI * 2); g.fill();
         g.lineWidth = 1.5; g.strokeStyle = '#000'; g.stroke();
         g.strokeStyle = 'rgba(220,38,38,0.8)'; g.lineWidth = 0.8;
@@ -2112,7 +2160,7 @@ function draw() {
         ctx.stroke();
         ctx.beginPath();
         ctx.arc(p.x, cy, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = p.hurt > 0 ? '#fecaca' : '#f8fafc';
+        ctx.fillStyle = p.hurt > 0 ? '#fecaca' : '#fafafa';
         ctx.fill();
         ctx.lineWidth = 3;
         ctx.strokeStyle = '#ef4444';
@@ -2261,6 +2309,7 @@ function replayPayload() {
     return { v: 1, r: game ? game.rules : RULES_VERSION, W: rec.W, H: rec.H, ch: selectedSlot || 0, data: encodeInts(rec.ints) };
 }
 
+let lastIdleDraw = 0;
 function frame(t) {
     const gapMs = t - lastFrame;
     const dt = Math.min(0.1, Math.max(0, gapMs / 1000 || 0));
@@ -2278,7 +2327,9 @@ function frame(t) {
         if (n === MAX_STEPS_PER_FRAME) stepAcc = 0; // teléfono muy lento: el juego va más lento, no se salta pasos
     }
     adaptQuality(gapMs);
-    draw();
+    // En pausa, "elige mejora" y la pantalla de fin la escena no se mueve: se redibuja solo unas 4 veces por segundo (antes 60), lo que ahorra batería en
+    // teléfonos flojos con las ventanas de cristal encima. En la partida y en la repetición, a todo cuadro.
+    if (REPLAY_MODE || (game && game.state === 'play') || t - lastIdleDraw >= 250) { draw(); lastIdleDraw = t; }
     updateHud();
     rafId = requestAnimationFrame(frame);
 }
@@ -2435,6 +2486,39 @@ function setPlayMsg(text, tone) {
     el.textContent = text;
 }
 
+// ─── Pedidos al servidor ────────────────────────────────────────────────────
+// Se distinguen las fallas para no decirle "error de conexión" a quien sí tiene internet: SIN INTERNET (el pedido ni salió), SERVIDOR OCUPADO (respondió algo
+// que no es JSON o un error 5xx) y las respuestas normales de error (ID bloqueado, sin partidas, etc.).
+class HordeNetError extends Error {}
+class HordeServerError extends Error {}
+
+// Tiempo máximo de cada pedido: sin él, un servidor o una red que no responde dejaba el botón "Jugar" en "Preparando partida..." para siempre y la partida
+// siguiente esperando a la anterior. Al vencer se trata como falta de conexión y entra a los reintentos de siempre. "Iniciar" puede tardar de verdad (la
+// primera vez de la semana el servidor verifica el ID con el juego, hasta ~75 s), por eso tiene más tiempo que "terminar".
+const HORDE_START_TIMEOUT_MS = 90000;
+const HORDE_FINISH_TIMEOUT_MS = 30000;
+
+async function hordeFetch(url, options, timeoutMs) {
+    let res;
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctrl && timeoutMs ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+    try {
+        try { res = await fetch(url, ctrl ? { ...options, signal: ctrl.signal } : options); } catch (e) { throw new HordeNetError('net'); }
+        let data = null;
+        try { data = await res.json(); } catch (e) { data = null; }
+        if (res.status >= 500 || !data || typeof data !== 'object') throw new HordeServerError('server');
+        return { res, data };
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
+function hordeErrorText(e) {
+    return e instanceof HordeNetError
+        ? 'Sin conexión. Revisa tu internet e intenta de nuevo.'
+        : 'El servidor está ocupado. Intenta de nuevo en unos segundos.';
+}
+
 async function requestRun() {
     if (!IS_MOBILE) { setPlayMsg('📱 Este juego solo se puede jugar desde un teléfono.', 'error'); return null; }
     if (!isPortrait()) { setPlayMsg('📱 Pon tu teléfono en vertical para jugar.', 'error'); return null; }
@@ -2450,13 +2534,12 @@ async function requestRun() {
         showNoPoints(pointsBalance);
         return null;
     }
-    const res = await fetch('/promos/api/hordas/iniciar', {
+    const { data } = await hordeFetch('/promos/api/hordas/iniciar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // Versión del juego de esta página: si el juego se actualizó mientras
         // estaba abierta, el servidor pide recargar antes de jugar.
         body: JSON.stringify({ game_id: GAME_ID, player_id: playerId, use_points: needsPoints(), rules: RULES_VERSION }),
-    });
-    const data = await res.json();
+    }, HORDE_START_TIMEOUT_MS);
     if (!data.ok) {
         if (data.code === 'outdated') {
             setPlayMsg(data.error || 'El juego se actualizó. Recargando…', 'info');
@@ -2476,14 +2559,34 @@ async function requestRun() {
     return data;
 }
 
+// Si el servidor abrió la partida pero el teléfono no pudo ARMAR el juego (falla del juego en ese equipo, no de la conexión), se anula: así no se gasta
+// la partida del día ni los puntos.
+function cancelRun(token) {
+    if (!token) return;
+    try {
+        fetch('/promos/api/hordas/cancelar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }),
+        }).then(() => refreshState()).catch(() => {});
+    } catch (e) { /* nada más que hacer */ }
+}
+
 async function launchGame(fromOverlay) {
     initSfx(); // dentro del toque en "Jugar": así el teléfono permite el sonido
     const playBtn = $('playBtn');
     const againBtn = $('againBtn');
     playBtn.disabled = true; againBtn.disabled = true;
     setPlayMsg('Preparando partida...', 'info');
+    let data = null;
     try {
-        const data = await requestRun();
+        data = await requestRun();
+    } catch (e) {
+        // La falla fue de red o del servidor (no del juego): se dice cuál de las dos.
+        setPlayMsg(hordeErrorText(e), 'error');
+        if (fromOverlay) closeOverlay();
+        playBtn.disabled = false; againBtn.disabled = false;
+        return;
+    }
+    try {
         if (!data) {
             if (fromOverlay) closeOverlay();
             return;
@@ -2507,8 +2610,15 @@ async function launchGame(fromOverlay) {
         lastFrame = performance.now();
         if (!rafId) rafId = requestAnimationFrame(frame);
     } catch (e) {
-        setPlayMsg('Error de conexión, intenta de nuevo.', 'error');
-        if (fromOverlay) closeOverlay();
+        // Falló armar el juego en este teléfono: ya NO se culpa a la conexión. Se anula la partida abierta para no gastarla.
+        try { console.error('Hordas: no se pudo iniciar la partida', e); } catch (_) { /* sin consola */ }
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        game = null;
+        runSubmitted = true;
+        cancelRun(data && data.token);
+        currentToken = null;
+        closeOverlay();
+        setPlayMsg('No se pudo iniciar el juego en este teléfono. Recarga la página e intenta de nuevo (no se gastó tu partida).', 'error');
     } finally {
         playBtn.disabled = false; againBtn.disabled = false;
     }
@@ -2529,42 +2639,162 @@ function runPayload(maxBytes) {
     return withReplay;
 }
 
-async function submitRun() {
+// ─── Guardar la partida (a prueba de conexión mala) ─────────────────────────
+// Antes, si la conexión fallaba justo al terminar, el cliente veía "error de conexión" y, si cerraba la página sin tocar "Reintentar", la partida se perdía.
+// Ahora: (1) la partida se anota en este teléfono antes de enviarla (hasta 5 a la vez: si dos seguidas fallan, ninguna se pierde), (2) se reintenta sola
+// 3 veces, (3) si aun así no se pudo, se envía sola la próxima vez que se abra el juego o vuelva la conexión, y (4) si el servidor dice que ya estaba
+// registrada, se muestra como guardada (no como error).
+const PENDING_KEY = 'hordas_pending_run';
+const PENDING_MAX_AGE_MS = 48 * 3600 * 1000;
+const PENDING_MAX_ITEMS = 5;
+const SUBMIT_RETRY_DELAYS = [1500, 4000, 9000];
+const ALREADY_SAVED = /ya fue registrada/i;
+const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let resubmitting = false;
+const sendingTokens = new Set();   // partidas en cola o enviándose ahora mismo (para no mandar la misma dos veces a la vez)
+
+function readPendingList() {
+    let list = [];
+    try { list = JSON.parse(storageGet(PENDING_KEY) || '[]'); } catch (e) { list = []; }
+    if (list && !Array.isArray(list)) list = list.token ? [list] : [];   // formato anterior: una sola partida
+    if (!Array.isArray(list)) return [];
+    const now = Date.now();
+    return list.filter((p) => p && p.token && typeof p.body === 'string' && (now - (p.ts || 0)) < PENDING_MAX_AGE_MS).slice(-PENDING_MAX_ITEMS);
+}
+function writePendingList(list) {
+    if (list.length) { storageSet(PENDING_KEY, JSON.stringify(list)); return; }
+    try { localStorage.removeItem(PENDING_KEY); } catch (e) { /* sin almacenamiento */ }
+}
+function savePending(token, body) {
+    const list = readPendingList().filter((p) => p.token !== token);
+    list.push({ token, body, ts: Date.now() });
+    writePendingList(list.slice(-PENDING_MAX_ITEMS));
+}
+// Con token borra esa partida; sin token solo limpia lo vencido o dañado.
+function clearPending(token) {
+    writePendingList(token ? readPendingList().filter((p) => p.token !== token) : readPendingList());
+}
+
+// Un intento de guardar. Devuelve { kind, data }: 'ok' = guardada; 'again' = falló la red, el servidor está ocupado o hay tope de pedidos (se puede
+// reintentar); 'rejected' = el servidor la rechazó (no tiene caso reintentar).
+async function sendRun(body) {
+    try {
+        const { res, data } = await hordeFetch('/promos/api/hordas/terminar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }, HORDE_FINISH_TIMEOUT_MS);
+        if (data.ok) return { kind: 'ok', data };
+        if (res.status === 429) return { kind: 'again', data };
+        return { kind: 'rejected', data };
+    } catch (e) {
+        return { kind: 'again', data: null };
+    }
+}
+
+// Lo que ve el cliente solo cambia si la partida que terminó de enviarse es la que tiene en pantalla; el anotado y el ranking se actualizan siempre.
+function showSaveResult(out, token) {
+    const isCurrent = token === currentToken;
+    const status = $('overStatus');
+    const bad = 'text-[11px] font-bold text-red-400 mt-1';
+    const good = 'text-[11px] font-bold text-emerald-400 mt-1';
+    if (out.kind === 'ok') {
+        const data = out.data;
+        clearPending(token);
+        if (isCurrent) {
+            runSubmitted = true;
+            $('overDiamonds').textContent = data.diamonds;
+            status.className = good;
+            status.textContent = `✅ Guardado. Tu semana: 💎 ${data.week_total} cristales${data.week_rank ? ` · Puesto #${data.week_rank}` : ''}`;
+            if (data.flagged) {
+                status.className = bad;
+                status.textContent = '⚠ Detectamos algo raro en esta partida y no sumó cristales.';
+            } else if (data.capped) {
+                status.textContent += ' (se ajustó el puntaje a lo posible para el tiempo jugado)';
+            }
+            if (data.week_rank === 1 && typeof confetti === 'function') {
+                confetti({ particleCount: 90, spread: 80, origin: { y: 0.6 }, colors: ['#22d3ee', '#ffffff', '#fbbf24'] });
+            }
+        }
+        refreshState();
+        return;
+    }
+    if (out.kind === 'rejected') {
+        clearPending(token);   // el servidor la rechazó: no tiene caso reenviarla
+        const msg = (out.data && out.data.error) || 'No se pudo guardar la partida.';
+        const already = ALREADY_SAVED.test(msg);
+        if (isCurrent) {
+            runSubmitted = true;
+            status.className = already ? good : bad;
+            status.textContent = already ? '✅ Tu partida ya estaba guardada.' : msg;
+        }
+        if (already) refreshState();
+        return;
+    }
+    if (!isCurrent) return;   // quedó anotada: se enviará sola
+    status.className = bad;
+    status.textContent = 'No se pudo guardar por la conexión. Tu partida quedó anotada en este teléfono y se enviará sola cuando vuelva la conexión. También puedes tocar "Reintentar guardar".';
+    $('retrySaveBtn').hidden = false;
+}
+
+async function sendRunWithRetries(token, body) {
+    try {
+        let out = await sendRun(body);
+        for (let i = 0; i < SUBMIT_RETRY_DELAYS.length && out.kind === 'again'; i++) {
+            if (token === currentToken) $('overStatus').textContent = `Reintentando guardar (${i + 1}/${SUBMIT_RETRY_DELAYS.length})...`;
+            await sleepMs(SUBMIT_RETRY_DELAYS[i]);
+            out = await sendRun(body);
+        }
+        showSaveResult(out, token);
+    } finally {
+        sendingTokens.delete(token);
+    }
+}
+
+// Guarda la partida que acaba de terminar. Cada partida se envía por su cuenta: si el cliente juega otra mientras la anterior sigue reintentando (o su pedido
+// está colgado), la nueva se guarda sin esperar. Ninguna se pierde ni se mezclan los avisos (solo se muestra el de la partida que está en pantalla).
+function submitRun() {
+    const token = currentToken;
+    if (!token) return Promise.resolve();
+    const body = runPayload(100000);
+    savePending(token, body);   // por si se cierra la página o se cae la conexión: se vuelve a enviar sola
+    sendingTokens.add(token);   // mientras se envía, quien reenvía las anotadas la deja en paz
     const status = $('overStatus');
     $('retrySaveBtn').hidden = true;
     status.className = 'text-[11px] font-bold text-slate-300 mt-1';
     status.textContent = 'Guardando en el ranking...';
+    return sendRunWithRetries(token, body).catch(() => {});
+}
+
+// Partidas que quedaron anotadas en este teléfono sin poder enviarse (se cerró la página o no había conexión): se envían al abrir el juego y al volver
+// el internet. Las que están en cola o enviándose ahora mismo se saltan.
+async function resubmitPending() {
+    if (resubmitting) return;
+    resubmitting = true;
     try {
-        const res = await fetch('/promos/api/hordas/terminar', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: runPayload(),
-        });
-        const data = await res.json();
-        if (!data.ok) {
-            if (res.status === 400) { runSubmitted = true; }
-            status.className = 'text-[11px] font-bold text-red-400 mt-1';
-            status.textContent = data.error || 'No se pudo guardar la partida.';
-            if (res.status !== 400) $('retrySaveBtn').hidden = false;
-            return;
+        let saved = 0;
+        let gained = 0;
+        for (const p of readPendingList()) {
+            if (sendingTokens.has(p.token)) continue;
+            sendingTokens.add(p.token);
+            let out;
+            try {
+                out = await sendRun(p.body);
+                if (out.kind === 'again') { await sleepMs(3000); out = await sendRun(p.body); }
+            } finally {
+                sendingTokens.delete(p.token);
+            }
+            if (out.kind === 'ok') { clearPending(p.token); saved++; gained += Number(out.data.diamonds) || 0; continue; }
+            if (out.kind === 'rejected') { clearPending(p.token); continue; }   // ya estaba registrada u otro rechazo: nada más que hacer
+            break;   // sin conexión: se intenta en otra ocasión
         }
-        runSubmitted = true;
-        $('overDiamonds').textContent = data.diamonds;
-        status.className = 'text-[11px] font-bold text-emerald-400 mt-1';
-        status.textContent = `✅ Guardado. Tu semana: 💎 ${data.week_total}${data.week_rank ? ` · Puesto #${data.week_rank}` : ''}`;
-        if (data.flagged) {
-            status.className = 'text-[11px] font-bold text-red-400 mt-1';
-            status.textContent = '⚠ Detectamos algo raro en esta partida y no sumó diamantes.';
-        } else if (data.capped) {
-            status.textContent += ' (se ajustó el puntaje a lo posible para el tiempo jugado)';
+        if (saved) {
+            setPlayMsg(saved === 1 ? `✅ Se guardó tu partida anterior (+${gained} cristales).` : `✅ Se guardaron tus ${saved} partidas anteriores (+${gained} cristales).`, 'info');
+            refreshState();
         }
-        if (data.week_rank === 1 && typeof confetti === 'function') {
-            confetti({ particleCount: 90, spread: 80, origin: { y: 0.6 }, colors: ['#22d3ee', '#ffffff', '#fbbf24'] });
-        }
-    } catch (e) {
-        status.className = 'text-[11px] font-bold text-red-400 mt-1';
-        status.textContent = 'Error de conexión al guardar.';
-        $('retrySaveBtn').hidden = false;
+        clearPending(null);   // quita lo vencido o dañado
+    } finally {
+        resubmitting = false;
     }
 }
+window.addEventListener('online', resubmitPending);
+setTimeout(resubmitPending, 2000);
 
 const END_CODES = { quit: 0, dead: 1, cleared: 2, left: 3 };
 
@@ -2573,7 +2803,7 @@ function endRun(reason) {
     game.state = 'over';
     game.endReason = reason;
     if (REPLAY_MODE) { replayFinished(); return; }
-    recPush(4, END_CODES[reason] ?? 0);
+    recPush(4, (END_CODES[reason] == null ? 0 : END_CODES[reason]));
     touch.active = false;
     resetJoy();
     $('upgradeModal').hidden = true;
@@ -2623,7 +2853,11 @@ window.addEventListener('pagehide', () => {
     if (currentToken && !runSubmitted && game && navigator.sendBeacon) {
         runSubmitted = true;
         if (game.state !== 'over') recPush(4, END_CODES.left);
-        navigator.sendBeacon('/promos/api/hordas/terminar', new Blob([runPayload(60000)], { type: 'application/json' }));
+        const body = runPayload(60000);
+        // Se anota también en el teléfono: si el aviso no llega (sin internet), se envía solo la próxima vez que se abra el juego. Si sí llegó, el
+        // servidor responde "ya fue registrada" y la anotación se borra sin avisar nada.
+        try { savePending(currentToken, body); } catch (e) { /* sin almacenamiento */ }
+        navigator.sendBeacon('/promos/api/hordas/terminar', new Blob([body], { type: 'application/json' }));
     }
 });
 
@@ -2825,7 +3059,7 @@ if (REPLAY_MODE) {
         setPlayMsg('Abre esta página desde tu teléfono (en vertical) para jugar. Aquí puedes ver el ranking.', 'info');
     }
     refreshState();
-    setInterval(() => { if ($('gameOverlay').hidden) refreshState(); }, 30000);
+    setInterval(() => { if (!document.hidden && $('gameOverlay').hidden) refreshState(); }, 30000);
 }
 </script>
 </body>

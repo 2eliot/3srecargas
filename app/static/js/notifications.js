@@ -58,13 +58,48 @@
         return new Date(then).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' });
     }
 
-    function iconFor(item) {
-        if (item.level === 'success') return '✅';
-        if (item.level === 'warning') return '⚠️';
-        if (item.level === 'danger') return '⛔';
-        if (item.kind === 'message') return '✉️';
-        if (item.kind === 'broadcast') return '📣';
-        return '⏳';
+    // Íconos propios (en vez de emojis): cada aviso lleva un cuadrito de cristal rojo, blanco o negro con su dibujo.
+    var SVG_NS = 'http://www.w3.org/2000/svg';
+    var ICONS = {
+        check: ['M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z', 'm8.5 12.2 2.4 2.4 4.7-4.9'],
+        alert: ['M12 4.2 2.8 19.8h18.4z', 'M12 10v4.2', 'M12 17.3v.1'],
+        cross: ['M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z', 'm9.2 9.2 5.6 5.6', 'm14.8 9.2-5.6 5.6'],
+        mail: ['M5 5.5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z', 'm3.5 8 8.5 5.8L20.5 8'],
+        megaphone: ['M4 10v4a1 1 0 0 0 1 1h2.2l5.3 4V5L7.2 9H5a1 1 0 0 0-1 1z', 'M16 9.2a4 4 0 0 1 0 5.6', 'M19 6.5a8 8 0 0 1 0 11'],
+        clock: ['M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z', 'M12 7.5V12l3 1.8']
+    };
+    // Color según el proceso de la orden: en proceso = amarillo, aprobada = verde, rechazada = rojo. Los avisos que no
+    // son de una orden (novedades y mensajes del equipo) van en tono neutro. El mismo color lo llevan el ícono, la
+    // etiqueta del título y el botón "Ver mi orden" (clases st-wait / st-ok / st-bad / st-neutral).
+    function statusOf(item) {
+        if (item.kind !== 'order') return 'neutral';
+        if (item.level === 'success') return 'ok';
+        if (item.level === 'danger') return 'bad';
+        return 'wait';
+    }
+    function iconSpec(item) {
+        if (item.kind === 'support') return { name: 'mail', tone: 'white' };
+        if (item.level === 'success') return { name: 'check', tone: '' };
+        if (item.level === 'warning') return { name: 'alert', tone: '' };
+        if (item.level === 'danger') return { name: 'cross', tone: '' };
+        if (item.kind === 'message') return { name: 'mail', tone: 'white' };
+        if (item.kind === 'broadcast') return { name: 'megaphone', tone: 'black' };
+        return { name: 'clock', tone: '' };
+    }
+    function buildIcon(item) {
+        var spec = iconSpec(item);
+        var icon = document.createElement('span');
+        icon.className = 'notif-icon' + (spec.tone ? ' ic-' + spec.tone : '');
+        icon.setAttribute('aria-hidden', 'true');
+        var svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        ICONS[spec.name].forEach(function (d) {
+            var path = document.createElementNS(SVG_NS, 'path');
+            path.setAttribute('d', d);
+            svg.appendChild(path);
+        });
+        icon.appendChild(svg);
+        return icon;
     }
 
     // Solo rutas de la tienda o http(s): nunca "javascript:" ni otros esquemas.
@@ -87,16 +122,13 @@
             var href = safeHref(item.url);
             var row = document.createElement('li');
             var box = document.createElement(href ? 'a' : 'div');
-            box.className = 'notif-item lvl-' + item.level + (unreadIds[item.id] ? ' is-unread' : '');
+            box.className = 'notif-item lvl-' + item.level + ' st-' + statusOf(item) + (unreadIds[item.id] ? ' is-unread' : '');
             if (href) {
                 box.href = href;
                 if (/^https?:/i.test(href)) { box.target = '_blank'; box.rel = 'noopener noreferrer'; }
             }
 
-            var icon = document.createElement('span');
-            icon.className = 'notif-icon';
-            icon.setAttribute('aria-hidden', 'true');
-            icon.textContent = iconFor(item);
+            var icon = buildIcon(item);
 
             var text = document.createElement('span');
             text.className = 'notif-text';
@@ -114,7 +146,7 @@
                 // Se ve que se puede tocar: lleva a la orden (o a la página del aviso).
                 var go = document.createElement('p');
                 go.className = 'notif-go';
-                go.textContent = item.order_number ? 'Ver mi orden ›' : 'Ver más ›';
+                go.textContent = item.action_label || (item.order_number ? 'Ver mi orden ›' : 'Ver más ›');
                 text.appendChild(go);
             }
 
@@ -195,10 +227,13 @@
     function load() {
         var orders = read(ORDERS_KEY);
         orders = Array.isArray(orders) ? orders.slice(-MAX_ORDERS) : [];
+        // El chat de soporte de este navegador (su token está guardado desde que se abrió): sirve para avisar "Soporte te respondió".
+        var supportToken = '';
+        try { supportToken = window.localStorage.getItem('store:support-token') || ''; } catch (e) { /* sin almacenamiento */ }
         return window.fetch('/api/notificaciones', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orders: orders }),
+            body: JSON.stringify({ orders: orders, support_token: supportToken }),
             cache: 'no-store'
         }).then(function (response) {
             return response.ok ? response.json() : Promise.reject(new Error('http ' + response.status));

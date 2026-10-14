@@ -76,7 +76,7 @@
                     <td>
                         <div class="action-btns">
                             <button class="btn-sm btn-outline"
-                                    onclick="openEditPkg({{ pkg.id }}, '{{ pkg.name|e }}', '{{ pkg.price }}', '{{ pkg.usd_price if pkg.usd_price is not none else '' }}', '{{ (pkg.description or '')|e }}', {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }}, {{ 1 if pkg.image else 0 }}, '{{ pkg.announcement_type or '' }}', '{{ pkg.points_reward if pkg.points_reward is not none else '' }}', {{ (pkg.show_support_fallback if pkg.show_support_fallback is not none else true) | lower }}, '{{ pkg.bs_price if pkg.bs_price is not none else '' }}', '{{ pkg.cost_usd if pkg.cost_usd is not none else '' }}')">
+                                    onclick="openEditPkg({{ pkg.id }}, {{ ((pkg.name))|jsattr }}, {{ ((pkg.price))|jsattr }}, {{ ((pkg.usd_price if pkg.usd_price is not none else ''))|jsattr }}, {{ (((pkg.description or '')))|jsattr }}, {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }}, {{ 1 if pkg.image else 0 }}, {{ ((pkg.announcement_type or ''))|jsattr }}, {{ ((pkg.points_reward if pkg.points_reward is not none else ''))|jsattr }}, {{ (pkg.show_support_fallback if pkg.show_support_fallback is not none else true) | lower }}, {{ ((pkg.bs_price if pkg.bs_price is not none else ''))|jsattr }}, {{ ((pkg.cost_usd if pkg.cost_usd is not none else ''))|jsattr }})">
                                 Editar
                             </button>
                             <form method="POST" action="{{ url_for('admin_bp.package_delete', pkg_id=pkg.id) }}" style="display:inline">
@@ -85,7 +85,7 @@
                             </form>
                             <form method="POST" action="{{ url_for('admin_bp.package_delete_permanent', pkg_id=pkg.id) }}" style="display:inline">
                                 <button class="btn-sm btn-danger" type="submit"
-                                        onclick="return confirm('¿ELIMINAR el paquete \'{{ pkg.name|e }}\' permanentemente? Esto no se puede deshacer. Si tiene órdenes asociadas, no se podrá eliminar.')">Eliminar</button>
+                                        onclick="return confirm({{ ('¿ELIMINAR el paquete \'' ~ (pkg.name) ~ '\' permanentemente? Esto no se puede deshacer. Si tiene órdenes asociadas, no se podrá eliminar.')|jsattr }})">Eliminar</button>
                             </form>
                         </div>
                     </td>

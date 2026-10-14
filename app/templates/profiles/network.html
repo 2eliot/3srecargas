@@ -1,0 +1,30 @@
+{% extends 'profiles/_shell.html' %}
+{% block title %}Mi red{% endblock %}
+{% block content %}
+<main class="pf-list-page nx-store">
+    <div class="nx-back-row">
+        <a href="{{ url_for('auth_bp.profile') }}" class="nx-back-btn" id="netBack">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+            <span>Mi perfil</span>
+        </a>
+    </div>
+    <h1>Mi red</h1>
+    <p class="pf-lead">Las personas que te siguen y las que sigues.</p>
+    <nav class="pf-tabs" aria-label="Mi red">
+        <a class="pf-tab{{ ' is-active' if tab == 'siguiendo' }}" href="{{ url_for('profiles_bp.my_network', tab='siguiendo') }}">Siguiendo ({{ counts.following }})</a>
+        <a class="pf-tab{{ ' is-active' if tab == 'seguidores' }}" href="{{ url_for('profiles_bp.my_network', tab='seguidores') }}">Seguidores ({{ counts.followers }})</a>
+    </nav>
+    <div class="pf-rows" id="netRows">
+        {% for card in cards %}
+        <a class="pf-mini" href="{{ url_for('profiles_bp.public_profile', username=card.user.username) }}">
+            <span class="pf-mini-av">{% if card.avatar %}<img src="{{ url_for('static', filename='uploads/' + card.avatar) }}" alt="" loading="lazy">{% else %}{{ (card.name or '?')[0]|upper }}{% endif %}</span>
+            <span class="pf-mini-text"><strong>{{ card.name }}</strong><small>@{{ card.user.username }}</small></span>
+            {% if card.xp %}<span class="pf-xpbadge is-small" style="--xp1: {{ card.xp.c1 }}; --xp2: {{ card.xp.c2 }}" title="Nivel {{ card.xp.level }}" aria-label="Nivel {{ card.xp.level }}">{{ card.xp.level }}</span>{% endif %}
+            {% if card.level %}<span class="pf-mini-lvl" style="--lv1: {{ card.level.c1 }}; --lv2: {{ card.level.c2 }}">{{ card.level.name }}</span>{% endif %}
+        </a>
+        {% else %}
+        <p class="pf-empty">{% if tab == 'seguidores' %}Todavía nadie te sigue.{% else %}Todavía no sigues a nadie. Entra a un perfil y toca "Seguir".{% endif %}</p>
+        {% endfor %}
+    </div>
+</main>
+{% endblock %}

@@ -29,7 +29,7 @@
                         </p>
                         {% endif %}
                         {% if player_id_val %}
-                        <p style="margin-top:2px;font-size:12px;color:#94a3b8;">
+                        <p style="margin-top:2px;font-size:12px;color:#a3a3a3;">
                             ID: {{ player_id_val }}
                         </p>
                         {% endif %}
@@ -111,6 +111,7 @@
                     </div>
                     <div class="payment-warning-footer">🚀 ¡Si sigues estos pasos, tu recarga llega al instante! 🚀</div>
                     <button type="button" class="payment-warning-ack" id="paymentWarningAcknowledge">OK, ENTIENDO 🎮</button>
+                    <button type="button" class="payment-warning-snooze" id="paymentWarningSnooze">YA SÉ, NO MOSTRAR MÁS</button>
                 </div>
             </div>
             {% if checkout_payment_video.enabled %}
@@ -443,6 +444,9 @@
     var copyBtn = document.getElementById('checkoutCopyPaymentBtn');
     var paymentWarningModal = document.getElementById('paymentWarningModal');
     var paymentWarningAcknowledge = document.getElementById('paymentWarningAcknowledge');
+    var paymentWarningSnooze = document.getElementById('paymentWarningSnooze');
+    var NX_WARN_SNOOZE_KEY = 'nx_payment_warning_snooze_until';   // la misma llave que la portada
+    var NX_WARN_SNOOZE_MS = 48 * 60 * 60 * 1000; // 48 horas
     var paymentMethodVideoModal = document.getElementById('paymentMethodVideoModal');
     var paymentMethodVideoPlayer = document.getElementById('paymentMethodVideoPlayer');
     var paymentMethodVideoCloseBtn = document.getElementById('paymentMethodVideoCloseBtn');
@@ -579,8 +583,20 @@
             });
     }
 
+    function isPaymentWarningSnoozed() {
+        try {
+            return Number(localStorage.getItem(NX_WARN_SNOOZE_KEY) || 0) > Date.now();
+        } catch (_) {
+            return false;
+        }
+    }
+
     function openPaymentWarning() {
         if (!paymentWarningModal) return;
+        if (isPaymentWarningSnoozed()) {              // pidió no verlo por 48 horas: se sigue con lo que viene después
+            if (paymentMethodVideoModal) openPaymentMethodVideoModal();
+            return;
+        }
         paymentWarningModal.style.display = 'flex';
         paymentWarningModal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('modal-open');
@@ -671,6 +687,12 @@
 
     if (paymentWarningAcknowledge) {
         paymentWarningAcknowledge.addEventListener('click', closePaymentWarning);
+    }
+    if (paymentWarningSnooze) {
+        paymentWarningSnooze.addEventListener('click', function () {
+            try { localStorage.setItem(NX_WARN_SNOOZE_KEY, String(Date.now() + NX_WARN_SNOOZE_MS)); } catch (_) {}
+            closePaymentWarning();
+        });
     }
 
     if (paymentMethodVideoContinueBtn) {

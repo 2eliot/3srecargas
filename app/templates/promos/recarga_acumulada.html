@@ -4,12 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Recarga Acumulada - 3S Recargas</title>
+{% include '_head_common.html' %}
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+    /* Los textos "slate" de Tailwind son gris con tono azulado: aquí pasan a gris neutro (solo el color de la letra). */
+    tailwind.config = { theme: { extend: { textColor: { slate: { 50: '#fafafa', 100: '#f5f5f5', 200: '#e5e5e5', 300: '#d4d4d4', 400: '#a3a3a3', 500: '#737373', 600: '#525252', 700: '#404040', 800: '#262626', 900: '#171717', 950: '#0a0a0a' } } } } };
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style>
-    body { font-family: 'Outfit', sans-serif; background-color: #000000; color: #f8fafc; -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'Outfit', sans-serif; background-color: #000000; color: #fafafa; -webkit-tap-highlight-color: transparent; }
     .custom-glow { box-shadow: 0 0 25px rgba(220, 38, 38, 0.25); }
     @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 12px rgba(220, 38, 38, 0.4); } 50% { box-shadow: 0 0 25px rgba(220, 38, 38, 0.7); } }
     .glow-effect { animation: pulse-glow 2s infinite; }
@@ -60,7 +64,7 @@
         box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 1px rgba(255,255,255,0.15);
         color: #fff;
     }
-    .glass-input-field::placeholder { color: #94a3b8; font-weight: 600; }
+    .glass-input-field::placeholder { color: #a3a3a3; font-weight: 600; }
     .glass-input-field:focus {
         border-color: rgba(255,0,0,0.65);
         box-shadow: 0 0 0 3px rgba(255,0,0,0.15), inset 0 2px 4px rgba(0,0,0,0.1);
@@ -69,7 +73,7 @@
 </head>
 <body class="min-h-screen flex flex-col p-3 sm:p-5 relative bg-black selection:bg-red-600 selection:text-white">
 {% if DRAWER_BG_IMAGES.drawer_bg_recarga %}
-<div aria-hidden="true" style="position:fixed;inset:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_recarga) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
+<div aria-hidden="true" style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:-1;background-color:#000;background-image:linear-gradient(rgba(0,0,0,.72),rgba(0,0,0,.72)), url('{{ url_for('static', filename='uploads/' + DRAWER_BG_IMAGES.drawer_bg_recarga) }}');background-size:cover;background-position:center;background-repeat:no-repeat;"></div>
 {% endif %}
 
 <div class="w-full max-w-md mx-auto">
@@ -137,7 +141,7 @@
 
         <div class="flex justify-between items-center text-xs sm:text-sm font-bold">
             <span id="levelTitleDisplay" class="text-white uppercase tracking-wider flex items-center gap-1.5">
-                <i class="fa-solid fa-shield-halved text-red-500"></i> <span id="levelTitleText">Nivel</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" class="text-red-500" aria-hidden="true" style="flex:none"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11V2z" fill="currentColor"/><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11" fill="none" stroke="currentColor" stroke-width="2"/></svg> <span id="levelTitleText">Nivel</span>
             </span>
             <span id="progressPercentage" class="text-red-500 font-black text-base sm:text-lg">0%</span>
         </div>
@@ -170,7 +174,10 @@ function switchGame(id) {
     window.location.href = url.toString();
 }
 
-const LEVEL_ICONS = ['fa-shield-halved', 'fa-shield', 'fa-shield-dog'];
+// Iconos en línea (antes Font Awesome completo: 400 KB de JavaScript para 5 iconos, que bloqueaba la página en celulares lentos).
+const ICON_CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#0a0a0a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const ICON_AWARD = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" style="flex:none"><circle cx="12" cy="9" r="6" fill="currentColor"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8z" fill="currentColor"/></svg>';
+const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 function renderLevelsMatrix(levels, currentLevelNumber, completedAll, awardedLevelNumbers) {
     const box = document.getElementById('levelsMatrix');
@@ -183,9 +190,9 @@ function renderLevelsMatrix(levels, currentLevelNumber, completedAll, awardedLev
             (isCurrent ? 'is-current' : isDone ? 'opacity-40' : '');
         card.innerHTML = `
             <span class="font-bold text-xs ${isDone ? 'text-slate-300' : 'text-white'} flex items-center gap-2">
-                <i class="fa-solid ${isDone ? 'fa-circle-check' : 'fa-award'}"></i> Nivel ${lvl.level_number}: ${lvl.level_name}
+                ${isDone ? ICON_CHECK : ICON_AWARD} Nivel ${lvl.level_number}: ${esc(lvl.level_name)}
             </span>
-            <span class="text-xs font-black text-amber-400">Premio: ${lvl.reward_label || '—'}</span>`;
+            <span class="text-xs font-black text-amber-400">Premio: ${esc(lvl.reward_label) || '—'}</span>`;
         box.appendChild(card);
     });
 }
@@ -232,18 +239,31 @@ async function loadProgress(playerId) {
     }
 }
 
-document.getElementById('checkBtn').addEventListener('click', () => {
-    loadProgress(document.getElementById('playerIdInput').value.trim());
-});
-document.getElementById('playerIdInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') loadProgress(e.target.value.trim());
-});
-document.getElementById('changeIdBtn').addEventListener('click', () => {
-    document.getElementById('playerCard').hidden = true;
-    document.getElementById('idFormBox').hidden = false;
-    document.getElementById('playerIdInput').value = '';
-    document.getElementById('playerIdInput').focus();
-});
+// Si la promoción no está activa la página no trae el formulario: estos elementos no existen y antes esto daba un error en la consola.
+const checkBtnEl = document.getElementById('checkBtn');
+const playerIdInputEl = document.getElementById('playerIdInput');
+const changeIdBtnEl = document.getElementById('changeIdBtn');
+if (checkBtnEl && playerIdInputEl) {
+    checkBtnEl.addEventListener('click', () => {
+        loadProgress(playerIdInputEl.value.trim());
+    });
+    playerIdInputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') loadProgress(e.target.value.trim());
+    });
+}
+if (changeIdBtnEl && playerIdInputEl) {
+    changeIdBtnEl.addEventListener('click', () => {
+        document.getElementById('playerCard').hidden = true;
+        // También se esconde lo del ID anterior (progreso, niveles y aviso de "completado"): antes se quedaba a la vista mientras se escribía otro ID.
+        document.getElementById('progressCard').hidden = true;
+        document.getElementById('completedBanner').hidden = true;
+        document.getElementById('levelsMatrix').innerHTML = '';
+        document.getElementById('idFormBox').hidden = false;
+        playerIdInputEl.value = '';
+        playerIdInputEl.focus();
+    });
+}
 </script>
+{% include '_version_watch.html' %}
 </body>
 </html>

@@ -56,6 +56,9 @@ MAX_TOOL_ROUNDS = 4
 REQUEST_TIMEOUT = 45
 TYPING_SECONDS = 90
 REFERENCE_MIN_DIGITS = 6
+# Tope de TODA la tienda para buscar un pedido por su referencia (menú de estado + foto del comprobante + asistente).
+REFERENCE_LOOKUPS_ALL_PER_MINUTE = 30
+REFERENCE_LOOKUPS_ALL_PER_HOUR = 240
 
 SETTING_KEYS = {
     'enabled': 'support_ai_enabled',
@@ -359,12 +362,16 @@ def search_orders_for_chat(chat, order_number=None, reference=None, player_id=No
             proven.append(order)
 
     ref = _digits(reference)
-    if len(ref) >= REFERENCE_MIN_DIGITS:
+    proven_by_ref = []
+    # La búsqueda por referencia comparte el tope de TODA la tienda con el menú de estado y la foto del comprobante (ver
+    # reference_lookup_budget_ok): un número de 6 dígitos no debe poder adivinarse repartiendo intentos entre muchas rutas o conexiones.
+    if len(ref) >= REFERENCE_MIN_DIGITS and reference_lookup_budget_ok():
         # La misma regla de la tienda para "es la misma operación": iguales, o una es el final de la otra.
         for order in receipt_check.reference_orders(ref, limit=3, since=since):
             if order not in found:
                 found.append(order)
             proven.append(order)
+            proven_by_ref.append(order.id)
 
     pid = str(player_id or '').strip()
     if pid:
@@ -382,11 +389,23 @@ def search_orders_for_chat(chat, order_number=None, reference=None, player_id=No
     for order in found[:5]:
         info = describe_order(order)
         info['puedo_enviar_link'] = order.id in verified or _owned_by_chat_user(chat, order)
-        if not info['puedo_enviar_link']:
-            # Encontrada solo por ID de jugador: no se sabe si es de quien escribe.
+        if order.id not in proven_by_ref:
+            # Los últimos dígitos de la referencia son el segundo dato con el que se desbloquea un PIN o se prueba que un ID es tuyo:
+            # solo se le muestran a quien acaba de escribir esa referencia. Con solo el ID de jugador, el número de orden o una sesión sin
+            # clave (entrar con un ID) no se sabe si quien escribe es quien pagó.
             info.pop('referencia_registrada_ultimos_digitos', None)
         results.append(info)
     return results
+
+
+def reference_lookup_budget_ok():
+    """Tope de TODA la tienda (todas las conexiones juntas) para buscar un pedido por los 6 dígitos de su referencia, repartido entre el
+    menú de estado, la foto del comprobante y el asistente. Se llama DESPUÉS de los topes por IP de cada ruta, así una sola conexión
+    no puede gastarlo sola. Devuelve False cuando se agotó (el que pregunta recibe "intenta en unos minutos")."""
+    from .locks import check_rate_limit
+    minute_ok = check_rate_limit('support_ref_lookup_all', REFERENCE_LOOKUPS_ALL_PER_MINUTE, 60)
+    hour_ok = check_rate_limit('support_ref_lookup_all_h', REFERENCE_LOOKUPS_ALL_PER_HOUR, 3600)
+    return bool(minute_ok and hour_ok)
 
 
 def orders_already_known(chat):
@@ -401,6 +420,9 @@ def orders_already_known(chat):
             seen.add(order.id)
             info = describe_order(order)
             info['puedo_enviar_link'] = True
+            # Sin los últimos dígitos de la referencia: ese dato abre PINs y prueba "este ID es mío", y estas órdenes llegan por una sesión
+            # sin clave o por un número de orden que el navegador mandó sin prueba.
+            info.pop('referencia_registrada_ultimos_digitos', None)
             out.append(info)
     return out[:4]
 

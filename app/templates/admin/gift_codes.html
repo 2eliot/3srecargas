@@ -122,7 +122,7 @@
                class="btn-sm btn-outline">Descargar sin usar (.txt)</a>
             {% if batch_filter %}
             <form method="POST" action="{{ url_for('admin_bp.gift_codes_batch_disable') }}" style="display:inline"
-                  onsubmit="return confirm('¿Desactivar todos los códigos sin usar del lote {{ batch_filter }}?')">
+                  onsubmit="return confirm({{ ('¿Desactivar todos los códigos sin usar del lote ' ~ (batch_filter) ~ '?')|jsattr }})">
                 <input type="hidden" name="batch" value="{{ batch_filter }}">
                 <button type="submit" class="btn-sm btn-danger">Desactivar el lote</button>
             </form>

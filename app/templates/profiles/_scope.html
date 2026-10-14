@@ -1,0 +1,215 @@
+{#- Escena del perfil: fondo + tarjeta. La usan la página pública (scope_class='pf-scope-page') y la vista previa del
+    editor (scope_class='pf-scope-stage'). Las variables CSS y los atributos data-* vienen ya validados del servidor.
+    Reglas de la tienda: NO se muestran IDs, redes sociales, comentarios, juegos ni listas de compras; solo números de
+    nivel/diamantes/puestos que salen de las compras de la cuenta. -#}
+{%- set sc = v.social -%}
+{%- set rarity_class = {'Común': 'common', 'Rara': 'rare', 'Épica': 'epic', 'Legendaria': 'legendary'} -%}
+{%- macro thousands(n) -%}{{ '{:,}'.format(n or 0)|replace(',', '.') }}{%- endmacro -%}
+<div class="pf-scope {{ scope_class }}" id="pfScope" style="{{ v.style }}" {% for key, val in v.attrs.items() %}{{ key }}="{{ val }}" {% endfor %}>
+    <div class="pf-bg" aria-hidden="true"><div class="pf-bg-art"></div><div class="pf-bg-dim"></div></div>
+    {% if before_card is defined %}{{ before_card }}{% endif %}
+    <article class="pf" id="pfCard">
+        <div class="pf-banner" id="pfBanner">
+            <div class="pf-banner-art"></div>
+            <span class="pf-bn-frame" aria-hidden="true"></span>
+            {% if preview or v.banner_frame %}<img class="pf-bn-overlay" id="pfBnOverlay" alt="" {% if v.banner_frame %}src="{{ url_for('static', filename=v.banner_frame) }}"{% else %}hidden{% endif %}>{% endif %}
+        </div>
+        <div class="pf-head">
+            <div class="pf-avatar-box">
+                <div class="pf-ring">
+                    <div class="pf-avatar" id="pfAvatar">
+                        {% if v.avatar %}<img src="{{ url_for('static', filename=v.avatar) }}" alt="Foto de {{ v.name }}">{% else %}<span class="pf-letter">{{ v.letter }}</span>{% endif %}
+                    </div>
+                </div>
+                {% if preview or v.avatar_frame %}<img class="pf-av-overlay" id="pfAvOverlay" alt="" {% if v.avatar_frame %}src="{{ url_for('static', filename=v.avatar_frame) }}"{% else %}hidden{% endif %}>{% endif %}
+            </div>
+            <div class="pf-plate">
+                {% if sc.title %}<span class="pf-titletag" id="pfTitle" {% if preview and not sc.show_stats %}hidden{% endif %}>{{ sc.title }}</span>{% endif %}
+                <div class="pf-namerow">
+                    <h1 class="pf-name" id="pfName">{{ v.name }}</h1>
+                    {#- Nivel por números (como Steam): solo el número y su color, al lado del nombre. Sin premios. -#}
+                    {% if sc.xp and (sc.show_stats or preview) %}<span class="pf-xpbadge" id="pfXpLevel" style="--xp1: {{ sc.xp.c1 }}; --xp2: {{ sc.xp.c2 }}" title="Nivel {{ sc.xp.level }}" aria-label="Nivel {{ sc.xp.level }}" {% if preview and not sc.show_stats %}hidden{% endif %}>{{ sc.xp.level }}</span>{% endif %}
+                </div>
+                <span class="pf-handle">@{{ v.handle }}</span>
+                {% if v.status_text or preview %}<p class="pf-statusline" id="pfStatus" {% if not v.status_text %}hidden{% endif %}>{{ v.status_text }}</p>{% endif %}
+            </div>
+        </div>
+        <div class="pf-body">
+            <section>
+                <h2 class="pf-section-title">Acerca de mí</h2>
+                {% if v.bio %}
+                <p class="pf-bio" id="pfBio">{{ v.bio }}</p>
+                {% else %}
+                <p class="pf-bio is-empty" id="pfBio">{{ 'Aún no escribes nada. ¡Cuéntales quién eres!' if v.owner_view else 'Todavía no escribió nada.' }}</p>
+                {% endif %}
+            </section>
+
+            {#- "Miembro desde" (opcional), chiquito y justo debajo de "Acerca de mí": ni IDs, ni juegos, ni listas de compras -#}
+            <section class="pf-chips" id="pfChips">
+                {% if preview or v.theme.show.since %}<span class="pf-chip" data-chip="since" {% if not v.theme.show.since %}hidden{% endif %}>{{ sc.since_label }} <b>{{ sc.since|datetime_ve('%d/%m/%Y') }}</b></span>{% endif %}
+            </section>
+
+            {#- Me gusta / seguidores / siguiendo (y los botones para quien visita) -#}
+            <section class="pf-social" id="pfSocial">
+                <div class="pf-counters">
+                    <span class="pf-counter"><b data-count="likes">{{ sc.counts.likes }}</b> me gusta</span>
+                    <span class="pf-counter"><b data-count="followers">{{ sc.counts.followers }}</b> seguidores</span>
+                    <span class="pf-counter"><b data-count="following">{{ sc.counts.following }}</b> siguiendo</span>
+                    <span class="pf-counter pf-counter-rep" title="Reputación: me gusta, seguidores, insignias, meses en el Top 3 y perfil completo"><b data-count="reputation">{{ sc.counts.reputation }}</b> reputación</span>
+                </div>
+                {% if not preview and not v.owner_view %}
+                <div class="pf-actions">
+                    <button type="button" class="pf-act pf-like{{ ' is-on' if sc.viewer and sc.viewer.liked }}" data-social-url="{{ url_for('profiles_bp.like_profile', username=v.handle) }}" data-social-key="liked" aria-pressed="{{ 'true' if sc.viewer and sc.viewer.liked else 'false' }}">
+                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.6 5 5.9 5c1.9 0 3.2 1 4.1 2.3C10.9 6 12.2 5 14.1 5c3.3 0 5 3.4 3.5 6.8C19.5 16.4 12 21 12 21z" transform="translate(1 0)"/></svg>
+                        <span class="pf-act-label">{{ 'Te gusta' if sc.viewer and sc.viewer.liked else 'Me gusta' }}</span>
+                    </button>
+                    <button type="button" class="pf-act pf-follow{{ ' is-on' if sc.viewer and sc.viewer.following }}" data-social-url="{{ url_for('profiles_bp.follow_profile', username=v.handle) }}" data-social-key="is_following" aria-pressed="{{ 'true' if sc.viewer and sc.viewer.following else 'false' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                        <span class="pf-act-label">{{ 'Siguiendo' if sc.viewer and sc.viewer.following else 'Seguir' }}</span>
+                    </button>
+                </div>
+                <p class="pf-actions-note" id="pfActionsNote" role="status" {% if not (sc.viewer and not sc.viewer.can) %}hidden{% endif %}>{{ sc.viewer.message if sc.viewer and not sc.viewer.can else '' }}</p>
+                {% endif %}
+            </section>
+
+            {#- Nivel del mes, números, insignias y premios: solo si el dueño dejó prendido "mostrar mis estadísticas" (la vista previa del
+                editor los trae siempre, escondidos si está apagado, para que el interruptor los muestre al instante) -#}
+            {% if (sc.show_stats or preview) and (sc.xp or sc.level or sc.badges or sc.awards) %}
+            <div class="pf-stats-wrap" id="pfStatsWrap" {% if preview and not sc.show_stats %}hidden{% endif %}>
+                {#- Nivel por números: lo ve todo el mundo (nivel y puntos). Las misiones y el desglose de puntos son SOLO del dueño. -#}
+                {% if sc.xp %}
+                {% set xp = sc.xp %}
+                <section class="pf-xp" id="pfXp" style="--xp1: {{ xp.c1 }}; --xp2: {{ xp.c2 }}">
+                    <h2 class="pf-section-title">Nivel de experiencia</h2>
+                    <div class="pf-xprow">
+                        <span class="pf-xpbadge is-big" aria-hidden="true">{{ xp.level }}</span>
+                        <div class="pf-xpmain">
+                            <strong>Nivel {{ xp.level }}</strong>
+                            <div class="pf-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ xp.percent }}"><span style="width: {{ xp.percent }}%"></span></div>
+                        </div>
+                    </div>
+                    <p class="pf-levelnote">
+                        {{ thousands(xp.xp) }} puntos de experiencia ·
+                        {% if xp.is_max %}¡Nivel máximo!{% else %}{{ 'Te' if v.owner_view else 'Le' }} faltan <b>{{ thousands(xp.remaining) }}</b> para el nivel {{ xp.next_level }}{% endif %}
+                        {% if sc.xp_rank %} · <a class="pf-xplink" href="{{ url_for('profiles_bp.top_profiles', tab='nivel') }}">#{{ sc.xp_rank }} del Top de niveles</a>{% endif %}
+                    </p>
+                    {% if v.owner_view and not preview and (sc.missions or sc.xp_parts) %}
+                    {% if sc.missions %}
+                    {#- Misiones: título que parpadea para llamar la atención y dos botones (Diarias / Semanales) que cambian de lista. Estos puntos son solo de nivel. -#}
+                    {% set periods = (('day', 'Diarias', 'Misiones de hoy'), ('week', 'Semanales', 'Misiones de la semana')) %}
+                    <div class="pf-missions" id="pfMissions">
+                        <div class="pf-missions-banner" id="pfMissionsBanner">
+                            <span class="pf-missions-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.8l2.75 5.78 6.35.8-4.66 4.36 1.2 6.27L12 16.9l-5.64 3.1 1.2-6.27L2.9 9.38l6.35-.8z"/></svg></span>
+                            <span>Misiones</span>
+                        </div>
+                        <div class="pf-missions-tabs" role="tablist" aria-label="Tipo de misiones">
+                            {% for period, short, title in periods %}
+                            {% set group = sc.missions|selectattr('period', 'equalto', period)|list %}
+                            <button type="button" class="pf-missions-tab" role="tab" id="pfMissionsTab_{{ period }}" data-mission-tab="{{ period }}" aria-controls="pfMissionsPanel_{{ period }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ short }} <small>{{ group|selectattr('done')|list|length }}/{{ group|length }}</small></button>
+                            {% endfor %}
+                        </div>
+                        <p class="pf-missions-note">Estos puntos son solo para subir el nivel de tu perfil. No son los puntos de la tienda.</p>
+                        {% for period, short, title in periods %}
+                        {% set group = sc.missions|selectattr('period', 'equalto', period)|list %}
+                        <div class="pf-missions-panel" id="pfMissionsPanel_{{ period }}" role="tabpanel" aria-label="{{ title }}" aria-labelledby="pfMissionsTab_{{ period }}" data-mission-panel="{{ period }}" {% if not loop.first %}hidden{% endif %}>
+                            {% if group %}
+                            <ul class="pf-mission-list">
+                                {% for m in group %}
+                                <li class="pf-mission{{ ' is-done' if m.done }}" data-mission="{{ m.key }}">
+                                    <span class="pf-mission-check" aria-hidden="true">{{ '✓' if m.done else '' }}</span>
+                                    <span class="pf-mission-text">
+                                        <span class="pf-mission-label">{{ m.label }}</span>
+                                        <span class="pf-progress"><span style="width: {{ m.percent }}%"></span></span>
+                                        <small>{{ m.current }} / {{ m.target }} · Se reinicia en {{ m.resets_label }}</small>
+                                    </span>
+                                    <b class="pf-mission-xp">+{{ thousands(m.xp) }}</b>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <p class="pf-missions-empty">No hay misiones {{ 'diarias' if period == 'day' else 'semanales' }} activas ahora.</p>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        <script>
+                            (function () {
+                                var root = document.getElementById('pfMissions');
+                                if (!root) return;
+                                var tabs = root.querySelectorAll('[data-mission-tab]'), panels = root.querySelectorAll('[data-mission-panel]');
+                                function select(name) {
+                                    Array.prototype.forEach.call(tabs, function (tab) { tab.setAttribute('aria-selected', tab.getAttribute('data-mission-tab') === name ? 'true' : 'false'); });
+                                    Array.prototype.forEach.call(panels, function (panel) { panel.hidden = panel.getAttribute('data-mission-panel') !== name; });
+                                }
+                                Array.prototype.forEach.call(tabs, function (tab) { tab.addEventListener('click', function () { select(tab.getAttribute('data-mission-tab')); }); });
+                            })();
+                        </script>
+                    </div>
+                    {% endif %}
+                    {% if sc.xp_parts %}
+                    <details class="pf-xpparts" id="pfXpParts">
+                        <summary>¿De dónde salen mis puntos?</summary>
+                        <ul>
+                            {% for part in sc.xp_parts %}
+                            <li><span>{{ part.label }}{% if part.key not in ('profile_complete',) %} <em>× {{ thousands(part.count) }}</em>{% endif %}</span><b>+{{ thousands(part.xp) }}</b></li>
+                            {% endfor %}
+                        </ul>
+                    </details>
+                    {% endif %}
+                    {% endif %}
+                </section>
+                {% endif %}
+                {% if sc.level %}
+                {% set lv = sc.level %}{% set st = sc.stat %}
+                <section class="pf-level" id="pfLevel">
+                    <h2 class="pf-section-title">Nivel del mes</h2>
+                    <div class="pf-levelrow">
+                        <span class="pf-levelpill" style="--lv1: {{ lv.c1 }}; --lv2: {{ lv.c2 }}">{{ lv.name }}</span>
+                        <div class="pf-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ lv.percent }}"><span style="width: {{ lv.percent }}%"></span></div>
+                    </div>
+                    <p class="pf-levelnote">
+                        {% if lv.next_name %}{{ thousands(lv.diamonds) }} / {{ thousands(lv.next_target) }} diamantes este mes · {{ 'Te' if v.owner_view else 'Le' }} faltan <b>{{ thousands(lv.remaining) }}</b> para {{ lv.next_name }}
+                        {% else %}{{ thousands(lv.diamonds) }} diamantes este mes · ¡Nivel máximo!{% endif %}
+                    </p>
+                    <div class="pf-tiles">
+                        <div class="pf-tile"><small>Diamantes totales</small><b>{{ thousands(st.total_diamonds) }}</b></div>
+                        <div class="pf-tile"><small>Recarga del mes</small><b>{{ thousands(st.month_diamonds) }}</b></div>
+                        <div class="pf-tile"><small>Ranking del mes</small><b>{{ ('#' ~ st.month_rank) if st.month_rank else '—' }}</b></div>
+                        <div class="pf-tile pf-tile-rep"><small>Reputación</small><b>{{ thousands(st.reputation) }}</b></div>
+                        {% if st.streak_months %}<div class="pf-tile"><small>Racha</small><b>{{ st.streak_months }} {{ 'mes' if st.streak_months == 1 else 'meses' }}</b></div>{% endif %}
+                        {% if st.all_time_rank %}<div class="pf-tile"><small>Ranking histórico</small><b>#{{ st.all_time_rank }}</b></div>{% endif %}
+                        {% if st.favorite_product %}<div class="pf-tile pf-tile-wide" id="pfFavorite"><small>Producto favorito</small><b>{{ st.favorite_product }}</b></div>{% endif %}
+                    </div>
+                </section>
+                {% endif %}
+                {% if sc.badges %}
+                <section id="pfBadges">
+                    <h2 class="pf-section-title">Insignias <span class="pf-section-count">{{ sc.badges|length }}</span></h2>
+                    <div class="pf-badges">
+                        {% for b in sc.badges %}
+                        <div class="pf-badge is-{{ rarity_class.get(b.rarity, 'common') }}" title="{{ b.desc }}">
+                            <span class="pf-badge-ico" aria-hidden="true">{{ b.icon }}</span>
+                            <span class="pf-badge-text"><strong>{{ b.name }}</strong><small>{{ b.rarity }}</small></span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+                {% endif %}
+                {% if sc.awards %}
+                <section id="pfAwards">
+                    <h2 class="pf-section-title">Vitrina de premios <span class="pf-section-count">{{ sc.awards|length }}</span></h2>
+                    <div class="pf-awards">
+                        {% for a in sc.awards %}
+                        <div class="pf-award">
+                            <span class="pf-award-img">{% if a.image %}<img src="{{ url_for('static', filename=a.image) }}" alt="" loading="lazy">{% else %}<i aria-hidden="true">🏅</i>{% endif %}</span>
+                            <span class="pf-award-text"><strong>{{ a.title }}</strong>{% if a.description %}<small>{{ a.description }}</small>{% endif %}<em>{{ a.date|datetime_ve('%d/%m/%Y') }}</em></span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </section>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </article>
+    {% if after_card is defined %}{{ after_card }}{% endif %}
+</div>

@@ -205,11 +205,11 @@ body::before {
     }
 
     function postJson(url, payload) {
-        return fetch(url, {
+        return (window.nxFetch || fetch)(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload || {})
-        }).then(function (r) {
+        }, 25000).then(function (r) {
             return r.json().catch(function () {
                 throw new Error('No se pudo contactar al servidor.');
             }).then(function (data) {
@@ -220,6 +220,10 @@ body::before {
                 }
                 return data;
             });
+        }).catch(function (e) {
+            // Un corte de red no trae `data`: se explica en español en vez de mostrar "Failed to fetch".
+            if (e && !e.data && window.nxFriendlyError) throw new Error(window.nxFriendlyError(e, 'No se pudo contactar al servidor.'));
+            throw e;
         });
     }
 
@@ -332,7 +336,7 @@ body::before {
         verifyBtn.disabled = true;
     }
     function setNickUILoading() {
-        nickEl.style.color = '#94a3b8';
+        nickEl.style.color = '#a3a3a3';
         nickEl.textContent = 'Verificando...';
         nickEl.style.display = 'block';
         verifyBtn.textContent = 'Verificando...';

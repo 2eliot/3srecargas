@@ -158,6 +158,10 @@ class Order(db.Model):
     game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False)
     package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    # CUENTA que hizo la compra (con la sesión abierta), sea cual sea el ID al que recargó. `user_id` es el cliente DE ESE ID y no cambia: el
+    # historial del ID sigue siendo suyo sin importar qué cuenta le recargó. Solo se guarda desde que existe esta columna (las cuentas
+    # empiezan en cero): lo usan "Mi cuenta", el nivel y las insignias (utils/auth_accounts.py y utils/profile_social.py).
+    account_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     discount_id = db.Column(db.Integer, db.ForeignKey('discounts.id'), nullable=True)
     player_id = db.Column(db.String(100))
     player_nickname = db.Column(db.String(200))
@@ -567,11 +571,80 @@ class RankingArchive(db.Model):
     total_units = db.Column(db.Integer, default=0)
     prize_label = db.Column(db.String(100), default='')
     prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    # Rankings de CUENTAS o de NIVELES: la cuenta que ganó el puesto (en los rankings de juego queda vacío) y cómo se entregó el premio
+    # ("Puntos acreditados a su perfil", "Entregar a mano"...), para que el dueño sepa a quién le falta algo.
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    prize_detail = db.Column(db.String(200), default='')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
         db.UniqueConstraint('ranking_key', 'year', 'month', 'position', name='uq_ranking_archive_month_pos'),
     )
+
+
+class RankingBoard(db.Model):
+    """Un ranking mensual que el dueño crea desde Admin → Dinámicas → Ranking. Tres tipos:
+      * 'game'     — IDs de un juego que más recargaron en el mes (el de siempre: Free Fire, Blood Strike, Mobile Legends...).
+      * 'accounts' — CUENTAS que más recargaron en el mes (con su sesión abierta, a cualquier ID).
+      * 'levels'   — CUENTAS con más nivel (puntos de nivel del perfil).
+    Los premios de cada puesto están en RankingBoardPrize. `key` es el nombre estable con el que se archiva cada mes (RankingArchive.ranking_key)."""
+    __tablename__ = 'ranking_boards'
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(40), unique=True, nullable=False)
+    name = db.Column(db.String(60), nullable=False)
+    kind = db.Column(db.String(12), nullable=False, default='game')
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=True)
+    units_label = db.Column(db.String(40), default='')
+    enabled = db.Column(db.Boolean, default=False)
+    prize_places = db.Column(db.Integer, default=5)
+    # Primer mes ('AAAA-MM') que este ranking puede pagar: se pone al crearlo o encenderlo. Vacío = sin límite (los rankings que ya existían).
+    pays_from = db.Column(db.String(7), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    game = db.relationship('Game')
+    prizes = db.relationship('RankingBoardPrize', backref='board', cascade='all, delete-orphan', order_by='RankingBoardPrize.position')
+
+
+class RankingBoardPrize(db.Model):
+    """Premio de un puesto de un ranking: nada, un paquete (se entrega al ID ganador), puntos de la tienda o un texto libre (lo entrega el dueño)."""
+    __tablename__ = 'ranking_board_prizes'
+    id = db.Column(db.Integer, primary_key=True)
+    board_id = db.Column(db.Integer, db.ForeignKey('ranking_boards.id'), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False)
+    prize_type = db.Column(db.String(10), nullable=False, default='none')
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=True)
+    points = db.Column(db.Integer, default=0)
+    text = db.Column(db.String(120), default='')
+    auto = db.Column(db.Boolean, default=False)
+
+    package = db.relationship('Package')
+
+    __table_args__ = (
+        db.UniqueConstraint('board_id', 'position', name='uq_ranking_board_prize_position'),
+    )
+
+
+class AccountPoints(db.Model):
+    """Puntos de la tienda del PERFIL (la cuenta). Solo se consiguen como premio de un ranking o porque el administrador se los pone: no se ganan
+    recargando. Para usarlos el dueño del perfil los pasa a un ID (PlayerPoints), que es donde funciona el canje y la ruleta."""
+    __tablename__ = 'account_points'
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    balance = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AccountPointsLog(db.Model):
+    """Historial de la bolsa de puntos de un perfil: de dónde llegó cada punto y a qué ID se pasó."""
+    __tablename__ = 'account_points_log'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    delta = db.Column(db.Integer, nullable=False)
+    balance_after = db.Column(db.Integer, nullable=False, default=0)
+    kind = db.Column(db.String(12), nullable=False, default='admin')    # 'ranking' | 'admin' | 'id'
+    note = db.Column(db.String(200), default='')
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=True)
+    player_id = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
 class User(db.Model, UserMixin):
@@ -600,7 +673,20 @@ class User(db.Model, UserMixin):
         return check_password_hash(self.password_hash, password)
 
     @property
+    def is_registered_account(self):
+        """Cuenta con usuario y contraseña (la que se crea en "Registrarse"), a diferencia del cliente "por ID" o de Google."""
+        return (self.account_kind or '') == 'registered'
+
+    @property
+    def has_chosen_username(self):
+        """False mientras el usuario sea el interno `u_<hash>` que se genera solo para los clientes por ID y por Google."""
+        name = (self.username or '').strip().lower()
+        return not (len(name) == 26 and name.startswith('u_') and all(ch in '0123456789abcdef' for ch in name[2:]))
+
+    @property
     def display_name(self):
+        if (self.account_kind or '') in {'registered', 'google_email'} and self.has_chosen_username:
+            return (self.username or '').strip()
         return (self.account_identifier or self.username or '').strip()
 
     @property
@@ -611,7 +697,7 @@ class User(db.Model, UserMixin):
     def preferred_contact_email(self):
         if self.contact_email:
             return self.contact_email
-        if self.account_kind in {'wallet_email', 'delivery_email', 'binance_account', 'email'}:
+        if self.account_kind in {'wallet_email', 'delivery_email', 'binance_account', 'email', 'google_email'}:
             return self.account_identifier or ''
         return ''
 
@@ -619,6 +705,175 @@ class User(db.Model, UserMixin):
     def avatar_letter(self):
         value = self.display_name or self.scope_name or 'U'
         return value[:1].upper()
+
+
+class UserLinkedId(db.Model):
+    """ID de un juego o servicio que una CUENTA registrada enlazó a su perfil. Con eso el perfil muestra las órdenes
+    hechas con ese ID (la cuenta no se fusiona con el cliente "por ID": las órdenes siguen siendo de ese cliente)."""
+    __tablename__ = 'user_linked_ids'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False)
+    identifier = db.Column(db.String(255), nullable=False)
+    identifier_normalized = db.Column(db.String(255), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # YA NO SE USA (2026-10-14): las cuentas son independientes de los IDs. La tabla se queda con lo que hubiera en bases de prueba antiguas.
+    verified_at = db.Column(db.DateTime, nullable=True)
+
+    game = db.relationship('Game')
+    user = db.relationship('User', backref=db.backref('linked_ids', lazy='dynamic', cascade='all, delete-orphan'))
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'game_id', 'identifier_normalized', name='uq_user_linked_id'),
+    )
+
+
+class AccountNotice(db.Model):
+    """Aviso corto para una cuenta (p. ej. 'ese ID se pasó a otra cuenta'). Se muestra una sola vez en Mi cuenta."""
+    __tablename__ = 'account_notices'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    message = db.Column(db.String(300), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    seen_at = db.Column(db.DateTime, nullable=True)
+
+
+class UserProfile(db.Model):
+    """Perfil PÚBLICO de una cuenta (estilo Discord): nombre, "acerca de mí", foto, banner, fondo, marcos y colores que
+    el dueño personaliza. Es aparte de la cuenta (que guarda la seguridad: correo, contraseña, IDs). Las imágenes viven
+    en uploads/profiles/<id de la cuenta>/ y el resto de la apariencia va validado en `config_json`."""
+    __tablename__ = 'user_profiles'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True, index=True)
+    display_name = db.Column(db.String(40), default='')
+    bio = db.Column(db.String(400), default='')
+    is_public = db.Column(db.Boolean, default=True)
+    # El administrador puede ocultar un perfil (moderación) aunque su dueño lo tenga público.
+    moderation_hidden = db.Column(db.Boolean, default=False)
+    avatar_path = db.Column(db.String(255), default='')
+    banner_path = db.Column(db.String(255), default='')
+    background_path = db.Column(db.String(255), default='')
+    avatar_frame_path = db.Column(db.String(255), default='')
+    banner_frame_path = db.Column(db.String(255), default='')
+    config_json = db.Column(db.Text, default='')
+    # Frase corta de estado (máx. 60) bajo el nombre, y dos permisos del dueño sobre sus números.
+    status_text = db.Column(db.String(60), default='')
+    show_stats = db.Column(db.Boolean, default=True)
+    in_rankings = db.Column(db.Boolean, default=True)
+    # Marco elegido de la tienda de marcos (ver ProfileFrame); si no hay, se usa el marco propio que la cuenta subió (avatar_frame_path / banner_frame_path).
+    avatar_frame_id = db.Column(db.Integer, nullable=True)
+    banner_frame_id = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('profile', uselist=False, cascade='all, delete-orphan'))
+
+
+class ProfileFrame(db.Model):
+    """Marco de la tienda de marcos del perfil: una imagen (PNG/WEBP/GIF, también con movimiento) con el centro transparente que se pone encima
+    de la foto de perfil o del banner. Lo sube el administrador y le pone precio en PUNTOS (0 = gratis para todos)."""
+    __tablename__ = 'profile_frames'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(60), nullable=False)
+    kind = db.Column(db.String(10), nullable=False, default='avatar')      # 'avatar' (foto de perfil) | 'banner'
+    image_path = db.Column(db.String(255), nullable=False)                 # profile_frames/frame_<12 hex>.<ext>
+    price_points = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, default=True)
+    sort_order = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class UserFrame(db.Model):
+    """Un marco de la tienda que una cuenta ya compró con puntos. YA NO SE USA (2026-10-14): todos los marcos son gratis."""
+    __tablename__ = 'user_frames'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    frame_id = db.Column(db.Integer, db.ForeignKey('profile_frames.id'), nullable=False, index=True)
+    points_spent = db.Column(db.Integer, default=0)
+    paid_game_id = db.Column(db.Integer, nullable=True)
+    paid_player_id = db.Column(db.String(100), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    frame = db.relationship('ProfileFrame')
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'frame_id', name='uq_user_frame'),)
+
+
+class ProfileStat(db.Model):
+    """Números del perfil (diamantes, nivel, racha, ranking...) calculados desde las órdenes que compró la
+    cuenta. Se guardan aquí y se recalculan cada tanto (no en cada visita)."""
+    __tablename__ = 'profile_stats'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True, index=True)
+    total_diamonds = db.Column(db.Integer, default=0)
+    month_diamonds = db.Column(db.Integer, default=0)
+    month_key = db.Column(db.String(7), default='')
+    orders_count = db.Column(db.Integer, default=0)
+    streak_months = db.Column(db.Integer, default=0)
+    best_month_diamonds = db.Column(db.Integer, default=0)
+    # Producto (paquete) que más compra, solo el nombre. Nunca el juego ni cuántas veces.
+    favorite_product = db.Column(db.String(100), default='')
+    first_order_at = db.Column(db.DateTime, nullable=True)
+    month_level = db.Column(db.String(20), default='')
+    month_rank = db.Column(db.Integer, nullable=True)
+    all_time_rank = db.Column(db.Integer, nullable=True)
+    reputation = db.Column(db.Integer, default=0, index=True)
+    reputation_rank = db.Column(db.Integer, nullable=True)
+    # Nivel POR NÚMEROS (como Steam): puntos de experiencia (XP) que solo suben con la actividad (recargas, me gusta, seguidores, juegos, misiones...).
+    # Se calculan en utils/profile_xp.py; el administrador pone cuántos puntos da cada cosa y cuánto cuesta cada nivel.
+    xp_total = db.Column(db.Integer, default=0)
+    xp_level = db.Column(db.Integer, default=1)
+    xp_rank = db.Column(db.Integer, nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('profile_stat', uselist=False, cascade='all, delete-orphan'))
+
+
+class ProfileLike(db.Model):
+    """Me gusta de una cuenta a otra. Uno por perfil, se puede quitar; nadie se da like a sí mismo."""
+    __tablename__ = 'profile_likes'
+    id = db.Column(db.Integer, primary_key=True)
+    from_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    to_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('from_user_id', 'to_user_id', name='uq_profile_like'),)
+
+
+class ProfileFollow(db.Model):
+    __tablename__ = 'profile_follows'
+    id = db.Column(db.Integer, primary_key=True)
+    follower_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    following_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('follower_id', 'following_id', name='uq_profile_follow'),)
+
+
+class UserBadge(db.Model):
+    """Insignia ganada por una cuenta (el catálogo vive en utils/profile_social.py)."""
+    __tablename__ = 'user_badges'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    badge_key = db.Column(db.String(40), nullable=False)
+    earned_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'badge_key', name='uq_user_badge'),)
+
+
+class ProfileAward(db.Model):
+    """Premio de la vitrina del perfil (lo carga el administrador a mano, o sale solo al cerrar un mes: Campeón)."""
+    __tablename__ = 'profile_awards'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    title = db.Column(db.String(80), nullable=False)
+    description = db.Column(db.String(200), default='')
+    image_path = db.Column(db.String(255), default='')
+    is_title = db.Column(db.Boolean, default=False)   # el más reciente con esto en True sale junto al nombre
+    # 'manual' = lo cargó el administrador; 'top1' / 'top2' / 'top3' = salió solo al cerrar un mes (month_key = 'AAAA-MM')
+    kind = db.Column(db.String(10), default='manual')
+    month_key = db.Column(db.String(7), default='')
+    awarded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class RevendedoresCatalogItem(db.Model):
@@ -1535,3 +1790,111 @@ class PromoHordeWinner(db.Model):
     game = db.relationship('Game')
     prize_order = db.relationship('Order')
     package = db.relationship('Package')
+
+# ───────────────────────── Torneos ─────────────────────────
+# El dueño publica el link del torneo en su canal de WhatsApp y, a la hora, abre las inscripciones desde el admin. Cada torneo tiene SALAS
+# (nombre, ID y clave de la sala del juego, y cuántos jugadores caben); la gente entra por orden de llegada con su ID verificado y la web
+# la mete en la primera sala que todavía tenga lugar (la siguiente se "desbloquea" cuando se llena la anterior). Los datos de la sala solo
+# los ve quien ya se inscribió. Los premios se definen por puesto (un paquete del juego) y se entregan solos al elegir al ganador.
+class Tournament(db.Model):
+    __tablename__ = 'tournaments'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.String(300), default='')       # texto libre que ve el cliente (p. ej. "Sábado 8:00 PM · Free Fire")
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)
+    # 'draft' (preparando: no se ve) · 'open' (inscripciones abiertas) · 'closed' (inscripciones cerradas: se ve, pero no se puede entrar)
+    # · 'finished' (terminó: ya no se muestra a los clientes)
+    status = db.Column(db.String(12), nullable=False, default='draft', index=True)
+    max_per_ip = db.Column(db.Integer, nullable=False, default=5)   # inscripciones por conexión (0 = sin límite): frena a quien quiera llenar las salas
+    # Fecha y hora (UTC, se captura en hora de Venezuela) en que se desbloquean las inscripciones. Con el torneo publicado ('open') y esta hora en el futuro,
+    # los clientes ven una cuenta regresiva y no pueden entrar hasta que llegue; sin hora (None) se abre cuando el dueño lo abre a mano.
+    opens_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    opened_at = db.Column(db.DateTime)
+    finished_at = db.Column(db.DateTime)
+
+    game = db.relationship('Game')
+    rooms = db.relationship('TournamentRoom', backref='tournament', cascade='all, delete-orphan', order_by='TournamentRoom.position, TournamentRoom.id')
+    prizes = db.relationship('TournamentPrize', backref='tournament', cascade='all, delete-orphan', order_by='TournamentPrize.place')
+
+
+class TournamentRoom(db.Model):
+    __tablename__ = 'tournament_rooms'
+    id = db.Column(db.Integer, primary_key=True)
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournaments.id'), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False, default=1)       # orden en que se van abriendo
+    name = db.Column(db.String(80), nullable=False)                   # nombre de la sala en el juego
+    room_code = db.Column(db.String(60), nullable=False, default='')  # ID de la sala en el juego
+    room_password = db.Column(db.String(60), nullable=False, default='')  # clave de la sala (solo la ve quien ya se inscribió)
+    max_players = db.Column(db.Integer, nullable=False, default=50)
+    # Cuando la sala TERMINA (el dueño la termina, o se entregaron todos sus premios) sus jugadores quedan libres para inscribirse en otra sala.
+    # Una sala terminada ya no recibe gente y no frena a la siguiente sala.
+    finished_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    entries = db.relationship('TournamentEntry', backref='room', cascade='all, delete-orphan', order_by='TournamentEntry.slot_number')
+
+
+class TournamentEntry(db.Model):
+    """Un jugador inscrito en una sala. Cada sala tiene lugares FIJOS del 1 al máximo y `slot_number` es único por sala: aunque muchas personas
+    lleguen al mismo tiempo, la base de datos no deja que dos tomen el mismo lugar ni que se pase del máximo (la que pierde la carrera vuelve a
+    intentar y cae en la sala siguiente). Al sacar a alguien se le pone un número negativo (único) y su lugar queda libre.
+
+    Regla del dueño: un ID solo puede estar en UNA sala a la vez (en toda la web, del mismo juego). Mientras la sala donde se inscribió no termine, no puede
+    entrar a otra; al terminar la sala se llena `released_at` y el ID queda libre. La base de datos lo garantiza con un índice único PARCIAL que solo mira
+    las inscripciones activas y sin liberar (`game_id` + `player_id`), así dos toques a la vez tampoco lo duplican."""
+    __tablename__ = 'tournament_entries'
+    __table_args__ = (
+        db.UniqueConstraint('room_id', 'slot_number', name='uq_tournament_entry_slot'),
+        db.Index('uq_tournament_entry_live_player', 'game_id', 'player_id', unique=True,
+                 sqlite_where=db.text("status = 'active' AND released_at IS NULL"), postgresql_where=db.text("status = 'active' AND released_at IS NULL")),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournaments.id'), nullable=False, index=True)
+    room_id = db.Column(db.Integer, db.ForeignKey('tournament_rooms.id'), nullable=False, index=True)
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=False, index=True)   # el juego del torneo (para saber si el ID ya está en otra sala)
+    player_id = db.Column(db.String(100), nullable=False, index=True)
+    player_nick = db.Column(db.String(150))
+    slot_number = db.Column(db.Integer, nullable=False)
+    ip = db.Column(db.String(64), index=True)
+    status = db.Column(db.String(10), nullable=False, default='active')   # 'active' | 'removed' (el admin lo sacó de la lista: no puede volver a entrar)
+    released_at = db.Column(db.DateTime)   # la sala terminó: el ID ya puede inscribirse en otra sala (la inscripción queda en el historial)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class TournamentPrize(db.Model):
+    """Premio de un puesto (1.º, 2.º...) del torneo: un paquete del juego que se entrega solo. Vale para CADA sala (cada sala tiene sus ganadores)."""
+    __tablename__ = 'tournament_prizes'
+    __table_args__ = (db.UniqueConstraint('tournament_id', 'place', name='uq_tournament_prize_place'),)
+    id = db.Column(db.Integer, primary_key=True)
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournaments.id'), nullable=False, index=True)
+    place = db.Column(db.Integer, nullable=False)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    package = db.relationship('Package')
+
+
+class TournamentWinner(db.Model):
+    """Ganador de un puesto en una sala (historial: fecha, ID y nombre). Una vez entregado no se puede cambiar ni repetir."""
+    __tablename__ = 'tournament_winners'
+    __table_args__ = (
+        db.UniqueConstraint('room_id', 'place', name='uq_tournament_winner_place'),
+        db.UniqueConstraint('room_id', 'player_id', name='uq_tournament_winner_player'),
+    )
+    id = db.Column(db.Integer, primary_key=True)
+    tournament_id = db.Column(db.Integer, db.ForeignKey('tournaments.id'), nullable=False, index=True)
+    room_id = db.Column(db.Integer, db.ForeignKey('tournament_rooms.id'), nullable=False, index=True)
+    place = db.Column(db.Integer, nullable=False)
+    player_id = db.Column(db.String(100), nullable=False)
+    player_nick = db.Column(db.String(150))
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'))
+    prize_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    status = db.Column(db.String(12), nullable=False, default='pending')   # 'pending' | 'delivering' | 'delivered'
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    delivered_at = db.Column(db.DateTime)
+
+    tournament = db.relationship('Tournament')
+    room = db.relationship('TournamentRoom')
+    package = db.relationship('Package')
+    prize_order = db.relationship('Order')

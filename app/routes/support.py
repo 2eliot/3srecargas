@@ -18,7 +18,8 @@ from ..models import Order, SupportMessage
 from ..utils import support as support_service
 from ..utils import support_ai
 from ..utils import support_bot
-from ..utils.locks import check_rate_limit
+from ..utils.support_ai import reference_lookup_budget_ok
+from ..utils.locks import check_rate_limit, client_ip
 from ..utils.reference_extraction import extract_reference_from_image_bytes
 from ..utils.support import SupportError
 from ..utils.notifications import notify_support_chat_opened, notify_support_client_message
@@ -32,8 +33,10 @@ COOKIE_MAX_AGE = 90 * 24 * 3600
 # Consultas del menú de botones, por IP. El estado de un pedido se limita mucho
 # más: se busca por número de orden o referencia y no debe poder adivinarse.
 BOT_CATALOG_PER_MINUTE = 60
-BOT_STATUS_PER_MINUTE = 8
-BOT_STATUS_PER_HOUR = 40
+BOT_STATUS_PER_MINUTE = 4
+BOT_STATUS_PER_HOUR = 20
+# El tope de TODA la tienda (el número de 6 dígitos tiene un millón de combinaciones y quien tenga muchas conexiones podría repartir los
+# intentos) vive ahora en utils/support_ai.reference_lookup_budget_ok y lo comparten el menú de estado, la foto del comprobante y el asistente.
 # Leer un comprobante llama a un servicio de IA que cobra por imagen: tope bajo.
 BOT_RECEIPT_PER_MINUTE = 5
 BOT_RECEIPT_PER_HOUR = 20
@@ -48,10 +51,8 @@ def _request_token():
 
 
 def _client_ip():
-    """IP real detrás de nginx. `remote_addr` a secas sería siempre
-    127.0.0.1 y el límite por IP no filtraría absolutamente nada."""
-    forwarded = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
-    return forwarded or request.remote_addr or ''
+    """IP real del cliente (misma función segura que usan todos los topes: ver utils/locks.py)."""
+    return client_ip()
 
 
 def _current_user_id():
@@ -240,8 +241,7 @@ def start():
 def thread():
     """Sondeo incremental. Con `after_id` la respuesta normal es una lista
     vacía de unos pocos bytes, que es lo que permite preguntar cada 5
-    segundos sin que se note."""
-    support_service.close_idle_chats()
+    segundos sin que se note. (El cierre de chats inactivos ya no se barre aquí en cada sondeo: lo hace el proceso de fondo cada minuto.)"""
     chat = _load_chat_or_error()
 
     try:
@@ -363,15 +363,23 @@ def bot_status():
     if blocked:
         return blocked
     ip = _client_ip()
-    if (not check_rate_limit(f'support_bot_status:{ip}', BOT_STATUS_PER_MINUTE, 60)
-            or not check_rate_limit(f'support_bot_status_h:{ip}', BOT_STATUS_PER_HOUR, 3600)):
-        return _bot_json({'ok': False, 'error': 'Demasiadas consultas seguidas. Espera un momento.'}, 429)
+    # Primero los topes de ESTA conexión (se evalúan los dos, sin cortar en el primero, para que ambos cuenten el intento).
+    allowed = [
+        check_rate_limit(f'support_bot_status:{ip}', BOT_STATUS_PER_MINUTE, 60),
+        check_rate_limit(f'support_bot_status_h:{ip}', BOT_STATUS_PER_HOUR, 3600),
+    ]
+    if not all(allowed):
+        return _bot_json({'ok': False, 'error': 'Demasiadas consultas seguidas. Espera un minuto e inténtalo de nuevo.'}, 429)
 
     data = request.get_json(silent=True)
     query = data.get('query') if isinstance(data, dict) else ''
     digits = ''.join(ch for ch in str(query or '') if ch.isdigit())
     if len(digits) < support_bot.REFERENCE_MIN_DIGITS:
         return _bot_json({'ok': False, 'error': 'Escribe tu número de orden (12 dígitos) o la referencia de tu pago.'}, 400)
+    # El tope de TODA la tienda se cobra solo a quien ya pasó el de su conexión y mandó una consulta válida: así una sola
+    # conexión no puede gastarlo sola y dejar sin esta consulta a todos los demás clientes.
+    if not reference_lookup_budget_ok():
+        return _bot_json({'ok': False, 'error': 'Hay muchas consultas en este momento. Inténtalo en unos minutos o habla con soporte.'}, 429)
     orders = support_bot.find_orders(digits)
     return _bot_json({'ok': True, 'orders': [support_bot.order_card(o) for o in orders]})
 
@@ -406,5 +414,7 @@ def bot_receipt():
         return _bot_json({'ok': False, 'error': 'No pude leer la foto ahora. Escribe tu número de orden o la referencia del pago.'}, 503)
 
     reference = result.get('reference') or ''
+    if reference and not reference_lookup_budget_ok():
+        return _bot_json({'ok': False, 'error': 'Hay muchas consultas en este momento. Inténtalo en unos minutos o habla con soporte.'}, 429)
     orders = support_bot.find_orders(reference) if reference else []
     return _bot_json({'ok': True, 'reference': reference, 'orders': [support_bot.order_card(o) for o in orders]})

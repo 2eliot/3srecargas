@@ -521,7 +521,7 @@ body.is-embed .sup-bar-back{display:none}
         {% else %}
         {%- if m.body %}<span class="sup-msg-body">{{ m.body }}</span>{% endif -%}
         {% if m.action_url and m.action_url.startswith('#comprar:') %}<span class="sup-ai-action">🧾 Botón para el cliente: {{ m.action_label or 'Crear mi orden con este comprobante' }}</span>
-        {% elif m.action_url %}<a class="sup-ai-action" href="{{ m.action_url }}" target="_blank">🔗 {{ m.action_label or m.action_url }}</a>{% endif %}
+        {% elif m.action_url %}<a class="sup-ai-action" href="{{ m.action_url|safe_href }}" target="_blank">🔗 {{ m.action_label or m.action_url }}</a>{% endif %}
         {% if m.attachment %}
           {% if m.attachment.rsplit('.', 1)[-1]|lower in ['mp4','webm','mov','m4v'] %}
           <video class="sup-media" controls preload="metadata"
@@ -1409,7 +1409,8 @@ body.is-embed .sup-bar-back{display:none}
             var name = (b.dataset.name || b.textContent || '').replace(/[&<>"']/g, function (c) {
                 return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
             });
-            return '<span class="sup-tag" style="background:' + b.dataset.color + '">' + name + '</span>';
+            var color = String(b.dataset.color || '').replace(/[^#0-9a-fA-F]/g, '');
+            return '<span class="sup-tag" style="background:' + color + '">' + name + '</span>';
         }).join('');
     }
 

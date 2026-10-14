@@ -151,6 +151,8 @@
     }
 
     function estaOcupado() {
+        // Una compra a medias dentro del chat de soporte (support-buy.js) tampoco se recarga: el cliente puede estar pagando en su banco.
+        if (typeof window.nxHoldReload === 'function' && window.nxHoldReload()) return true;
         // Un checkout que ya pasó del primer paso jamás se recarga.
         var etapa = document.getElementById('nxStage');
         if (etapa && etapa.value && etapa.value !== 'init') return true;

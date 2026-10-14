@@ -70,12 +70,12 @@
             {% if w.status == 'pending' %}
                 <span class="rp-badge rp-dudoso">⏳ Pendiente</span>
                 <form method="POST" action="{{ url_for('admin_bp.promos_horde_winner_approve', winner_id=w.id) }}" style="margin:0;"
-                      onsubmit="return confirm('¿Aprobar y ENTREGAR ahora el premio ({{ w.package.name if w.package else 'sin paquete' }}) a {{ w.player_id }}?');">
+                      onsubmit="return confirm({{ ('¿Aprobar y ENTREGAR ahora el premio (' ~ (w.package.name if w.package else 'sin paquete') ~ ') a ' ~ (w.player_id) ~ '?')|jsattr }});">
                     <input type="hidden" name="back" value="{{ request.full_path }}">
                     <button type="submit" class="btn-sm btn-success">✅ Aprobar y entregar</button>
                 </form>
                 <form method="POST" action="{{ url_for('admin_bp.promos_horde_winner_reject', winner_id=w.id) }}" style="margin:0;"
-                      onsubmit="const r = prompt('¿Rechazar a {{ w.player_id }} por trampa? Se bloqueará en este juego y los siguientes suben de puesto.\n\nMotivo (opcional):', 'Repetición no coincide'); if (r === null) return false; this.reason.value = r; return true;">
+                      onsubmit="const r = prompt({{ ('¿Rechazar a ' ~ (w.player_id) ~ ' por trampa? Se bloqueará en este juego y los siguientes suben de puesto.\n\nMotivo (opcional):')|jsattr }}, 'Repetición no coincide'); if (r === null) return false; this.reason.value = r; return true;">
                     <input type="hidden" name="reason" value="">
                     <input type="hidden" name="back" value="{{ request.full_path }}">
                     <button type="submit" class="btn-sm btn-danger">❌ Rechazar</button>
@@ -111,7 +111,7 @@
             {% if pl.bad %}<span class="rp-badge rp-no_coincide">⚠ {{ pl.bad }} partida(s) sospechosa(s)</span>{% endif %}
             <span class="rp-total">💎 {{ pl.total }}</span>
             <form method="POST" action="{{ url_for('admin_bp.promos_horde_ban') }}" style="margin:0;"
-                  onsubmit="return confirm('¿Bloquear el ID {{ pl.player_id }} en Hordas de {{ game.name }}? No podrá jugar y saldrá del ranking.');">
+                  onsubmit="return confirm({{ ('¿Bloquear el ID ' ~ (pl.player_id) ~ ' en Hordas de ' ~ (game.name) ~ '? No podrá jugar y saldrá del ranking.')|jsattr }});">
                 <input type="hidden" name="game_id" value="{{ game.id }}">
                 <input type="hidden" name="player_id" value="{{ pl.player_id }}">
                 <input type="hidden" name="reason" value="Trampa (repetición semana {{ week }})">
@@ -121,7 +121,7 @@
         </div>
         <div class="table-wrap">
             <table class="admin-table rp-table">
-                <thead><tr><th>Fecha</th><th>Duración</th><th>Oleada</th><th>Diamantes</th><th>Tipo</th><th>Comprobación</th><th></th></tr></thead>
+                <thead><tr><th>Fecha</th><th>Duración</th><th>Oleada</th><th>Cristales</th><th>Tipo</th><th>Comprobación</th><th></th></tr></thead>
                 <tbody>
                 {% for item in pl.runs %}
                 {% set r = item.run %}

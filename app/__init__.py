@@ -1,7 +1,10 @@
+import json
 import os
+import re
 import secrets
 import sqlite3
-from flask import Flask, url_for
+from flask import Flask, Request, url_for
+from markupsafe import Markup, escape
 from flask_login import current_user
 from flask_login import LoginManager
 from sqlalchemy import event, text
@@ -72,6 +75,8 @@ def _secret_key_is_weak(key):
         or lowered.startswith('dev-')
         or 'change' in lowered
         or 'secret-key' in lowered
+        # Las llaves de ejemplo en español (.env.example y README) miden justo 32 y pasaban la revisión de largo.
+        or any(marker in lowered for marker in ('cambia', 'clave-secreta', 'clave-segura', 'tu-clave', 'ejemplo'))
     )
 
 
@@ -96,8 +101,20 @@ def _ensure_secure_secret_key(app):
         app.config['SECRET_KEY'] = handle.read().strip()
 
 
+class _JsonObjectRequest(Request):
+    """Toda la app espera que un cuerpo JSON sea un OBJETO ({...}). Si llega un texto suelto, un número o una lista,
+    get_json(silent=True) devuelve None (y el código ya hace `... or {}`): antes eso rompía unas 40 rutas con error 500."""
+
+    def get_json(self, force=False, silent=False, cache=True):
+        data = super().get_json(force=force, silent=silent, cache=cache)
+        if silent and data is not None and not isinstance(data, dict):
+            return None
+        return data
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
+    app.request_class = _JsonObjectRequest
     app.config.from_object(config_class)
     _ensure_secure_secret_key(app)
     # SameSite=Lax: el navegador no manda la sesión en formularios POST que
@@ -175,12 +192,14 @@ def create_app(config_class=Config):
     from .routes.admin import admin_bp
     from .routes.affiliates import affiliates_bp
     from .routes.auth import auth_bp
+    from .routes.profiles import profiles_bp
     from .routes.verify import verify_bp
     from .routes.redeem import redeem_bp
     from .routes.minis import minis_bp
     from .routes.revendedores_webhook import revendedores_webhook_bp
     from .routes.support import support_bp
     from .routes.admin_support import admin_support_bp
+    from .routes.admin_tournaments import admin_tournaments_bp
     from .routes.promos import promos_bp
 
     app.register_blueprint(main_bp)
@@ -188,17 +207,47 @@ def create_app(config_class=Config):
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(affiliates_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(profiles_bp)
     app.register_blueprint(verify_bp)
     app.register_blueprint(redeem_bp)
     app.register_blueprint(minis_bp, url_prefix='/minis')
     app.register_blueprint(revendedores_webhook_bp)
     app.register_blueprint(support_bp)
     app.register_blueprint(admin_support_bp)
+    app.register_blueprint(admin_tournaments_bp)
     app.register_blueprint(promos_bp)
 
     @app.template_filter('datetime_ve')
     def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):
         return format_ve(value, fmt)
+
+    @app.template_filter('jsattr')
+    def jsattr_filter(value):
+        """Texto -> literal de JavaScript ("...") seguro DENTRO de un onclick="..." / onsubmit="...".
+
+        `'{{ nombre }}'` NO es seguro en un atributo: el navegador convierte &#39; otra vez en ' antes de ejecutar el JS, así que un
+        nombre con comillas rompe el texto y ejecuta código. Esto lo escribe como JSON (comillas y símbolos con \\u) y luego lo escapa
+        para HTML. Uso: onclick="abrir({{ nombre|jsattr }})" (sin poner comillas alrededor).
+        """
+        return Markup(escape(json.dumps('' if value is None else str(value), ensure_ascii=True)))
+
+    @app.template_filter('safe_href')
+    def safe_href_filter(value):
+        """Enlace escrito por una persona -> solo http(s), mailto, tel o ruta del sitio; si no, "#" (evita javascript:/data:)."""
+        raw = str(value or '').strip()
+        probe = re.sub(r'[\x00-\x20\x7f]+', '', raw)
+        if not probe:
+            return ''
+        if probe.startswith('/') and not probe.startswith('//') and not probe.startswith('/\\'):
+            return raw
+        if probe.startswith('#'):
+            return raw
+        scheme = re.match(r'^([a-zA-Z][a-zA-Z0-9+.\-]*):', probe)
+        if scheme:
+            return raw if scheme.group(1).lower() in ('http', 'https', 'mailto', 'tel') else '#'
+        if probe.startswith('//') or probe.startswith('\\'):
+            return '#'
+        return 'https://' + raw
 
     # Versión de cachébuster por archivo: el mtime es igual en los 3 workers
     # de gunicorn y solo cambia al desplegar, así el navegador sí puede
@@ -240,6 +289,85 @@ def create_app(config_class=Config):
             return render_template('maintenance.html'), 503
         return None
 
+    # Un ID de jugador (o zona, o el dato con el que se entra) NUNCA lleva comillas, < >, barra invertida ni caracteres invisibles:
+    # si llegan, es un intento de meter código. Se frena aquí, una sola vez, para todas las rutas públicas (checkout, canje, sorteo,
+    # Hordas, adivina, puntos, perfiles...). El panel admin y el webhook del proveedor quedan fuera.
+    HOSTILE_ID = re.compile('[<>"\'`\\\\\x00-\x08\x0b\x0c\x0e-\x1f\x7f​-‏‪-‮⁦-⁩]')
+    GUARDED_ID_FIELDS = ('player_id', 'lookup_identifier', 'identifier', 'zone_id', 'link_identifier')
+
+    # Formularios normales de la cuenta (no fetch): ahí el aviso sale como mensaje en la misma página, no como JSON crudo.
+    FORM_PREFIXES = ('/profile/', '/login', '/register', '/account/')
+
+    @app.before_request
+    def _reject_hostile_ids():
+        from urllib.parse import urlparse
+        from flask import flash, jsonify, redirect, request
+
+        if request.path.startswith(('/admin', '/static/', '/api/revendedores/webhook')):
+            return None
+        sources = [request.args]
+        if request.method in ('POST', 'PUT', 'PATCH'):
+            body = request.get_json(silent=True) if request.is_json else None
+            sources.append(body if isinstance(body, dict) else request.form)
+        for source in sources:
+            for field in GUARDED_ID_FIELDS:
+                value = source.get(field)
+                if not isinstance(value, str):
+                    continue
+                hostile = bool(HOSTILE_ID.search(value))
+                if not hostile and len(value) <= 150:
+                    continue
+                message = 'El ID tiene caracteres que no se permiten.' if hostile else 'Ese ID no es válido.'
+                is_plain_form = (
+                    request.method == 'POST' and request.path.startswith(FORM_PREFIXES) and not request.is_json
+                    and not request.headers.get('X-Requested-With') and request.form.get('ajax') != '1'
+                )
+                if is_plain_form:
+                    flash(message, 'danger')
+                    back = request.referrer or ''
+                    target = urlparse(back)
+                    if target.netloc and target.netloc != request.host:
+                        back = ''
+                    return redirect(back or ('/account' if request.path.startswith('/profile/') else '/'))
+                return jsonify({'ok': False, 'message': message, 'error': message}), 400
+        return None
+
+    @app.errorhandler(413)
+    def _request_too_large(exc):
+        """Subir varias imágenes grandes a la vez pasa del tope de 16 MB de una petición: antes salía una página en inglés
+        ("413 Request Entity Too Large") y se perdía lo editado. Ahora un aviso claro, y en los formularios se vuelve a la página."""
+        from urllib.parse import urlparse
+        from flask import flash, jsonify, redirect, request
+
+        message = 'Los archivos juntos pesan demasiado (máximo 16 MB en total). Sube menos fotos a la vez o usa imágenes más livianas.'
+        is_plain_form = (
+            request.method == 'POST' and request.path.startswith(FORM_PREFIXES + ('/admin',)) and not request.is_json
+            and not request.headers.get('X-Requested-With') and 'application/json' not in (request.headers.get('Accept') or '')
+        )
+        if is_plain_form:
+            flash(message, 'danger')
+            back = request.referrer or ''
+            target = urlparse(back)
+            if target.netloc and target.netloc != request.host:
+                back = ''
+            return redirect(back or '/')
+        return jsonify({'ok': False, 'message': message, 'error': message}), 413
+
+    @app.errorhandler(OverflowError)
+    def _number_too_big(exc):
+        """Un número gigante (un ID de 25 cifras) no cabe en la base de datos: es una petición mala, no un fallo del servidor."""
+        from flask import jsonify, request
+
+        message = 'Ese número es demasiado grande.'
+        if request.path.startswith('/admin') and not request.is_json:
+            return message, 400
+        return jsonify({'ok': False, 'message': message, 'error': message}), 400
+
+    # Compresión gzip + caché larga de estáticos (se registra ANTES que _no_cachear_html: Flask corre los after_request en orden
+    # inverso, así que ésta corre al final y comprime ya con todas las cabeceras puestas). Ver utils/web_perf.py.
+    from .utils.web_perf import init_web_perf
+    init_web_perf(app)
+
     @app.after_request
     def _no_cachear_html(response):
         """El HTML nunca se guarda en caché.
@@ -255,6 +383,11 @@ def create_app(config_class=Config):
         """
         if response.mimetype == 'text/html':
             response.headers.setdefault('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            # Nadie puede meter la tienda dentro de otra página (clickjacking), ni cambiar la base de los enlaces, ni cargar plugins.
+            # (El chat del admin se carga dentro del propio admin: mismo sitio, sigue permitido.)
+            response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+            response.headers.setdefault('Content-Security-Policy', "base-uri 'self'; object-src 'none'; frame-ancestors 'self'")
+            response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
         # Páginas y respuestas JSON: el navegador no debe "adivinar" que un texto es HTML o un script.
         if response.mimetype in ('text/html', 'application/json'):
             response.headers.setdefault('X-Content-Type-Options', 'nosniff')
@@ -265,21 +398,14 @@ def create_app(config_class=Config):
         # Corre en cada página: una sola consulta para todos los settings
         # en vez de una por clave.
         social_keys = ['social_facebook', 'social_instagram', 'social_tiktok', 'social_whatsapp']
-        ranking_keys = [
-            'ranking_free_fire_enabled',
-            'ranking_blood_strike_enabled',
-            'ranking_free_fire_game_id',
-            'ranking_blood_strike_game_id',
-        ]
         drawer_bg_keys = [
-            'drawer_bg_recarga', 'drawer_bg_sorteo', 'drawer_bg_adivina',
-            'drawer_bg_canjear', 'drawer_bg_mini',
+            'drawer_bg_recarga', 'drawer_bg_sorteo', 'drawer_bg_adivina', 'drawer_bg_hordas', 'drawer_bg_torneos',
+            'drawer_bg_canjear', 'drawer_bg_mini', 'drawer_bg_login',
         ]
         wanted_keys = (
             ['site_logo', 'support_avatar', 'site_background_image', 'support_email', 'support_whatsapp', 'support_schedule', 'support_location']
             + ['site_tutorial_video_file', 'site_tutorial_video_title']
             + social_keys
-            + ranking_keys
             + drawer_bg_keys
         )
         values = {
@@ -297,7 +423,6 @@ def create_app(config_class=Config):
         support_location = values.get('support_location') or 'Puerto Ordaz, Bolívar, Venezuela'
         site_tutorial_video_file = values.get('site_tutorial_video_file') or None
         site_tutorial_video_title = values.get('site_tutorial_video_title') or 'Tutorial'
-        ranking_settings = {key: values.get(key) or '' for key in ranking_keys}
         drawer_bg_images = {key: values.get(key) or None for key in drawer_bg_keys}
 
         has_active_ranking = has_visible_public_rankings()
@@ -311,6 +436,7 @@ def create_app(config_class=Config):
             'sorteo': bool(get_raffle_enabled_games()),
             'adivina': bool(get_guess_enabled_games()),
             'hordas': bool(get_horde_enabled_games()),
+            'torneos': True,   # la página existe siempre (por ahora "muy pronto"); cuando tenga reglas se podrá apagar desde el admin
         }
 
         return {
@@ -324,7 +450,6 @@ def create_app(config_class=Config):
             'SUPPORT_LOCATION': support_location,
             'SITE_TUTORIAL_VIDEO_FILE': site_tutorial_video_file,
             'SITE_TUTORIAL_VIDEO_TITLE': site_tutorial_video_title,
-            'RANKING_SETTINGS': ranking_settings,
             'DRAWER_BG_IMAGES': drawer_bg_images,
             'HAS_ACTIVE_RANKING': has_active_ranking,
             'PROMO_AVAILABILITY': promo_availability,
@@ -353,6 +478,7 @@ def create_app(config_class=Config):
         _ensure_discount_columns()
         _ensure_order_nickname_column()
         _ensure_order_delivery_proof_column()
+        _ensure_order_account_user_column()
         _ensure_game_columns()
         _ensure_package_pricing_columns()
         _ensure_package_announcement_column()
@@ -373,6 +499,7 @@ def create_app(config_class=Config):
         _ensure_order_payment_verification_raw_response_column()
         _ensure_order_idempotency_column()
         _ensure_ranking_archive_columns()
+        _ensure_ranking_board_columns()
         _ensure_revendedores_mapping_columns()
         _ensure_binance_columns()
         _ensure_support_columns()
@@ -382,7 +509,12 @@ def create_app(config_class=Config):
         _ensure_pin_delivered_text_column()
         _ensure_guess_winner_nick_column()
         _ensure_support_delete_columns()
+        _ensure_profile_social_columns()
+        _ensure_tournament_entry_rules()
+        _ensure_performance_indexes()
         _init_default_data(app)
+        from .utils.ranking_boards import ensure_default_boards
+        ensure_default_boards()
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -539,6 +671,26 @@ def _ensure_order_delivery_proof_column():
         existing = {r[1] for r in rows}
         if 'delivery_proof' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN delivery_proof VARCHAR(255)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_account_user_column():
+    """Órdenes: `account_user_id` = la CUENTA que hizo la compra (ver models.Order). Las órdenes anteriores se quedan sin cuenta a propósito
+    (las cuentas empiezan en cero); el índice lo crea `_ensure_performance_indexes`."""
+    try:
+        if _ensure_postgres_columns('orders', [
+            'account_user_id INTEGER',
+        ]):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'account_user_id' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN account_user_id INTEGER'))
             db.session.commit()
     except Exception:
         db.session.rollback()
@@ -1015,6 +1167,8 @@ def _ensure_ranking_archive_columns():
             'player_id VARCHAR(100)',
             'nickname VARCHAR(200)',
             'prize_order_id INTEGER',
+            'user_id INTEGER',
+            "prize_detail VARCHAR(200) DEFAULT ''",
         ]):
             return
 
@@ -1029,8 +1183,26 @@ def _ensure_ranking_archive_columns():
             db.session.execute(text('ALTER TABLE ranking_archives ADD COLUMN nickname VARCHAR(200)'))
         if 'prize_order_id' not in existing:
             db.session.execute(text('ALTER TABLE ranking_archives ADD COLUMN prize_order_id INTEGER'))
+        if 'user_id' not in existing:
+            db.session.execute(text('ALTER TABLE ranking_archives ADD COLUMN user_id INTEGER'))
+        if 'prize_detail' not in existing:
+            db.session.execute(text("ALTER TABLE ranking_archives ADD COLUMN prize_detail VARCHAR(200) DEFAULT ''"))
 
         db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_ranking_board_columns():
+    try:
+        if _ensure_postgres_columns('ranking_boards', ['pays_from VARCHAR(7)']):
+            return
+        if db.engine.dialect.name != 'sqlite':
+            return
+        rows = db.session.execute(text('PRAGMA table_info(ranking_boards)')).fetchall()
+        if rows and 'pays_from' not in {r[1] for r in rows}:
+            db.session.execute(text('ALTER TABLE ranking_boards ADD COLUMN pays_from VARCHAR(7)'))
+            db.session.commit()
     except Exception:
         db.session.rollback()
 
@@ -1199,6 +1371,111 @@ def _ensure_pin_delivered_text_column():
         if db.engine.dialect.name == 'postgresql':
             db.session.execute(text('ALTER TABLE orders ALTER COLUMN pin_delivered TYPE TEXT'))
             db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_profile_social_columns():
+    """Perfiles sociales: ID enlazado verificado y frase/permisos del perfil (tablas que ya existían sin esas columnas)."""
+    try:
+        done = _ensure_postgres_columns('user_linked_ids', ['verified_at TIMESTAMP'])
+        done = _ensure_postgres_columns('user_profiles', [
+            "status_text VARCHAR(60) DEFAULT ''",
+            'show_stats BOOLEAN DEFAULT TRUE',
+            'in_rankings BOOLEAN DEFAULT TRUE',
+            'avatar_frame_id INTEGER',
+            'banner_frame_id INTEGER',
+        ]) or done
+        done = _ensure_postgres_columns('profile_stats', [
+            "favorite_product VARCHAR(100) DEFAULT ''",
+            'xp_total INTEGER DEFAULT 0',
+            'xp_level INTEGER DEFAULT 1',
+            'xp_rank INTEGER',
+        ]) or done
+        done = _ensure_postgres_columns('tournaments', ['opens_at TIMESTAMP']) or done
+        done = _ensure_postgres_columns('tournament_rooms', ['finished_at TIMESTAMP']) or done
+        done = _ensure_postgres_columns('profile_awards', [
+            "kind VARCHAR(10) DEFAULT 'manual'",
+            "month_key VARCHAR(7) DEFAULT ''",
+        ]) or done
+        if not done and db.engine.dialect.name == 'sqlite':
+            wanted = {
+                'user_linked_ids': [('verified_at', 'DATETIME')],
+                'user_profiles': [('status_text', "VARCHAR(60) DEFAULT ''"), ('show_stats', 'BOOLEAN DEFAULT 1'), ('in_rankings', 'BOOLEAN DEFAULT 1'),
+                                  ('avatar_frame_id', 'INTEGER'), ('banner_frame_id', 'INTEGER')],
+                'profile_awards': [('kind', "VARCHAR(10) DEFAULT 'manual'"), ('month_key', "VARCHAR(7) DEFAULT ''")],
+                'profile_stats': [('favorite_product', "VARCHAR(100) DEFAULT ''"), ('xp_total', 'INTEGER DEFAULT 0'), ('xp_level', 'INTEGER DEFAULT 1'),
+                                  ('xp_rank', 'INTEGER')],
+                'tournaments': [('opens_at', 'DATETIME')],
+                'tournament_rooms': [('finished_at', 'DATETIME')],
+            }
+            for table, columns in wanted.items():
+                existing = {r[1] for r in db.session.execute(text(f'PRAGMA table_info({table})')).fetchall()}
+                for name, definition in columns:
+                    if name not in existing:
+                        db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN {name} {definition}'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+PERFORMANCE_INDEXES = (
+    # Auditoría de rendimiento: `orders` casi no tenía índices; con decenas de miles de pedidos cada búsqueda por ID, por cuenta, por
+    # referencia o por correo recorría la tabla entera (8-15 ms cada una, varias por página). Cuestan ~0,3 ms por pedido nuevo.
+    ('ix_orders_game_player', 'orders', '(game_id, player_id)'),
+    ('ix_orders_status_id', 'orders', '(status, id)'),
+    ('ix_orders_user_id', 'orders', '(user_id)'),
+    ('ix_orders_account_user_id', 'orders', '(account_user_id)'),
+    ('ix_orders_payment_reference', 'orders', '(payment_reference)'),
+    ('ix_orders_payment_reference_last5', 'orders', '(payment_reference_last5)'),
+    ('ix_orders_remainder_reference', 'orders', '(remainder_reference)'),
+    ('ix_orders_created_at', 'orders', '(created_at)'),
+    ('ix_orders_game_lower_email', 'orders', '(game_id, lower(email))'),
+    ('ix_orders_game_lower_player', 'orders', '(game_id, lower(player_id))'),
+    ('ix_pins_package_used', 'pins', '(package_id, is_used)'),
+    ('ix_api_rate_limit_hits_window', 'api_rate_limit_hits', '(window_start)'),
+    ('ix_support_chats_unread_admin', 'support_chats', '(unread_admin)'),
+    ('ix_ranking_archives_user_id', 'ranking_archives', '(user_id)'),
+)
+
+
+def _ensure_performance_indexes():
+    """Crea los índices de PERFORMANCE_INDEXES si faltan (CREATE INDEX IF NOT EXISTS: idempotente, sirve en SQLite y Postgres). Cada uno va
+    aparte y dentro de try/except: si dos workers arrancan a la vez y uno pierde la carrera, o una columna no existe en una base vieja,
+    simplemente se salta ese índice sin tumbar el arranque."""
+    for name, table, columns in PERFORMANCE_INDEXES:
+        try:
+            db.session.execute(text(f'CREATE INDEX IF NOT EXISTS {name} ON {table} {columns}'))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+
+def _ensure_tournament_entry_rules():
+    """Torneos: un ID solo puede estar en una sala a la vez (hasta que esa sala termine).
+
+    La primera versión de `tournament_entries` tenía una restricción única (torneo, ID) y no tenía `game_id` ni `released_at`; con ella un ID nunca podía
+    pasar de una sala a otra. Esa tabla solo existe en bases de prueba (los torneos todavía no se publican), así que en SQLite se reconstruye copiando sus
+    filas. Las bases nuevas ya nacen bien de `db.create_all()`."""
+    try:
+        if db.engine.dialect.name != 'sqlite':
+            return
+        row = db.session.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='tournament_entries'")).fetchone()
+        if not row or 'uq_tournament_entry_player' not in (row[0] or ''):
+            return
+        old_indexes = [r[0] for r in db.session.execute(text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tournament_entries' AND sql IS NOT NULL")).fetchall()]
+        for name in old_indexes:
+            db.session.execute(text(f'DROP INDEX IF EXISTS "{name}"'))
+        db.session.execute(text('ALTER TABLE tournament_entries RENAME TO tournament_entries_old'))
+        db.session.commit()
+        from .models import TournamentEntry
+        TournamentEntry.__table__.create(bind=db.engine)
+        db.session.execute(text(
+            'INSERT INTO tournament_entries (id, tournament_id, room_id, game_id, player_id, player_nick, slot_number, ip, status, released_at, created_at) '
+            'SELECT e.id, e.tournament_id, e.room_id, t.game_id, e.player_id, e.player_nick, e.slot_number, e.ip, e.status, NULL, e.created_at '
+            'FROM tournament_entries_old e JOIN tournaments t ON t.id = e.tournament_id'))
+        db.session.execute(text('DROP TABLE tournament_entries_old'))
+        db.session.commit()
     except Exception:
         db.session.rollback()
 

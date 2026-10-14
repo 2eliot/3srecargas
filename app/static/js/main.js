@@ -1,5 +1,27 @@
 /* ── 3S Recargas — Store JavaScript ─────────────────────── */
 
+/* Ayudas de red compartidas (cualquier página las puede usar): mensajes entendibles cuando se corta el internet y un tiempo máximo para
+   que un botón no se quede "Procesando..." para siempre con una conexión colgada (3G inestable). */
+window.nxFriendlyError = function (err, fallback) {
+    var msg = err && err.message ? String(err.message) : '';
+    var name = err && err.name ? String(err.name) : '';
+    if (name === 'AbortError') return 'La conexión está muy lenta. Intenta de nuevo en un momento.';
+    var offline = (typeof navigator !== 'undefined' && navigator.onLine === false)
+        || (name === 'TypeError' && /failed to fetch|load failed|networkerror|network request failed|fetch/i.test(msg));
+    if (offline) return 'Sin conexión. Revisa tu internet e intenta de nuevo.';
+    return msg || fallback || 'Ocurrió un error. Intenta de nuevo.';
+};
+window.nxFetch = function (url, opts, ms) {
+    if (typeof AbortController === 'undefined' || !window.fetch) return fetch(url, opts);
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, ms || 20000);
+    var o = {};
+    for (var k in (opts || {})) { if (Object.prototype.hasOwnProperty.call(opts, k)) o[k] = opts[k]; }
+    if (!o.signal) o.signal = ctrl.signal;
+    return fetch(url, o).then(function (r) { clearTimeout(timer); return r; }, function (e) { clearTimeout(timer); throw e; });
+};
+window.nxDebug = function () {};
+
 (function () {
     'use strict';
 
@@ -288,15 +310,20 @@
     });
 
     /* ── Load Games via AJAX ──────────────────────────────── */
+    // Cada pedido lleva un número: si el cliente cambia de categoría rápido, la respuesta de la categoría anterior llega tarde y NO debe pintarse (antes
+    // aparecían juegos de otra categoría).
+    var gamesRequestSeq = 0;
     function loadGames(category) {
         var grid = document.getElementById('gamesGrid');
         grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Cargando...</div>';
         updateGamesCarouselNav();
+        var seq = ++gamesRequestSeq;
 
         fetch('/api/games?category=' + encodeURIComponent(category), { headers: storeHeaders() })
             .then(function (r) { return r.json(); })
-            .then(function (data) { renderGames(data.games); })
+            .then(function (data) { if (seq === gamesRequestSeq) renderGames(data.games); })
             .catch(function () {
+                if (seq !== gamesRequestSeq) return;
                 grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Error al cargar juegos.</div>';
                 updateGamesCarouselNav();
             });
@@ -464,6 +491,22 @@
         return text;
     }
 
+    // Valor del premio de un puesto: si es una cantidad de diamantes ("572", "572 💎", "572 diamantes") sale el número grande con una gema dibujada;
+    // si es otra cosa (el nombre de un paquete) sale como texto.
+    var RANKING_GEM_SVG =
+        '<svg class="rk-prize-gem" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+            '<path fill="#0ea5e9" d="M2 9h20L12 21z"/><path fill="#38bdf8" d="M6 3h12l4 6H2z"/>' +
+            '<path fill="#bae6fd" d="M6 3l2.4 6L12 3z"/><path fill="#7dd3fc" d="M12 3l3.6 6L18 3z"/><path fill="#0284c7" d="M8.4 9 12 21 15.6 9z"/>' +
+        '</svg>';
+
+    function rankingPrizeValueHtml(label) {
+        var text = (label === null || typeof label === 'undefined') ? '' : String(label).trim();
+        if (!text) return '<b class="rk-prize-text is-none">Sin premio</b>';
+        var match = text.match(/^(\d[\d.,]*)\s*(?:\ud83d\udc8e|diamantes?|dm)?\s*$/i);
+        if (match) return '<b class="rk-prize-num">' + escHtml(match[1]) + '</b>' + RANKING_GEM_SVG;
+        return '<b class="rk-prize-text">' + escHtml(text) + '</b>';
+    }
+
     function renderRankingTabs() {
         if (!rankingTabsEl) return;
         rankingTabsEl.innerHTML = '';
@@ -476,6 +519,227 @@
             btn.textContent = item.label;
             rankingTabsEl.appendChild(btn);
         });
+    }
+
+    // Silueta neutra del jugador en el ranking. El ranking mensual es solo por ID: no muestra fotos de perfil ni abre perfiles (las cuentas son
+    // independientes de los IDs, decisión del dueño 2026-10-14).
+    function rankingAvatarHtml(entry, className) {
+        return '<span class="' + className + '" aria-hidden="true">' +
+            '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="8.2" r="4.1"/><path d="M4 21c0-4.4 3.6-7.6 8-7.6s8 3.2 8 7.6z"/></svg>' +
+        '</span>';
+    }
+
+    var RANKING_ACCOUNT_AVATAR_RE = /^uploads\/profiles\/\d+\/[a-z_]+_[0-9a-f]{12}\.(webp|gif)$/;
+    var RANKING_ACCOUNT_HANDLE_RE = /^[A-Za-z0-9._-]{3,20}$/;
+    var RANKING_SILHOUETTE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="8.2" r="4.1"/><path d="M4 21c0-4.4 3.6-7.6 8-7.6s8 3.2 8 7.6z"/></svg>';
+    function rankingAccountUnits(entry) {
+        return entry && entry.total_units !== null && typeof entry.total_units !== 'undefined' ? String(entry.total_units) : '—';
+    }
+
+    function rankingAccountAvatarHtml(entry, className) {
+        var photo = !!(entry && typeof entry.avatar === 'string' && RANKING_ACCOUNT_AVATAR_RE.test(entry.avatar));
+        var inner = photo ? '<img src="/static/' + escHtml(entry.avatar) + '" alt="" loading="lazy" decoding="async">' : RANKING_SILHOUETTE_SVG;
+        return '<span class="' + className + (photo ? ' has-photo' : '') + '" aria-hidden="true">' + inner + '</span>';
+    }
+
+    // Atributos para que una cuenta del ranking se pueda tocar (y se abra el cuadro con "Ver perfil"). Solo si su usuario es válido: sin usuario no hay perfil.
+    function rankingAccountTapAttrs(entry, item) {
+        var handle = entry && typeof entry.handle === 'string' && RANKING_ACCOUNT_HANDLE_RE.test(entry.handle) ? entry.handle : '';
+        if (!handle) return '';
+        var photo = typeof entry.avatar === 'string' && RANKING_ACCOUNT_AVATAR_RE.test(entry.avatar) ? entry.avatar : '';
+        return ' role="button" tabindex="0" data-rk-handle="' + escHtml(handle) + '" data-rk-name="' + escHtml(entry.name || handle) + '"' +
+            ' data-rk-avatar="' + escHtml(photo) + '" data-rk-pos="' + escHtml(entry.position) + '" data-rk-score="' + escHtml(rankingAccountScoreText(entry, item, true)) + '"';
+    }
+
+    // Cuadro pequeño que sale al tocar una cuenta del ranking: foto, nombre, @usuario y el botón "Ver perfil" (lleva a /u/<usuario>).
+    var rkPopReturnFocus = null;
+    function closeRankingProfilePop() {
+        var pop = document.getElementById('rkProfilePop');
+        if (pop) pop.remove();
+        document.removeEventListener('keydown', onRankingPopKey, true);
+        if (rkPopReturnFocus && document.contains(rkPopReturnFocus)) { try { rkPopReturnFocus.focus(); } catch (err) { /* nada */ } }
+        rkPopReturnFocus = null;
+    }
+    function onRankingPopKey(evt) {
+        if (evt.key === 'Escape') { evt.preventDefault(); evt.stopImmediatePropagation(); closeRankingProfilePop(); }
+    }
+    function openRankingProfilePop(source) {
+        var handle = source.getAttribute('data-rk-handle') || '';
+        if (!RANKING_ACCOUNT_HANDLE_RE.test(handle)) return;
+        closeRankingProfilePop();
+        var photo = source.getAttribute('data-rk-avatar') || '';
+        var name = source.getAttribute('data-rk-name') || handle;
+        var pos = source.getAttribute('data-rk-pos') || '';
+        var score = source.getAttribute('data-rk-score') || '';
+        var avatarInner = RANKING_ACCOUNT_AVATAR_RE.test(photo) ? '<img src="/static/' + escHtml(photo) + '" alt="" decoding="async">' : RANKING_SILHOUETTE_SVG;
+        var pop = document.createElement('div');
+        pop.className = 'rk-pop';
+        pop.id = 'rkProfilePop';
+        pop.setAttribute('role', 'dialog');
+        pop.setAttribute('aria-modal', 'true');
+        pop.setAttribute('aria-label', 'Perfil de ' + name);
+        pop.innerHTML =
+            '<div class="rk-pop-backdrop" data-rk-close></div>' +
+            '<div class="rk-pop-card">' +
+                '<button type="button" class="rk-pop-x" data-rk-close aria-label="Cerrar">✕</button>' +
+                '<span class="rk-pop-avatar" aria-hidden="true">' + avatarInner + '</span>' +
+                '<strong class="rk-pop-name">' + escHtml(name) + '</strong>' +
+                '<span class="rk-pop-sub">@' + escHtml(handle) + (pos ? ' · Puesto #' + escHtml(pos) : '') + '</span>' +
+                (score ? '<p class="rk-pop-note">' + escHtml(score) + '</p>' : '') +
+                '<a class="rk-pop-btn" href="/u/' + escHtml(handle) + '" id="rkProfilePopGo">Ver perfil</a>' +
+            '</div>';
+        rkPopReturnFocus = source;
+        pop.addEventListener('click', function (evt) {
+            if (evt.target.closest('[data-rk-close]')) closeRankingProfilePop();
+        });
+        document.body.appendChild(pop);
+        document.addEventListener('keydown', onRankingPopKey, true);
+        var go = document.getElementById('rkProfilePopGo');
+        if (go) go.focus();
+    }
+
+    // Recuadro de premios de un ranking (uno por puesto). Sin premios configurados no se muestra nada. Con más de 5 puestos se acomoda en filas de 5.
+    function rankingLadderHtml(ladder) {
+        if (!ladder || !ladder.length) return '';
+        var html =
+            '<div class="ranking-prizes" style="--n:' + Math.max(1, ladder.length) + ';--cols:' + Math.min(Math.max(1, ladder.length), 5) + '">' +
+                '<div class="ranking-prizes-title">Premios</div>';
+        ladder.forEach(function (reward) {
+            html +=
+                '<div class="ranking-prize-item ranking-podium-' + escHtml(reward.position) + '">' +
+                    '<span title="Puesto ' + escHtml(reward.position) + '">' + escHtml(reward.position) + '</span>' +
+                    '<strong>' + rankingPrizeValueHtml(reward.reward_label) + '</strong>' +
+                '</div>';
+        });
+        return html + '</div>';
+    }
+
+    // Texto de lo que lleva una cuenta en su fila: diamantes del mes (ranking de cuentas) o puntos de nivel con su "Nv" (ranking de niveles).
+    // `raw`: texto sin escapar (para guardarlo en un atributo, que se escapa una vez al ponerlo y otra al mostrarlo); sin `raw` sale ya escapado para HTML.
+    function rankingAccountScoreText(entry, item, raw) {
+        var esc = raw ? function (v) { return String(v == null ? '' : v); } : escHtml;
+        var base = rankingAccountUnits(entry) + ' ' + esc(item.units_label || '');
+        if (item.kind === 'levels' && entry && entry.level) return 'Nv ' + esc(entry.level) + ' · ' + base;
+        return base;
+    }
+
+    // ── Pestañas de CUENTAS (las que más recargan en el mes) y de NIVELES (las de más nivel). Las crea y las premia el dueño; el premio de cada puesto
+    // puede ser puntos de la tienda para el perfil o un texto. Aquí la foto SÍ lleva al perfil público de la cuenta (el ranking de juegos es solo por ID).
+    function renderAccountsRanking(item) {
+        var isLevels = item.kind === 'levels';
+        var unitsText = escHtml(item.units_label || (isLevels ? 'Puntos de nivel' : 'Diamantes recargados'));
+        var entries = item.entries || [];
+        var viewer = item.viewer || {};
+        var html = '<div class="ranking-shell">';
+
+        html += rankingLadderHtml(item.reward_ladder);
+
+        html += '<div class="ranking-main-card"><div class="ranking-live-chip">LIVE</div>';
+
+        if (!entries.length) {
+            html += '<div class="ranking-empty">' + (isLevels
+                ? 'Todavía nadie tiene puntos de nivel. ¡Sé el primero!'
+                : 'Todavía nadie recargó con su cuenta este mes. ¡Sé el primero!') + '</div>';
+        } else {
+            var byPosition = {};
+            entries.forEach(function (entry) { byPosition[entry.position] = entry; });
+            html += '<div class="ranking-podium">';
+            [2, 1, 3].forEach(function (pos) {
+                var entry = byPosition[pos];
+                if (!entry) {
+                    html += '<div class="rk-pod is-' + pos + ' is-empty" aria-hidden="true"></div>';
+                    return;
+                }
+                html +=
+                    '<div class="rk-pod is-' + pos + (rankingAccountTapAttrs(entry, item) ? ' is-tappable' : '') + '"' + rankingAccountTapAttrs(entry, item) + '>' +
+                        (pos === 1 ? '<span class="rk-crown" aria-hidden="true">👑</span>' : '') +
+                        rankingAccountAvatarHtml(entry, 'rk-pod-avatar') +
+                        '<strong class="rk-pod-name">' + escHtml(entry.name || 'Cuenta') + '</strong>' +
+                        '<span class="rk-pod-id">@' + escHtml(entry.handle || '') + '</span>' +
+                        '<span class="rk-pod-units">' + rankingAccountScoreText(entry, item) + '</span>' +
+                        '<div class="rk-pod-block"><span>' + pos + '</span></div>' +
+                    '</div>';
+            });
+            html += '</div>';
+
+            var restEntries = entries.filter(function (entry) { return Number(entry.position) > 3; });
+            if (restEntries.length) {
+                var restLimit = Math.max(RANKING_COLLAPSED_ROWS - 3, 1);
+                var visibleRest = rankingState.showAllPositions ? restEntries : restEntries.slice(0, restLimit);
+                html += '<div class="rk-list"><div class="rk-list-title">Otras cuentas</div>';
+                visibleRest.forEach(function (entry) {
+                    html +=
+                        '<div class="rk-row' + (rankingAccountTapAttrs(entry, item) ? ' is-tappable' : '') + '"' + rankingAccountTapAttrs(entry, item) + '>' +
+                            '<span class="rk-row-pos">#' + escHtml(entry.position) + '</span>' +
+                            rankingAccountAvatarHtml(entry, 'rk-row-avatar') +
+                            '<span class="rk-row-text"><strong>' + escHtml(entry.name || 'Cuenta') + '</strong><small>@' + escHtml(entry.handle || '') + '</small></span>' +
+                            '<span class="rk-row-units">' + escHtml(rankingAccountUnits(entry)) + '<small>' + (isLevels && entry.level ? 'Nv ' + escHtml(entry.level) + ' · ' : '') + unitsText + '</small></span>' +
+                        '</div>';
+                });
+                html += '</div>';
+                if (restEntries.length > restLimit) {
+                    html +=
+                        '<button type="button" class="ranking-show-more-btn" id="rankingShowMoreBtn">' +
+                            (rankingState.showAllPositions ? '▲ Ver menos' : '▼ Ver más (hasta Top ' + entries.length + ')') +
+                        '</button>';
+                }
+            }
+        }
+
+        if (item.previous_winners && item.previous_winners.entries && item.previous_winners.entries.length) {
+            html +=
+                '<div class="ranking-archive-card">' +
+                    '<div class="ranking-archive-title">Ganadores de ' + escHtml(item.previous_winners.label || 'el mes pasado') + '</div>' +
+                    '<div class="ranking-archive-list">';
+            item.previous_winners.entries.forEach(function (entry) {
+                html +=
+                    '<div class="ranking-archive-item">' +
+                        '<strong>#' + escHtml(entry.position) + '</strong>' +
+                        '<span>' + escHtml(entry.name || 'Cuenta') + '</span>' +
+                        '<span>@' + escHtml(entry.handle || '') + (entry.prize_label ? ' · ' + escHtml(entry.prize_label) : '') + '</span>' +
+                    '</div>';
+            });
+            html += '</div></div>';
+        }
+
+        if (item.current_position) {
+            var mine = item.current_position;
+            html +=
+                '<div class="ranking-current-card">' +
+                    '<div class="ranking-current-title">Tu posición actual <span class="ranking-current-position-num">#' + escHtml(mine.position) + '</span></div>' +
+                    '<div class="ranking-current-meta"><strong>' + (isLevels && mine.level ? 'Nv ' + escHtml(mine.level) + ' · ' : '') + escHtml(mine.total_units) + ' ' + unitsText + '</strong></div>' +
+                    '<div class="ranking-current-hint">' + (isLevels ? 'Sigue sumando puntos de nivel para subir de puesto.' : 'Sigue recargando con tu cuenta para subir de puesto.') + '</div>' +
+                '</div>';
+        } else if (viewer.is_account) {
+            html +=
+                '<div class="ranking-current-card is-empty">' +
+                    '<div class="ranking-current-title">Tu posición actual</div>' +
+                    '<div class="ranking-current-hint">' + (isLevels
+                        ? 'Aún no estás en el ranking. Suma puntos de nivel con tu cuenta. Para salir aquí tu perfil debe ser público y tener encendido "Aparecer en el Top y en el Ranking" (en Personalizar mi perfil).'
+                        : 'Aún no estás en el ranking. Recarga con tu cuenta este mes. Para salir aquí tu perfil debe ser público y tener encendido "Aparecer en el Top y en el Ranking" (en Personalizar mi perfil).') + '</div>' +
+                '</div>';
+        } else {
+            html +=
+                '<div class="ranking-current-card is-empty">' +
+                    '<div class="ranking-current-title">¿Quieres entrar al ranking?</div>' +
+                    '<div class="ranking-current-hint">' + (isLevels
+                        ? 'Crea tu cuenta gratis y sube de nivel: tus compras, misiones y logros suman puntos para este ranking.'
+                        : 'Crea tu cuenta gratis y recarga con ella: tus compras del mes cuentan para este ranking.') + '</div>' +
+                    '<div class="ranking-cta-row">' +
+                        '<a class="ranking-cta" href="/register">Crear mi cuenta</a>' +
+                        '<a class="ranking-cta is-ghost" href="/login">Ya tengo cuenta</a>' +
+                    '</div>' +
+                '</div>';
+        }
+
+        html += '</div></div>';
+
+        rankingBoardEl.innerHTML = html;
+        rankingBoardEl.style.display = 'block';
+        if (rankingStatusEl) {
+            rankingStatusEl.style.display = 'none';
+        }
+        renderRankingTabs();
     }
 
     function renderRankingBoard() {
@@ -494,63 +758,69 @@
             return;
         }
 
-        var html =
-            '<div class="ranking-shell">' +
-                '<div class="ranking-prizes">' +
-                    '<div class="ranking-prizes-title">Premios</div>';
-
-        if (activeItem.reward_ladder && activeItem.reward_ladder.length) {
-            activeItem.reward_ladder.forEach(function (reward) {
-                html +=
-                    '<div class="ranking-prize-item ranking-podium-' + escHtml(reward.position) + '">' +
-                        '<span>#' + escHtml(reward.position) + '</span>' +
-                        '<strong>' + escHtml(formatRewardValue(reward.reward_label, activeItem.key)) + '</strong>' +
-                    '</div>';
-            });
+        if (activeItem.kind === 'accounts' || activeItem.kind === 'levels') {
+            renderAccountsRanking(activeItem);
+            return;
         }
 
+        var html = '<div class="ranking-shell">' + rankingLadderHtml(activeItem.reward_ladder || []);
+
         html +=
-                '</div>' +
                 '<div class="ranking-main-card">' +
                     '<div class="ranking-live-chip">LIVE</div>';
 
         if (!activeItem.entries || activeItem.entries.length === 0) {
             html += '<div class="ranking-empty">Aún no hay posiciones registradas para este mes.</div>';
         } else {
-            html +=
-                '<div class="ranking-table-wrap">' +
-                    '<table class="ranking-table">' +
-                        '<thead>' +
-                            '<tr>' +
-                                '<th>#</th>' +
-                                '<th>Jugador</th>' +
-                                '<th>ID</th>' +
-                                '<th>' + escHtml(activeItem.units_label || 'Total') + '<br><span class="ranking-units-sublabel">recargado' + (activeItem.units_label === 'Oro' ? '' : 's') + '</span></th>' +
-                            '</tr>' +
-                        '</thead>' +
-                        '<tbody>';
+            var unitsText = escHtml(activeItem.units_label || 'Total');
+            var byPosition = {};
+            activeItem.entries.forEach(function (entry) { byPosition[entry.position] = entry; });
 
-            var visibleEntries = rankingState.showAllPositions
-                ? activeItem.entries
-                : activeItem.entries.slice(0, RANKING_COLLAPSED_ROWS);
-
-            visibleEntries.forEach(function (entry) {
+            // Podio: los 3 primeros arriba (el 1.º al centro y más alto, el 2.º a su izquierda y el 3.º a su derecha).
+            html += '<div class="ranking-podium">';
+            [2, 1, 3].forEach(function (pos) {
+                var entry = byPosition[pos];
+                if (!entry) {
+                    html += '<div class="rk-pod is-' + pos + ' is-empty" aria-hidden="true"></div>';
+                    return;
+                }
                 html +=
-                    '<tr>' +
-                        '<td class="ranking-position-cell">#' + escHtml(entry.position) + '</td>' +
-                        '<td>' + escHtml(entry.masked_nickname || 'Jugador***') + '</td>' +
-                        '<td>' + escHtml(entry.masked_player_id || '----') + '</td>' +
-                        '<td>' + escHtml(entry.total_units) + '</td>' +
-                    '</tr>';
+                    '<div class="rk-pod is-' + pos + '">' +
+                        (pos === 1 ? '<span class="rk-crown" aria-hidden="true">👑</span>' : '') +
+                        rankingAvatarHtml(entry, 'rk-pod-avatar') +
+                        '<strong class="rk-pod-name">' + escHtml(entry.masked_nickname || 'Jugador***') + '</strong>' +
+                        '<span class="rk-pod-id">' + escHtml(entry.masked_player_id || '----') + '</span>' +
+                        '<span class="rk-pod-units">' + escHtml(entry.total_units) + ' ' + unitsText + '</span>' +
+                        '<div class="rk-pod-block"><span>' + pos + '</span></div>' +
+                    '</div>';
             });
+            html += '</div>';
 
-            html += '</tbody></table></div>';
-
-            if (activeItem.entries.length > RANKING_COLLAPSED_ROWS) {
-                html +=
-                    '<button type="button" class="ranking-show-more-btn" id="rankingShowMoreBtn">' +
-                        (rankingState.showAllPositions ? '▲ Ver menos' : '▼ Ver más (hasta Top ' + activeItem.entries.length + ')') +
-                    '</button>';
+            // Lista de abajo: del 4.º en adelante (con "Ver más" hasta el Top 10).
+            var restEntries = activeItem.entries.filter(function (entry) { return Number(entry.position) > 3; });
+            if (restEntries.length) {
+                var restLimit = Math.max(RANKING_COLLAPSED_ROWS - 3, 1);
+                var visibleRest = rankingState.showAllPositions ? restEntries : restEntries.slice(0, restLimit);
+                html += '<div class="rk-list"><div class="rk-list-title">Otros participantes</div>';
+                visibleRest.forEach(function (entry) {
+                    html +=
+                        '<div class="rk-row">' +
+                            '<span class="rk-row-pos">#' + escHtml(entry.position) + '</span>' +
+                            rankingAvatarHtml(entry, 'rk-row-avatar') +
+                            '<span class="rk-row-text">' +
+                                '<strong>' + escHtml(entry.masked_nickname || 'Jugador***') + '</strong>' +
+                                '<small>' + escHtml(entry.masked_player_id || '----') + '</small>' +
+                            '</span>' +
+                            '<span class="rk-row-units">' + escHtml(entry.total_units) + '<small>' + unitsText + '</small></span>' +
+                        '</div>';
+                });
+                html += '</div>';
+                if (restEntries.length > restLimit) {
+                    html +=
+                        '<button type="button" class="ranking-show-more-btn" id="rankingShowMoreBtn">' +
+                            (rankingState.showAllPositions ? '▲ Ver menos' : '▼ Ver más (hasta Top ' + activeItem.entries.length + ')') +
+                        '</button>';
+                }
             }
         }
 
@@ -680,7 +950,7 @@
                 }
             })
             .catch(function (err) {
-                msgEl.textContent = (err && err.message) || 'ID no encontrado';
+                msgEl.textContent = window.nxFriendlyError(err, 'ID no encontrado');
                 msgEl.classList.add('is-error');
                 if (btn) { btn.disabled = false; btn.textContent = 'Ver'; }
             });
@@ -696,9 +966,13 @@
         rankingState.loading = true;
         setRankingStatus('Cargando ranking...');
 
-        fetch('/api/rankings' + getRankingLookupParams())
+        window.nxFetch('/api/rankings' + getRankingLookupParams(), undefined, 20000)
             .then(function (response) { return response.json(); })
             .then(function (data) {
+                if (data && data.error && !(Array.isArray(data.rankings) && data.rankings.length)) {
+                    setRankingStatus(data.error);
+                    return;
+                }
                 var rankings = data && Array.isArray(data.rankings) ? data.rankings : [];
                 rankingState.items = rankings.filter(function (item) {
                     return item && item.enabled;
@@ -708,8 +982,8 @@
                 renderRankingTabs();
                 renderRankingBoard();
             })
-            .catch(function () {
-                setRankingStatus('No se pudo cargar el ranking en este momento.');
+            .catch(function (err) {
+                setRankingStatus(window.nxFriendlyError(err, 'No se pudo cargar el ranking en este momento.'));
             })
             .finally(function () {
                 rankingState.loading = false;
@@ -738,6 +1012,7 @@
     }
 
     function closeRankingModal() {
+        closeRankingProfilePop();
         closeModal(rankingModal);
     }
 
@@ -747,7 +1022,8 @@
     // (o el salto directo a uno solo) depende de esto.
     var pointsState = {
         gameId: null, playerId: '', spinCost: 5, spinning: false, gamesLoaded: false,
-        gameCaps: {}, lastBalanceData: null, selectedRedeemOptionId: null, redeemBusy: false
+        gameCaps: {}, lastBalanceData: null, selectedRedeemOptionId: null, redeemBusy: false,
+        walletBalance: 0, walletBusy: false
     };
 
     function pointsEl(id) { return document.getElementById(id); }
@@ -761,9 +1037,13 @@
             fetch('/api/points/games').then(function (r) { return r.json(); }).catch(function () { return null; }),
             fetch('/api/points/redeem-games').then(function (r) { return r.json(); }).catch(function () { return null; })
         ]).then(function (results) {
-            pointsState.gamesLoaded = true;
             var spinData = results[0];
             var redeemData = results[1];
+            if (!spinData && !redeemData) {   // sin conexión: no se da por cargado, al abrir otra vez se vuelve a pedir (antes quedaba vacío hasta recargar)
+                select.innerHTML = '<option value="">No se pudo cargar. Cierra y vuelve a abrir esta ventana.</option>';
+                return;
+            }
+            pointsState.gamesLoaded = true;
             pointsState.spinCost = (spinData && spinData.spin_cost) || 5;
 
             var caps = {};
@@ -797,9 +1077,96 @@
         });
     }
 
+    // ── Puntos del PERFIL: solo para cuentas que tienen puntos (premio de ranking o puestos por el administrador). Los puntos de la tienda funcionan
+    // por ID, así que aquí se pregunta a qué ID (juego + ID) se los vas a recargar. Si el perfil no tiene puntos, no se ve nada de esto.
+    function renderPointsWallet() {
+        var balance = Math.max(0, parseInt(pointsState.walletBalance, 10) || 0);
+        var has = balance > 0;
+        var box = pointsEl('pointsWalletBox');
+        var step = pointsEl('pointsLookupStep');
+        if (box) box.style.display = has ? 'flex' : 'none';
+        Array.prototype.forEach.call(document.querySelectorAll('#pointsModal .points-wallet-only'), function (el) {
+            el.style.display = has ? 'block' : 'none';
+        });
+        if (step) step.classList.toggle('has-wallet', has);
+        var label = pointsEl('pointsWalletBalance');
+        if (label) label.textContent = String(balance);
+        var amount = pointsEl('pointsWalletAmount');
+        if (amount) {
+            amount.max = String(balance);
+            amount.placeholder = 'Máx. ' + balance;
+        }
+    }
+
+    function loadPointsWallet() {
+        fetch('/api/points/wallet', { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                pointsState.walletBalance = (data && data.ok && data.logged_in) ? (parseInt(data.balance, 10) || 0) : 0;
+                renderPointsWallet();
+            })
+            .catch(function () { /* sin conexión: el canje normal por ID sigue funcionando */ });
+    }
+
+    function handlePointsWalletTransfer() {
+        if (pointsState.walletBusy) return;
+        var select = pointsEl('pointsGameSelect');
+        var idInput = pointsEl('pointsPlayerIdInput');
+        var amountInput = pointsEl('pointsWalletAmount');
+        var errEl = pointsEl('pointsLookupError');
+        var btn = pointsEl('pointsWalletBtn');
+        var gameId = select ? select.value : '';
+        var playerId = idInput ? idInput.value.trim() : '';
+        var amount = amountInput ? parseInt(amountInput.value, 10) : NaN;
+
+        function fail(text) {
+            if (errEl) { errEl.textContent = text; errEl.style.display = 'block'; }
+        }
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+        if (!gameId) return fail('Elige un juego.');
+        if (!playerId) return fail('Ingresa el ID al que quieres recargar tus puntos.');
+        if (!amount || amount < 1) return fail('Escribe cuántos puntos quieres recargar.');
+        if (amount > pointsState.walletBalance) return fail('Tu perfil solo tiene ' + pointsState.walletBalance + ' puntos.');
+
+        pointsState.walletBusy = true;
+        if (btn) { btn.disabled = true; btn.textContent = 'RECARGANDO...'; }
+        fetch('/api/points/transfer', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ game_id: gameId, player_id: playerId, amount: amount })
+        })
+            .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+            .then(function (res) {
+                pointsState.walletBusy = false;
+                if (btn) { btn.disabled = false; btn.textContent = 'RECARGAR PUNTOS A ESTE ID'; }
+                if (!res.data.ok) {
+                    fail(res.data.message || 'No se pudieron pasar los puntos.');
+                    return;
+                }
+                pointsState.walletBalance = parseInt(res.data.wallet_balance, 10) || 0;
+                renderPointsWallet();
+                if (amountInput) amountInput.value = '';
+                var note = pointsEl('pointsTransferNote');
+                if (note) {
+                    note.textContent = '✔ Se recargaron ' + amount + ' puntos al ID ' + playerId + (res.data.points && res.data.points.player_nick ? ' (' + res.data.points.player_nick + ')' : '') + '.';
+                    note.style.display = 'block';
+                }
+                showPointsBalance(res.data.points);
+            })
+            .catch(function () {
+                pointsState.walletBusy = false;
+                if (btn) { btn.disabled = false; btn.textContent = 'RECARGAR PUNTOS A ESTE ID'; }
+                fail('Error de conexión. Intenta de nuevo.');
+            });
+    }
+
     function resetPointsModal() {
         var lookupStep = pointsEl('pointsLookupStep');
         if (lookupStep) lookupStep.style.display = 'block';
+        renderPointsWallet();
+        var transferNote = pointsEl('pointsTransferNote');
+        if (transferNote) { transferNote.style.display = 'none'; transferNote.textContent = ''; }
         hidePointsSteps();
         var err = pointsEl('pointsLookupError');
         if (err) { err.style.display = 'none'; err.textContent = ''; }
@@ -816,6 +1183,7 @@
         if (!pointsModal) return;
         loadPointsGames();
         resetPointsModal();
+        loadPointsWallet();
         openModal(pointsModal);
     }
 
@@ -838,6 +1206,8 @@
     var POINTS_STRIP_ITEM_WIDTH = 112;
     var POINTS_STRIP_ITEM_STRIDE = 124; // 112px de ancho + 12px de gap
     var POINTS_STRIP_SPIN_MS = 4600;    // los 4.5s de la transicion + margen
+    // En modo liviano no hay animación (la tira salta al resultado), así que no se espera lo que dura el giro.
+    function pointsSpinMs() { return document.documentElement.classList.contains('lite') ? 250 : POINTS_STRIP_SPIN_MS; }
     var pointsStripItems = [];
 
     /* Cuánto hay que desplazar la tira para dejar ese ítem bajo el láser.
@@ -907,7 +1277,7 @@
             var items = track.querySelectorAll('.points-strip-item');
             var winnerEl = items[POINTS_STRIP_WINNER_INDEX];
             if (winnerEl && won) winnerEl.classList.add('is-winner');
-        }, POINTS_STRIP_SPIN_MS);
+        }, pointsSpinMs());
     }
 
     /* Modal del resultado: al ganar el regalo se abre por pasos (tiembla,
@@ -1185,7 +1555,7 @@
                     );
                     // Justo cuando la tira frena, para que el modal no se
                     // adelante al resultado que se ve bajo el láser.
-                }, POINTS_STRIP_SPIN_MS);
+                }, pointsSpinMs());
             })
             .catch(function () {
                 pointsState.spinning = false;
@@ -1529,16 +1899,16 @@
         var previousPackageId = (keepSelection && selectedPackage) ? String(selectedPackage.id) : null;
         var previousTotal = lastShownTotal ? (lastShownTotal.currency + ':' + lastShownTotal.amount) : null;
         catalogRefreshing = true;
-        console.log('Fetching packages for gameId:', gameId);
+        window.nxDebug('Fetching packages for gameId:', gameId);
         fetch('/api/packages/' + gameId, { cache: 'no-store', credentials: 'same-origin', headers: storeHeaders() })
             .then(function (r) {
-                console.log('Response status:', r.status);
+                window.nxDebug('Response status:', r.status);
                 return r.json();
             })
             .then(function (data) {
                 // Llegó tarde: el cliente ya cambió de juego.
                 if (seq !== packagesRequestSeq || gameId !== activeGameId) return;
-                console.log('Packages data:', data);
+                window.nxDebug('Packages data:', data);
                 if (data && data.page_expired) {
                     // Esta página es de otro día: se recarga y listo. Si ya
                     // se recargó hace nada, se pinta lo que vino (la tarjeta).
@@ -1693,9 +2063,11 @@
         var grid = document.getElementById('gamesGrid');
         if (!grid) return;
         var scrollBefore = gamesViewportEl ? gamesViewportEl.scrollLeft : 0;
+        var seq = ++gamesRequestSeq;
         fetch('/api/games?category=' + encodeURIComponent(activeCategory), { cache: 'no-store', credentials: 'same-origin', headers: storeHeaders() })
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                if (seq !== gamesRequestSeq) return;   // el cliente ya cambió de categoría: esta respuesta es vieja
                 if (!data || !Array.isArray(data.games) || !data.games.length) return;
                 renderGames(data.games);
                 if (activeGameId) {
@@ -1918,7 +2290,7 @@
         var el = document.getElementById('playerNickname');
         var btn = document.getElementById('btnVerifyPlayer');
         if (el) {
-            el.style.color = '#94a3b8';
+            el.style.color = '#a3a3a3';
             el.textContent = 'Verificando...';
             el.style.display = 'block';
         }
@@ -2039,7 +2411,7 @@
             .catch(function(e) {
                 if (e && e.name === 'AbortError') return;
                 if (requestSeq !== verifyState.requestSeq) return;
-                setNickUIErr((e && e.message) ? e.message : 'No se pudo verificar');
+                setNickUIErr(window.nxFriendlyError(e, 'No se pudo verificar'));
                 setVerifyCachedNick(uid, '');
             })
             .finally(function() {
@@ -2856,6 +3228,11 @@
         pointsLookupBtnEl.addEventListener('click', handlePointsLookup);
     }
 
+    var pointsWalletBtnEl = document.getElementById('pointsWalletBtn');
+    if (pointsWalletBtnEl) {
+        pointsWalletBtnEl.addEventListener('click', handlePointsWalletTransfer);
+    }
+
     var pointsChangeIdBtnEl = document.getElementById('pointsChangeIdBtn');
     if (pointsChangeIdBtnEl) {
         pointsChangeIdBtnEl.addEventListener('click', resetPointsModal);
@@ -2911,6 +3288,18 @@
         });
     }
 
+    if (rankingBoardEl) {
+        rankingBoardEl.addEventListener('click', function (evt) {
+            var tappable = evt.target.closest('[data-rk-handle]');
+            if (tappable && rankingBoardEl.contains(tappable)) openRankingProfilePop(tappable);
+        });
+        rankingBoardEl.addEventListener('keydown', function (evt) {
+            if (evt.key !== 'Enter' && evt.key !== ' ') return;
+            var tappable = evt.target.closest ? evt.target.closest('[data-rk-handle]') : null;
+            if (tappable && rankingBoardEl.contains(tappable)) { evt.preventDefault(); openRankingProfilePop(tappable); }
+        });
+    }
+
     if (rankingTabsEl) {
         rankingTabsEl.addEventListener('click', function (evt) {
             var tabBtn = evt.target && evt.target.closest('.ranking-tab');
@@ -2932,12 +3321,14 @@
             var lookupBtn = evt.target && evt.target.closest('#rankingLookupBtn');
             if (lookupBtn) {
                 runRankingPositionLookup();
+                return;
             }
         });
         rankingBoardEl.addEventListener('keydown', function (evt) {
             if (evt.key === 'Enter' && evt.target && evt.target.id === 'rankingLookupIdInput') {
                 evt.preventDefault();
                 runRankingPositionLookup();
+                return;
             }
         });
         rankingBoardEl.addEventListener('input', function (evt) {
@@ -3343,13 +3734,25 @@
             .replace(/"/g, '&quot;');
     }
 
+    // Llegar desde otra página (la barra de abajo del perfil) con #ranking o #puntos abre esa ventana. La dirección se limpia para que
+    // recargar o volver atrás no la reabra.
+    (function openFromHash() {
+        var hash = (window.location.hash || '').toLowerCase();
+        if (hash !== '#ranking' && hash !== '#puntos') return;
+        window.nxHashOpen = hash;   // la barra de abajo (dock.js) lo lee para nacer con la burbuja ya en Ranking / Puntos
+        try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch (err) { /* nada */ }
+        window.setTimeout(function () {
+            if (hash === '#ranking') openRankingModal(); else openPointsModal();
+        }, 250);
+    })();
+
     // Inicializar cuando el DOM esté listo
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM ready, running init...');
+            window.nxDebug('DOM ready, running init...');
         });
     } else {
-        console.log('DOM already ready');
+        window.nxDebug('DOM already ready');
     }
 
 })();

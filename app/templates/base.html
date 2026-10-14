@@ -4,7 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}3S Recargas{% endblock %}</title>
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+    <!-- Modo liviano: marca <html class="lite"> SOLO en teléfonos muy malos (1 GB de memoria o menos, o 2 núcleos o menos), o que la prueba real
+         (static/js/lite-detect.js: pocos fps o procesador muy lento; resultado guardado en "nx-lite-auto") marcó como lentos (o a mano con ?lite=1 / ?lite=0;
+         ?lite=auto borra todo y vuelve a medir). neon.css quita ahí el desenfoque de cristal y las animaciones que no paran. -->
+    <script>(function(){try{var d=document.documentElement,n=navigator,f=null,q=location.search,a=null;
+    try{f=localStorage.getItem('nx-lite')}catch(e){}
+    if(/[?&]lite=1/.test(q)){f='1';try{localStorage.setItem('nx-lite','1')}catch(e){}}
+    if(/[?&]lite=0/.test(q)){f='0';try{localStorage.setItem('nx-lite','0')}catch(e){}}
+    if(/[?&]lite=auto/.test(q)){f=null;try{localStorage.removeItem('nx-lite');localStorage.removeItem('nx-lite-auto')}catch(e){}}
+    try{a=JSON.parse(localStorage.getItem('nx-lite-auto')||'null')}catch(e){}
+    var low=(n.deviceMemory&&n.deviceMemory<=1)||(n.hardwareConcurrency&&n.hardwareConcurrency<=2)||(a&&a.l===1&&a.x>Date.now());
+    if(f==='1'||(f!=='0'&&low))d.className+=' lite'}catch(e){}})();</script>
+    <script src="{{ static_v('js/lite-detect.js') }}" defer></script>
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='pwa/icon-192.png') }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='pwa/apple-touch-icon.png') }}">
     <!-- Web instalable como app (botón "Instalar app": static/js/pwa-install.js) -->
@@ -16,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@600;700;800;900&family=Archivo+Black&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ static_v('css/main.css') }}">
     <link rel="stylesheet" href="{{ static_v('css/neon.css') }}">
     {% if SITE_BACKGROUND_IMAGE %}
@@ -39,8 +51,11 @@
     {% endif %}
     {% block extra_css %}{% endblock %}
 
-    <!-- Meta Pixel Code -->
+    <!-- Meta Pixel Code (se carga cuando la página ya terminó de cargar, +2,5 s: son ~280 KB de JavaScript que antes competían con el
+         CSS de la tienda por la conexión en celulares lentos. El PageView igual se envía.) -->
     <script>
+    (function(){
+    function nxLoadPixel(){
     !function(f,b,e,v,n,t,s)
     {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
     n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -51,13 +66,17 @@
     'https://connect.facebook.net/en_US/fbevents.js');
     fbq('init', '1893616271596771');
     fbq('track', 'PageView');
+    }
+    if (document.readyState === 'complete') { setTimeout(nxLoadPixel, 2500); }
+    else { window.addEventListener('load', function(){ setTimeout(nxLoadPixel, 2500); }); }
+    })();
     </script>
     <noscript><img height="1" width="1" style="display:none"
     src="https://www.facebook.com/tr?id=1893616271596771&ev=PageView&noscript=1"
     /></noscript>
     <!-- End Meta Pixel Code -->
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
     <header class="site-header">
         <div class="header-inner">
             <!-- Ocupa el mismo ancho que el botón de la derecha para que el
@@ -94,7 +113,7 @@
                 </button>
                 <div class="notif-panel" id="notifPanel" role="dialog" aria-label="Notificaciones" hidden>
                     <div class="notif-head">
-                        <strong>Notificaciones</strong>
+                        <strong><span class="notif-head-bell" aria-hidden="true">🔔</span> Notificaciones</strong>
                         <button type="button" class="notif-close" id="notifClose" aria-label="Cerrar notificaciones">✕</button>
                     </div>
                     <ul class="notif-list" id="notifList"></ul>
@@ -197,7 +216,7 @@
                 </span>
             </button>
 
-            {% if PROMO_AVAILABILITY.sorteo or PROMO_AVAILABILITY.adivina or PROMO_AVAILABILITY.hordas %}
+            {% if PROMO_AVAILABILITY.sorteo or PROMO_AVAILABILITY.adivina or PROMO_AVAILABILITY.hordas or PROMO_AVAILABILITY.torneos %}
             <button type="button" class="drawer-item drawer-item-toggle" id="freeDiamondsToggle" aria-expanded="false" aria-controls="freeDiamondsSubmenu">
                 <span class="drawer-item-icon drawer-icon-ranking">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -206,7 +225,7 @@
                 </span>
                 <span class="drawer-item-text">
                     <strong>Dinámicas Gratis</strong>
-                    <small>Sorteo, adivina el número y hordas</small>
+                    <small>Sorteo, adivina, hordas y torneos</small>
                 </span>
                 <svg class="drawer-item-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="9 18 15 12 9 6"/>
@@ -255,7 +274,22 @@
                     </span>
                     <span class="drawer-item-text">
                         <strong>Hordas de Diamantes</strong>
-                        <small>Sobrevive, junta diamantes y gana</small>
+                        <small>Sobrevive, junta cristales y gana</small>
+                    </span>
+                </a>
+                {% endif %}
+
+                {% if PROMO_AVAILABILITY.torneos %}
+                <a href="{{ url_for('promos_bp.torneos_page') }}" class="drawer-item drawer-subitem">
+                    <span class="drawer-item-icon drawer-icon-ranking">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/>
+                            <path d="M14.5 6.5 18 3h3v3l-3.5 3.5"/><path d="M5 14l4 4"/><path d="M7 17l-3 3"/><path d="M3 19l2 2"/>
+                        </svg>
+                    </span>
+                    <span class="drawer-item-text">
+                        <strong>Torneos</strong>
+                        <small>Inscríbete gratis y compite</small>
                     </span>
                 </a>
                 {% endif %}
@@ -320,6 +354,22 @@
             </a>
             {% endif %}
         </nav>
+
+        <!-- Apartado fijo de hasta abajo: modo liviano a mano, para quien lo quiera o no lo tenga activado solo
+             (static/js/lite-detect.js lo maneja; neon.css .site-drawer-foot) -->
+        <div class="site-drawer-foot">
+            <button type="button" class="drawer-lite" role="switch" aria-checked="false" data-lite-toggle>
+                <span class="drawer-item-icon drawer-icon-points">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                </span>
+                <span class="drawer-item-text">
+                    <strong>Modo liviano</strong>
+                    <small data-lite-status>Úsalo si la web va lenta</small>
+                </span>
+                <span class="drawer-lite-switch" aria-hidden="true"></span>
+            </button>
+            <button type="button" class="drawer-lite-auto" data-lite-auto hidden>Volver a automático</button>
+        </div>
     </aside>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -360,8 +410,19 @@
         <button type="button" class="overlay-close-btn" id="pointsModalCloseBtn">✕</button>
       </div>
 
+      <p class="points-modal-result" id="pointsTransferNote" style="display:none" role="status"></p>
+
       <div id="pointsLookupStep">
         <p class="points-modal-hint">Cada recarga por ID suma puntos. Elige tu juego, coloca tu ID y consulta cuántos puntos tienes para girar.</p>
+        <!-- Solo para perfiles que tienen puntos (de un premio de ranking o puestos por el administrador): como los puntos funcionan por ID,
+             aquí se pregunta a qué ID se los vas a recargar. Lo muestra main.js. -->
+        <div class="points-wallet" id="pointsWalletBox" style="display:none">
+          <span class="points-wallet-ico" aria-hidden="true">🎁</span>
+          <div class="points-wallet-text">
+            <strong>Tu perfil tiene <b id="pointsWalletBalance">0</b> puntos</strong>
+            <small>Los puntos se usan por ID. Elige el juego y escribe <b>el ID al que se los vas a recargar</b>.</small>
+          </div>
+        </div>
         <div class="points-form-group">
           <label for="pointsGameSelect">Juego</label>
           <select id="pointsGameSelect"><option value="">Cargando juegos...</option></select>
@@ -370,7 +431,12 @@
           <label for="pointsPlayerIdInput">ID del juego</label>
           <input type="text" id="pointsPlayerIdInput" placeholder="Ej: 123456789" inputmode="numeric">
         </div>
+        <div class="points-form-group points-wallet-only" id="pointsWalletAmountGroup" style="display:none">
+          <label for="pointsWalletAmount">Puntos de tu perfil a recargar</label>
+          <input type="number" id="pointsWalletAmount" min="1" step="1" inputmode="numeric" placeholder="Ej: 100">
+        </div>
         <p class="points-modal-error" id="pointsLookupError" style="display:none"></p>
+        <button type="button" class="points-primary-btn points-wallet-only" id="pointsWalletBtn" style="display:none">RECARGAR PUNTOS A ESTE ID</button>
         <button type="button" class="points-primary-btn" id="pointsLookupBtn">CONSULTAR SALDO</button>
       </div>
 
@@ -507,19 +573,19 @@
                 {% set tk_link = SOCIAL_LINKS.get('SOCIAL_TIKTOK') or '#' %}
                 {% set wa_link = SOCIAL_LINKS.get('SOCIAL_WHATSAPP') or '#' %}
                 <div class="footer-social-list">
-                    <a href="{{ fb_link }}" target="_blank" rel="noopener" class="footer-social-link">
+                    <a href="{{ fb_link|safe_href }}" target="_blank" rel="noopener" class="footer-social-link">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                         Facebook
                     </a>
-                    <a href="{{ ig_link }}" target="_blank" rel="noopener" class="footer-social-link">
+                    <a href="{{ ig_link|safe_href }}" target="_blank" rel="noopener" class="footer-social-link">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
                         @3srecargas
                     </a>
-                    <a href="{{ tk_link }}" target="_blank" rel="noopener" class="footer-social-link">
+                    <a href="{{ tk_link|safe_href }}" target="_blank" rel="noopener" class="footer-social-link">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
                         @3srecargas
                     </a>
-                    <a href="{{ wa_link }}" target="_blank" rel="noopener" class="footer-social-link footer-social-wa">
+                    <a href="{{ wa_link|safe_href }}" target="_blank" rel="noopener" class="footer-social-link footer-social-wa">
                         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                         WhatsApp
                     </a>
@@ -556,7 +622,8 @@
          pantalla propia y no un modal: el chat de una recarga manual no es
          un aviso de paso, el cliente ya pago y se queda ahi hasta que le
          resuelvan. El enlace de WhatsApp sigue en el pie. -->
-    {% if request.endpoint != 'support_bp.page' %}
+    {#- En la portada la barra de abajo (dock) trae Soporte y se oculta el Tutorial: la página lo pide con hide_floats. -#}
+    {% if request.endpoint != 'support_bp.page' and not hide_floats %}
     <a href="{{ url_for('support_bp.page') }}" id="openSupportModalBtn" class="nx-chat-float{% if SITE_TUTORIAL_VIDEO_FILE %} nx-chat-float--raised{% endif %}" aria-label="Chat de soporte">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round">
@@ -567,7 +634,7 @@
     </a>
     {% endif %}
 
-    {% if SITE_TUTORIAL_VIDEO_FILE %}
+    {% if SITE_TUTORIAL_VIDEO_FILE and not hide_floats %}
     <button type="button" id="openTutorialVideoBtn" class="nx-tutorial-float" aria-label="Ver tutorial">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round">
@@ -583,7 +650,7 @@
                 <strong>{{ SITE_TUTORIAL_VIDEO_TITLE }}</strong>
                 <button type="button" id="closeTutorialVideoBtn" aria-label="Cerrar">✕</button>
             </div>
-            <video id="tutorialVideoPlayer" controls playsinline
+            <video id="tutorialVideoPlayer" controls playsinline preload="none"
                    src="{{ url_for('static', filename='uploads/' + SITE_TUTORIAL_VIDEO_FILE) }}"></video>
         </div>
     </div>

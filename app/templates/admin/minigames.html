@@ -184,7 +184,7 @@
             <p class="form-hint">Premios de hoy: <strong>{{ acc.today_total }}</strong> · Retenidos esperando tu revisión: <strong>{{ acc.held_count }}</strong></p>
         </div>
         <form method="POST" action="{{ url_for('admin_bp.promos_accumulated_toggle') }}"
-              onsubmit="return confirm('{{ '¿Apagar la Recarga Acumulada en toda la tienda?' if acc.enabled else '¿Encender la Recarga Acumulada en la tienda?' }}');">
+              onsubmit="return confirm({{ (('¿Apagar la Recarga Acumulada en toda la tienda?' if acc.enabled else '¿Encender la Recarga Acumulada en la tienda?'))|jsattr }});">
             <input type="hidden" name="game_id" value="{{ selected_game.id if selected_game else '' }}">
             <input type="hidden" name="enabled" value="{{ '0' if acc.enabled else '1' }}">
             <button type="submit" class="{{ 'btn-danger-solid' if acc.enabled else 'btn-primary' }}">
@@ -555,7 +555,7 @@
         </div>
     </form>
     <form id="raffle-reset-form" method="POST" action="{{ url_for('admin_bp.promos_raffle_reset') }}"
-          onsubmit="return confirm('¿Reiniciar el Sorteo Diario de hoy para {{ selected_game.name|e }}? Se borran los registros y ganadores de HOY (para poder probarlo de nuevo sin esperar al día siguiente). Los premios ya entregados no se revierten. Esta acción no se puede deshacer.');">
+          onsubmit="return confirm({{ ('¿Reiniciar el Sorteo Diario de hoy para ' ~ (selected_game.name) ~ '? Se borran los registros y ganadores de HOY (para poder probarlo de nuevo sin esperar al día siguiente). Los premios ya entregados no se revierten. Esta acción no se puede deshacer.')|jsattr }});">
         <input type="hidden" name="game_id" value="{{ selected_game.id }}">
     </form>
     </div>
@@ -742,8 +742,8 @@
     </summary>
     <div class="mg-promo-body">
     <p class="form-hint">
-        Juego de disparos por hordas: el cliente sobrevive oleadas de enemigos y junta los diamantes que sueltan.
-        Todos los diamantes de sus partidas de la semana (lunes a domingo, hora Venezuela) suman en el ranking, y al
+        Juego de disparos por hordas: el cliente sobrevive oleadas de enemigos y junta los cristales que sueltan.
+        Todos los cristales de sus partidas de la semana (lunes a domingo, hora Venezuela) suman en el ranking, y al
         cerrar la semana, el 1er, 2do y 3er lugar (solo los puestos con paquete asignado) quedan <b>pendientes de tu aprobación</b>: el premio se entrega cuando revises sus repeticiones y le des Aprobar.
         El servidor mide cuánto duró cada partida y descarta puntajes imposibles para ese tiempo.
     </p>
@@ -877,7 +877,7 @@
     {% if horde_ranking %}
     <div class="table-wrap">
         <table class="admin-table">
-            <thead><tr><th>Puesto</th><th>ID</th><th>Nombre</th><th>Diamantes</th><th></th></tr></thead>
+            <thead><tr><th>Puesto</th><th>ID</th><th>Nombre</th><th>Cristales</th><th></th></tr></thead>
             <tbody>
                 {% for pid, nick, total in horde_ranking %}
                 <tr>
@@ -887,7 +887,7 @@
                     <td><strong>{{ total }}</strong></td>
                     <td>
                         <form method="POST" action="{{ url_for('admin_bp.promos_horde_ban') }}" style="margin:0;"
-                              onsubmit="return confirm('¿Bloquear el ID {{ pid }} en Hordas de {{ selected_game.name }}? No podrá jugar y saldrá del ranking.');">
+                              onsubmit="return confirm({{ ('¿Bloquear el ID ' ~ (pid) ~ ' en Hordas de ' ~ (selected_game.name) ~ '? No podrá jugar y saldrá del ranking.')|jsattr }});">
                             <input type="hidden" name="game_id" value="{{ selected_game.id }}">
                             <input type="hidden" name="player_id" value="{{ pid }}">
                             <input type="hidden" name="reason" value="Trampa (desde el ranking)">
@@ -929,7 +929,7 @@
                     <td>{{ ban.created_at|datetime_ve }}</td>
                     <td>
                         <form method="POST" action="{{ url_for('admin_bp.promos_horde_unban', ban_id=ban.id) }}" style="margin:0;"
-                              onsubmit="return confirm('¿Desbloquear el ID {{ ban.player_id }}?');">
+                              onsubmit="return confirm({{ ('¿Desbloquear el ID ' ~ (ban.player_id) ~ '?')|jsattr }});">
                             <button type="submit" class="btn-secondary" style="padding:4px 10px; font-size:12px;">Desbloquear</button>
                         </form>
                     </td>
@@ -946,7 +946,7 @@
     <h3 style="margin:18px 0 8px;">Ganadores anteriores</h3>
     <div class="table-wrap">
         <table class="admin-table">
-            <thead><tr><th>Semana</th><th>Puesto</th><th>ID</th><th>Diamantes</th><th>Estado</th><th>Orden del premio</th></tr></thead>
+            <thead><tr><th>Semana</th><th>Puesto</th><th>ID</th><th>Cristales</th><th>Estado</th><th>Orden del premio</th></tr></thead>
             <tbody>
                 {% for w in recent_horde_winners %}
                 <tr>

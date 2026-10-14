@@ -1,0 +1,5 @@
+{# Refresco de pestañas viejas para las páginas que NO extienden base.html (mismo bloque que base.html): si el sitio se actualizó mientras la
+   página estaba abierta, se recarga sola cuando no haya nada a medias (ver static/js/version-watch.js). Se incluye antes de </body>.
+   NO se usa en Hordas, Torneos ni el editor de perfil: ahí una recarga sola puede cortar una partida o un formulario. #}
+<script>window.APP_VERSION = {{ app_version()|tojson }}; window.PAGE_DAY_VE = {{ page_day_ve()|tojson }};</script>
+<script src="{{ static_v('js/version-watch.js') }}" defer></script>

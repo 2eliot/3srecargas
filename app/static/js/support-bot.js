@@ -46,20 +46,66 @@
         return [usd, bs].filter(Boolean);
     }
 
+    // ── Historial del menú (24 horas) ────────────────────────────────────
+    //
+    // Lo que se conversa con el menú (ver juegos, comprar, estado) no es un chat del servidor, así que antes se perdía al recargar la página o cuando
+    // el teléfono cerraba la pestaña en segundo plano (pasa mucho al ir a pagar en la app del banco). Ahora los textos se guardan 24 horas en ESTE
+    // navegador y al volver se muestran de nuevo arriba, como "tu conversación de antes".
+    var HISTORY_KEY = 'store:support-bot-history';
+    var HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
+    var HISTORY_MAX = 60;
+
+    function historyRead() {
+        try {
+            var list = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+            if (!Array.isArray(list)) return [];
+            var now = Date.now();
+            return list.filter(function (row) { return row && row.t && now - row.t < HISTORY_TTL_MS && row.x; });
+        } catch (_) { return []; }
+    }
+
+    function historyPush(kind, text) {
+        text = String(text || '').slice(0, 300);
+        if (!text) return;
+        try {
+            var list = historyRead();
+            list.push({ k: kind, x: text, t: Date.now() });
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(-HISTORY_MAX)));
+        } catch (_) { /* sin almacenamiento: el historial simplemente no se guarda */ }
+    }
+
+    // Pinta (una vez, al abrir la página) lo que se conversó antes. Son burbujas sin botones: solo se leen.
+    function historyReplay() {
+        var list = historyRead();
+        if (!list.length) return;
+        var box = el('div', 'sc-history');
+        box.appendChild(el('div', 'sc-history-label', 'Tu conversación de antes (se guarda 24 horas)'));
+        list.forEach(function (row) {
+            var bubble = el('div', row.k === 'u' ? 'sc-msg client local history' : 'sc-msg admin bot history');
+            if (row.k !== 'u') bubble.appendChild(el('span', 'sc-bot-label', cfg.name));
+            bubble.appendChild(el('span', 'sc-msg-body', row.x));
+            box.appendChild(bubble);
+        });
+        thread.appendChild(box);
+        scrollDown();
+    }
+
     // ── Burbujas ─────────────────────────────────────────────────────────
 
     function userSays(text) {
         var bubble = el('div', 'sc-msg client local');
         bubble.appendChild(el('span', 'sc-msg-body', text));
         thread.appendChild(bubble);
+        historyPush('u', text);
         scrollDown();
     }
 
-    function botSays(text) {
+    function botSays(text, noHistory) {
         var bubble = el('div', 'sc-msg admin bot');
         bubble.appendChild(el('span', 'sc-bot-label', cfg.name));
         if (text) bubble.appendChild(el('span', 'sc-msg-body', text));
         thread.appendChild(bubble);
+        if (!noHistory) historyPush('b', text);
         scrollDown();
         return bubble;
     }
@@ -92,7 +138,12 @@
                 options.body = JSON.stringify(body);
             }
         }
+        // Tiempo máximo de 25 s: con una conexión colgada el menú se quedaba escribiendo para siempre.
+        var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 25000) : null;
+        if (ctrl) options.signal = ctrl.signal;
         return fetch(url, options)
+            .then(function (r) { if (timer) clearTimeout(timer); return r; }, function (e) { if (timer) clearTimeout(timer); throw e; })
             .then(function (r) { return r.json().catch(function () { return null; }); })
             .then(function (data) {
                 if (!data || !data.ok) {
@@ -105,7 +156,12 @@
     function failed(token, stopTyping, err) {
         stopTyping();
         if (token !== flow) return;
-        var bubble = botSays(err && err.message ? err.message : 'Sin conexión. Revisa tu internet e intenta de nuevo.');
+        // Un corte de red (el navegador dice "Failed to fetch") se explica en español; los mensajes del servidor se muestran tal cual.
+        var text = err && err.message ? String(err.message) : '';
+        if (!text || (err && (err.name === 'TypeError' || err.name === 'AbortError'))) {
+            text = (err && err.name === 'AbortError') ? 'La conexión está muy lenta. Intenta de nuevo en un momento.' : 'Sin conexión. Revisa tu internet e intenta de nuevo.';
+        }
+        var bubble = botSays(text);
         addActions(bubble, [{ label: 'Hablar con soporte', action: talkToSupport }]);
     }
 
@@ -121,9 +177,11 @@
                 node.target = '_blank';
                 node.rel = 'noopener';
             } else {
-                node = el('button', 'sc-act' + (a.primary ? ' primary' : ''), a.label);
+                node = el('button', 'sc-act' + (a.primary ? ' primary' : '') + (a.attention ? ' sc-act-attn' : ''), a.label);
                 node.type = 'button';
                 node.addEventListener('click', a.action);
+                // El tambaleo es para llamar la atención: en cuanto lo tocan ya cumplió y se quita.
+                if (a.attention) node.addEventListener('click', function () { node.classList.remove('sc-act-attn'); });
             }
             row.appendChild(node);
         });
@@ -293,7 +351,7 @@
         // Lo primero: en las notificaciones ya sale el estado del ultimo pedido
         // hecho desde este navegador, sin tener que buscar nada.
         var tip = botSays('🔔 Primero revisa tus notificaciones: ahí tienes la actualización de tu último pedido y su estado.');
-        addActions(tip, [{ label: 'Ver mis notificaciones', action: openNotifications, primary: true }]);
+        addActions(tip, [{ label: 'Ver mis notificaciones', action: openNotifications, primary: true, attention: true }]);
         var bubble = botSays('Si no lo ves en tus notificaciones, búscalo con una de estas 3 opciones (la que te sea más fácil):\n• Número de orden\n• Referencia del pago\n• Foto del comprobante');
         askValue(bubble, {
             placeholder: 'Número de orden o referencia',
@@ -444,6 +502,8 @@
         var btn = evt.target.closest ? evt.target.closest('.sc-quick-btn') : null;
         if (btn) start(btn.getAttribute('data-bot'));
     });
+
+    historyReplay();
 
     // Lo que usa support-buy.js (se carga despues de este archivo).
     window.SupportBot = {

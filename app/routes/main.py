@@ -1,4 +1,6 @@
 import re
+import threading
+import time
 from datetime import date, datetime, timedelta
 from uuid import uuid4
 
@@ -9,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..models import (
     db, Game, Package, Category, PaymentMethod, Setting,
-    Order, RankingArchive,
+    Order, RankingArchive, RankingBoard, User, UserProfile,
 )
 from ..utils.availability import (
     format_hour,
@@ -21,6 +23,7 @@ from ..utils.availability import (
 )
 from ..utils.points import package_points_preview
 from ..utils.order_units import extract_order_units
+from ..utils import ranking_boards as RB
 from ..utils.timezone import now_ve, ve_day_start_utc_naive, today_ve_str
 from ..utils.catalog_version import site_version
 from ..utils.locks import acquire_lock, check_rate_limit, client_ip, release_lock
@@ -30,6 +33,7 @@ from ..utils.site_notifications import build_feed
 main_bp = Blueprint('main_bp', __name__)
 
 NOTIF_FEED_PER_MINUTE = 30
+RANKING_LOOKUPS_PER_MINUTE = 20
 
 
 @main_bp.route('/api/notificaciones', methods=['POST'])
@@ -45,9 +49,11 @@ def notifications_feed():
         payload = {}
     # El número de orden es la "llave" de la orden: quien lo manda consulta su estado. Sin tope, alguien podría
     # probar números en cadena (15 por petición). Un navegador normal pregunta una vez por minuto.
-    if payload.get('orders') and not check_rate_limit(f'notif_feed:{client_ip()}', NOTIF_FEED_PER_MINUTE, 60):
+    # El chat de soporte de este navegador (aviso "Soporte te respondió"): llega en el cuerpo, en la cabecera o en la cookie del chat.
+    support_token = str(payload.get('support_token') or request.headers.get('X-Support-Token') or request.cookies.get('support_token') or '').strip()[:64]
+    if (payload.get('orders') or support_token) and not check_rate_limit(f'notif_feed:{client_ip()}', NOTIF_FEED_PER_MINUTE, 60):
         return jsonify({'ok': False, 'items': []}), 429
-    response = jsonify({'ok': True, 'items': build_feed(payload.get('orders'))})
+    response = jsonify({'ok': True, 'items': build_feed(payload.get('orders'), support_token)})
     response.headers['Cache-Control'] = 'no-store'
     return response
 
@@ -57,214 +63,22 @@ def _get_setting_val(key, default=''):
     return row.value if row else default
 
 
-RANKING_DEFS = {
-    'free_fire': {
-        'label': 'Free Fire',
-        'units_label': 'Diamantes',
-        'setting_key': 'ranking_free_fire_game_id',
-        'enabled_key': 'ranking_free_fire_enabled',
-        'aliases': ['free fire', 'freefire', 'ff'],
-    },
-    'blood_strike': {
-        'label': 'Blood Strike',
-        'units_label': 'Oro',
-        'setting_key': 'ranking_blood_strike_game_id',
-        'enabled_key': 'ranking_blood_strike_enabled',
-        'aliases': ['blood strike', 'bloodstrike'],
-    },
-}
-
-# Las 5 posiciones premiadas de cada ranking. El premio de cada una ya no
-# es un número fijo en el código: es el paquete real que el admin elige en
-# Configuración > Rankings Mensuales — así lo que se muestra como premio es
-# exactamente lo que se entrega (antes eran dos cosas separadas que podían
-# no coincidir).
-RANKING_PRIZE_POSITIONS = [1, 2, 3, 4, 5]
-
-
-def _ranking_prize_package_key(ranking_key, position):
-    return f'ranking_{ranking_key}_prize_package_{position}'
-
-
-def _ranking_prize_auto_key(ranking_key, position):
-    return f'ranking_{ranking_key}_prize_auto_{position}'
-
-
-def get_ranking_prize_config(ranking_key):
-    """{posición: {'package': Package|None, 'auto': bool}} para las 5
-    posiciones premiadas de este ranking."""
-    result = {}
-    for position in RANKING_PRIZE_POSITIONS:
-        package_id_raw = _get_setting_val(_ranking_prize_package_key(ranking_key, position), '')
-        package = Package.query.get(int(package_id_raw)) if str(package_id_raw).isdigit() else None
-        auto = _get_setting_val(_ranking_prize_auto_key(ranking_key, position), '0') == '1'
-        result[position] = {'package': package, 'auto': auto}
-    return result
-
-
-def _month_range_for_ve(target_date=None):
-    target_date = target_date or now_ve().date()
-    month_start = date(target_date.year, target_date.month, 1)
-    next_month = date(target_date.year + (1 if target_date.month == 12 else 0), 1 if target_date.month == 12 else target_date.month + 1, 1)
-    return ve_day_start_utc_naive(month_start), ve_day_start_utc_naive(next_month)
-
-
-def _resolve_ranking_game(config):
-    game_id_raw = _get_setting_val(config['setting_key'], '')
-    game_id = int(game_id_raw) if str(game_id_raw).isdigit() else None
-    if game_id:
-        game = Game.query.get(game_id)
-        if game:
-            return game
-
-    aliases = [alias.strip().lower() for alias in (config.get('aliases') or []) if alias]
-    if not aliases:
-        return None
-
-    all_games = Game.query.order_by(Game.is_active.desc(), Game.position.asc(), Game.name.asc()).all()
-    for game in all_games:
-        haystack = ' '.join([
-            str(game.name or '').strip().lower(),
-            str(game.slug or '').strip().lower(),
-            str(game.description or '').strip().lower(),
-        ])
-        if any(alias in haystack for alias in aliases):
-            return game
-
-    return None
-
-
-def _ranking_has_month_orders(game_id, target_date=None):
-    if not game_id:
-        return False
-
-    start_at, end_at = _month_range_for_ve(target_date)
-    return db.session.query(Order.id).filter(
-        Order.game_id == game_id,
-        Order.status.in_(['approved', 'completed']),
-        Order.created_at >= start_at,
-        Order.created_at < end_at,
-    ).first() is not None
-
-
-def _is_ranking_enabled(config, game, target_date=None):
-    setting_row = Setting.query.filter_by(key=config['enabled_key']).first()
-    if not setting_row:
-        return False
-    return str(setting_row.value or '').strip() == '1'
+# Los rankings mensuales (Free Fire, Blood Strike, Cuentas, Niveles y los que cree el dueño) viven en la base de datos (RankingBoard) y se editan
+# en Admin → Dinámicas → Ranking. La lógica (premios, cierre de mes) está en utils/ranking_boards.py; aquí solo se arma lo que ve la tienda.
+_month_range_for_ve = RB.month_range_for_ve
+_mask_player_id = RB.mask_player_id
+_mask_nickname = RB.mask_nickname
+_extract_order_units = extract_order_units
+_get_ranking_entries = RB.game_entries
+_get_ranking_entries_cached = RB.game_entries_cached
+_ranking_entries_cache = RB._entries_cache
+_find_current_position = RB.find_current_position
 
 
 def _is_admin_ranking_view():
     if not has_request_context():
         return False
     return current_user.is_authenticated and current_user.__class__.__name__ == 'AdminUser'
-
-
-def _mask_player_id(player_id):
-    raw = (player_id or '').strip()
-    if not raw:
-        return '----'
-    visible = raw[:4]
-    return visible + '****'
-
-
-def _mask_nickname(nickname):
-    raw = (nickname or '').strip()
-    if not raw:
-        return 'Jugador***'
-    visible = raw[:3]
-    return visible + '***'
-
-
-_extract_order_units = extract_order_units
-
-
-def _get_ranking_entries(game_id, target_date=None):
-    if not game_id:
-        return []
-
-    start_at, end_at = _month_range_for_ve(target_date)
-    orders = (
-        Order.query
-        .filter(Order.game_id == game_id)
-        .filter(Order.status.in_(['approved', 'completed']))
-        # Los premios ($0) no son compras: sin esto, alguien que reciba
-        # muchos premios sube al ranking y se lleva además el de fin de mes.
-        .filter(or_(Order.payment_method.is_(None), Order.payment_method != 'prize'))
-        .filter(Order.created_at >= start_at, Order.created_at < end_at)
-        .order_by(Order.created_at.asc())
-        .all()
-    )
-
-    grouped = {}
-    for order in orders:
-        player_id = (order.player_id or '').strip()
-        if not player_id:
-            continue
-
-        bucket = grouped.setdefault(player_id, {
-            'player_id': player_id,
-            'nickname': (order.player_nickname or '').strip(),
-            'total_units': 0,
-            'total_spent': 0.0,
-            'last_seen_at': order.created_at,
-        })
-        if order.player_nickname:
-            bucket['nickname'] = (order.player_nickname or '').strip()
-        bucket['total_units'] += _extract_order_units(order)
-        try:
-            bucket['total_spent'] += float(order.amount or 0)
-        except (TypeError, ValueError):
-            pass
-        bucket['last_seen_at'] = order.created_at
-
-    entries = sorted(
-        grouped.values(),
-        key=lambda item: (-item['total_units'], -item['total_spent'], item['player_id'])
-    )
-
-    return entries
-
-
-def _find_current_position(entries, lookup_identifier):
-    lookup_identifier = (lookup_identifier or '').strip()
-    if not lookup_identifier:
-        return None
-
-    current_index = None
-    for index, entry in enumerate(entries):
-        if (entry.get('player_id') or '').strip() == lookup_identifier:
-            current_index = index
-            break
-
-    if current_index is None:
-        return None
-
-    entry = entries[current_index]
-    current_units = int(entry.get('total_units') or 0)
-    higher_entry = entries[current_index - 1] if current_index > 0 else None
-    lower_entry = entries[current_index + 1] if current_index + 1 < len(entries) else None
-
-    next_target_units = int(higher_entry.get('total_units') or 0) if higher_entry else current_units
-    lower_units = int(lower_entry.get('total_units') or 0) if lower_entry else 0
-    missing_units = max(next_target_units - current_units, 0) if higher_entry else 0
-
-    progress_percent = 100
-    if higher_entry:
-        denominator = max(next_target_units - lower_units, 1)
-        numerator = max(current_units - lower_units, 0)
-        progress_percent = max(6, min(99, int(round((numerator / denominator) * 100))))
-
-    return {
-        'position': current_index + 1,
-        'masked_player_id': _mask_player_id(entry.get('player_id')),
-        'masked_nickname': _mask_nickname(entry.get('nickname')),
-        'total_units': current_units,
-        'next_target_units': next_target_units,
-        'missing_units': missing_units,
-        'progress_percent': progress_percent,
-        'is_top_ten': current_index < 10,
-    }
 
 
 def _resolve_ranking_lookup_identifier(game):
@@ -285,7 +99,7 @@ def _resolve_ranking_lookup_identifier(game):
     return ''
 
 
-def _serialize_archive_entry(row, include_private=False):
+def _serialize_archive_entry(row, include_private=False, emails=None):
     payload = {
         'position': row.position,
         'total_units': row.total_units,
@@ -295,6 +109,9 @@ def _serialize_archive_entry(row, include_private=False):
     if include_private:
         payload['player_id'] = (row.player_id or row.masked_player_id or '').strip() or '----'
         payload['nickname'] = (row.nickname or row.masked_nickname or '').strip() or 'Jugador***'
+        payload['prize_detail'] = row.prize_detail or ''
+        if row.user_id:
+            payload['email'] = (emails or {}).get(row.user_id, '')
     else:
         payload['masked_player_id'] = row.masked_player_id
         payload['masked_nickname'] = row.masked_nickname
@@ -311,6 +128,12 @@ def _get_archive_history_payload(ranking_key, include_private=False, limit=None)
     )
     if not archive_rows:
         return []
+
+    emails = {}
+    if include_private:
+        user_ids = {row.user_id for row in archive_rows if row.user_id}
+        if user_ids:
+            emails = {user.id: (user.email or user.account_identifier or '') for user in User.query.filter(User.id.in_(user_ids)).all()}
 
     periods = []
     current_group = None
@@ -331,14 +154,16 @@ def _get_archive_history_payload(ranking_key, include_private=False, limit=None)
             }
             periods.append(current_group)
 
-        current_group['entries'].append(_serialize_archive_entry(row, include_private=include_private))
+        current_group['entries'].append(_serialize_archive_entry(row, include_private=include_private, emails=emails))
 
     return periods
 
 
 def backfill_ranking_archives_if_needed():
+    """Archivos viejos de juegos que se guardaron sin el ID ni el nombre: se completan con el ranking de ese mes (una sola vez)."""
     incomplete_rows = (
         RankingArchive.query
+        .filter(RankingArchive.user_id.is_(None))
         .filter(
             or_(
                 RankingArchive.player_id.is_(None),
@@ -359,11 +184,11 @@ def backfill_ranking_archives_if_needed():
 
     updated = False
     for (ranking_key, year, month, game_name), rows in grouped.items():
-        config = RANKING_DEFS.get(ranking_key)
-        if not config:
+        board = RankingBoard.query.filter_by(key=ranking_key, kind='game').first()
+        if board is None:
             continue
 
-        game = Game.query.filter_by(name=game_name).first() or _resolve_ranking_game(config)
+        game = Game.query.filter_by(name=game_name).first() or board.game
         if not game:
             continue
 
@@ -396,164 +221,133 @@ def _get_previous_archive_payload(ranking_key):
     return history[0] if history else None
 
 
-def _build_ranking_payload(ranking_key, target_date=None):
-    config = RANKING_DEFS[ranking_key]
-    game = _resolve_ranking_game(config)
-    enabled = _is_ranking_enabled(config, game, target_date=target_date)
+def _build_ranking_payload(board, target_date=None):
+    """Ranking de IDs de un juego (el de siempre) tal como lo ve la tienda."""
+    game = board.game
+    places = RB.places(board)
 
     payload = {
-        'key': ranking_key,
-        'label': config['label'],
-        'units_label': config['units_label'],
-        'enabled': enabled and game is not None,
+        'key': board.key,
+        'kind': 'game',
+        'label': board.name,
+        'units_label': RB.units_label(board),
+        'enabled': game is not None,
         'game_id': game.id if game else None,
-        'game_name': game.name if game else config['label'],
+        'game_name': game.name if game else board.name,
         'entries': [],
         'reward_ladder': [],
         'current_position': None,
         'previous_winners': None,
-        'prize_note': 'Se muestran 10 posiciones, pero solo el Top 5 recibe premio al cerrar el mes.',
+        'prize_note': f'Se muestran {RB.PUBLIC_SIZE} posiciones, pero solo el Top {places} recibe premio al cerrar el mes.',
     }
 
-    if not payload['enabled']:
+    if game is None:
         return payload
 
-    entries = _get_ranking_entries(game.id, target_date=target_date)
-    prize_config = get_ranking_prize_config(ranking_key)
-    for position in RANKING_PRIZE_POSITIONS:
-        package = prize_config[position]['package']
-        payload['reward_ladder'].append({
-            'position': position,
-            'reward_value': package.name if package else None,
-            'reward_label': package.name if package else 'Sin premio configurado',
-        })
+    entries = _get_ranking_entries_cached(game.id, target_date=target_date)
+    payload['reward_ladder'] = RB.ladder(board)
+    prizes = RB.prize_map(board)
 
-    for index, entry in enumerate(entries[:10], start=1):
-        package = prize_config.get(index, {}).get('package')
+    # El ranking mensual de juegos es solo por ID: no muestra fotos de perfil ni enlaces a perfiles (las cuentas son independientes de los IDs).
+    for index, entry in enumerate(entries[:RB.PUBLIC_SIZE], start=1):
+        label = RB.prize_label(prizes.get(index)) if index <= places else ''
         payload['entries'].append({
             'position': index,
             'masked_player_id': _mask_player_id(entry['player_id']),
             'masked_nickname': _mask_nickname(entry['nickname']),
             'total_units': entry['total_units'],
-            'prize_label': package.name if package else 'Sin premio',
-            'reward_value': package.name if package else None,
-            'is_prize_eligible': index <= 5,
+            'prize_label': label or 'Sin premio',
+            'reward_value': label or None,
+            'is_prize_eligible': index <= places,
         })
 
     lookup_identifier = _resolve_ranking_lookup_identifier(game)
     payload['current_position'] = _find_current_position(entries, lookup_identifier)
-    payload['previous_winners'] = _get_previous_archive_payload(ranking_key)
+    payload['previous_winners'] = _get_previous_archive_payload(board.key)
 
     return payload
 
 
+def _public_account_winners(board, limit=3):
+    """Ganadores del mes pasado de un ranking de cuentas o de niveles: {'label', 'entries': [{'position', 'name', 'handle', 'prize_label'}]} o None.
+    Solo cuentas con perfil visible (las que se pueden abrir)."""
+    from ..utils import profile_social as PS
+
+    key = PS.prev_month_key(PS.month_key_now())
+    rows = (
+        RankingArchive.query
+        .filter_by(ranking_key=board.key, year=int(key[:4]), month=int(key[5:7]))
+        .filter(RankingArchive.user_id.isnot(None))
+        .order_by(RankingArchive.position.asc())
+        .all()
+    )
+    entries = []
+    for row in rows:
+        user = db.session.get(User, row.user_id)
+        profile = UserProfile.query.filter_by(user_id=user.id).first() if user is not None else None
+        if user is None or not PS._eligible(profile, user) or not user.has_chosen_username:
+            continue
+        label = row.prize_label if (row.prize_label and row.prize_label != 'Sin premio') else ''
+        entries.append({'position': row.position, 'name': PS._shown_name(user, profile), 'handle': user.username, 'prize_label': label})
+        if len(entries) >= limit:
+            break
+    return {'label': PS.month_label(key), 'entries': entries} if entries else None
+
+
+def _build_account_board_payload(board):
+    """Ranking de CUENTAS (las que más recargan) o de NIVELES, tal como lo ve la tienda. Los premios se entregan al cerrar el mes."""
+    from ..utils import profile_social as PS
+    from ..utils.auth_accounts import is_account_user
+
+    levels = board.kind == 'levels'
+    payload = {
+        'key': board.key, 'kind': 'levels' if levels else 'accounts', 'label': board.name, 'units_label': RB.units_label(board), 'enabled': True,
+        'entries': [], 'reward_ladder': RB.ladder(board), 'current_position': None, 'previous_winners': None,
+        'viewer': {'logged_in': False, 'is_account': False},
+    }
+    try:
+        PS.ensure_fresh(PS.STATS_FALLBACK_MINUTES)   # el recálculo normal lo hace el proceso de fondo; aquí solo la red de seguridad
+        rows = PS.level_ranking() if levels else PS.account_month_ranking()
+        viewer = current_user if (has_request_context() and current_user.is_authenticated) else None
+        for r in rows:
+            entry = {'position': r['position'], 'name': r['name'], 'handle': r['handle'], 'avatar': r['avatar'], 'total_units': r['total_units']}
+            if levels:
+                entry['level'] = r['level']
+            payload['entries'].append(entry)
+        payload['viewer'] = {'logged_in': viewer is not None, 'is_account': is_account_user(viewer)}
+        if viewer is not None:
+            payload['current_position'] = PS.level_my_position(viewer) if levels else PS.account_my_position(viewer)
+        payload['previous_winners'] = _public_account_winners(board)
+    except Exception:
+        db.session.rollback()
+    return payload
+
+
 def get_public_rankings_payload(target_date=None):
-    return [_build_ranking_payload(ranking_key, target_date=target_date) for ranking_key in RANKING_DEFS.keys()]
+    payloads = []
+    for board in RB.enabled_boards():
+        if board.kind == 'game':
+            payload = _build_ranking_payload(board, target_date=target_date)
+            if not payload['enabled']:
+                continue
+        else:
+            payload = _build_account_board_payload(board)
+        payloads.append(payload)
+    return payloads
 
 
 def has_visible_public_rankings(target_date=None):
     """Solo decide si se muestra el botón de Ranking en el header.
 
-    Corre en cada página vía context processor, así que no puede pagar el
-    costo de `get_public_rankings_payload` (que carga todas las órdenes del
-    mes). Basta con leer el interruptor en settings y confirmar que el juego
-    configurado existe.
-    """
-    for config in RANKING_DEFS.values():
-        if not _is_ranking_enabled(config, None, target_date=target_date):
-            continue
-        if _resolve_ranking_game(config):
-            return True
-    return False
+    Corre en cada página vía context processor, así que no puede pagar el costo de `get_public_rankings_payload` (que carga todas las órdenes del
+    mes): basta con saber si hay algún ranking encendido (los de juego, con su juego elegido)."""
+    return RB.visible_boards_exist()
 
 
 def archive_previous_month_rankings_if_needed():
+    """Al empezar un mes cierra el anterior de cada ranking encendido: archiva a los ganadores y entrega los premios automáticos."""
     backfill_ranking_archives_if_needed()
-    today = now_ve().date()
-    previous_month_last_day = today.replace(day=1) - timedelta(days=1)
-    year = previous_month_last_day.year
-    month = previous_month_last_day.month
-
-    for ranking_key, config in RANKING_DEFS.items():
-        enabled = _get_setting_val(config['enabled_key'], '0') == '1'
-        if not enabled:
-            continue
-
-        existing = RankingArchive.query.filter_by(ranking_key=ranking_key, year=year, month=month).first()
-        if existing:
-            continue
-
-        # Esta función corre con cada visita a /api/rankings. El primer día
-        # del mes varias visitas llegan a la vez: sin lock, todas veían el
-        # mes sin archivar y TODAS entregaban los premios del top 5.
-        lock_key = f'ranking_archive:{ranking_key}:{year}-{month:02d}'
-        lock_holder = uuid4().hex
-        if not acquire_lock(lock_key, 120, lock_holder):
-            continue
-        try:
-            if RankingArchive.query.filter_by(ranking_key=ranking_key, year=year, month=month).first():
-                continue
-
-            game = _resolve_ranking_game(config)
-            if not game:
-                continue
-
-            entries = _get_ranking_entries(game.id, target_date=previous_month_last_day)
-            if not entries:
-                continue
-
-            prize_config = get_ranking_prize_config(ranking_key)
-
-            prizes_to_deliver = []
-            for index, entry in enumerate(entries[:5], start=1):
-                slot = prize_config.get(index) or {}
-                package = slot.get('package')
-                player_id = (entry.get('player_id') or '').strip() or None
-
-                archive = RankingArchive(
-                    ranking_key=ranking_key,
-                    year=year,
-                    month=month,
-                    position=index,
-                    game_name=game.name,
-                    player_id=player_id,
-                    nickname=(entry.get('nickname') or '').strip() or None,
-                    masked_player_id=_mask_player_id(entry.get('player_id')),
-                    masked_nickname=_mask_nickname(entry.get('nickname')),
-                    total_units=entry.get('total_units') or 0,
-                    prize_label=package.name if package else 'Sin premio',
-                )
-                db.session.add(archive)
-                if package and slot.get('auto') and player_id:
-                    prizes_to_deliver.append((archive, package, player_id, index))
-
-            # El mes queda archivado ANTES de entregar: cada entrega puede
-            # tardar hasta 2 minutos, y mientras tanto otra visita que viera
-            # el mes sin archivar volvía a pagar el top 5. El UNIQUE de
-            # (ranking, año, mes, puesto) es la última defensa.
-            try:
-                db.session.commit()
-            except IntegrityError:
-                db.session.rollback()
-                continue
-
-            for archive, package, player_id, index in prizes_to_deliver:
-                # Mismo mecanismo que cualquier otro premio automático del
-                # sitio (Recarga Acumulada, Adivina el Número, etc.): crea
-                # una orden interna de $0 y la entrega por el camino normal
-                # (PIN propio o bot), así queda auditable en Órdenes.
-                from ..utils.order_processing import deliver_prize_to_player
-                prize_order, _approval = deliver_prize_to_player(
-                    game, package, player_id,
-                    note=f'Premio Ranking Mensual — puesto #{index} de {config["label"]} ({year}-{month:02d}).',
-                    reference_prefix='RANKING',
-                )
-                archive.prize_order_id = prize_order.id if prize_order else None
-                db.session.commit()
-        finally:
-            release_lock(lock_key, lock_holder)
-
-    db.session.commit()
+    RB.close_previous_month_if_needed()
 
 
 @main_bp.route('/')
@@ -618,6 +412,9 @@ def index():
 
     promo_banner = (_get_setting_val('promo_banner_image', '') or '').strip()
     promo_banner_link = (_get_setting_val('promo_banner_link', '') or '').strip()
+    # Copia liviana del banner (si se mueve y ya se hizo): el modo liviano usa esa, más chica, en vez del original
+    from ..utils import banner_lite
+    promo_banner_lite = banner_lite.existing_lite(promo_banner) if promo_banner else ''
 
     community_popup_enabled = (_get_setting_val('community_popup_enabled', '') or '') == '1'
     try:
@@ -652,6 +449,7 @@ def index():
         checkout_payment_video=checkout_payment_video,
         promo_banner=promo_banner,
         promo_banner_link=promo_banner_link,
+        promo_banner_lite=promo_banner_lite,
         manual_open_label=manual_open_label,
         manual_close_label=manual_close_label,
         community_popup_enabled=community_popup_enabled,
@@ -898,7 +696,11 @@ def get_discounts():
 
 @main_bp.route('/api/rankings')
 def api_rankings():
-    archive_previous_month_rankings_if_needed()
+    # El cierre del mes anterior (con la entrega de premios, que puede tardar minutos) ya NO corre dentro de esta visita: lo hace el
+    # proceso de fondo (utils/order_scheduler._run_promos_tick), igual que el sorteo diario.
+    # Buscar "mi puesto" por ID dice si ese ID entró al ranking del mes: se limita por IP para que nadie recorra IDs en cadena.
+    if (request.args.get('lookup_identifier') or '').strip() and not check_rate_limit(f'rank_lookup:{client_ip()}', RANKING_LOOKUPS_PER_MINUTE, 60):
+        return jsonify({'rankings': [], 'error': 'Demasiadas consultas seguidas. Espera un momento.'}), 429
     rankings = get_public_rankings_payload()
     return jsonify({'rankings': rankings})
 

@@ -187,7 +187,7 @@
             <span class="detail-label">Teléfono</span>
             <span class="detail-value detail-value-inline">
                 <span class="customer-phone-value">{{ order.phone }}</span>
-                <button type="button" class="btn-sm btn-whatsapp-admin" onclick="openAdminWhatsAppContact('{{ order.phone|e }}')">WhatsApp</button>
+                <button type="button" class="btn-sm btn-whatsapp-admin" onclick="openAdminWhatsAppContact({{ ((order.phone))|jsattr }})">WhatsApp</button>
             </span>
         </div>
         {% endif %}

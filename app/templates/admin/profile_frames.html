@@ -1,0 +1,75 @@
+{% extends 'admin/base.html' %}
+{% block title %}Tienda de marcos{% endblock %}
+{% block page_title %}Tienda de marcos del perfil{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 14px;"><a href="{{ url_for('admin_bp.accounts') }}" class="link-sm">← Volver a las cuentas</a></p>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Agregar un marco</h3><span>PNG, WEBP o GIF (puede tener movimiento) · máx. 3 MB (foto) o 5 MB (portada)</span></div>
+    <form method="POST" enctype="multipart/form-data" style="padding:0 20px 20px;">
+        <p class="form-hint" style="margin:0 0 14px;">Un marco es una imagen con el <b>centro transparente</b> que se pone encima de la foto de perfil o de la portada. <b>Medidas ideales para que encaje perfecto:</b> foto de perfil <b>600 × 600 px</b> (cuadrada, con el hueco transparente del centro de unos 430 px = 72 % del ancho, porque el marco se dibuja al 140 % de la foto) y portada <b>1500 × 600 px</b> (horizontal, proporción 5:2 como la portada, que se estira justo encima). Un GIF con movimiento no debería pasar de 1024 px (foto) o 1600 px (portada) de lado. Todos los marcos son <b>gratis</b>: cada cuenta elige los que quiera desde su editor de perfil.</p>
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="fr_name">Nombre</label>
+                <input type="text" id="fr_name" name="name" maxlength="60" required placeholder="Ej: Fuego dorado">
+            </div>
+            <div class="form-group">
+                <label for="fr_kind">Para</label>
+                <select id="fr_kind" name="kind">
+                    <option value="avatar">Foto de perfil (cuadrado)</option>
+                    <option value="banner">Portada / banner (horizontal)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="fr_image">Imagen</label>
+                <input type="file" id="fr_image" name="image" accept="image/png,image/webp,image/gif" required>
+            </div>
+        </div>
+        <div class="form-group"><button type="submit" class="btn-primary">Agregar a la tienda</button></div>
+    </form>
+</div>
+
+<div class="admin-card">
+    <div class="card-header"><h3>Marcos de la tienda</h3><span>{{ frames|length }} en total</span></div>
+    {% if frames %}
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Vista</th><th>Marco</th><th>Cambiar</th></tr></thead>
+            <tbody>
+                {% for f in frames %}
+                <tr>
+                    <td style="width:110px;">
+                        <div style="position:relative;width:{{ '96px' if f.kind == 'banner' else '72px' }};height:{{ '40px' if f.kind == 'banner' else '72px' }};border-radius:{{ '8px' if f.kind == 'banner' else '50%' }};background:linear-gradient(150deg,#5a0610,#1a0508);">
+                            {% if frame_url(f.image_path) %}<img src="{{ url_for('static', filename=frame_url(f.image_path)) }}" alt="" style="position:absolute;inset:{{ '0' if f.kind == 'banner' else '-8%' }};width:{{ '100%' if f.kind == 'banner' else '116%' }};height:{{ '100%' if f.kind == 'banner' else '116%' }};object-fit:{{ 'fill' if f.kind == 'banner' else 'contain' }};">{% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <b>{{ f.name }}</b><br>
+                        <small>{{ 'Portada' if f.kind == 'banner' else 'Foto de perfil' }} · GRATIS</small><br>
+                        {% if f.is_active %}<small style="color:#34d399">Visible en la tienda</small>{% else %}<small style="color:#f87171">Desactivado</small>{% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin_bp.profile_frame_edit', frame_id=f.id) }}" enctype="multipart/form-data" style="display:grid;gap:6px;min-width:220px;">
+                            <input type="text" name="name" value="{{ f.name }}" maxlength="60" required aria-label="Nombre">
+                            <div style="display:flex;gap:6px;">
+                                <input type="number" name="sort_order" value="{{ f.sort_order or 0 }}" min="0" max="100000" aria-label="Orden" style="flex:1;min-width:0;" title="Orden en la tienda (menor sale primero)">
+                            </div>
+                            <label style="font-size:12px;"><input type="checkbox" name="is_active" value="1" {% if f.is_active %}checked{% endif %}> Visible en la tienda</label>
+                            <input type="file" name="image" accept="image/png,image/webp,image/gif" aria-label="Cambiar la imagen">
+                            <button type="submit" class="btn-sm btn-outline">Guardar</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin_bp.profile_frame_delete', frame_id=f.id) }}" onsubmit="return confirm({{ ('¿Borrar el marco ' ~ f.name ~ '?')|jsattr }});" style="margin-top:6px;">
+                            <button type="submit" class="btn-sm btn-outline" style="color:#f87171;">Borrar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="padding:0 20px 20px;opacity:.7;">Todavía no hay marcos. Agrega el primero arriba.</p>
+    {% endif %}
+</div>
+{% endblock %}

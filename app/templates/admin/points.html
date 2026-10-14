@@ -6,7 +6,7 @@
 <div class="admin-card" style="margin-bottom:20px;">
     <div class="card-header">
         <h2>Configuración general</h2>
-        <p class="form-hint">Los puntos solo se ganan recargando por ID (nunca con códigos ni wallet) y solo sirven para canjearse por premios reales del mismo juego.</p>
+        <p class="form-hint">Los puntos solo se ganan recargando por ID (nunca con códigos ni wallet) y solo sirven para canjearse por premios reales del mismo juego. Una cuenta (perfil) solo recibe puntos como premio de un ranking o porque tú se los regalas aquí abajo.</p>
     </div>
     <form method="POST" style="padding:0 20px 20px;">
         <input type="hidden" name="form_action" value="settings">
@@ -30,6 +30,50 @@
             <button type="submit" class="btn-primary">Guardar configuración</button>
         </div>
     </form>
+</div>
+
+<div class="admin-card" style="margin-bottom:20px;" id="regalarPuntos">
+    <div class="card-header">
+        <h2>Regalar puntos a una cuenta</h2>
+        <p class="form-hint">Escribe el <b>usuario o el correo</b> de la cuenta y cuántos puntos le das. Son puntos de la tienda, los mismos que sirven para <b>girar la ruleta y canjear paquetes</b>. Quedan en la bolsa del perfil y su dueño los pasa al ID que quiera desde "Canjear puntos" (los puntos funcionan por ID).</p>
+    </div>
+    <form method="POST" action="{{ url_for('admin_bp.points_gift') }}" style="padding:0 20px 20px;" onsubmit="if (this.dataset.sent) { return false; } this.dataset.sent = '1';">
+        <div class="form-grid-2">
+            <div class="form-group">
+                <label for="giftAccount">Usuario o correo de la cuenta</label>
+                <input type="text" id="giftAccount" name="account" maxlength="255" required autocomplete="off" placeholder="Ej: juanperez o juan@correo.com">
+            </div>
+            <div class="form-group">
+                <label for="giftAmount">Puntos a regalar</label>
+                <input type="number" id="giftAmount" name="amount" min="1" max="{{ gift_max }}" step="1" required placeholder="Ej: 100">
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+                <label for="giftNote">Motivo (opcional, queda en el historial de la cuenta)</label>
+                <input type="text" id="giftNote" name="note" maxlength="150" placeholder="Ej: Premio del sorteo de Instagram">
+            </div>
+        </div>
+        <button type="submit" class="btn-primary">Regalar puntos</button>
+    </form>
+    {% if gifts_recent %}
+    <div style="padding:0 20px 20px;">
+        <h4 style="margin:0 0 8px;font-size:14px;">Últimos regalos</h4>
+        <div class="table-wrap">
+            <table class="admin-table">
+                <thead><tr><th>Fecha</th><th>Cuenta</th><th>Puntos</th><th>Motivo</th></tr></thead>
+                <tbody>
+                {% for log, acct in gifts_recent %}
+                <tr>
+                    <td>{{ log.created_at|datetime_ve('%d/%m/%Y %H:%M') if log.created_at else '—' }}</td>
+                    <td><a href="{{ url_for('admin_bp.account_detail', user_id=acct.id) }}">@{{ acct.username }}</a> <small style="opacity:.6">{{ acct.email or '' }}</small></td>
+                    <td><b style="color:#4ade80">+{{ log.delta }}</b></td>
+                    <td>{{ log.note or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <div class="admin-card" style="margin-bottom:20px;">

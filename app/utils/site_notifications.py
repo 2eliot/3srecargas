@@ -117,11 +117,41 @@ def _valid_order_numbers(raw_numbers):
     return numbers
 
 
-def build_feed(raw_order_numbers):
+def support_reply_item(token):
+    """Aviso "Soporte te respondió" con un botón para ir al chat: sale cuando el chat de ESTE navegador (se reconoce por su token, el mismo
+    secreto que ya lo identifica) tiene respuestas sin leer del equipo o del asistente. Se quita solo cuando el cliente abre el chat y las lee."""
+    token = str(token or '').strip()
+    if not token or len(token) > 64:
+        return None
+    from ..models import SupportMessage
+    from .support import get_client_chat
+    chat, _expired = get_client_chat(token)
+    if chat is None or (chat.unread_client or 0) <= 0:
+        return None
+    last = (
+        SupportMessage.query
+        .filter(SupportMessage.chat_id == chat.id, SupportMessage.sender == 'admin', SupportMessage.is_deleted.isnot(True))
+        .order_by(SupportMessage.id.desc())
+        .first()
+    )
+    if last is None:
+        return None
+    preview = ' '.join(str(last.body or '').split())[:140] or ('Te enviaron una imagen.' if last.attachment else 'Tienes una respuesta de soporte.')
+    return {
+        'id': f'support-{chat.id}-{last.id}', 'kind': 'support', 'level': 'info', 'title': 'Soporte te respondió 💬', 'body': preview,
+        'url': '/soporte/', 'action_label': 'Ir al chat ›', 'order_number': '', 'moment': last.created_at,
+    }
+
+
+def build_feed(raw_order_numbers, support_token=''):
     """Lista de avisos de la campana, los más nuevos primero. Cada elemento:
-    id, kind (broadcast|order|message), level, title, body, url, order_number, at."""
+    id, kind (broadcast|order|message|support), level, title, body, url, order_number, action_label, at."""
     now = datetime.utcnow()
     entries = []
+
+    support_item = support_reply_item(support_token)
+    if support_item:
+        entries.append(support_item)
 
     broadcasts = (
         SiteNotification.query
@@ -173,6 +203,6 @@ def build_feed(raw_order_numbers):
         feed.append({
             'id': entry['id'], 'kind': entry['kind'], 'level': entry['level'], 'title': entry['title'],
             'body': entry['body'], 'url': entry['url'], 'order_number': entry['order_number'],
-            'at': _iso(entry['moment']),
+            'action_label': entry.get('action_label', ''), 'at': _iso(entry['moment']),
         })
     return feed

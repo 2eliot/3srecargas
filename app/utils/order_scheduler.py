@@ -105,11 +105,14 @@ def _run_tick(app):
     )
     from .order_processing import process_order_delivery
 
+    # Se recorren las 500 pendientes más viejas, pero solo las que de verdad hicieron trabajo gastan un turno (más abajo):
+    # antes, unas 25 órdenes viejas atascadas (intentos agotados, esperando el resto del pago o ya verificadas en espera
+    # de revisión manual) se llevaban todos los turnos y las órdenes nuevas nunca llegaban a revisarse.
     pending_orders = (
         Order.query
         .filter(Order.status == 'pending')
         .order_by(Order.id.asc())
-        .limit(200)
+        .limit(500)
         .all()
     )
     binance_window = binance_verify_window_seconds(app) if binance_on else 0
@@ -145,11 +148,17 @@ def _run_tick(app):
                 # sobrevive a los reinicios.
                 age = (datetime.utcnow() - (order.created_at or datetime.utcnow())).total_seconds()
                 if age <= binance_window:
-                    try_verify_binance_order(order, app)
-                    processed += 1
+                    binance_result = try_verify_binance_order(order, app) or {}
+                    # Solo gasta turno si hubo una consulta real a Binance (la orden sigue sin verificar): una ya verificada, sin
+                    # credenciales o con la ventana agotada contesta al instante y no debe quitarles el turno a las demás.
+                    if not binance_result.get('done'):
+                        processed += 1
             elif auto_verify_on and order_supports_background_payment_verification(order):
-                auto_verify_and_process_order(order)
-                processed += 1
+                result = auto_verify_and_process_order(order) or {}
+                # Solo cuenta si hubo un intento real; las que salen de inmediato (intentos agotados, en espera del resto
+                # del pago, en cooldown o ya verificadas) no le quitan el turno a las demás.
+                if result.get('checked') and not result.get('noop'):
+                    processed += 1
         except Exception as exc:
             order_number = getattr(order, 'order_number', order.id)
             print(f'[OrderScheduler] Error procesando orden #{order_number}: {exc}')
@@ -194,3 +203,60 @@ def _run_promos_tick():
             db.session.rollback()
         except Exception:
             pass
+
+    _run_background_housekeeping()
+
+
+# Trabajo que ANTES se hacía dentro de la petición de un visitante (y lo dejaba esperando segundos o minutos): cierre del mes del
+# ranking con sus premios, recálculo de todos los perfiles y chats inactivos. Ahora lo hace este hilo, que ya corre cada 20 segundos.
+_HOUSEKEEPING_EVERY_SECONDS = 60
+_PURGE_EVERY_SECONDS = 10 * 60
+_housekeeping_last = {'steps': 0.0, 'purge': 0.0}
+
+
+def _run_background_housekeeping():
+    from ..models import db
+
+    def guarded(label, func):
+        try:
+            func()
+        except Exception as exc:
+            print(f'[OrderScheduler] Error en {label}: {exc}')
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+
+    now = time.monotonic()
+    if now - _housekeeping_last['steps'] >= _HOUSEKEEPING_EVERY_SECONDS:
+        _housekeeping_last['steps'] = now
+
+        def archive_month():
+            from ..routes.main import archive_previous_month_rankings_if_needed
+            archive_previous_month_rankings_if_needed()
+
+        def refresh_profiles():
+            from .profile_social import ensure_fresh
+            ensure_fresh()
+
+        def close_chats():
+            from .support import close_idle_chats
+            close_idle_chats()
+
+        guarded('cierre mensual del ranking', archive_month)
+        guarded('recálculo de perfiles', refresh_profiles)
+        guarded('cierre de chats inactivos', close_chats)
+
+    if now - _housekeeping_last['purge'] >= _PURGE_EVERY_SECONDS:
+        _housekeeping_last['purge'] = now
+
+        def purge():
+            from .locks import purge_stale_counters
+            purge_stale_counters()
+
+        def optimize_images():
+            from .image_optimize import optimize_branding_images
+            optimize_branding_images()
+
+        guarded('limpieza de topes viejos', purge)
+        guarded('optimización de imágenes de fondo', optimize_images)

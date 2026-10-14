@@ -1,16 +1,18 @@
 """Rutas públicas de las 3 promociones: Recarga Acumulada, Sorteo Diario y
 Adivina el Número. Cada una tiene una página (elige juego si hay más de
 uno activo) y un mini-API JSON que la página consume con fetch()."""
-from flask import Blueprint, jsonify, make_response, render_template, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, make_response, render_template, request, url_for
+from flask_login import current_user
 
-from ..utils.locks import check_rate_limit
+from ..models import Tournament, db
+from ..utils import tournaments as tournaments_service
+from ..utils.locks import check_rate_limit, client_ip
 from ..utils.promos import (
     get_accumulated_enabled_games, get_accumulated_progress_state,
     get_guess_enabled_games, get_guess_public_state, submit_guess,
-    HORDE_BANNED_MESSAGE, HordeNotEnoughPoints, HordeOutdatedPage, get_horde_config, get_horde_enabled_games, is_horde_banned, get_horde_public_state, start_horde_run, finish_horde_run,
+    HORDE_BANNED_MESSAGE, HordeNotEnoughPoints, HordeOutdatedPage, cancel_horde_run, get_horde_config, get_horde_enabled_games, is_horde_banned, get_horde_public_state, start_horde_run, finish_horde_run,
     get_raffle_enabled_games, get_raffle_public_state, get_raffle_replay_state,
     get_raffle_show_state, register_raffle_entry,
-    run_daily_raffle_draws,
 )
 
 promos_bp = Blueprint('promos_bp', __name__, url_prefix='/promos')
@@ -20,13 +22,14 @@ promos_bp = Blueprint('promos_bp', __name__, url_prefix='/promos')
 # pero sí frena un script que prueba muchos IDs reales rápido — que es el
 # ataque real posible ahora que cada ID solo tiene 1 intento al día.
 ADIVINA_RATE_LIMIT_PER_MINUTE = 8
+# Registro del sorteo y consulta de Recarga Acumulada: igual de caros (consulta externa por cada ID nuevo). Con topes amplios para conexiones compartidas.
+SORTEO_REGISTRO_RATE_LIMIT_PER_MINUTE = 15
+RECARGA_ESTADO_RATE_LIMIT_PER_MINUTE = 30
 
 
 def _client_ip():
-    """IP real detrás de nginx. `remote_addr` a secas sería siempre
-    127.0.0.1 y el límite por IP no filtraría absolutamente nada."""
-    forwarded = (request.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
-    return forwarded or request.remote_addr or ''
+    """IP real del cliente (misma función segura que usan todos los topes: ver utils/locks.py)."""
+    return client_ip()
 
 
 def _selected_game(games, game_id):
@@ -37,18 +40,87 @@ def _selected_game(games, game_id):
     return games[0] if games else None
 
 
+# ─── Torneos ─────────────────────────────────────────────────────────────────
+
+def _torneos_view(tournaments, tournament, preview=False):
+    from ..routes.verify import verifiable_game_ids
+
+    verifiable = bool(tournament) and tournament.game_id in verifiable_game_ids()
+    scheduled_labels = {t.id: tournaments_service.opens_label(t) for t in tournaments if tournaments_service.is_scheduled(t)}
+    return render_template('promos/torneos.html', tournaments=tournaments, tournament=tournament, verifiable=verifiable, preview=preview,
+                           scheduled_labels=scheduled_labels)
+
+
+@promos_bp.route('/torneos')
+def torneos_page():
+    """Página de Torneos (apartado de "Dinámicas Gratis" del menú). Con un solo torneo visible se muestra directo; con varios, la lista; sin ninguno, "muy pronto"."""
+    tournaments = tournaments_service.visible_tournaments()
+    return _torneos_view(tournaments, tournaments[0] if len(tournaments) == 1 else None)
+
+
+@promos_bp.route('/torneos/<int:tournament_id>')
+def torneo_page(tournament_id):
+    """El link que el dueño publica en WhatsApp. Un torneo en "Preparando" solo lo ve el administrador (vista previa)."""
+    tournament = db.session.get(Tournament, tournament_id)
+    is_admin = current_user.is_authenticated and current_user.__class__.__name__ == 'AdminUser'
+    visible = tournament is not None and tournament.status in tournaments_service.VISIBLE_STATUSES
+    if tournament is None or not (visible or is_admin):
+        abort(404)
+    return _torneos_view([tournament], tournament, preview=not visible)
+
+
+def _torneo_or_404(tournament_id, allow_admin_preview=False):
+    tournament = db.session.get(Tournament, tournament_id)
+    is_admin = allow_admin_preview and current_user.is_authenticated and current_user.__class__.__name__ == 'AdminUser'
+    if tournament is None or (tournament.status not in tournaments_service.VISIBLE_STATUSES and not is_admin):
+        abort(404)
+    return tournament
+
+
+@promos_bp.route('/api/torneos/<int:tournament_id>/estado')
+def torneo_estado(tournament_id):
+    """Estado del torneo para la página. Con `player_id` agrega, si ese ID ya está inscrito, los datos de su sala. Con `room` (la sala que la persona tocó
+    para volver a entrar) los datos solo salen si está inscrita EN ESA sala."""
+    if not check_rate_limit(f'torneo_estado:{_client_ip()}', tournaments_service.STATE_RATE_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'error': 'Demasiadas consultas seguidas. Espera un momento.'}), 429
+    tournament = _torneo_or_404(tournament_id, allow_admin_preview=True)
+    player_id = (request.args.get('player_id') or '').strip()[:60]
+    room_position = (request.args.get('room') or '').strip()[:6] or None
+    return jsonify({'ok': True, **tournaments_service.public_state(tournament, player_id, room_position=room_position)})
+
+
+@promos_bp.route('/api/torneos/<int:tournament_id>/unirme', methods=['POST'])
+def torneo_unirme(tournament_id):
+    """Inscribe a un ID (verificado en el servidor) en la primera sala con lugar y devuelve los datos de esa sala."""
+    ip = _client_ip()
+    if not check_rate_limit(f'torneo_join:{ip}', tournaments_service.JOIN_RATE_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'error': 'Demasiados intentos seguidos desde tu conexión. Espera un momento e intenta de nuevo.'}), 429
+    tournament = _torneo_or_404(tournament_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        entry, _room, already = tournaments_service.join_tournament(tournament.id, data.get('player_id'), ip=ip, room_position=data.get('room_position'))
+    except tournaments_service.TournamentError as exc:
+        return jsonify({'ok': False, 'error': str(exc), **tournaments_service.public_state(tournament)}), 400
+    return jsonify({'ok': True, 'already': already, **tournaments_service.public_state(tournament, entry.player_id)})
+
+
 @promos_bp.route('/api/verify-player')
 def verify_player():
     """Verificación pública de ID, compartida por las 3 promos: consulta el
     mismo verificador real que usa la tienda (Free Fire/Blood Strike) y
     devuelve el nombre del jugador, para que el cliente confirme su ID
     antes de registrarse o jugar."""
-    from ..routes.verify import verify_player_nick
+    from ..routes.verify import _verify_rate_limited, verify_player_nick
 
     game_id = request.args.get('game_id', type=int)
     player_id = (request.args.get('player_id') or '').strip()
     if not game_id:
         return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
+    # Mismo tope por IP que las rutas /store/player/verify*: cada ID nuevo dispara una consulta externa (hasta ~40 s) y sin freno
+    # cualquiera podía gastarla o hacer que el proveedor bloquee la llave del sitio.
+    limited = _verify_rate_limited()
+    if limited:
+        return limited
 
     payload, status = verify_player_nick(player_id, str(game_id), mode='auto')
     return jsonify(payload), status
@@ -69,6 +141,9 @@ def recarga_acumulada_estado():
     player_id = (request.args.get('player_id') or '').strip()
     if not game_id:
         return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
+    # Cada ID nuevo puede disparar una consulta externa (hasta ~85 s) que ocupa un hilo del servidor: se limita por conexión.
+    if player_id and not check_rate_limit(f'recarga_estado_ip:{_client_ip()}', RECARGA_ESTADO_RATE_LIMIT_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'error': 'Demasiadas consultas seguidas. Espera un momento.'}), 429
     try:
         state = get_accumulated_progress_state(game_id, player_id)
     except ValueError as exc:
@@ -104,16 +179,8 @@ def sorteo_show():
     if not game_id:
         return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
 
-    # Quien está viendo la página en vivo consulta este endpoint cada 20s
-    # (ver cargarEstado() en sorteo.html) — si ya se cumplió la hora del
-    # sorteo pero nadie se registró justo en ese momento (que es lo único
-    # que hasta ahora disparaba run_daily_raffle_draws al instante, ver
-    # sorteo_registrar), el sorteo se quedaba esperando al próximo tick del
-    # scheduler en segundo plano (hasta 20s más) antes de correr. Disparar
-    # el chequeo también aquí hace que corra apenas alguien esté mirando,
-    # en vez de depender solo de esa otra coincidencia.
-    run_daily_raffle_draws()
-
+    # El sorteo (y la entrega de sus premios, que puede tardar de segundos a minutos) ya NO se dispara desde esta visita: lo corre el
+    # proceso de fondo cada 20 s (utils/order_scheduler._run_promos_tick). Esta ruta solo lee el resultado.
     state = get_raffle_show_state(game_id, player_id)
     return jsonify({'ok': True, **state})
 
@@ -134,6 +201,9 @@ def sorteo_replay():
 
 @promos_bp.route('/api/sorteo/registrar', methods=['POST'])
 def sorteo_registrar():
+    # Cada ID nuevo dispara una consulta externa (hasta ~85 s) que ocupa un hilo del servidor, y sin verificación se podía llenar el sorteo de IDs falsos.
+    if not check_rate_limit(f'sorteo_reg_ip:{_client_ip()}', SORTEO_REGISTRO_RATE_LIMIT_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'error': 'Demasiados registros seguidos desde tu conexión. Espera un momento e intenta de nuevo.'}), 429
     data = request.get_json(silent=True) or {}
     game_id = data.get('game_id')
     player_id = data.get('player_id')
@@ -147,15 +217,8 @@ def sorteo_registrar():
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
 
-    # Si ya se cumplió la hora del sorteo de hoy y este registro entró al
-    # pool de hoy (todavía no se había corrido), se corre en el momento en
-    # vez de esperar al próximo tick del scheduler (hasta 20s) — para que
-    # quien se acaba de registrar vea el resultado al instante. Si el
-    # registro ya cayó en el pool de mañana (hoy ya se sorteó), no hay nada
-    # que correr ahora.
-    if not is_next_day:
-        run_daily_raffle_draws()
-
+    # Si el sorteo de hoy ya cumplió su hora, lo corre el proceso de fondo en un máximo de ~20 s (la página consulta el resultado sola);
+    # ya no se ejecuta dentro de esta petición para que quien se registra no espere por la entrega de premios.
     return jsonify({
         'ok': True, 'ticket_number': entry.ticket_number, 'is_next_day': is_next_day,
         'player_nick': entry.player_nick,
@@ -211,8 +274,11 @@ def adivina_intentar():
 
 # ─── Hordas de Diamantes ─────────────────────────────────────────────────────
 
-HORDAS_START_RATE_LIMIT_PER_MINUTE = 10
-HORDAS_FINISH_RATE_LIMIT_PER_MINUTE = 20
+# Por IP y por minuto. Varios clientes comparten la misma IP (datos móviles, una casa, un local con wifi), así que los topes no pueden ser muy cortos:
+# antes eran 10 y 20 y una IP compartida podía quedarse sin poder iniciar o guardar partidas.
+HORDAS_START_RATE_LIMIT_PER_MINUTE = 30
+HORDAS_FINISH_RATE_LIMIT_PER_MINUTE = 60
+HORDAS_CANCEL_RATE_LIMIT_PER_MINUTE = 20
 
 
 @promos_bp.route('/hordas')
@@ -288,6 +354,11 @@ def hordas_iniciar():
         return jsonify({'ok': False, 'code': 'no_points', 'error': str(exc), 'points_balance': exc.balance}), 400
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
+    except Exception:
+        # Falla inesperada: siempre una respuesta JSON clara (así el juego distingue "servidor ocupado" de "sin internet") y queda en el registro.
+        db.session.rollback()
+        current_app.logger.exception('Hordas: error inesperado al iniciar una partida')
+        return jsonify({'ok': False, 'code': 'server', 'error': 'El servidor está ocupado. Intenta de nuevo en unos segundos.'}), 503
     return jsonify({'ok': True, **result})
 
 
@@ -305,4 +376,25 @@ def hordas_terminar():
         )
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Hordas: error inesperado al guardar una partida')
+        return jsonify({'ok': False, 'code': 'server', 'error': 'El servidor está ocupado. Intenta de nuevo en unos segundos.'}), 503
     return jsonify({'ok': True, **result})
+
+
+@promos_bp.route('/api/hordas/cancelar', methods=['POST'])
+def hordas_cancelar():
+    """Anula una partida que se abrió pero el teléfono no pudo armar (falla del juego en ese equipo): no se gasta la partida del día ni los puntos."""
+    if not check_rate_limit(f'hordas_cancel_ip:{_client_ip()}', HORDAS_CANCEL_RATE_LIMIT_PER_MINUTE, 60):
+        return jsonify({'ok': False, 'error': 'Demasiados intentos seguidos. Espera un momento.'}), 429
+    data = request.get_json(silent=True, force=True) or {}
+    try:
+        result = cancel_horde_run(data.get('token'))
+    except ValueError as exc:
+        return jsonify({'ok': False, 'error': str(exc)}), 400
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Hordas: error inesperado al anular una partida')
+        return jsonify({'ok': False, 'code': 'server', 'error': 'El servidor está ocupado. Intenta de nuevo en unos segundos.'}), 503
+    return jsonify({'ok': True, 'refunded_points': result['refunded_points']})
