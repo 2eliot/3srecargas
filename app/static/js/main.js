@@ -1924,6 +1924,7 @@ window.nxDebug = function () {};
                 catalogLoadedAt = Date.now();
                 manualSchedule = (data.game && data.game.manual_schedule) || null;
                 applyGameToSidebar(data.game);
+                if (packageSections.gameId !== gameId) { packageSections.gameId = gameId; packageSections.active = null; }
                 renderPackages(data.packages);
                 if (previousPackageId) {
                     reselectPackage(previousPackageId, previousTotal);
@@ -1968,7 +1969,7 @@ window.nxDebug = function () {};
         var packageId = window.PRESELECT_PACKAGE;
         if (!packageId) return;
         window.PRESELECT_PACKAGE = null;   // solo la primera vez: después manda el cliente
-        var item = document.querySelector('.package-item[data-package-id="' + packageId + '"]');
+        var item = findPackageItem(packageId);
         if (item && !item.disabled) item.click();
         [['playerId', window.PRESELECT_PLAYER_ID], ['zoneId', window.PRESELECT_ZONE_ID]].forEach(function (pair) {
             var input = document.getElementById(pair[0]);
@@ -1979,7 +1980,7 @@ window.nxDebug = function () {};
     }
 
     function reselectPackage(packageId, previousTotal) {
-        var item = document.querySelector('.package-item[data-package-id="' + packageId + '"]');
+        var item = findPackageItem(packageId);
         if (!item || item.disabled) {
             notifyCatalogChange('Este paquete ya no está disponible. Elige otro para continuar.');
             return;
@@ -2116,7 +2117,124 @@ window.nxDebug = function () {};
     }
 
     /* ── Render Package Items ─────────────────────────────── */
+    /* ── Apartados de los paquetes: Moneda principal / Pases / Tarjetas ──────────────────────────────────
+       El dueño elige en el admin en qué apartado va cada paquete. Si el juego tiene paquetes en más de uno,
+       arriba de la lista sale una barrita de cristal (como la de Juegos / Tarjetas / Wallet, más chica) con un
+       cuadro que se desliza; si solo tiene uno, no sale nada y todo se ve como siempre. */
+    var SECTION_ORDER = ['main', 'pass', 'card'];
+    var SECTION_LABELS = { main: 'Moneda', pass: 'Pases', card: 'Tarjetas' };
+    var SECTION_TITLES = { main: 'Moneda principal', pass: 'Pases', card: 'Tarjetas' };
+    var packageSections = { all: [], active: null, gameId: null, present: [] };
+
+    function pkgSection(pkg) {
+        var s = pkg && pkg.section;
+        return SECTION_ORDER.indexOf(s) >= 0 ? s : 'main';
+    }
+
+    function placeSectionSlider(animate) {
+        var bar = document.getElementById('pkgSections');
+        if (!bar || bar.hidden) return;
+        var slider = bar.querySelector('.pkg-sec-slider');
+        var active = bar.querySelector('.pkg-sec-btn.is-active');
+        if (!slider || !active) return;
+        if (!animate) bar.classList.remove('is-ready');
+        var b = bar.getBoundingClientRect();
+        var a = active.getBoundingClientRect();
+        slider.style.width = a.width + 'px';
+        slider.style.height = a.height + 'px';
+        slider.style.transform = 'translate(' + (a.left - b.left - bar.clientLeft) + 'px, ' + (a.top - b.top - bar.clientTop) + 'px)';
+        if (!animate) {
+            void slider.offsetWidth;
+            requestAnimationFrame(function () { bar.classList.add('is-ready'); });
+        }
+    }
+
+    function drawSectionTabs() {
+        var bar = document.getElementById('pkgSections');
+        if (!bar) return;
+        var present = packageSections.present;
+        bar.innerHTML = '';
+        bar.classList.remove('is-ready');
+        if (present.length < 2) { bar.hidden = true; return; }
+        bar.hidden = false;
+        var slider = document.createElement('span');
+        slider.className = 'pkg-sec-slider';
+        slider.setAttribute('aria-hidden', 'true');
+        bar.appendChild(slider);
+        present.forEach(function (section) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'pkg-sec-btn' + (section === packageSections.active ? ' is-active' : '');
+            btn.dataset.section = section;
+            btn.setAttribute('role', 'tab');
+            btn.setAttribute('aria-selected', section === packageSections.active ? 'true' : 'false');
+            btn.title = SECTION_TITLES[section];
+            btn.textContent = SECTION_LABELS[section];
+            btn.addEventListener('click', function () { showSection(section); });
+            bar.appendChild(btn);
+        });
+        placeSectionSlider(false);
+        watchSectionBar();
+    }
+
+    function packagesOfSection(section) {
+        if (packageSections.present.length < 2) return packageSections.all;
+        return packageSections.all.filter(function (p) { return pkgSection(p) === section; });
+    }
+
+    function showSection(section) {
+        if (section === packageSections.active || packageSections.present.indexOf(section) < 0) return;
+        packageSections.active = section;
+        var bar = document.getElementById('pkgSections');
+        if (bar) {
+            Array.prototype.forEach.call(bar.querySelectorAll('.pkg-sec-btn'), function (btn) {
+                var on = btn.dataset.section === section;
+                btn.classList.toggle('is-active', on);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            placeSectionSlider(true);
+        }
+        paintPackages(packagesOfSection(section));   // al cambiar de apartado se limpia la selección, como al cambiar de juego
+    }
+
+    /* Busca la tarjeta de un paquete; si está en otro apartado, abre ese apartado primero. */
+    function findPackageItem(packageId) {
+        var selector = '.package-item[data-package-id="' + packageId + '"]';
+        var item = document.querySelector(selector);
+        if (item) return item;
+        var pkg = packageSections.all.filter(function (p) { return String(p.id) === String(packageId); })[0];
+        if (pkg && pkgSection(pkg) !== packageSections.active) {
+            showSection(pkgSection(pkg));
+            return document.querySelector(selector);
+        }
+        return null;
+    }
+
+    window.addEventListener('resize', function () { placeSectionSlider(false); });
+
+    /* Si cambia el ancho de la barra (cargó la tipografía, o el nombre elegido se pone más grueso), el cuadro de cristal se reajusta. */
+    var sectionBarWatcher = null;
+    function watchSectionBar() {
+        var bar = document.getElementById('pkgSections');
+        if (!bar) return;
+        if (!sectionBarWatcher && window.ResizeObserver) {
+            sectionBarWatcher = new ResizeObserver(function () { placeSectionSlider(true); });
+            sectionBarWatcher.observe(bar);
+        }
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { placeSectionSlider(false); });
+    }
+
     function renderPackages(packages) {
+        packageSections.all = packages || [];
+        packageSections.present = SECTION_ORDER.filter(function (s) {
+            return packageSections.all.some(function (p) { return pkgSection(p) === s; });
+        });
+        if (packageSections.present.indexOf(packageSections.active) < 0) packageSections.active = packageSections.present[0] || null;
+        drawSectionTabs();
+        paintPackages(packagesOfSection(packageSections.active));
+    }
+
+    function paintPackages(packages) {
         var grid = document.getElementById('packagesGrid');
         grid.innerHTML = '';
 

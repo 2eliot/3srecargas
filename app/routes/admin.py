@@ -72,7 +72,7 @@ from ..utils.central_one import (
     CentralOneError, CentralOneUnknown, attach_delivered_codes, fetch_balance as fetch_central_one_balance,
     get_centralone_env, probe_codes_permission, sync_catalog as sync_central_one_catalog,
 )
-from ..models import PushSubscription
+from ..models import PushSubscription, PACKAGE_SECTION_LABELS
 from ..utils.push_notifications import is_push_configured, send_push_broadcast, send_push_to_order_subscribers_async
 from ..utils.site_notifications import BODY_MAX, TITLE_MAX, clean_link
 from ..utils.points import (
@@ -532,8 +532,28 @@ def login():
 @admin_bp.route('/logout')
 @login_required
 def logout():
+    from ..utils.official_profile import clear_admin_return
+    clear_admin_return()
     logout_user()
     return redirect(url_for('admin_bp.login'))
+
+
+@admin_bp.route('/perfil-oficial', methods=['POST'])
+def official_profile_enter():
+    """Botón "Perfil" del menú: el administrador entra a la cuenta oficial (3srecargas) para ver y editar su perfil sin escribir ninguna
+    clave. Su sesión del panel se cambia por la de esa cuenta y se anota a quién volver (botón "Volver al panel de admin")."""
+    from ..utils.official_profile import clear_admin_return, ensure_official_profile, remember_admin_return
+    user = ensure_official_profile()
+    if user is None or not user.is_active:
+        flash('No se pudo abrir el perfil oficial: la cuenta no existe o está desactivada (Admin → Cuentas).', 'danger')
+        return redirect(url_for('admin_bp.dashboard'))
+    session.pop(STOCK_PINS_SESSION_KEY, None)
+    remember_admin_return(current_user)
+    if not login_user(user):
+        clear_admin_return()
+        flash('No se pudo abrir el perfil oficial.', 'danger')
+        return redirect(url_for('admin_bp.dashboard'))
+    return redirect(url_for('profiles_bp.edit_profile'))
 
 
 @admin_bp.route('/maintenance/toggle', methods=['POST'])
@@ -841,6 +861,7 @@ def packages():
         packages=all_packages,
         games=all_games,
         selected_game_id=game_id,
+        package_sections=PACKAGE_SECTION_LABELS,
     )
 
 
@@ -850,6 +871,13 @@ PACKAGE_ANNOUNCEMENT_TYPES = {'', 'one_time_purchase', 'redeem_code'}
 def _normalize_package_announcement_type(raw_value):
     value = (raw_value or '').strip()
     return value if value in PACKAGE_ANNOUNCEMENT_TYPES else ''
+
+
+def _normalize_package_section(raw_value):
+    """Apartado elegido en el formulario del paquete ('main' | 'pass' | 'card'); cualquier otra cosa = no se eligió (None)."""
+    from ..models import PACKAGE_SECTION_LABELS
+    value = (raw_value or '').strip()
+    return value if value in PACKAGE_SECTION_LABELS else None
 
 
 def _normalize_package_points(raw_value):
@@ -880,11 +908,16 @@ def package_add():
     is_automated = bool(request.form.get('is_automated'))
     sort_order = int(request.form.get('sort_order', 100))
     announcement_type = _normalize_package_announcement_type(request.form.get('announcement_type'))
+    section = _normalize_package_section(request.form.get('section'))
     show_support_fallback = bool(request.form.get('show_support_fallback'))
 
     if not game_id or not name or not price:
         flash('Juego, nombre y precio son obligatorios.', 'danger')
         return redirect(url_for('admin_bp.packages'))
+
+    if section is None:
+        flash('Elige en qué apartado va el paquete (Moneda principal, Pases o Tarjetas).', 'danger')
+        return redirect(url_for('admin_bp.packages', game_id=game_id) if str(game_id).isdigit() else url_for('admin_bp.packages'))
 
     try:
         base_price = float(price)
@@ -910,7 +943,7 @@ def package_add():
         description=description, is_automated=is_automated,
         sort_order=sort_order, image=image, announcement_type=announcement_type or None,
         points_reward=_normalize_package_points(request.form.get('points_reward')),
-        show_support_fallback=show_support_fallback,
+        show_support_fallback=show_support_fallback, section=section,
     )
     db.session.add(pkg)
     db.session.commit()
@@ -956,6 +989,8 @@ def package_edit(pkg_id):
     pkg.announcement_type = _normalize_package_announcement_type(request.form.get('announcement_type')) or None
     pkg.points_reward = _normalize_package_points(request.form.get('points_reward'))
     pkg.show_support_fallback = bool(request.form.get('show_support_fallback'))
+    # El apartado se pregunta siempre al editar; si por algún motivo no llega uno válido se conserva el que tenía.
+    pkg.section = _normalize_package_section(request.form.get('section')) or pkg.section or 'main'
 
     if request.form.get('remove_image'):
         if pkg.image:

@@ -1,0 +1,7 @@
+{#- Barra del administrador que entró al perfil oficial desde su menú: un botón para volver al panel sin escribir la clave. Solo sale cuando ADMIN_RETURN es verdadero. -#}
+{% if ADMIN_RETURN %}
+<form method="post" action="{{ url_for('profiles_bp.back_to_admin') }}" class="nx-admin-return" aria-label="Volver al panel de administración">
+    <span class="nx-admin-return-txt">Estás en el perfil oficial</span>
+    <button type="submit" class="nx-admin-return-btn">← Volver al panel de admin</button>
+</form>
+{% endif %}

@@ -352,7 +352,7 @@
         // hecho desde este navegador, sin tener que buscar nada.
         var tip = botSays('🔔 Primero revisa tus notificaciones: ahí tienes la actualización de tu último pedido y su estado.');
         addActions(tip, [{ label: 'Ver mis notificaciones', action: openNotifications, primary: true, attention: true }]);
-        var bubble = botSays('Si no lo ves en tus notificaciones, búscalo con una de estas 3 opciones (la que te sea más fácil):\n• Número de orden\n• Referencia del pago\n• Foto del comprobante');
+        var bubble = botSays('Si no lo ves en tus notificaciones, búscalo con una de estas 3 opciones (la que te sea más fácil):\n• Foto del comprobante\n• Referencia del pago (mínimo 6 dígitos)\n• Número de orden');
         askValue(bubble, {
             placeholder: 'Número de orden o referencia',
             numeric: true,
@@ -477,15 +477,39 @@
             stop();
             if (token !== flow) return;
             var orders = data.orders || [];
-            if (!data.reference) {
-                noOrderFound('No pude leer una referencia en la foto. Prueba con una foto más clara donde se vea completa la referencia, o escríbela.');
-            } else if (!orders.length) {
-                noOrderFound('Leí la referencia ' + data.reference + ' pero no encuentro un pedido con ella. Revisa que sea la de tu pago.');
-            } else {
+            if (data.reference && orders.length) {
                 botSays('Leí la referencia ' + data.reference + '. Esto encontré:');
                 showOrders(orders);
+            } else if (data.ours === 'not_ours') {
+                // El comprobante se ve claro y el pago fue a otra cuenta: no es de la tienda.
+                noOrderFound('Esos no son nuestros datos: el pago de ese comprobante se hizo a otra cuenta, no a la de 3S Recargas. Revisa que hayas pagado a los datos que te mostramos al comprar. Si crees que es un error, habla con soporte.');
+            } else if (!data.reference) {
+                noOrderFound('No pude leer una referencia en la foto. Prueba con una foto más clara donde se vea completa la referencia, o escríbela.');
+            } else if (data.can_create) {
+                offerCreateOrder(file, data.reference);
+            } else {
+                // Si no se alcanzó a ver a quién se pagó, no se dice nada de eso: solo lo que se sabe de la referencia.
+                noOrderFound('Leí la referencia ' + data.reference + ' pero no encuentro un pedido con ella. Revisa que sea la de tu pago.');
             }
         }).catch(function (err) { failed(token, stop, err); });
+    }
+
+    // Pago hecho a nuestros datos pero sin orden: hay que crearla con ese comprobante para que llegue la recarga.
+    function offerCreateOrder(file, reference) {
+        var bubble = botSays('Leí la referencia ' + reference + ' y sí es un pago a nuestros datos, pero todavía no está en nuestro sistema: no tiene ninguna orden. Para que te llegue la recarga tienes que hacer tu orden con ese comprobante. ¿Dónde prefieres hacerla?');
+        addActions(bubble, [
+            { label: 'Hacerla en la página', href: '/', primary: true },
+            {
+                label: 'Hacerla aquí en el chat',
+                primary: true,
+                action: function (evt) {
+                    lock(bubble, evt && evt.currentTarget);
+                    userSays('Hacerla aquí en el chat');
+                    botSays('Perfecto, creemos tu orden con ese comprobante. Como ya pagaste, solo necesito unos datos.');
+                    chooseGame({ file: file });
+                }
+            }
+        ]);
     }
 
     // ── Botones del menú ─────────────────────────────────────────────────

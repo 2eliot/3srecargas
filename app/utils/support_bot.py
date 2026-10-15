@@ -287,6 +287,31 @@ def find_orders(query):
     return []
 
 
+def receipt_verdict(result):
+    """Qué se sabe de un comprobante cuando el cliente lo manda en "Estado de mi recarga".
+
+    `result` es lo que devuelve el lector de comprobantes (referencia, monto y a quién se pagó). Se compara
+    ese destinatario con los datos que el dueño pone en el panel (métodos de pago y las instrucciones de
+    la IA) con la misma regla del chat libre (receipt_check). Devuelve:
+    - `ours`: 'ours' (es a nuestros datos), 'not_ours' (el destinatario es otro) o 'unknown' (no se vio
+      bien a quién se pagó, o los datos se contradicen: entonces no se dice nada).
+    - `can_create`: pago a nuestros datos, con referencia legible y que NO está en ninguna orden (de
+      ninguna fecha): se le ofrece crear la orden con ese comprobante. Es solo un aviso para el chat; la
+      orden igual se verifica con el banco como cualquier otra."""
+    from flask import current_app
+
+    from . import receipt_check
+    from .support_ai import get_ai_settings
+
+    try:
+        note = receipt_check.analyze(result, get_ai_settings()['instructions'])
+    except Exception:
+        current_app.logger.exception('[SupportBot] no se pudo comparar un comprobante con los datos de la tienda')
+        return {'ours': 'unknown', 'can_create': False}
+    ours = note.get('ours') if note.get('read') and note.get('ours') in ('ours', 'not_ours') else 'unknown'
+    return {'ours': ours, 'can_create': receipt_check.can_invite(note)}
+
+
 def order_card(order):
     """Tarjeta para el cliente. No lleva ID de jugador, correo, teléfono ni
     la referencia: solo lo necesario para reconocer su pedido y saber qué pasa."""

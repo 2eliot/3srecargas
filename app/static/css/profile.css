@@ -161,6 +161,9 @@ html.lite .pf-bg-video { display: none !important; }
 /* Signo de verificado: junto al nombre de las cuentas que verificaron un ID con una compra */
 .pf-namerow { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pf-namerow .pf-name { min-width: 0; }
+/* Cuenta oficial: el nombre no se parte; si no caben el verificado, ADMIN y el nivel, lo que sobra baja a la línea de abajo. */
+.pf-namerow.has-official { flex-wrap: wrap; row-gap: 4px; }
+.pf-namerow.has-official .pf-name { flex: 0 0 auto; max-width: 100%; overflow-wrap: anywhere; }
 .pf-handle { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,.62); overflow-wrap: anywhere; }
 
 /* ── Cuerpo ──────────────────────────────────────────────────────────────── */
@@ -510,6 +513,12 @@ html.lite .pf-bg-video { display: none !important; }
 .pf-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--pf-accent), #fff); transition: width .6s cubic-bezier(.2,.8,.3,1); }
 .pf-levelnote { margin: 8px 0 12px; font-size: 12.5px; color: rgba(255,255,255,.75); }
 .pf-levelnote b { color: #fff; }
+/* Botón "Editar perfil" del dueño (en su propio perfil, arriba de las misiones): separado de lo de arriba y de abajo para que no se vea pegado */
+.pf-editrow { display: flex; justify-content: center; margin: 22px 0 26px; }
+.pf-editbtn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-width: 220px; max-width: 100%; padding: 12px 26px; border-radius: 14px; font-weight: 900; font-size: 14px; letter-spacing: .03em; color: #fff; text-decoration: none; cursor: pointer; background: linear-gradient(135deg, #ff1a2e, #b3000f); border: 1px solid rgba(255,120,130,.7); box-shadow: 0 8px 24px rgba(225,29,46,.32), inset 0 1px 1px rgba(255,255,255,.35); transition: transform .15s ease, filter .2s ease; -webkit-tap-highlight-color: transparent; }
+.pf-editbtn svg { width: 17px; height: 17px; flex: 0 0 auto; }
+.pf-editbtn:hover, .pf-editbtn:focus-visible { filter: brightness(1.1); outline: none; }
+.pf-editbtn:active { transform: scale(.97); }
 .pf-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
 .pf-tile { padding: 11px 13px; border-radius: 14px; background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.16); display: grid; gap: 2px; }
 .pf-tile-wide { grid-column: 1 / -1; }

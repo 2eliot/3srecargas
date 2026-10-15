@@ -20,6 +20,7 @@ from ..models import (
 from .contact_filter import public_name
 from .auth_accounts import ACCOUNT_KINDS, is_account_user
 from .locks import acquire_lock, check_rate_limit, release_lock
+from .official_profile import is_official_user
 from .order_units import extract_order_units
 from . import profile_xp as XP
 from .timezone import now_ve, to_ve, ve_day_start_utc_naive
@@ -641,7 +642,7 @@ def search_accounts(query, limit=SEARCH_LIMIT):
         low = handle.lower()
         order = 0 if low == text else (1 if low.startswith(text) else 2)
         found.append((order, len(handle), low, {
-            'name': _shown_name(user, profile), 'handle': handle,
+            'name': _shown_name(user, profile), 'handle': handle, 'official': is_official_user(user),
             'avatar': (media_url_path(profile.avatar_path) or '') if (profile and profile.avatar_path) else '',
         }))
     found.sort(key=lambda item: item[:3])

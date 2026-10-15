@@ -77,6 +77,7 @@
     <!-- End Meta Pixel Code -->
 </head>
 <body class="{% block body_class %}{% endblock %}">
+    {% include '_admin_return.html' %}
     {#- Fondo de la web en VIDEO (si el admin subió un MP4/WEBM en lugar de una imagen): capa fija detrás de todo. Las páginas con fondo propio lo reemplazan. -#}
     {% block page_bg_video %}{{ bg_video_layer(SITE_BACKGROUND_VIDEO) }}{% endblock %}
     <header class="site-header">

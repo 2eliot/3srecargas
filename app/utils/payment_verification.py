@@ -47,10 +47,10 @@ MIN_REFERENCE_LENGTH = 6
 
 
 def reference_is_long_enough(reference):
-    # Se cuentan solo los caracteres que importan: los ceros del principio no cuentan (0000000012 son 2, no 10); un relleno de ceros
-    # podía hacer pasar una referencia corta por larga.
-    significant = ''.join(ch for ch in str(reference or '') if ch.isalnum()).lstrip('0')
-    return len(significant) >= MIN_REFERENCE_LENGTH
+    # Cuentan TODOS los caracteres, también los ceros del principio (000936 son 6): los bancos rellenan con ceros y de la referencia
+    # se toman los últimos 6 dígitos tal cual. Lo único que no vale es una referencia que sea solo ceros.
+    cleaned = ''.join(ch for ch in str(reference or '') if ch.isalnum())
+    return len(cleaned) >= MIN_REFERENCE_LENGTH and cleaned.strip('0') != ''
 
 
 def _generate_reference_variants(reference):

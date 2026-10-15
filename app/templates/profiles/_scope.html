@@ -2,6 +2,7 @@
     editor (scope_class='pf-scope-stage'). Las variables CSS y los atributos data-* vienen ya validados del servidor.
     Reglas de la tienda: NO se muestran IDs, redes sociales, comentarios, juegos ni listas de compras; solo números de
     nivel/diamantes/puestos que salen de las compras de la cuenta. -#}
+{%- import 'profiles/_official.html' as official -%}
 {%- set sc = v.social -%}
 {%- set rarity_class = {'Común': 'common', 'Rara': 'rare', 'Épica': 'epic', 'Legendaria': 'legendary'} -%}
 {%- macro thousands(n) -%}{{ '{:,}'.format(n or 0)|replace(',', '.') }}{%- endmacro -%}
@@ -25,8 +26,9 @@
             </div>
             <div class="pf-plate">
                 {% if sc.title %}<span class="pf-titletag" id="pfTitle" {% if preview and not sc.show_stats %}hidden{% endif %}>{{ sc.title }}</span>{% endif %}
-                <div class="pf-namerow">
+                <div class="pf-namerow{{ ' has-official' if v.official }}">
                     <h1 class="pf-name" id="pfName">{{ v.name }}</h1>
+                    {%- if v.official %}{{ official.mark() }}{% endif %}
                     {#- Nivel por números (como Steam): solo el número y su color, al lado del nombre. Sin premios. -#}
                     {% if sc.xp and (sc.show_stats or preview) %}<span class="pf-xpbadge" id="pfXpLevel" style="--xp1: {{ sc.xp.c1 }}; --xp2: {{ sc.xp.c2 }}" title="Nivel {{ sc.xp.level }}" aria-label="Nivel {{ sc.xp.level }}" {% if preview and not sc.show_stats %}hidden{% endif %}>{{ sc.xp.level }}</span>{% endif %}
                 </div>
@@ -57,6 +59,9 @@
                     <span class="pf-counter"><b data-count="following">{{ sc.counts.following }}</b> siguiendo</span>
                     <span class="pf-counter pf-counter-rep" title="Reputación: me gusta, seguidores, insignias, meses en el Top 3 y perfil completo"><b data-count="reputation">{{ sc.counts.reputation }}</b> reputación</span>
                 </div>
+                {% if v.owner_view and not preview and not (sc.show_stats and sc.xp) %}
+                <div class="pf-editrow"><a class="pf-editbtn" id="pfEditProfileBtnAlt" href="{{ url_for('profiles_bp.edit_profile') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Editar perfil</span></a></div>
+                {% endif %}
                 {% if not preview and not v.owner_view %}
                 <div class="pf-actions">
                     <button type="button" class="pf-act pf-like{{ ' is-on' if sc.viewer and sc.viewer.liked }}" data-social-url="{{ url_for('profiles_bp.like_profile', username=v.handle) }}" data-social-key="liked" aria-pressed="{{ 'true' if sc.viewer and sc.viewer.liked else 'false' }}">
@@ -93,6 +98,10 @@
                         {% if xp.is_max %}¡Nivel máximo!{% else %}{{ 'Te' if v.owner_view else 'Le' }} faltan <b>{{ thousands(xp.remaining) }}</b> para el nivel {{ xp.next_level }}{% endif %}
                         {% if sc.xp_rank %} · <a class="pf-xplink" href="{{ url_for('profiles_bp.top_profiles', tab='nivel') }}">#{{ sc.xp_rank }} del Top de niveles</a>{% endif %}
                     </p>
+                    {#- Botón "Editar perfil" (solo el dueño, no en la vista previa del editor): arriba de las misiones y con aire para que no queden pegados. -#}
+                    {% if v.owner_view and not preview %}
+                    <div class="pf-editrow"><a class="pf-editbtn" id="pfEditProfileBtn" href="{{ url_for('profiles_bp.edit_profile') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Editar perfil</span></a></div>
+                    {% endif %}
                     {% if v.owner_view and not preview and (sc.missions or sc.xp_parts) %}
                     {% if sc.missions %}
                     {#- Misiones: título que parpadea para llamar la atención y dos botones (Diarias / Semanales) que cambian de lista. Estos puntos son solo de nivel. -#}

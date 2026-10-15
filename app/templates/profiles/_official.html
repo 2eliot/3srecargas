@@ -1,0 +1,4 @@
+{#- Signo de verificado + etiqueta ADMIN de la cuenta oficial del administrador (junto al nombre). `mini` = versión chica para listas. -#}
+{% macro mark(mini=false) -%}
+<span class="pf-verified{{ ' is-mini' if mini }}" title="Cuenta oficial verificada de 3S Recargas" aria-label="Cuenta oficial verificada" role="img"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="11"/><path class="pf-verified-check" d="m7.4 12.6 3.1 3.1 6.1-6.6"/></svg></span><span class="pf-admintag{{ ' is-mini' if mini }}">ADMIN</span>
+{%- endmacro %}

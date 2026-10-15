@@ -9,13 +9,14 @@ salen de las compras que hizo la cuenta (utils/profile_social.py). Las cuentas n
 import json
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
-from flask_login import current_user, login_required
+from flask_login import current_user, login_required, login_user
 from sqlalchemy import func
 
 from ..models import ProfileAward, ProfileFollow, ProfileLike, ProfileStat, User, db
 from ..utils.auth_accounts import ACCOUNT_KINDS, is_account_user
 from ..utils.contact_filter import MASK_MESSAGE, mask_contact_info, public_name
 from ..utils.locks import check_rate_limit, client_ip
+from ..utils.official_profile import admin_return_user, clear_admin_return, is_official_user, visible_official_user
 from ..utils import profile_xp as XP
 from ..utils.profile_social import (
     BADGES, SEARCH_MAX, SEARCH_MIN, STATS_FALLBACK_MINUTES, SocialError, badge_cards, ensure_fresh, get_thresholds, level_info, network_users, recompute_ranks,
@@ -167,6 +168,8 @@ def build_view(user, profile, owner_view=False, preview=False, viewer=None):
         'owner_view': owner_view,
         'letter': (shown_name or '?')[:1].upper(),
         'social': social,
+        # La cuenta oficial del administrador lleva el verificado y la etiqueta ADMIN junto al nombre.
+        'official': is_official_user(user),
     }
 
 
@@ -189,6 +192,19 @@ def public_profile(username):
         'profiles/public.html', v=view, is_owner=is_owner, is_admin=_is_admin(), status=status, status_text=status_text,
         name_fonts=NAME_FONTS,
     )
+
+
+@profiles_bp.route('/volver-al-panel', methods=['POST'])
+def back_to_admin():
+    """"Volver al panel de admin": el administrador que entró al perfil oficial desde su menú regresa a su sesión del panel sin escribir la
+    clave. Solo sirve si esta sesión lo anotó al entrar (marca firmada, de hasta 12 h) y quien está dentro ahora es la cuenta oficial."""
+    admin = admin_return_user(current_user) if current_user.is_authenticated else None
+    if admin is None:
+        clear_admin_return()
+        return redirect(url_for('main_bp.index'))
+    clear_admin_return()
+    login_user(admin)
+    return redirect(url_for('admin_bp.dashboard'))
 
 
 # ───────────────────────── Me gusta y seguir ─────────────────────────
@@ -282,6 +298,7 @@ def top_profiles():
     return render_template(
         'profiles/top.html', tab=tab, tabs=TOP_TABS, rows=rows, total=total, page=page, pages=pages,
         page_numbers=list(range(max(1, page - 2), min(pages, page + 2) + 1)),
+        official_user=visible_official_user(),   # botón "Ver perfil del admin" (solo si ese perfil se puede abrir)
     )
 
 

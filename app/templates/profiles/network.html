@@ -1,5 +1,6 @@
 {% extends 'profiles/_shell.html' %}
 {% block title %}Mi red{% endblock %}
+{% import 'profiles/_official.html' as official %}
 {% block content %}
 <main class="pf-list-page nx-store">
     <div class="nx-back-row">
@@ -18,7 +19,7 @@
         {% for card in cards %}
         <a class="pf-mini" href="{{ url_for('profiles_bp.public_profile', username=card.user.username) }}">
             <span class="pf-mini-av">{% if card.avatar %}<img src="{{ url_for('static', filename='uploads/' + card.avatar) }}" alt="" loading="lazy">{% else %}{{ (card.name or '?')[0]|upper }}{% endif %}</span>
-            <span class="pf-mini-text"><strong>{{ card.name }}</strong><small>@{{ card.user.username }}</small></span>
+            <span class="pf-mini-text"><strong>{{ card.name }}{% if is_official_user(card.user) %}{{ official.mark(true) }}{% endif %}</strong><small>@{{ card.user.username }}</small></span>
             {% if card.xp %}<span class="pf-xpbadge is-small" style="--xp1: {{ card.xp.c1 }}; --xp2: {{ card.xp.c2 }}" title="Nivel {{ card.xp.level }}" aria-label="Nivel {{ card.xp.level }}">{{ card.xp.level }}</span>{% endif %}
             {% if card.level %}<span class="pf-mini-lvl" style="--lv1: {{ card.level.c1 }}; --lv2: {{ card.level.c2 }}">{{ card.level.name }}</span>{% endif %}
         </a>

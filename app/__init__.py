@@ -124,6 +124,12 @@ def create_app(config_class=Config):
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
     app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+    # "Recordarme" de los CLIENTES (cuenta, ID, Google): la sesión no se cierra al cerrar
+    # el navegador, dura un año. El admin entra SIN recordar (su sesión sigue cerrándose
+    # al cerrar el navegador), por eso aquí no se activa REMEMBER_COOKIE_REFRESH_EACH_REQUEST
+    # (renovaría la cookie de todos los que estén dentro, admin incluido).
+    from datetime import timedelta as _timedelta
+    app.config['REMEMBER_COOKIE_DURATION'] = _timedelta(days=365)
     # Secure: el navegador solo manda la cookie por HTTPS, nunca por http://,
     # así no se puede interceptar en una red abierta. Se activa solo en
     # producción (detectada por usar Postgres) y se deja apagado en local
@@ -148,6 +154,13 @@ def create_app(config_class=Config):
     login_manager.login_message = 'Inicia sesión para continuar.'
     login_manager.login_message_category = 'warning'
 
+    def _only_if_enabled(user):
+        # Una cuenta que el admin desactivó pierde su sesión (antes solo se le negaba entrar de nuevo,
+        # y con sesiones que duran un año eso sería casi para siempre).
+        if user is not None and user.is_active is False:
+            return None
+        return user
+
     @login_manager.user_loader
     def load_user(user_id):
         raw_id = str(user_id or '').strip()
@@ -161,7 +174,7 @@ def create_app(config_class=Config):
             except (TypeError, ValueError):
                 return None
             if user_type == 'user':
-                return User.query.get(user_pk)
+                return _only_if_enabled(User.query.get(user_pk))
             if user_type == 'admin':
                 return AdminUser.query.get(user_pk)
             if user_type == 'mini':
@@ -174,7 +187,7 @@ def create_app(config_class=Config):
             return None
         user = User.query.get(user_id_int)
         if user:
-            return user
+            return _only_if_enabled(user)
         return AdminUser.query.get(user_id_int)
 
     @login_manager.unauthorized_handler
@@ -393,6 +406,22 @@ def create_app(config_class=Config):
             response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         return response
 
+    @app.context_processor
+    def inject_admin_return():
+        """ADMIN_RETURN = el administrador está dentro del perfil oficial y puede volver a su panel (muestra la barra "Volver al panel de admin")."""
+        from flask import session as _session
+        if 'admin_return' not in _session:
+            return {'ADMIN_RETURN': False}
+        from flask_login import current_user as _current
+        from .utils.official_profile import admin_return_user
+        return {'ADMIN_RETURN': admin_return_user(_current) is not None}
+
+    @app.template_global('is_official_user')
+    def is_official_user_global(user):
+        """True si `user` es la cuenta oficial del administrador (lleva el verificado y la etiqueta ADMIN)."""
+        from .utils.official_profile import is_official_user
+        return is_official_user(user)
+
     @app.template_global('bg_video_layer')
     def bg_video_layer(path):
         """Capa fija con el VIDEO de fondo de una página (ver templates/_bg_video.html). Solo rutas de nuestras subidas, con forma de nombre de archivo MP4/WEBM."""
@@ -508,6 +537,7 @@ def create_app(config_class=Config):
         _ensure_package_support_fallback_column()
         _ensure_package_bs_price_column()
         _ensure_package_cost_column()
+        _ensure_package_section_column()
         _ensure_horde_columns()
         _ensure_minigame_opportunity_columns()
         _ensure_points_columns()
@@ -537,6 +567,13 @@ def create_app(config_class=Config):
         _init_default_data(app)
         from .utils.ranking_boards import ensure_default_boards
         ensure_default_boards()
+        # El perfil oficial del administrador (usuario "3srecargas") ya viene creado; si algo falla aquí, la web arranca igual.
+        try:
+            from .utils.official_profile import ensure_official_profile
+            ensure_official_profile()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception('No se pudo crear el perfil oficial del administrador')
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -817,6 +854,24 @@ def _ensure_package_cost_column():
         existing = {r[1] for r in rows}
         if 'cost_usd' not in existing:
             db.session.execute(text('ALTER TABLE packages ADD COLUMN cost_usd NUMERIC(10, 2)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_package_section_column():
+    """Apartado del paquete (Moneda principal / Pases / Tarjetas). Los paquetes que ya existían quedan sin valor = moneda principal."""
+    try:
+        if _ensure_postgres_columns('packages', ['section VARCHAR(10)']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(packages)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'section' not in existing:
+            db.session.execute(text('ALTER TABLE packages ADD COLUMN section VARCHAR(10)'))
             db.session.commit()
     except Exception:
         db.session.rollback()

@@ -141,6 +141,8 @@
                         </div>
                         <button class="close-packages-btn" onclick="closePackages()" aria-label="Cerrar" style="display:none">✕</button>
                     </div>
+                    {#- Apartados del juego (Moneda / Pases / Tarjetas): solo se muestra si el juego tiene paquetes en más de un apartado. Lo dibuja main.js. -#}
+                    <div class="pkg-sections-wrap"><div class="pkg-sections glass-panel" id="pkgSections" role="tablist" aria-label="Apartado de los paquetes" hidden></div></div>
                     <p class="panel-hint">Selecciona un paquete para continuar</p>
                     <div class="packages-grid" id="packagesGrid">
                         <div class="pkg-loading"><div class="spinner"></div></div>

@@ -76,6 +76,10 @@ class Game(db.Model):
         }
 
 
+# Apartados donde se puede poner un paquete (clave -> nombre que ve el dueño en el admin).
+PACKAGE_SECTION_LABELS = {'main': 'Moneda principal', 'pass': 'Pases', 'card': 'Tarjetas'}
+
+
 class Package(db.Model):
     __tablename__ = 'packages'
     id = db.Column(db.Integer, primary_key=True)
@@ -113,6 +117,9 @@ class Package(db.Model):
     # le cobra al cliente (price/usd_price/bs_price) y nunca se expone en la
     # tienda ni en las APIs públicas — solo se usa en el admin.
     cost_usd = db.Column(db.Numeric(10, 2))
+    # Apartado de la tienda donde sale el paquete: 'main' = moneda principal del juego, 'pass' = pases, 'card' = tarjetas.
+    # Vacío (los paquetes de antes) cuenta como 'main'. Si un juego tiene paquetes de más de un apartado, la tienda muestra el selector.
+    section = db.Column(db.String(10))
     pins = db.relationship('Pin', backref='package', lazy='dynamic')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -134,6 +141,7 @@ class Package(db.Model):
             'pin_count': self.pin_count if self.is_automated else None,
             'announcement_type': self.announcement_type or '',
             'points_reward': self.points_reward,
+            'section': self.section if self.section in PACKAGE_SECTION_LABELS else 'main',
         }
 
 

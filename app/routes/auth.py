@@ -131,7 +131,7 @@ def register():
         flash('Ese nombre de usuario o correo ya está en uso. Prueba con otro.', 'danger')
         return _render_login_page('registro', 409, values)
 
-    login_user(user)
+    login_user(user, remember=True)
     flash('¡Tu cuenta está lista! Las compras que hagas con ella se guardan en tu historial. Si quieres usar los puntos y las partidas de tu ID, enlázalo en tu cuenta.', 'success')
     return redirect(_safe_next_url(request.args.get('next')) or url_for('auth_bp.profile'))
 
@@ -175,7 +175,7 @@ def account_login():
         flash('Tu cuenta está desactivada. Escríbenos por soporte para ayudarte.', 'warning')
         return _render_login_page('cuenta', 403, values)
 
-    login_user(user)
+    login_user(user, remember=True)
     flash('Sesión iniciada.', 'success')
     return redirect(_safe_next_url(request.args.get('next')) or url_for('auth_bp.profile'))
 
@@ -248,7 +248,7 @@ def login():
             flash('No encontramos compras previas para ese identificador en ese servicio. Haz tu primera recarga y tu acceso se creará automáticamente.', 'warning')
             return render_login()
 
-        login_user(user)
+        login_user(user, remember=True)
         flash('Entraste con tu ID. Para editar tu perfil crea una cuenta.', 'success')
         return redirect(_safe_next_url(request.args.get('next')) or url_for('auth_bp.profile'))
 
@@ -298,13 +298,15 @@ def google_login_callback():
         flash('No se pudo abrir tu cuenta. Entra con tu ID o escríbenos por soporte.', 'danger')
         return redirect(url_for('auth_bp.login'))
 
-    login_user(user)
+    login_user(user, remember=True)
     flash('Sesión iniciada con Google.', 'success')
     return redirect(_safe_next_url(info.get('next')) or url_for('auth_bp.profile'))
 
 @auth_bp.route('/logout', methods=['GET', 'POST'])
 @login_required
 def logout():
+    from ..utils.official_profile import clear_admin_return
+    clear_admin_return()
     logout_user()
     flash('Has cerrado sesión exitosamente.', 'info')
     return redirect(url_for('main_bp.index'))

@@ -66,6 +66,29 @@
         text.className = 'pf-search-txt';
         var strong = document.createElement('strong');
         strong.textContent = name;
+        if (entry.official === true) {
+            // Cuenta oficial del administrador: verificado + etiqueta ADMIN (todo con textContent / DOM, nada de HTML del servidor).
+            var ns = 'http://www.w3.org/2000/svg';
+            var badge = document.createElement('span');
+            badge.className = 'pf-verified is-mini';
+            badge.setAttribute('title', 'Cuenta oficial verificada de 3S Recargas');
+            badge.setAttribute('role', 'img');
+            badge.setAttribute('aria-label', 'Cuenta oficial verificada');
+            var svg = document.createElementNS(ns, 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('aria-hidden', 'true');
+            var circle = document.createElementNS(ns, 'circle');
+            circle.setAttribute('cx', '12'); circle.setAttribute('cy', '12'); circle.setAttribute('r', '11');
+            var check = document.createElementNS(ns, 'path');
+            check.setAttribute('class', 'pf-verified-check');
+            check.setAttribute('d', 'm7.4 12.6 3.1 3.1 6.1-6.6');
+            svg.appendChild(circle); svg.appendChild(check); badge.appendChild(svg);
+            var tag = document.createElement('span');
+            tag.className = 'pf-admintag is-mini';
+            tag.textContent = 'ADMIN';
+            strong.appendChild(badge);
+            strong.appendChild(tag);
+        }
         var small = document.createElement('small');
         small.textContent = '@' + handle;
         text.appendChild(strong);

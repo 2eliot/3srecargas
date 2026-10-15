@@ -1039,6 +1039,7 @@ body.drawer-open { overflow: hidden; }
     font-weight: 900 !important;
 }
 .nx-store .cat-slider,
+.nx-store .pkg-sec-slider,
 .nx-store .categories-inner:not(.has-slider) .cat-btn.active {
     background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, rgba(255,255,255,0.002) 40%, rgba(10,15,28,0.008) 100%) !important;
     border: 1px solid rgba(255,255,255,0.18) !important;
@@ -1069,6 +1070,32 @@ body.drawer-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
     .nx-store .categories-inner.is-ready .cat-slider { transition: none; }
 }
+
+/* Apartados de los paquetes (Moneda / Pases / Tarjetas): una barrita CHICA con el mismo cristal de la barra de arriba (Juegos / Tarjetas / Wallet)
+   y su mismo cuadro de cristal que se desliza de un apartado a otro. Solo sale si el juego tiene paquetes en más de un apartado. */
+.nx-store .pkg-sections-wrap { display: flex; justify-content: center; margin: 2px 0 12px; }
+.nx-store .pkg-sections {
+    position: relative; display: inline-flex; align-items: center; gap: 2px;
+    max-width: 100%; overflow: hidden; padding: 4px !important; border-radius: 13px !important;
+}
+.nx-store .pkg-sections[hidden] { display: none !important; }
+.nx-store .pkg-sec-btn {
+    position: relative; z-index: 1; flex: 0 1 auto; min-width: 0; white-space: nowrap;
+    padding: 7px 16px; border-radius: 10px; border: 1px solid transparent; background: transparent; cursor: pointer;
+    font-family: var(--nx-font-display); font-weight: 700; font-size: 12px; letter-spacing: .02em;
+    color: rgba(255,255,255,.55); -webkit-tap-highlight-color: transparent; transition: color .2s ease;
+}
+.nx-store .pkg-sec-btn:hover { color: rgba(255,255,255,.85); }
+.nx-store .pkg-sec-btn.is-active { color: #fff; font-weight: 900; }
+.nx-store .pkg-sec-btn:focus-visible { outline: 2px solid rgba(255,255,255,.5); outline-offset: 1px; }
+.nx-store .pkg-sec-slider {
+    position: absolute; left: 0; top: 0; width: 0; height: 0; box-sizing: border-box;
+    border-radius: 10px; pointer-events: none; z-index: 0; will-change: transform, width;
+}
+.nx-store .pkg-sections.is-ready .pkg-sec-slider {
+    transition: transform .38s cubic-bezier(.3, 1.25, .4, 1), width .38s cubic-bezier(.3, 1.25, .4, 1), height .3s ease;
+}
+@media (prefers-reduced-motion: reduce) { .nx-store .pkg-sections.is-ready .pkg-sec-slider { transition: none; } }
 
 /* Kicker de secciones */
 .nx-kicker {
@@ -5732,6 +5759,56 @@ body.dock-over-modal #pointsModal .overlay-modal-card { overflow-y: auto; oversc
 .nx-back-btn:hover, .nx-back-btn:focus-visible { border-color: rgba(255,60,85,.7); background: linear-gradient(135deg, rgba(255,255,255,.07), rgba(255,40,70,.12)); outline: none; }
 .nx-back-btn:active { transform: scale(.97); }
 
+/* Botón "Ver perfil del admin" (Top de perfiles, del lado derecho de "Mi perfil"): rojo, con un anillo que late, un brillo que lo cruza y el
+   ícono que se menea, para que se note. Se apaga con "reducir movimiento" y en modo liviano. */
+.nx-back-row.has-admin { align-items: center; justify-content: space-between; gap: 10px; }
+.nx-admin-btn {
+    position: relative; isolation: isolate; overflow: hidden;
+    display: inline-flex; align-items: center; gap: 7px; flex: 0 1 auto; min-width: 0;
+    padding: 9px 14px 9px 10px; border-radius: 13px; text-decoration: none; white-space: nowrap;
+    color: #fff; font-family: var(--nx-font-display); font-weight: 900; font-size: 12.5px; letter-spacing: .02em;
+    background: linear-gradient(135deg, #ff3a5c 0%, #d3163a 55%, #8f0f27 100%);
+    border: 1px solid rgba(255,255,255,.42);
+    box-shadow: 0 6px 20px rgba(255,40,70,.38), inset 0 1px 1px rgba(255,255,255,.4);
+    -webkit-tap-highlight-color: transparent;
+    animation: nx-admin-ping 1.9s ease-out infinite;
+    transition: transform .15s ease;
+}
+.nx-admin-btn:hover, .nx-admin-btn:focus-visible { outline: none; filter: brightness(1.08); }
+.nx-admin-btn:active { transform: scale(.96); }
+.nx-admin-btn::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 42%; z-index: -1; pointer-events: none;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.6), transparent);
+    transform: skewX(-20deg) translateX(-170%);
+    animation: nx-admin-shine 3.2s ease-in-out infinite;
+}
+.nx-admin-ico { display: inline-flex; flex: 0 0 auto; width: 20px; height: 20px; transform-origin: 50% 55%; animation: nx-admin-wiggle 2.8s ease-in-out infinite; }
+.nx-admin-ico svg { width: 100%; height: 100%; display: block; }
+.nx-admin-ico circle { fill: #fff; }
+.nx-admin-ico path { fill: none; stroke: #d3163a; stroke-width: 2.9; stroke-linecap: round; stroke-linejoin: round; }
+.nx-admin-txt { overflow: hidden; text-overflow: ellipsis; }
+@keyframes nx-admin-ping {
+    0%   { box-shadow: 0 6px 20px rgba(255,40,70,.38), inset 0 1px 1px rgba(255,255,255,.4), 0 0 0 0 rgba(255,58,92,.7); }
+    70%  { box-shadow: 0 6px 20px rgba(255,40,70,.38), inset 0 1px 1px rgba(255,255,255,.4), 0 0 0 11px rgba(255,58,92,0); }
+    100% { box-shadow: 0 6px 20px rgba(255,40,70,.38), inset 0 1px 1px rgba(255,255,255,.4), 0 0 0 0 rgba(255,58,92,0); }
+}
+@keyframes nx-admin-shine { 0%, 52% { transform: skewX(-20deg) translateX(-170%); } 100% { transform: skewX(-20deg) translateX(520%); } }
+@keyframes nx-admin-wiggle {
+    0%, 62%, 100% { transform: rotate(0) scale(1); }
+    68% { transform: rotate(-16deg) scale(1.2); } 75% { transform: rotate(14deg) scale(1.2); }
+    82% { transform: rotate(-9deg) scale(1.12); } 90% { transform: rotate(0) scale(1); }
+}
+@media (max-width: 380px) { .nx-admin-btn { font-size: 11.5px; padding: 8px 11px 8px 8px; gap: 6px; } .nx-admin-ico { width: 18px; height: 18px; } }
+@media (prefers-reduced-motion: reduce) { .nx-admin-btn, .nx-admin-btn::after, .nx-admin-ico { animation: none; } .nx-admin-btn::after { display: none; } }
+html.lite .nx-admin-btn::after { display: none; }
+
+/* Barra del administrador dentro del perfil oficial: "Volver al panel de admin" (sin escribir la clave) */
+.nx-admin-return { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 8px 14px; background: linear-gradient(90deg, #8f0f27, #d3163a); color: #fff; font-family: var(--nx-font-display); font-weight: 800; font-size: 12px; position: relative; z-index: 60; }
+.nx-admin-return-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nx-admin-return-btn { flex: 0 0 auto; cursor: pointer; padding: 7px 13px; border-radius: 999px; border: 1px solid rgba(255,255,255,.55); background: rgba(255,255,255,.16); color: #fff; font: inherit; font-weight: 900; letter-spacing: .02em; -webkit-tap-highlight-color: transparent; }
+.nx-admin-return-btn:hover, .nx-admin-return-btn:focus-visible { background: rgba(255,255,255,.3); outline: none; }
+.nx-admin-return-btn:active { transform: scale(.97); }
+
 /* ═══ Cuentas: pestañas de Iniciar sesión (Con mi ID / Mi cuenta / Registrarse) y perfil ═══ */
 .nx-auth-tabs {
     position: relative;
@@ -6012,6 +6089,9 @@ a.nx-prof-row:active { transform: scale(.985); }
 .pf-verified.is-mini { width: 15px; height: 15px; margin-left: 5px; vertical-align: -2px; }
 .pf-verified.is-mini svg { filter: none; }
 @media (max-width: 480px) { .pf-verified:not(.is-mini) { width: 19px; height: 19px; } }
+/* Etiqueta ADMIN: va junto al verificado de la cuenta oficial del administrador */
+.pf-admintag { flex: 0 0 auto; display: inline-flex; align-items: center; padding: 4px 9px 3px; border-radius: 999px; font-family: var(--nx-font-display); font-weight: 900; font-size: 10.5px; line-height: 1; letter-spacing: .12em; text-transform: uppercase; color: #fff; cursor: default; background: linear-gradient(135deg, #ff3a5c, #b3122f); border: 1px solid rgba(255,255,255,.3); box-shadow: 0 0 12px rgba(255,40,70,.5); }
+.pf-admintag.is-mini { margin-left: 5px; padding: 3px 6px 2px; font-size: 8.5px; vertical-align: 1px; box-shadow: none; }
 
 .nx-prof-vfy { border-color: rgba(47, 155, 255, .38); }
 .nx-prof-vfy-h { display: flex; align-items: center; gap: 10px; }

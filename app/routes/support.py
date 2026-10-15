@@ -20,7 +20,7 @@ from ..utils import support_ai
 from ..utils import support_bot
 from ..utils.support_ai import reference_lookup_budget_ok
 from ..utils.locks import check_rate_limit, client_ip
-from ..utils.reference_extraction import extract_reference_from_image_bytes
+from ..utils.reference_extraction import extract_receipt_details_from_image_bytes
 from ..utils.support import SupportError
 from ..utils.notifications import notify_support_chat_opened, notify_support_client_message
 
@@ -407,7 +407,8 @@ def bot_receipt():
     if len(image) > BOT_RECEIPT_MAX_BYTES:
         return _bot_json({'ok': False, 'error': 'La foto pesa demasiado (máximo 8 MB).'}, 400)
 
-    result = extract_reference_from_image_bytes(image, mime_type=RECEIPT_MIME[extension], filename=upload.filename)
+    # Una sola lectura: referencia + a quién se pagó (para saber si el pago es a NUESTROS datos).
+    result = extract_receipt_details_from_image_bytes(image, mime_type=RECEIPT_MIME[extension], filename=upload.filename)
     if not result.get('ok'):
         # El motivo real (llave sin configurar, servicio caído...) es del admin, no del cliente.
         current_app.logger.warning('[SupportBot] no se pudo leer un comprobante: %s', result.get('message'))
@@ -417,4 +418,7 @@ def bot_receipt():
     if reference and not reference_lookup_budget_ok():
         return _bot_json({'ok': False, 'error': 'Hay muchas consultas en este momento. Inténtalo en unos minutos o habla con soporte.'}, 429)
     orders = support_bot.find_orders(reference) if reference else []
-    return _bot_json({'ok': True, 'reference': reference, 'orders': [support_bot.order_card(o) for o in orders]})
+    payload = {'ok': True, 'reference': reference, 'orders': [support_bot.order_card(o) for o in orders]}
+    # Con un pedido encontrado se muestra su estado y no hace falta comparar nada más.
+    payload.update(support_bot.receipt_verdict(result) if not orders else {'ours': 'unknown', 'can_create': False})
+    return _bot_json(payload)
