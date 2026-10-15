@@ -262,33 +262,25 @@
 
         <details class="settings-section" id="sec-binance">
             <summary class="settings-section-summary">
-                <h3>Binance Pay Automático</h3>
+                <h3>Binance Pay (verificación por referencia)</h3>
                 <span class="settings-chevron">▾</span>
             </summary>
-            <div class="form-grid-2">
-                <div class="form-group">
-                    <label class="check-label" style="margin-top:30px;">
-                        <input type="checkbox" name="binance_auto_enabled" value="1"
-                               {% if binance_auto_settings.binance_auto_enabled == '1' %}checked{% endif %}>
-                        Activar verificación automática con Binance Pay
-                    </label>
-                    <p class="form-hint">
-                        El sistema escaneará las transacciones de Binance Pay cada 30 segundos.
-                        Las órdenes se aprueban automáticamente cuando se detecta el pago con el código correcto.
-                        Requiere <code>BINANCE_API_KEY</code> y <code>BINANCE_API_SECRET</code> como variables de entorno.
-                    </p>
-                </div>
-                <div class="form-group">
-                    <label for="binance_wallet_address">Dirección / Email de Binance Pay</label>
-                    <input type="text" id="binance_wallet_address" name="binance_wallet_address"
-                           placeholder="usuario@email.com o ID Binance"
-                           value="{{ binance_auto_settings.binance_wallet_address }}">
-                    <p class="form-hint">
-                        Esta dirección se mostrará al cliente para que realice la transferencia USDT.
-                    </p>
-                </div>
+            <div class="form-group">
+                <p class="form-hint" style="margin-top:0;">
+                    Binance se cobra igual que Pago Móvil: el cliente paga a tus datos de Binance, sube el comprobante o escribe la referencia
+                    (el ID de la operación) y el sistema la busca en tu historial de Binance Pay con la API. Si el pago está recibido, en USDT,
+                    por el monto (tolerancia de 2 %) y no se usó antes, la orden se aprueba sola.
+                </p>
+                <ol class="form-hint" style="padding-left:18px; line-height:1.7;">
+                    <li>Crea tu llave de API de Binance de <b>solo lectura</b> (sin retiros ni trading) y ponla en el archivo <code>.env</code> del servidor como
+                        <code>BINANCE_API_KEY</code> y <code>BINANCE_API_SECRET</code>.</li>
+                    <li>En <b>Métodos de pago</b>, edita tu método de Binance: moneda USD, tu correo o Binance ID (con "mostrar al cliente") y marca
+                        <b>"Verificar con la API de Binance (USDT)"</b>.</li>
+                </ol>
+                <p class="form-hint">
+                    {% if binance_keys_ok %}✅ La llave de Binance está cargada en el servidor.{% else %}⚠️ Todavía NO hay llave de Binance en el servidor: sin ella los pagos de Binance quedan para revisión manual.{% endif %}
+                </p>
             </div>
-                    {{ save_bar('sec-binance') }}
         </details>
 
         <details class="settings-section" id="sec-horario">

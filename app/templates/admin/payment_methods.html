@@ -60,6 +60,7 @@
                                     data-account-currency="{{ m.account_currency or 'bs' }}"
                                     data-pabilo-user-bank-id="{{ m.pabilo_user_bank_id or '' }}"
                                     data-pabilo-requires-phone-dni="{{ 1 if m.pabilo_requires_phone_dni else 0 }}"
+                                    data-binance-verify="{{ 1 if m.binance_verify else 0 }}"
                                     data-show-contact-email="{{ 1 if m.show_contact_email else 0 }}"
                                     data-show-pay-id="{{ 1 if m.show_pay_id else 0 }}"
                                     data-show-contact-phone="{{ 1 if m.show_contact_phone else 0 }}"
@@ -160,6 +161,9 @@
                 <label class="check-label">
                     <input type="checkbox" name="pabilo_requires_phone_dni" id="pmPabiloRequiresPhoneDni"> Verificar con telefono y cedula
                 </label>
+                <label class="check-label" title="Para Binance Pay: el cliente sube el comprobante o escribe la referencia y el sistema la busca en tu historial de Binance con la API (tolerancia 2 %, en USDT)">
+                    <input type="checkbox" name="binance_verify" id="pmBinanceVerify"> Verificar con la API de Binance (USDT)
+                </label>
             </div>
             <div class="form-checks" style="margin-top:10px;">
                 <label class="check-label">
@@ -200,6 +204,7 @@ function openPmModal() {
     document.getElementById('pmActive').checked = true;
     document.getElementById('pmUsesRate').checked = true;
     document.getElementById('pmPabiloRequiresPhoneDni').checked = false;
+    document.getElementById('pmBinanceVerify').checked = false;
     document.getElementById('pmShowContactEmail').checked = false;
     document.getElementById('pmShowPayId').checked = false;
     document.getElementById('pmShowContactPhone').checked = false;
@@ -209,7 +214,7 @@ function openPmModal() {
     document.getElementById('pmModal').style.display = 'flex';
 }
 
-function openEditPm(id, name, code, order, isActive, contactEmail, payId, contactPhone, bankName, idNumber, accountCurrency, pabiloUserBankId, pabiloRequiresPhoneDni, showContactEmail, showPayId, showContactPhone, usesRate) {
+function openEditPm(id, name, code, order, isActive, contactEmail, payId, contactPhone, bankName, idNumber, accountCurrency, pabiloUserBankId, pabiloRequiresPhoneDni, showContactEmail, showPayId, showContactPhone, usesRate, binanceVerify) {
     const form = document.getElementById('pmForm');
     form.action = '/admin/payment-methods/' + id + '/edit';
     document.getElementById('pmModalTitle').textContent = 'Editar Método';
@@ -226,6 +231,7 @@ function openEditPm(id, name, code, order, isActive, contactEmail, payId, contac
     document.getElementById('pmActive').checked = isActive;
     document.getElementById('pmUsesRate').checked = usesRate === 1;
     document.getElementById('pmPabiloRequiresPhoneDni').checked = pabiloRequiresPhoneDni === 1;
+    document.getElementById('pmBinanceVerify').checked = binanceVerify === 1;
     document.getElementById('pmShowContactEmail').checked = showContactEmail === 1;
     document.getElementById('pmShowPayId').checked = showPayId === 1;
     document.getElementById('pmShowContactPhone').checked = showContactPhone === 1;
@@ -264,7 +270,8 @@ document.querySelectorAll('.edit-pm-btn').forEach(function (btn) {
             parseInt(this.dataset.showContactEmail || '0', 10),
             parseInt(this.dataset.showPayId || '0', 10),
             parseInt(this.dataset.showContactPhone || '0', 10),
-            parseInt(this.dataset.usesRate || '1', 10)
+            parseInt(this.dataset.usesRate || '1', 10),
+            parseInt(this.dataset.binanceVerify || '0', 10)
         );
         setPmVideoState(this.dataset.tutorialVideo || '');
     });

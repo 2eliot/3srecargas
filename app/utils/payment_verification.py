@@ -552,6 +552,11 @@ def verify_order_payment(order, force_reference=False):
     if not payment_method:
         return {'ok': False, 'verified': False, 'message': 'Método de pago no encontrado.'}
 
+    # Binance Pay: el pago se busca por su referencia en el historial de la cuenta de Binance (API), no en Pabilo.
+    from .binance_reference import is_binance_reference_method, verify_order_by_reference
+    if is_binance_reference_method(payment_method):
+        return verify_order_by_reference(order)
+
     uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method) and not force_reference
 
     reference_candidates = []
@@ -1220,3 +1225,6 @@ def stamp_verified_payment(order, verification_result):
     _store_resolved_reference(order, verification_result.get('resolved_reference'))
     order.payment_verified_at = datetime.utcnow()
     order.payment_verification_id = verification_result.get('verification_id') or order.payment_verification_id
+    if verification_result.get('binance_tx_id'):
+        # ID del pago de Binance (índice único en la base): un mismo pago jamás salda dos órdenes.
+        order.binance_tx_id = str(verification_result['binance_tx_id'])[:120]

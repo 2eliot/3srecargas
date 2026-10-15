@@ -193,33 +193,50 @@ video.sup-media{object-fit:contain;max-height:240px}
 .sup-note svg{flex:none;width:16px;height:16px;margin-top:1px}
 .sup-note.blocked{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#fca5a5;margin:12px 14px;align-items:center}
 
-/* ── Respuestas rápidas: fila de botones pegada a la caja de escribir ── */
-.sup-qr-bar{
-    flex:none;display:flex;align-items:center;gap:7px;padding:8px 14px 2px;
-    overflow-x:auto;scrollbar-width:none;
-}
-.sup-qr-bar::-webkit-scrollbar{display:none}
-.sup-qr-label{
-    flex:none;display:inline-flex;align-items:center;gap:5px;font-size:.66rem;font-weight:800;
-    text-transform:uppercase;letter-spacing:.07em;color:var(--s-muted);padding-right:2px;
-}
-.sup-qr-label svg{width:14px;height:14px;color:#fbbf24}
-.sup-qr-insert{
-    flex:none;display:inline-flex;align-items:center;gap:6px;max-width:210px;cursor:pointer;
-    font:inherit;font-size:.78rem;font-weight:600;padding:6px 13px;border-radius:99px;
+/* ── Respuestas rápidas: un botón pegado a la caja de escribir; al tocarlo se abre una LISTA hacia arriba ── */
+.sup-qr-bar{flex:none;position:relative;display:flex;align-items:center;padding:8px 14px 2px}
+.sup-qr-toggle{
+    display:inline-flex;align-items:center;gap:7px;cursor:pointer;font:inherit;font-size:.78rem;font-weight:700;
+    padding:7px 13px;border-radius:99px;color:var(--s-text);
     border:1px solid var(--glass-line);border-top-color:var(--glass-top);
-    background:linear-gradient(135deg,rgba(255,255,255,.09),rgba(255,255,255,.03));color:var(--s-text);
+    background:linear-gradient(135deg,rgba(255,255,255,.09),rgba(255,255,255,.03));
     box-shadow:inset 0 1px 1px rgba(255,255,255,.14);
-    white-space:nowrap;transition:border-color .15s ease,background .15s ease,transform .1s ease;
+    transition:border-color .15s ease,background .15s ease,transform .1s ease;
 }
-.sup-qr-insert .sup-qr-title{overflow:hidden;text-overflow:ellipsis}
-.sup-qr-insert:hover{border-color:rgba(139,92,246,.6);background:rgba(139,92,246,.14);color:#fff}
-.sup-qr-insert:active{transform:scale(.97)}
+.sup-qr-toggle svg{width:14px;height:14px;flex:none}
+.sup-qr-toggle .sup-qr-bolt{color:#fbbf24}
+.sup-qr-toggle .sup-qr-chev{color:var(--s-muted);transition:transform .18s ease}
+.sup-qr-toggle[aria-expanded="true"] .sup-qr-chev{transform:rotate(180deg)}
+.sup-qr-toggle:hover,.sup-qr-toggle[aria-expanded="true"]{border-color:rgba(139,92,246,.6);background:rgba(139,92,246,.14);color:#fff}
+.sup-qr-toggle:active{transform:scale(.97)}
+.sup-qr-count{
+    min-width:18px;height:18px;padding:0 5px;border-radius:99px;display:inline-grid;place-items:center;
+    font-size:.66rem;font-weight:800;background:rgba(139,92,246,.35);color:#fff;
+}
+.sup-qr-pop{
+    position:absolute;left:14px;bottom:calc(100% + 4px);z-index:26;width:min(380px,calc(100% - 28px));
+    max-height:min(340px,52vh);overflow-y:auto;scrollbar-width:thin;padding:6px;
+    display:flex;flex-direction:column;gap:2px;border-radius:20px;
+    background:linear-gradient(rgba(10,8,24,.6),rgba(10,8,24,.6)),var(--glass-pop);border:1px solid var(--glass-line);border-top-color:var(--glass-top);
+    box-shadow:0 22px 54px rgba(0,0,0,.6),inset 0 1px 1px rgba(255,255,255,.18);
+    -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
+}
+.sup-qr-pop[hidden]{display:none}
+.sup-qr-insert{
+    display:flex;align-items:center;gap:10px;width:100%;cursor:pointer;text-align:left;
+    font:inherit;padding:9px 12px;border-radius:14px;border:0;background:transparent;color:var(--s-text);
+    transition:background .12s ease;
+}
+.sup-qr-insert:hover,.sup-qr-insert:focus-visible{background:rgba(139,92,246,.16);outline:none}
 .sup-qr-insert:disabled{opacity:.55;cursor:default}
+.sup-qr-insert-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.sup-qr-insert .sup-qr-title{font-size:.84rem;font-weight:700;color:#f1f5f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sup-qr-insert .sup-qr-preview{font-size:.74rem;color:var(--s-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sup-qr-empty{margin:0;padding:12px 12px 8px;font-size:.78rem;color:var(--s-muted)}
 .sup-qr-manage{
-    flex:none;display:inline-flex;align-items:center;gap:5px;cursor:pointer;font:inherit;font-size:.74rem;
-    font-weight:600;padding:6px 12px;border-radius:99px;border:1px dashed rgba(255,255,255,.2);
-    background:transparent;color:var(--s-muted);transition:.15s;
+    display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:4px;cursor:pointer;
+    font:inherit;font-size:.76rem;font-weight:700;padding:9px 12px;border-radius:14px;
+    border:1px dashed rgba(255,255,255,.22);background:transparent;color:var(--s-muted);transition:.15s;
 }
 .sup-qr-manage svg{width:13px;height:13px}
 .sup-qr-manage:hover{color:#fff;border-color:rgba(139,92,246,.6);background:rgba(139,92,246,.1)}
@@ -557,21 +574,31 @@ body.is-embed .sup-bar-back{display:none}
     </div>
     {% endif %}
 
-    {#- Respuestas rápidas: botones pegados a la caja de escribir. Un clic las manda. -#}
-    <div class="sup-qr-bar" id="supQuickReplies" role="toolbar" aria-label="Respuestas rápidas">
-      <span class="sup-qr-label">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h8l-1 8 10-12h-8Z"/></svg>
-        Rápidas
-      </span>
-      {% for qr in quick_replies %}
-      <button type="button" class="sup-qr-insert" data-reply-id="{{ qr.id }}" title="{{ qr.body }}">
-        <span class="sup-qr-title">{{ qr.title }}</span>{% if qr.attachment %}<span class="sup-qr-attach-icon" title="Incluye adjunto">📎</span>{% endif %}
+    {#- Respuestas rápidas: un botón pegado a la caja de escribir; al tocarlo se abre la lista y un clic en una respuesta la manda. -#}
+    <div class="sup-qr-bar" id="supQuickReplies">
+      <button type="button" class="sup-qr-toggle" id="supQrToggle" aria-haspopup="true" aria-expanded="false" aria-controls="supQrList">
+        <svg class="sup-qr-bolt" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h8l-1 8 10-12h-8Z"/></svg>
+        Respuestas rápidas
+        {% if quick_replies %}<span class="sup-qr-count">{{ quick_replies|length }}</span>{% endif %}
+        <svg class="sup-qr-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
       </button>
-      {% endfor %}
-      <button type="button" class="sup-qr-manage" id="supQrManageBtn" title="Crear, editar o borrar respuestas rápidas">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        {% if quick_replies %}Editar{% else %}Crear la primera{% endif %}
-      </button>
+      <div class="sup-qr-pop" id="supQrList" role="menu" aria-label="Respuestas rápidas" hidden>
+        {% for qr in quick_replies %}
+        <button type="button" class="sup-qr-insert" role="menuitem" data-reply-id="{{ qr.id }}" title="{{ qr.body }}">
+          <span class="sup-qr-insert-text">
+            <span class="sup-qr-title">{{ qr.title }}</span>
+            {% if qr.body %}<span class="sup-qr-preview">{{ qr.body }}</span>{% endif %}
+          </span>
+          {% if qr.attachment %}<span class="sup-qr-attach-icon" title="Incluye adjunto">📎</span>{% endif %}
+        </button>
+        {% else %}
+        <p class="sup-qr-empty">Todavía no tienes respuestas rápidas.</p>
+        {% endfor %}
+        <button type="button" class="sup-qr-manage" id="supQrManageBtn" title="Crear, editar o borrar respuestas rápidas">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          {% if quick_replies %}Crear o editar respuestas{% else %}Crear la primera{% endif %}
+        </button>
+      </div>
     </div>
 
     <form class="sup-composer" id="supReplyForm">
@@ -1301,6 +1328,7 @@ body.is-embed .sup-bar-back{display:none}
     if (emojiBtn && emojiBox) {
         emojiBtn.addEventListener('click', function (evt) {
             evt.stopPropagation();
+            setQr(false);
             setEmoji(emojiBox.hidden);
         });
         // Tocar fuera o Escape lo cierran.
@@ -1311,17 +1339,36 @@ body.is-embed .sup-bar-back{display:none}
     document.addEventListener('keydown', function (evt) {
         if (evt.key !== 'Escape') return;
         if (emojiBox && !emojiBox.hidden) { setEmoji(false); if (input) input.focus(); }
+        else if (qrList && !qrList.hidden) { setQr(false); if (qrListBtn) qrListBtn.focus(); }
         else if (manageModal && manageModal.style.display === 'flex') setManage(false);
     });
 
-    // ── Respuestas rápidas: se mandan directo con un clic (no solo
-    // rellenan el texto) porque un adjunto no se puede "escribir" en el
-    // textarea — así el mismo botón sirve para las que tienen solo texto
-    // y las que traen imagen o video.
+    // ── Respuestas rápidas: el botón "Respuestas rápidas" abre una lista; tocar afuera o Escape la cierra.
+    var qrListBtn = document.getElementById('supQrToggle');
+    var qrList = document.getElementById('supQrList');
+    function setQr(open) {
+        if (!qrList || !qrListBtn) return;
+        qrList.hidden = !open;
+        qrListBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    if (qrListBtn && qrList) {
+        qrListBtn.addEventListener('click', function (evt) {
+            evt.stopPropagation();
+            if (qrList.hidden) setEmoji(false);
+            setQr(qrList.hidden);
+        });
+        document.addEventListener('click', function (evt) {
+            if (!qrList.hidden && !qrList.contains(evt.target) && !qrListBtn.contains(evt.target)) setQr(false);
+        });
+    }
+
+    // Una respuesta se manda directo con un clic (no solo rellena el texto) porque un adjunto no se puede
+    // "escribir" en el textarea — así la misma fila sirve para las que tienen solo texto y las que traen imagen o video.
     document.querySelectorAll('.sup-qr-insert').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var replyId = btn.dataset.replyId;
             if (!replyId || btn.disabled) return;
+            setQr(false);
             btn.disabled = true;
             var prevNodes = Array.prototype.slice.call(btn.childNodes);
             btn.replaceChildren(document.createTextNode('Enviando…'));
@@ -1355,7 +1402,7 @@ body.is-embed .sup-bar-back{display:none}
     var manageBtn = document.getElementById('supQrManageBtn');
     var manageClose = document.getElementById('supQrManageClose');
     function setManage(open) { if (manageModal) manageModal.style.display = open ? 'flex' : 'none'; }
-    if (manageBtn) manageBtn.addEventListener('click', function () { setManage(true); });
+    if (manageBtn) manageBtn.addEventListener('click', function () { setQr(false); setManage(true); });
     if (manageClose) manageClose.addEventListener('click', function () { setManage(false); });
     if (manageModal) {
         manageModal.addEventListener('click', function (evt) { if (evt.target === manageModal) setManage(false); });

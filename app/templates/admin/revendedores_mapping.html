@@ -96,6 +96,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{{ static_v('js/admin-searchable-select.js') }}"></script>
 <script>
 (function() {
   const $ = id => document.getElementById(id);
@@ -106,6 +107,11 @@
   const autoChk = $('rev-auto-chk');
   const btnSave = $('btn-rev-save');
   const balanceChip = $('co-balance');
+
+  // Desplegables con buscador: hay proveedores con cientos de paquetes y bajar por la lista es lentísimo.
+  const searchable = (sel, placeholder) => { if (window.nxSearchableSelect) window.nxSearchableSelect(sel, { searchPlaceholder: placeholder || 'Escribe para buscar…' }); };
+  searchable(gameSelect, 'Buscar juego de tu tienda…');
+  searchable(packageSelect, 'Buscar paquete de tu tienda…');
 
   const routes = {
     primary: { provider: $('route-primary-provider'), list: $('route-primary-list'), add: $('route-primary-add'), note: $('route-primary-note'), body: null },
@@ -270,6 +276,7 @@
       (sel.options || []).forEach(o => s.appendChild(option(o.value, o.label || o.value)));
       s.value = (defaults && defaults[sel.key]) || '';
       wrap.appendChild(s);
+      if (s.options.length > 6) searchable(s, 'Buscar…');
       row._extra.appendChild(wrap);
     });
   }
@@ -301,6 +308,8 @@
 
     row._grp = grp; row._pkg = pkg; row._qty = qty; row._extra = extra;
     row.append(grp, pkg, qty, rm, extra);
+    searchable(grp, 'Buscar juego del proveedor…');
+    searchable(pkg, 'Buscar paquete del proveedor…');
 
     grp.addEventListener('change', () => { fillPackageOptions(key, row, grp.value, ''); renderExtra(key, row); });
     pkg.addEventListener('change', () => renderExtra(key, row));

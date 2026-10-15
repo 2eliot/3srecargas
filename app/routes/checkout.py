@@ -76,13 +76,17 @@ def _get_game_player_input_type(game):
         return 'none'
 
     value = (getattr(game, 'player_id_input_type', '') or '').strip().lower()
-    return value if value in {'numeric', 'text', 'email'} else 'numeric'
+    return value if value in {'numeric', 'text', 'email', 'username'} else 'numeric'
 
 
 def _normalize_game_player_id(game, value):
     cleaned = str(value or '').strip()
-    if _get_game_player_input_type(game) == 'numeric':
+    kind = _get_game_player_input_type(game)
+    if kind == 'numeric':
         return _digits_only(cleaned)
+    if kind in ('email', 'username'):
+        # Ni el correo ni el nombre de usuario llevan espacios.
+        return ''.join(cleaned.split())
     return cleaned
 from ..utils.reference_extraction import extract_reference_from_image_bytes, extract_reference_from_image_path
 from ..utils.auth_accounts import attach_matching_orders_to_customer, extract_customer_identifier_for_game, get_or_create_scoped_customer, is_account_user
@@ -177,7 +181,17 @@ def order_supports_background_payment_verification(order):
     if not payment_method:
         return False
 
+    # Binance Pay se verifica con la API de Binance (por la referencia), igual que el banco con Pabilo.
+    if getattr(payment_method, 'binance_verify', False):
+        return True
+
     return bool((payment_method.pabilo_user_bank_id or '').strip())
+
+
+def _verification_provider_label(order):
+    """Quién verifica el pago de esta orden (para los avisos): Binance o Pabilo."""
+    method = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
+    return 'Binance' if method is not None and getattr(method, 'binance_verify', False) else 'Pabilo'
 
 
 def _store_raw_pabilo_response(order, verification):
@@ -219,7 +233,7 @@ def auto_verify_and_process_order(order, force=False, customer_request=False):
             'verified': True,
             'payment_verified': True,
             'manual_review_required': True,
-            'message': 'Pago verificado en Pabilo. La orden sigue pendiente de revisión manual.',
+            'message': f'Pago verificado en {_verification_provider_label(order)}. La orden sigue pendiente de revisión manual.',
             'stop_polling': True,
             # No hubo trabajo nuevo: el revisor automático no debe gastar un turno en esta orden.
             'noop': True,
@@ -306,13 +320,14 @@ def auto_verify_and_process_order(order, force=False, customer_request=False):
 
     try:
         verification = verify_order_payment(order)
+        provider_label = verification.get('provider') or 'Pabilo'
         order.payment_verification_attempts = attempts + 1
         order.payment_last_verification_at = datetime.utcnow()
         _store_raw_pabilo_response(order, verification)
 
         if verification.get('verified'):
             stamp_verified_payment(order, verification)
-            pabilo_note = '[Pabilo] Pago verificado automáticamente.'
+            pabilo_note = f'[{provider_label}] Pago verificado automáticamente.'
             if verification.get('verification_id'):
                 pabilo_note = f"{pabilo_note} ID: {verification['verification_id']}"
             existing_notes = order.notes or ''
@@ -323,7 +338,7 @@ def auto_verify_and_process_order(order, force=False, customer_request=False):
                 ensure_minigame_opportunity(order)
                 # Los puntos y la barra de Recarga Acumulada NO se dan aquí (pago verificado): se dan cuando el pedido queda entregado o el admin lo aprueba
                 # (order_processing.award_points_for_order). Si el pedido se rechaza, no queda nada que quitar.
-                manual_note = '[Pabilo] Orden manual: pago verificado sin aprobación automática.'
+                manual_note = f'[{provider_label}] Orden manual: pago verificado sin aprobación automática.'
                 if manual_note not in (order.notes or ''):
                     order.notes = ((order.notes or '') + '\n' + manual_note).strip()
                 db.session.commit()
@@ -333,7 +348,7 @@ def auto_verify_and_process_order(order, force=False, customer_request=False):
                     'verified': True,
                     'payment_verified': True,
                     'manual_review_required': True,
-                    'message': 'Pago verificado en Pabilo. La orden sigue pendiente de revisión manual.',
+                    'message': f'Pago verificado en {provider_label}. La orden sigue pendiente de revisión manual.',
                     'stop_polling': True,
                 }
 
@@ -372,7 +387,7 @@ def auto_verify_and_process_order(order, force=False, customer_request=False):
 
         if verification.get('message'):
             existing_notes = order.notes or ''
-            auto_note = f"[Pabilo] {verification['message']}"
+            auto_note = f"[{provider_label}] {verification['message']}"
             if auto_note not in existing_notes:
                 order.notes = (existing_notes + '\n' + auto_note).strip()
                 db.session.commit()

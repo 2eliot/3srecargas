@@ -36,7 +36,7 @@ def is_account_user(user):
 
 def _get_game_player_input_type(game):
     value = (getattr(game, 'player_id_input_type', '') or '').strip().lower()
-    return value if value in {'numeric', 'text', 'email'} else 'numeric'
+    return value if value in {'numeric', 'text', 'email', 'username'} else 'numeric'
 
 
 def normalize_customer_identifier(raw_identifier, account_kind='generic'):

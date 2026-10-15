@@ -130,7 +130,7 @@ DRAWER_BG_ITEMS = [
     ('drawer_bg_login', 'Fondo del acceso "Iniciar sesión"', 'Iniciar sesión'),
 ]
 PROTECTED_CATEGORY_SLUGS = {'juegos', 'tarjetas', 'wallet'}
-GAME_PLAYER_INPUT_TYPES = {'numeric', 'text', 'email'}
+GAME_PLAYER_INPUT_TYPES = {'numeric', 'text', 'email', 'username'}
 
 
 def slugify_category(value):
@@ -157,6 +157,9 @@ def normalize_order_player_id(order, raw_value):
     player_input_type = normalize_game_player_input_type(getattr(order.game, 'player_id_input_type', 'numeric'))
     if player_input_type == 'numeric':
         return ''.join(ch for ch in value if ch.isdigit())
+    # Ni el correo ni el nombre de usuario llevan espacios.
+    if player_input_type in ('email', 'username') or category_slug == 'wallet':
+        return ''.join(value.split())
 
     return value
 
@@ -3189,6 +3192,7 @@ def payment_method_add():
     account_currency = (request.form.get('account_currency', 'bs') or 'bs').strip().lower()
     pabilo_user_bank_id = request.form.get('pabilo_user_bank_id', '').strip() or None
     pabilo_requires_phone_dni = bool(request.form.get('pabilo_requires_phone_dni'))
+    binance_verify = bool(request.form.get('binance_verify'))
     show_contact_email = bool(request.form.get('show_contact_email'))
     show_pay_id = bool(request.form.get('show_pay_id'))
     show_contact_phone = bool(request.form.get('show_contact_phone'))
@@ -3218,6 +3222,7 @@ def payment_method_add():
         account_currency=account_currency,
         pabilo_user_bank_id=pabilo_user_bank_id,
         pabilo_requires_phone_dni=pabilo_requires_phone_dni,
+        binance_verify=binance_verify,
         show_contact_email=show_contact_email,
         show_pay_id=show_pay_id,
         show_contact_phone=show_contact_phone,
@@ -3246,6 +3251,7 @@ def payment_method_edit(method_id):
     method.account_currency = (request.form.get('account_currency', method.account_currency or 'bs') or 'bs').strip().lower()
     method.pabilo_user_bank_id = request.form.get('pabilo_user_bank_id', '').strip() or None
     method.pabilo_requires_phone_dni = bool(request.form.get('pabilo_requires_phone_dni'))
+    method.binance_verify = bool(request.form.get('binance_verify'))
     method.show_contact_email = bool(request.form.get('show_contact_email'))
     method.show_pay_id = bool(request.form.get('show_pay_id'))
     method.show_contact_phone = bool(request.form.get('show_contact_phone'))
@@ -3992,6 +3998,7 @@ def settings():
         email_settings=email_settings,
         payment_verify_settings=payment_verify_settings,
         binance_auto_settings=binance_auto_settings,
+        binance_keys_ok=bool(current_app.config.get('BINANCE_API_KEY') and current_app.config.get('BINANCE_API_SECRET')),
         google_login_settings=google_login_settings,
         google_redirect_uri=google_login.redirect_uri(),
         active_payment_methods=active_payment_methods,

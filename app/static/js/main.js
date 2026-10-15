@@ -2544,7 +2544,7 @@ window.nxDebug = function () {};
         if (game.category_slug === 'tarjetas') return 'none';
 
         var inputType = String(game.player_id_input_type || '').toLowerCase();
-        return ['numeric', 'email', 'text'].indexOf(inputType) >= 0 ? inputType : 'numeric';
+        return ['numeric', 'email', 'text', 'username'].indexOf(inputType) >= 0 ? inputType : 'numeric';
     }
 
     function getPlayerInputRequiredMessage(game) {
@@ -2687,6 +2687,30 @@ window.nxDebug = function () {};
         }
     }
 
+    /* ── Sin espacios: el correo y el nombre de usuario no aceptan espacios (ni escritos ni pegados) ── */
+    function isNoSpaceField(el) {
+        if (!el || el.tagName !== 'INPUT') return false;
+        if (el.id === 'email') return true;
+        return el.id === 'playerId' && (el.dataset.playerInputType === 'username' || el.dataset.playerInputType === 'email');
+    }
+
+    function stripSpacesLive(input) {
+        var value = String(input.value || '');
+        if (!/\s/.test(value)) return;
+        var caret = null;
+        try { caret = input.selectionStart; } catch (_) { caret = null; }
+        var keep = (caret === null || caret === undefined) ? null : value.slice(0, caret).replace(/\s+/g, '').length;
+        input.value = value.replace(/\s+/g, '');
+        if (keep !== null) { try { input.setSelectionRange(keep, keep); } catch (_) {} }
+    }
+
+    document.addEventListener('keydown', function (evt) {
+        if ((evt.key === ' ' || evt.code === 'Space') && isNoSpaceField(evt.target)) evt.preventDefault();
+    });
+    document.addEventListener('input', function (evt) {
+        if (isNoSpaceField(evt.target)) stripSpacesLive(evt.target);
+    });
+
     function updateVerifyUI(game) {
         var btn = document.getElementById('btnVerifyPlayer');
         var nicknameEl = document.getElementById('playerNickname');
@@ -2758,6 +2782,8 @@ window.nxDebug = function () {};
                 playerInput.inputMode = 'email';
                 playerInput.removeAttribute('pattern');
                 playerInput.dataset.digitsOnly = '0';
+                playerInput.dataset.playerInputType = 'email';
+                playerInput.value = String(playerInput.value || '').replace(/\s+/g, '');
             }
             if (playerHint) playerHint.textContent = 'Ingresa tu correo electrónico para recibir la recarga.';
             if (zoneGroup) zoneGroup.style.display = 'none';
@@ -2768,6 +2794,8 @@ window.nxDebug = function () {};
             if (playerIdLabel) {
                 if (playerInputType === 'email') {
                     playerIdLabel.textContent = 'Correo electrónico';
+                } else if (playerInputType === 'username') {
+                    playerIdLabel.textContent = game.player_id_label || 'Nombre de usuario';
                 } else if (playerInputType === 'text') {
                     playerIdLabel.textContent = game.player_id_label || 'Dato del jugador';
                 } else {
@@ -2782,6 +2810,16 @@ window.nxDebug = function () {};
                     playerInput.inputMode = 'email';
                     playerInput.removeAttribute('pattern');
                     playerInput.dataset.digitsOnly = '0';
+                    playerInput.value = String(playerInput.value || '').replace(/\s+/g, '');
+                } else if (playerInputType === 'username') {
+                    playerInput.type = 'text';
+                    playerInput.placeholder = 'Ingresa tu usuario';
+                    playerInput.inputMode = 'text';
+                    playerInput.removeAttribute('pattern');
+                    playerInput.dataset.digitsOnly = '0';
+                    playerInput.setAttribute('autocapitalize', 'none');
+                    playerInput.setAttribute('spellcheck', 'false');
+                    playerInput.value = String(playerInput.value || '').replace(/\s+/g, '');
                 } else if (playerInputType === 'text') {
                     playerInput.type = 'text';
                     playerInput.placeholder = 'Ingresa tu dato';
@@ -2800,7 +2838,9 @@ window.nxDebug = function () {};
             }
             if (playerHint) {
                 if (playerInputType === 'email') {
-                    playerHint.textContent = 'Ingresa correctamente tu correo electrónico para evitar errores en la recarga.';
+                    playerHint.textContent = 'Ingresa correctamente tu correo electrónico (sin espacios) para evitar errores en la recarga.';
+                } else if (playerInputType === 'username') {
+                    playerHint.textContent = 'Ingresa correctamente tu ' + (game.player_id_label || 'usuario') + ' (sin espacios) para evitar errores en la recarga.';
                 } else {
                     playerHint.textContent = 'Ingresa correctamente tu ' + (game.player_id_label || 'ID') + ' para evitar errores en la recarga.';
                 }

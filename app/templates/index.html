@@ -189,6 +189,7 @@
                            data-show-pay-id="{{ 1 if m.show_pay_id else 0 }}"
                            data-show-contact-phone="{{ 1 if m.show_contact_phone else 0 }}"
                            data-payer-verification="{{ 1 if m.pabilo_requires_phone_dni else 0 }}"
+                           data-binance-verify="{{ 1 if m.binance_verify else 0 }}"
                            data-tutorial-video="{{ m.tutorial_video or '' }}"
                            {% if loop.first %}checked{% endif %}>
                     <div class="payment-card-inner">
@@ -208,10 +209,37 @@
         <!-- Datos para el pago (se llena según el método) -->
         <section class="glass-panel nx-step-card nx-paybox" id="nxPaybox" style="margin-bottom:12px">
             <div class="nx-paybox-head">
-                <h2 class="nx-paybox-title" id="nxPayboxTitle">DATOS PARA EL PAGO</h2>
+                <div class="nx-paybox-titlewrap">
+                    <h2 class="nx-paybox-title" id="nxPayboxTitle">DATOS PARA EL PAGO</h2>
+                    <button type="button" class="nx-info-btn" id="nxInfoBtn" aria-label="Leer antes de pagar" aria-expanded="false" aria-controls="nxInfoBubble">i</button>
+                </div>
                 <button type="button" class="nx-tutorial-btn nx-tutorial-blink" id="nxTutorialBtn" style="display:none">
                     <span class="yt">▶</span><span>Ver tutorial</span>
                 </button>
+            </div>
+            {#- Aviso de antes de pagar: una burbuja que sale del botón "i" (antes era una ventana que tapaba toda la pantalla). Se cierra tocando afuera o con "OK, ENTIENDO". -#}
+            <div class="nx-info-bubble" id="nxInfoBubble" role="dialog" aria-label="Antes de pagar" hidden>
+                <span class="nx-info-arrow" id="nxInfoArrow" aria-hidden="true"></span>
+                <div class="payment-warning-head" id="paymentWarningTitle">⚠ ¡ATENCIÓN: LEE ESTO ANTES DE PAGAR! ⚠</div>
+                <div class="payment-warning-body">
+                    <div class="payment-warning-item">
+                        <span class="payment-warning-icon">🏦</span>
+                        <p><strong>REALIZAR EL PAGO</strong> únicamente a los <strong id="pwDataKind">DATOS BANCARIOS</strong> indicados aquí en la web.</p>
+                    </div>
+                    <div class="payment-warning-item">
+                        <span class="payment-warning-icon">💰</span>
+                        <p><strong>COLOCAR EL MONTO CORRECTO</strong> que el sistema te indica aquí en la web.</p>
+                    </div>
+                    <div class="payment-warning-item">
+                        <span class="payment-warning-icon">⚡</span>
+                        <p><strong id="pwRefKind">COLOCAR EL NÚMERO DE REFERENCIA</strong> correcto para que tu <strong>RECARGA SEA AUTOMÁTICA</strong>.</p>
+                    </div>
+                </div>
+                <div class="payment-warning-footer">🚀 ¡Si sigues estos pasos, tu recarga llega al instante! 🚀</div>
+                <div class="nx-info-actions">
+                    <button type="button" class="payment-warning-ack" id="paymentWarningAcknowledge">OK, ENTIENDO 🎮</button>
+                    <button type="button" class="payment-warning-snooze" id="paymentWarningSnooze">YA SÉ, NO MOSTRAR MÁS</button>
+                </div>
             </div>
             <div id="nxPayboxContent"></div>
         </section>
@@ -256,6 +284,7 @@
                     <input type="text" id="nxReference" name="payment_reference" maxlength="30" autocomplete="off"
                            placeholder="Ej: 123456" class="glass-input"
                            style="width:100%; padding:11px 14px; text-align:center; letter-spacing:.15em; font-size:14px">
+                    <p class="form-hint" id="nxRefBinanceHint" style="display:none; margin-top:8px">En tu comprobante de Binance Pay copia el <strong>ID de la orden</strong> (Order ID) o el ID de la transacción. Si subes el comprobante, lo leemos por ti.</p>
                 </div>
 
                 <!-- Verificación de pagador (Pabilo con teléfono + DNI) -->
@@ -364,29 +393,6 @@
         </div>
     </form>
 
-    <!-- Aviso previo al pago -->
-    <div class="payment-warning-modal" id="paymentWarningModal" aria-hidden="true" style="display:none">
-        <div class="payment-warning-card" role="dialog" aria-modal="true" aria-labelledby="paymentWarningTitle">
-            <div class="payment-warning-head" id="paymentWarningTitle">⚠ ¡ATENCIÓN: LEE ESTO ANTES DE PAGAR! ⚠</div>
-            <div class="payment-warning-body">
-                <div class="payment-warning-item">
-                    <span class="payment-warning-icon">🏦</span>
-                    <p><strong>REALIZAR EL PAGO</strong> únicamente a los <strong>DATOS BANCARIOS</strong> indicados aquí en la web.</p>
-                </div>
-                <div class="payment-warning-item">
-                    <span class="payment-warning-icon">💰</span>
-                    <p><strong>COLOCAR EL MONTO CORRECTO</strong> que el sistema te indica aquí en la web.</p>
-                </div>
-                <div class="payment-warning-item">
-                    <span class="payment-warning-icon">⚡</span>
-                    <p><strong>COLOCAR EL NÚMERO DE REFERENCIA</strong> correcto para que tu <strong>RECARGA SEA AUTOMÁTICA</strong>.</p>
-                </div>
-            </div>
-            <div class="payment-warning-footer">🚀 ¡Si sigues estos pasos, tu recarga llega al instante! 🚀</div>
-            <button type="button" class="payment-warning-ack" id="paymentWarningAcknowledge">OK, ENTIENDO 🎮</button>
-            <button type="button" class="payment-warning-snooze" id="paymentWarningSnooze">YA SÉ, NO MOSTRAR MÁS</button>
-        </div>
-    </div>
 
     <!-- Aviso de Wallet (Zinli, TikTok, Binance…): se gestionan a mano -->
     <div class="payment-warning-modal" id="walletNoticeModal" aria-hidden="true" style="display:none">
@@ -420,9 +426,6 @@
             <video controls preload="metadata" playsinline id="nxVideoPlayer"></video>
             <button type="button" class="red-glow-pill" id="nxVideoContinue" style="padding:10px 0; font-size:12px; letter-spacing:.08em; text-transform:uppercase">
                 {{ checkout_payment_video.cta }}
-            </button>
-            <button type="button" id="nxVideoDontShow" style="padding:9px 0; font-size:11px; font-weight:700; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.15); border-radius:10px; color:#d4d4d4; cursor:pointer">
-                No volver a mostrar, ya sé usar la página
             </button>
         </div>
     </div>
@@ -622,7 +625,10 @@
     var extractVal = document.getElementById('nxExtractVal');
     var extractStatus = document.getElementById('nxExtractStatus');
     var aiRefInput = document.getElementById('nxAiExtractedReference');
-    var warningModal = document.getElementById('paymentWarningModal');
+    var infoBubble = document.getElementById('nxInfoBubble');
+    var infoBtn = document.getElementById('nxInfoBtn');
+    var infoArrow = document.getElementById('nxInfoArrow');
+    var infoOpenedAt = 0;
     var warningAck = document.getElementById('paymentWarningAcknowledge');
     var warningSnooze = document.getElementById('paymentWarningSnooze');
     var NX_WARN_SNOOZE_KEY = 'nx_payment_warning_snooze_until';
@@ -630,10 +636,7 @@
     var videoModal = document.getElementById('nxVideoModal');
     var videoClose = document.getElementById('nxVideoClose');
     var videoContinue = document.getElementById('nxVideoContinue');
-    var videoDontShow = document.getElementById('nxVideoDontShow');
     var videoPlayer = document.getElementById('nxVideoPlayer');
-    var NX_VIDEO_SNOOZE_KEY = 'nx_video_snooze_until';
-    var NX_VIDEO_SNOOZE_MS = 48 * 60 * 60 * 1000; // 48 horas
     var toast = document.getElementById('nxToast');
     var toastMsg = document.getElementById('nxToastMsg');
     var timerEl = document.getElementById('nxTimer');
@@ -645,7 +648,6 @@
     var binanceWallet = '';
     var binanceCodeRequestedFor = null;   // id de paquete ya solicitado
     var warningShown = false;
-    var pendingCheckoutStepsReveal = false;
     var timerInterval = null;
     var toastTimeout = null;
     var extractionRequestId = 0;
@@ -924,6 +926,18 @@
         }
 
         if (refBlock) refBlock.style.display = (binance || payerMode) ? 'none' : '';
+        // Binance Pay (verificado con la API): lo que se pide es el ID de la orden que muestra Binance, no una referencia bancaria.
+        var methodNow = getCheckedMethod();
+        var binanceRef = !!(methodNow && methodNow.dataset.binanceVerify === '1');
+        var refLabel = refBlock ? refBlock.querySelector('.nx-pay-label') : null;
+        if (refLabel) refLabel.textContent = binanceRef ? 'ID de la orden de Binance' : 'Número de Referencia';
+        if (refInput) refInput.placeholder = binanceRef ? 'Ej: 71505104267788288' : 'Ej: 123456';
+        var binanceHint = document.getElementById('nxRefBinanceHint');
+        if (binanceHint) binanceHint.style.display = binanceRef ? '' : 'none';
+        // El aviso de antes de pagar habla de "datos bancarios" y "número de referencia": con Binance se dice lo que de verdad hay que hacer.
+        var pwData = document.getElementById('pwDataKind'), pwRef = document.getElementById('pwRefKind');
+        if (pwData) pwData.textContent = binanceRef ? 'DATOS DE BINANCE' : 'DATOS BANCARIOS';
+        if (pwRef) pwRef.textContent = binanceRef ? 'COLOCAR EL ID DE LA ORDEN DE BINANCE' : 'COLOCAR EL NÚMERO DE REFERENCIA';
         if (payerBlock) payerBlock.style.display = (!binance && payerMode) ? '' : 'none';
 
         // Los campos ocultos se deshabilitan para que no viajen en el POST
@@ -947,10 +961,8 @@
     applyMethodSections();
 
     /* ── Mostrar/ocultar el bloque de checkout al elegir paquete ───── */
-    // La primera vez que se elige un paquete, el aviso de método de pago
-    // sale ANTES de que se vea el resto (método de pago, datos de pago...):
-    // se revela recién cuando el cliente confirma el aviso en closeWarning().
-    // Las veces siguientes (mismo aviso ya visto) se salta directo.
+    // Al elegir un paquete se va directo a los datos de pago. La primera vez se despliega
+    // además la burbuja del botón "i" con el aviso de antes de pagar (nunca una ventana que tape todo).
     function revealCheckoutSteps() {
         checkoutSteps.style.display = '';
         renderPaybox();
@@ -964,17 +976,17 @@
 
     function showCheckoutSteps() {
         if (!checkoutSteps || checkoutSteps.style.display !== 'none') return;
+        // Se va directo a los datos de pago; la primera vez se despliega la burbuja del botón "i" (si no pidió no verla).
+        revealCheckoutSteps();
         if (!warningShown) {
             warningShown = true;
-            pendingCheckoutStepsReveal = true;
-            openWarning();
-            return;
+            if (!isWarningSnoozed()) setTimeout(openInfoBubble, 250);
         }
-        revealCheckoutSteps();
     }
 
     function hideCheckoutSteps() {
         if (checkoutSteps) checkoutSteps.style.display = 'none';
+        closeInfoBubble();
         stopTimer();
     }
 
@@ -1029,28 +1041,52 @@
         }
     }
 
-    // Lo que sigue después del aviso (ya sea porque lo cerró o porque pidió no verlo por 48 horas).
-    function afterWarning() {
-        if (pendingCheckoutStepsReveal) {
-            pendingCheckoutStepsReveal = false;
-            revealCheckoutSteps();
-        }
-        maybeOpenVideo();
+    // La flechita de la burbuja apunta al botón "i".
+    function placeInfoArrow() {
+        if (!infoBubble || !infoBtn || !infoArrow || infoBubble.hidden) return;
+        // Se mide contra la cabecera (que ocupa el mismo ancho y no se anima): la burbuja recién abierta aún se está agrandando.
+        var head = infoBtn.closest('.nx-paybox-head') || infoBubble;
+        var h = head.getBoundingClientRect();
+        var r = infoBtn.getBoundingClientRect();
+        var left = Math.round(r.left + r.width / 2 - h.left - 7);
+        left = Math.max(14, Math.min(left, infoBubble.offsetWidth - 28));
+        infoArrow.style.left = left + 'px';
+        infoBubble.style.transformOrigin = (left + 7) + 'px 0';
     }
 
-    function openWarning() {
-        if (!warningModal) { maybeOpenVideo(); return; }
-        if (isWarningSnoozed()) { afterWarning(); return; }
-        warningModal.style.display = 'flex';
-        warningModal.setAttribute('aria-hidden', 'false');
+    function openInfoBubble() {
+        if (!infoBubble || !infoBubble.hidden) return;
+        infoBubble.hidden = false;
+        infoOpenedAt = Date.now();
+        if (infoBtn) { infoBtn.setAttribute('aria-expanded', 'true'); infoBtn.classList.add('is-open'); }
+        placeInfoArrow();
+        // Que se vea completa la burbuja (y los datos de pago que siguen debajo).
+        setTimeout(function () {
+            try { infoBubble.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
+        }, 80);
     }
 
-    function closeWarning() {
-        if (!warningModal) return;
-        warningModal.style.display = 'none';
-        warningModal.setAttribute('aria-hidden', 'true');
-        afterWarning();
+    function closeInfoBubble() {
+        if (!infoBubble || infoBubble.hidden) return;
+        infoBubble.hidden = true;
+        if (infoBtn) { infoBtn.setAttribute('aria-expanded', 'false'); infoBtn.classList.remove('is-open'); }
     }
+
+    function closeWarning() { closeInfoBubble(); }
+
+    if (infoBtn) {
+        infoBtn.addEventListener('click', function () {
+            if (infoBubble && infoBubble.hidden) openInfoBubble(); else closeInfoBubble();
+        });
+    }
+    // Tocar afuera de la burbuja la cierra (el toque que acaba de abrirla no cuenta).
+    document.addEventListener('click', function (evt) {
+        if (!infoBubble || infoBubble.hidden || Date.now() - infoOpenedAt < 400) return;
+        if (infoBubble.contains(evt.target) || (infoBtn && infoBtn.contains(evt.target))) return;
+        closeInfoBubble();
+    });
+    document.addEventListener('keydown', function (evt) { if (evt.key === 'Escape') closeInfoBubble(); });
+    window.addEventListener('resize', placeInfoArrow);
 
     function getMethodVideoUrl() {
         var m = getCheckedMethod();
@@ -1064,18 +1100,10 @@
         return '';
     }
 
-    function isVideoSnoozed() {
-        try {
-            var until = Number(localStorage.getItem(NX_VIDEO_SNOOZE_KEY) || 0);
-            return until > Date.now();
-        } catch (_) {
-            return false;
-        }
-    }
-
+    // El video se abre SOLO cuando el cliente toca "Ver tutorial" (antes salía solo al cerrar el aviso).
     function openVideoModal() {
         var url = getMethodVideoUrl();
-        if (!videoModal || !url || isVideoSnoozed()) return;
+        if (!videoModal || !url) return;
         if (videoPlayer && videoPlayer.getAttribute('src') !== url) {
             videoPlayer.setAttribute('src', url);
             try { videoPlayer.load(); } catch (_) {}
@@ -1086,8 +1114,6 @@
         videoModal.classList.add('is-open');
         videoModal.setAttribute('aria-hidden', 'false');
     }
-
-    function maybeOpenVideo() { openVideoModal(); }
 
     function closeVideo() {
         if (!videoModal) return;
@@ -1105,12 +1131,6 @@
     }
     if (videoClose) videoClose.addEventListener('click', closeVideo);
     if (videoContinue) videoContinue.addEventListener('click', closeVideo);
-    if (videoDontShow) {
-        videoDontShow.addEventListener('click', function () {
-            try { localStorage.setItem(NX_VIDEO_SNOOZE_KEY, String(Date.now() + NX_VIDEO_SNOOZE_MS)); } catch (_) {}
-            closeVideo();
-        });
-    }
     if (tutorialBtn) tutorialBtn.addEventListener('click', openVideoModal);
 
     /* ── Comprobante: preview + extracción por IA ──────────────────── */

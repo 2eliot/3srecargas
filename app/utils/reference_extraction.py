@@ -190,6 +190,7 @@ def extract_reference_from_image_bytes(image_bytes, mime_type='image/jpeg', file
     prompt = (
         'Analiza este comprobante de pago y extrae unicamente la referencia bancaria o numero de operacion del pago. '
         'Ignora montos, telefonos, cedulas, numeros de cuenta, fecha, hora y nombres del beneficiario. '
+        'En los comprobantes de Binance Pay la referencia es el "ID de la orden" / "Order ID" / "ID de transaccion" (un numero largo, a veces con letras al inicio): devuelvelo completo; ignora el Binance ID o UID de las personas. '
         'IMPORTANTE: en los comprobantes de Pago Movil del Banco de Venezuela (BDV), el numero de "Operacion" a veces '
         'no cabe en una sola linea y continua envuelto en una segunda linea justo debajo, mostrando 1 o 2 digitos '
         'sueltos (por ejemplo "00695913176" en una linea y "0" en la linea de abajo, o "8542" seguido de "12" debajo). '
@@ -309,6 +310,7 @@ RECEIPT_DETAILS_PROMPT = (
     'su cédula o RIF, su banco, su nombre y, si es Zelle/Binance/otro, su correo, Pay ID o número de cuenta en '
     '"payee_account". NO pongas ahí los datos de quien paga. '
     '"kind" es "pago_movil", "transferencia", "zelle", "binance" u "otro". '
+    'En un comprobante de Binance Pay, "reference" es el "ID de la orden" / "Order ID" / "ID de transaccion" (numero largo), no el Binance ID de las personas. '
     'Si no puedes ver un dato con claridad, déjalo vacío. Nunca inventes nada.'
 )
 

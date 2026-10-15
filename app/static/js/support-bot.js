@@ -214,6 +214,14 @@
         field.placeholder = opts.placeholder || '';
         field.autocomplete = 'off';
         if (opts.numeric) field.setAttribute('inputmode', 'numeric');
+        if (opts.noSpaces) {
+            // El correo y el nombre de usuario no llevan espacios: no se pueden escribir ni pegar.
+            field.addEventListener('keydown', function (evt) { if (evt.key === ' ') evt.preventDefault(); });
+            field.addEventListener('input', function () {
+                var limpio = field.value.replace(/\s+/g, '');
+                if (field.value !== limpio) field.value = limpio;
+            });
+        }
         var send = el('button', 'sc-inline-send', opts.button || 'Continuar');
         send.type = 'submit';
         var error = el('span', 'sc-inline-error');

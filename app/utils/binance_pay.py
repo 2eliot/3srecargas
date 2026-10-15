@@ -106,15 +106,16 @@ def _to_epoch_ms(value: datetime) -> int:
 # ── Consulta de transacciones vía proxy ───────────────────────────────────────
 
 def _fetch_pay_transactions(api_key: str, api_secret: str, proxy: str, timeout: float,
-                            start_time_ms: int, limit: int = 100):
+                            start_time_ms: int, limit: int = 100, end_time_ms: int = 0):
     """Consulta el historial de Binance Pay a través del proxy configurado.
 
     Devuelve la lista de transacciones, o None si ningún endpoint respondió
     correctamente (para poder distinguir "no encontrado todavía" de "no
-    pudimos preguntar").
+    pudimos preguntar"). Con `end_time_ms` se pide solo hasta esa fecha.
     """
     ts = int(time.time() * 1000)
-    params = f"startTime={start_time_ms}&limit={limit}&timestamp={ts}"
+    end_part = f"&endTime={int(end_time_ms)}" if end_time_ms else ""
+    params = f"startTime={start_time_ms}{end_part}&limit={limit}&timestamp={ts}"
     sig = _sign(api_secret, params)
     qs = f"{params}&signature={sig}"
     headers = {"X-MBX-APIKEY": api_key}
@@ -331,11 +332,13 @@ def generate_binance_auto_code(app) -> str:
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 def is_binance_auto_enabled(app) -> bool:
-    """True solo cuando binance_auto_enabled == '1' en los settings."""
-    with app.app_context():
-        from ..models import Setting
-        s = Setting.query.filter_by(key="binance_auto_enabled").first()
-        return bool(s and s.value == "1")
+    """FLUJO VIEJO DEL CÓDIGO DE 6 DÍGITOS: RETIRADO (2026-10-15).
+
+    Binance ahora se paga y se verifica igual que Pago Móvil: el cliente paga a los datos de Binance del método de pago, sube el
+    comprobante o escribe la referencia, y `utils/binance_reference.py` la busca en el historial de Binance Pay con la API.
+    Esta función siempre devuelve False para que ninguna parte del checkout, la tienda ni el programador de fondo use el código viejo;
+    el resto de este archivo se conserva solo por las funciones de consulta a la API (`_fetch_pay_transactions`, `_tx_*`)."""
+    return False
 
 
 def is_binance_auto_order(order) -> bool:

@@ -291,6 +291,7 @@
         B.askValue(bubble, {
             placeholder: kind === 'player' ? P.game.player_id_label : 'correo@ejemplo.com',
             numeric: kind === 'player' && P.game.player_id_numeric,
+            noSpaces: true,
             maxLength: kind === 'player' ? 60 : 120,
             validate: idProblem(P),
             onDone: function (value) {

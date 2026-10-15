@@ -55,6 +55,12 @@ def _game_payload(game):
     }
 
 
+def _player_field_has_no_spaces(game):
+    """El correo (y el wallet, que pide correo) y el nombre de usuario no llevan espacios."""
+    slug = ((game.category.slug if game.category else '') or '').lower()
+    return slug == 'wallet' or (game.player_id_input_type or '').lower() in ('email', 'username')
+
+
 def _verify_payload(game):
     """Misma configuración de verificación que usa la tienda (heredada de
     Inefablestore): Free Fire contra /store/player/verify y Blood Strike
@@ -178,6 +184,10 @@ def redeem():
         return jsonify({'ok': False, 'message': problema}), 404
 
     game = gift.package.game if gift.package else None
+    if game and _player_field_has_no_spaces(game):
+        player_id = ''.join(player_id.split())
+        if not player_id:
+            return jsonify({'ok': False, 'message': 'Escribe tu ID de jugador.'}), 400
     if game and game.requires_zone_id and not zone_id:
         return jsonify({
             'ok': False,
