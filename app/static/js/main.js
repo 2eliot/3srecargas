@@ -3546,6 +3546,12 @@ window.nxDebug = function () {};
     function showManualNote(schedule) {
         var note = document.getElementById('manualNoticeInline');
         if (!note) return null;
+        // Solo mientras la recarga manual está ABIERTA: cerrada (fuera de horario o cerrada a mano en el admin) no se muestra, porque en ese caso
+        // los paquetes ya salen apagados con su propio aviso de "cerrado".
+        if (schedule && schedule.is_open_now === false) {
+            note.hidden = true;
+            return null;
+        }
         var open = document.getElementById('manualNoticeOpen');
         var close = document.getElementById('manualNoticeClose');
         if (schedule && schedule.open_label && open) open.textContent = schedule.open_label;
