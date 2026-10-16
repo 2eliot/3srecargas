@@ -176,12 +176,12 @@
                         <div class="pf-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ lv.percent }}"><span style="width: {{ lv.percent }}%"></span></div>
                     </div>
                     <p class="pf-levelnote">
-                        {% if lv.next_name %}{{ thousands(lv.diamonds) }} / {{ thousands(lv.next_target) }} diamantes este mes · {{ 'Te' if v.owner_view else 'Le' }} faltan <b>{{ thousands(lv.remaining) }}</b> para {{ lv.next_name }}
-                        {% else %}{{ thousands(lv.diamonds) }} diamantes este mes · ¡Nivel máximo!{% endif %}
+                        {% if lv.next_name %}{{ thousands(lv.diamonds) }} / {{ thousands(lv.next_target) }} puntos este mes · {{ 'Te' if v.owner_view else 'Le' }} faltan <b>{{ thousands(lv.remaining) }}</b> para {{ lv.next_name }}
+                        {% else %}{{ thousands(lv.diamonds) }} puntos este mes · ¡Nivel máximo!{% endif %}
                     </p>
                     <div class="pf-tiles">
-                        <div class="pf-tile"><small>Diamantes totales</small><b>{{ thousands(st.total_diamonds) }}</b></div>
-                        <div class="pf-tile"><small>Recarga del mes</small><b>{{ thousands(st.month_diamonds) }}</b></div>
+                        <div class="pf-tile"><small>Puntos de compras (total)</small><b>{{ thousands(st.total_diamonds) }}</b></div>
+                        <div class="pf-tile"><small>Puntos del mes</small><b>{{ thousands(st.month_diamonds) }}</b></div>
                         <div class="pf-tile"><small>Ranking del mes</small><b>{{ ('#' ~ st.month_rank) if st.month_rank else '—' }}</b></div>
                         <div class="pf-tile pf-tile-rep"><small>Reputación</small><b>{{ thousands(st.reputation) }}</b></div>
                         {% if st.streak_months %}<div class="pf-tile"><small>Racha</small><b>{{ st.streak_months }} {{ 'mes' if st.streak_months == 1 else 'meses' }}</b></div>{% endif %}

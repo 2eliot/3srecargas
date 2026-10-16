@@ -130,7 +130,7 @@
         <h3>Datos del Cliente</h3>
         {% if order.player_id %}
         <div class="detail-row">
-            <span class="detail-label">{{ order.game.player_id_label }}</span>
+            <span class="detail-label">{{ order.game.player_label }}</span>
             <span class="detail-value">{{ order.player_id }}</span>
         </div>
         {% endif %}
@@ -138,7 +138,7 @@
         <div style="margin:12px 0 18px;padding:10px;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-secondary)">
             <form method="POST" action="{{ url_for('admin_bp.order_update_player_id', order_id=order.id) }}">
                 <div class="form-group" style="margin-bottom:8px">
-                    <label for="player_id_edit" style="font-size:12px">Editar {{ order.game.player_id_label }}</label>
+                    <label for="player_id_edit" style="font-size:12px">Editar {{ order.game.player_label }}</label>
                     <input
                         id="player_id_edit"
                         name="player_id"

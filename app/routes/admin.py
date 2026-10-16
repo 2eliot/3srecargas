@@ -34,6 +34,7 @@ from ..utils.profiles import clean_text, delete_media, get_or_create_profile, ge
 from ..utils import account_points, banner_lite, page_bg
 from ..utils import profile_social
 from ..utils import profile_xp
+from ..utils.player_field import PLAYER_INPUT_TYPES, clean_value, field_kind
 from ..utils.locks import admin_login_locked, check_rate_limit, client_ip, register_admin_login_failure, remember_admin_device
 from ..utils.promos import (
     ACC_DEFAULT_MAX_PRIZES_PER_DAY, ACC_DEFAULT_MAX_PRIZES_PER_ID_PER_DAY, ACC_ENABLED_KEY,
@@ -45,6 +46,7 @@ from ..utils.gift_codes import create_batch as create_gift_batch, format_code as
 from ..utils.mini_influencers import (
     award_rank_bonus,
     approve_withdrawal as approve_mini_withdrawal,
+    attach_withdrawal_proof,
     get_rank_progress,
     notify_mini,
     reject_withdrawal as reject_mini_withdrawal,
@@ -130,7 +132,7 @@ DRAWER_BG_ITEMS = [
     ('drawer_bg_login', 'Fondo del acceso "Iniciar sesión"', 'Iniciar sesión'),
 ]
 PROTECTED_CATEGORY_SLUGS = {'juegos', 'tarjetas', 'wallet'}
-GAME_PLAYER_INPUT_TYPES = {'numeric', 'text', 'email', 'username'}
+GAME_PLAYER_INPUT_TYPES = set(PLAYER_INPUT_TYPES)
 
 
 def slugify_category(value):
@@ -150,18 +152,10 @@ def normalize_order_player_id(order, raw_value):
     if not order or not order.game:
         return value
 
-    category_slug = ((order.game.category.slug if order.game.category else '') or '').lower()
-    if category_slug == 'tarjetas':
+    kind = field_kind(order.game)
+    if kind == 'none':      # tarjetas: no hay dato de la cuenta
         return ''
-
-    player_input_type = normalize_game_player_input_type(getattr(order.game, 'player_id_input_type', 'numeric'))
-    if player_input_type == 'numeric':
-        return ''.join(ch for ch in value if ch.isdigit())
-    # Ni el correo ni el nombre de usuario llevan espacios.
-    if player_input_type in ('email', 'username') or category_slug == 'wallet':
-        return ''.join(value.split())
-
-    return value
+    return clean_value(kind, value)
 
 
 def allowed_file(filename):
@@ -1472,7 +1466,7 @@ def order_update_player_id(order_id):
             order.automation_response = None
             order.updated_at = datetime.utcnow()
 
-            note = f'[Admin] {order.game.player_id_label or "ID del jugador"} actualizado de {original_player_id or "(vacío)"} a {updated_player_id}.'
+            note = f'[Admin] {order.game.player_label} actualizado de {original_player_id or "(vacío)"} a {updated_player_id}.'
             existing_notes = order.notes or ''
             if note not in existing_notes:
                 order.notes = (existing_notes + '\n' + note).strip()
@@ -1498,7 +1492,7 @@ def order_update_player_id(order_id):
                     )
 
             db.session.commit()
-            flash(f'{order.game.player_id_label or "ID del jugador"} actualizado correctamente.', 'success')
+            flash(f'{order.game.player_label} actualizado correctamente.', 'success')
 
         if should_reprocess:
             result = approve_order(order)
@@ -2988,6 +2982,31 @@ def mini_withdrawal_approve(w_id):
         delete_uploaded_file(proof_path)
     flash(error if not ok else 'Retiro aprobado.', 'danger' if not ok else 'success')
     return redirect(url_for('admin_bp.minis', section='retiros'))
+
+
+@admin_bp.route('/minis/retiros/<int:w_id>/comprobante', methods=['POST'])
+@login_required
+def mini_withdrawal_proof(w_id):
+    """Adjunta (o cambia) el comprobante de pago de un retiro que ya se aprobó, para que el mini lo vea en su panel."""
+    withdrawal = AffiliateWithdrawal.query.get_or_404(w_id)
+    back = redirect(url_for('admin_bp.minis', section='retiros'))
+    proof_file = request.files.get('payment_proof')
+    if not proof_file or not proof_file.filename:
+        flash('Elige la foto o captura del comprobante.', 'danger')
+        return back
+    if not allowed_file(proof_file.filename):
+        flash('El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.', 'danger')
+        return back
+    proof_path = save_image(proof_file, 'withdrawal_proofs')
+    ok, error, previous = attach_withdrawal_proof(withdrawal, proof_path)
+    if not ok:
+        delete_uploaded_file(proof_path)
+        flash(error, 'danger')
+        return back
+    if previous and previous != proof_path:
+        delete_uploaded_file(previous)
+    flash('Comprobante guardado. El mini ya lo ve en su panel.', 'success')
+    return back
 
 
 @admin_bp.route('/minis/retiros/<int:w_id>/reject', methods=['POST'])
@@ -6431,16 +6450,21 @@ def account_social_settings():
         error = profile_social.save_thresholds({key: request.form.get(f'level_{key}', '') for key in profile_social.LEVEL_KEYS})
         whale = (request.form.get('whale') or '').strip()
         likes = (request.form.get('like_limit') or '').strip()
+        top_points = (request.form.get('top_points') or '').strip()
         if not error:
             if not whale.isdigit() or not (1 <= int(whale) <= 10_000_000):
                 error = 'El umbral de "Ballena" debe ser un número entre 1 y 10.000.000.'
             elif not likes.isdigit() or not (1 <= int(likes) <= 1000):
                 error = 'El tope de me gusta por día debe estar entre 1 y 1000.'
+            elif top_points and (not top_points.isdigit() or not (1 <= int(top_points) <= 100000)):
+                error = 'Los puntos por dólar deben ser un número entero entre 1 y 100.000.'
         if error:
             db.session.rollback()
             flash(error, 'danger')
         else:
-            profile_social._set_setting(profile_social.SETTING_WHALE, int(whale), 'Diamantes en un mes para la insignia Ballena')
+            profile_social._set_setting(profile_social.SETTING_WHALE, int(whale), 'Puntos de compras en un mes para la insignia Ballena')
+            if top_points:   # si el formulario no lo trae, se queda como estaba
+                profile_social._set_setting(profile_social.SETTING_TOP_POINTS, int(top_points), 'Puntos de "Más compras" por cada dólar comprado')
             profile_social._set_setting(profile_social.SETTING_LIKE_LIMIT, int(likes), 'Me gusta que una cuenta puede dar por día')
             db.session.commit()
             flash('Ajustes guardados. Los niveles se recalculan en unos minutos o con "Recalcular ahora".', 'success')
@@ -6463,6 +6487,7 @@ def _social_settings_page(xp_override=None):
         'admin/profile_settings.html', levels=profile_social.LEVELS, thresholds=thresholds,
         whale=profile_social.get_int_setting(profile_social.SETTING_WHALE, profile_social.DEFAULT_WHALE),
         like_limit=profile_social.get_int_setting(profile_social.SETTING_LIKE_LIMIT, profile_social.DEFAULT_LIKE_LIMIT),
+        top_points=profile_social.top_points_per_dollar(),
         badges=badges, total_accounts=total_accounts,
         refreshed_at=profile_social._get_setting(profile_social.SETTING_REFRESHED, ''),
         xp_cfg=xp_cfg, xp_points=profile_xp.POINT_DEFS, xp_missions=profile_xp.MISSION_DEFS, xp_form=xp_override or {},

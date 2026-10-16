@@ -248,7 +248,10 @@ body::before {
                         <strong>${{ '%.2f'|format(w.amount) }} · {{ w.method }}</strong>
                         <small>{{ w.created_at.strftime('%d/%m/%Y') if w.created_at else '' }}</small>
                         {% if w.payment_proof %}
-                        <br><a href="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" target="_blank" rel="noopener" class="rdm-text-link" style="padding:0;">Ver comprobante</a>
+                        <a class="mn-proof" href="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" target="_blank" rel="noopener">
+                            <img src="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" alt="Comprobante de pago" loading="lazy">
+                            <span>Ver comprobante de pago</span>
+                        </a>
                         {% endif %}
                     </div>
                     <span class="status-{{ w.status }}" style="padding:3px 9px; border-radius:999px; font-size:10px; font-weight:800; text-transform:uppercase;">

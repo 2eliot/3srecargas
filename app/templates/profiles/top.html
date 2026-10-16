@@ -2,7 +2,6 @@
 {% block title %}Top de perfiles{% endblock %}
 {% import 'profiles/_official.html' as official %}
 {% block content %}
-{%- macro thousands(n) -%}{{ '{:,}'.format(n or 0)|replace(',', '.') }}{%- endmacro -%}
 <main class="pf-list-page nx-store">
     <div class="nx-back-row{{ ' has-admin' if official_user }}">
         <a href="{{ url_for('auth_bp.profile') if current_user.is_authenticated else url_for('main_bp.index') }}" class="nx-back-btn" id="topBack">
@@ -18,30 +17,18 @@
         {% endif %}
     </div>
     <h1>Top de perfiles</h1>
-    <p class="pf-lead">Los perfiles que más recargan, los más queridos y los de más nivel. Solo salen perfiles públicos que aceptaron aparecer (cada quien lo decide en "Editar perfil"). Cuentan las compras que hace cada cuenta.</p>
-    <nav class="pf-tabs" aria-label="Tipo de top">
-        {% for key, label, hint in tabs %}<a class="pf-tab{{ ' is-active' if tab == key }}" href="{{ url_for('profiles_bp.top_profiles', tab=key) }}" title="{{ hint }}">{{ label }}</a>{% endfor %}
-    </nav>
-    <div class="pf-rows" id="topRows">
-        {% for row in rows %}
-        <a class="pf-mini" href="{{ url_for('profiles_bp.public_profile', username=row.user.username) }}">
-            <span class="pf-mini-rank is-{{ row.rank if row.rank <= 3 else 'x' }}">{{ '#' ~ row.rank }}</span>
-            <span class="pf-mini-av">{% if row.avatar %}<img src="{{ url_for('static', filename='uploads/' + row.avatar) }}" alt="" loading="lazy">{% else %}{{ (row.name or '?')[0]|upper }}{% endif %}</span>
-            <span class="pf-mini-text"><strong>{{ row.name }}{% if is_official_user(row.user) %}{{ official.mark(true) }}{% endif %}</strong><small>@{{ row.user.username }}</small></span>
-            {% if row.xp %}<span class="pf-xpbadge is-small" style="--xp1: {{ row.xp.c1 }}; --xp2: {{ row.xp.c2 }}" title="Nivel {{ row.xp.level }}" aria-label="Nivel {{ row.xp.level }}">{{ row.xp.level }}</span>{% endif %}
-            {% if row.level and tab != 'nivel' %}<span class="pf-mini-lvl" style="--lv1: {{ row.level.c1 }}; --lv2: {{ row.level.c2 }}">{{ row.level.name }}</span>{% endif %}
-            {% if row.value is not none %}<span class="pf-mini-val">{{ thousands(row.value) }}{% if tab == 'nivel' %} <small class="pf-mini-unit">pts</small>{% endif %}</span>{% endif %}
-        </a>
-        {% else %}
-        <p class="pf-empty">Todavía no hay perfiles en este top.{% if tab == 'nivel' %} Aparecen cuando alguien gana puntos de experiencia.{% elif tab != 'reputacion' %} Aparecen cuando una cuenta recarga.{% endif %}</p>
-        {% endfor %}
+    <p class="pf-lead">Los perfiles que más recargan, los más queridos y los de más nivel. Solo salen perfiles públicos que aceptaron aparecer (cada quien lo decide en "Editar perfil"). Cuentan las compras que hace cada cuenta: en "Más compras" cada dólar comprado da <b>{{ points_per_dollar }} puntos</b> (si pagas en bolívares se cuenta en dólares, a la tasa del día de la compra).</p>
+    {#- Dos filas: arriba el período de las compras (Este mes / Histórico); abajo qué se mide (Más compras / Reputación / Nivel).
+        "Más compras" SIEMPRE abre en "Este mes"; "Histórico" es solo si la gente lo quiere ver. Si no hay JavaScript, todo son enlaces normales. -#}
+    <div class="pf-tabs-stack">
+        <nav class="pf-tabs pf-tabs-period{{ '' if active_kind == 'compras' else ' is-idle' }}" aria-label="Período de las compras">
+            {% for key, label, hint in period_tabs %}<a class="pf-tab{{ ' is-active' if active_kind == 'compras' and tab == key }}" data-top-tab="{{ key }}" href="{{ url_for('profiles_bp.top_profiles', tab=key) }}" title="{{ hint }}">{{ label }}</a>{% endfor %}
+        </nav>
+        <nav class="pf-tabs pf-tabs-kind" aria-label="Tipo de top">
+            {% for key, label, hint in kind_tabs %}<a class="pf-tab{{ ' is-active' if active_kind == key }}" data-top-kind="{{ key }}" href="{{ url_for('profiles_bp.top_profiles', tab=('mes' if key == 'compras' else key)) }}" title="{{ hint }}">{{ label }}</a>{% endfor %}
+        </nav>
     </div>
-    {% if pages > 1 %}
-    <div class="pf-pager">
-        <a class="{{ 'is-disabled' if page == 1 }}" href="{{ url_for('profiles_bp.top_profiles', tab=tab, page=page - 1) if page > 1 else '#' }}">Anterior</a>
-        {% for n in page_numbers %}<a class="{{ 'is-active' if n == page }}" href="{{ url_for('profiles_bp.top_profiles', tab=tab, page=n) }}">{{ n }}</a>{% endfor %}
-        <a class="{{ 'is-disabled' if page == pages }}" href="{{ url_for('profiles_bp.top_profiles', tab=tab, page=page + 1) if page < pages else '#' }}">Siguiente</a>
-    </div>
-    {% endif %}
+    <div class="pf-top-panel" id="topPanel" aria-live="polite">{% include 'profiles/_top_list.html' %}</div>
+    <script src="{{ static_v('js/top-tabs.js') }}" defer></script>
 </main>
 {% endblock %}

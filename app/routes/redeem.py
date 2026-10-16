@@ -44,21 +44,18 @@ def _setting(key, default=''):
 def _game_payload(game):
     if not game:
         return None
+    from ..utils.player_field import display_label, field_kind
     return {
         'id': game.id,
         'name': game.name,
         'requires_zone_id': bool(game.requires_zone_id),
-        'player_id_label': game.player_id_label or 'Player ID',
+        'player_id_label': display_label(game),
+        'player_field_label': display_label(game),
+        'player_field_kind': field_kind(game),
         'zone_id_label': game.zone_id_label or 'Zone ID',
         'player_id_input_type': (game.player_id_input_type or 'numeric'),
         'category_slug': (game.category.slug if game.category else ''),
     }
-
-
-def _player_field_has_no_spaces(game):
-    """El correo (y el wallet, que pide correo) y el nombre de usuario no llevan espacios."""
-    slug = ((game.category.slug if game.category else '') or '').lower()
-    return slug == 'wallet' or (game.player_id_input_type or '').lower() in ('email', 'username')
 
 
 def _verify_payload(game):
@@ -71,8 +68,8 @@ def _verify_payload(game):
         return disabled
 
     slug = (game.category.slug if game.category else '') or ''
-    input_type = (game.player_id_input_type or 'numeric').lower()
-    numeric_only = input_type == 'numeric' and slug.lower() not in ('wallet', 'tarjetas')
+    from ..utils.player_field import field_kind
+    numeric_only = field_kind(game) == 'numeric'
 
     ff_game_id = _setting('active_login_game_id')
     bs_game_id = _setting('bs_package_id')
@@ -184,10 +181,16 @@ def redeem():
         return jsonify({'ok': False, 'message': problema}), 404
 
     game = gift.package.game if gift.package else None
-    if game and _player_field_has_no_spaces(game):
-        player_id = ''.join(player_id.split())
-        if not player_id:
-            return jsonify({'ok': False, 'message': 'Escribe tu ID de jugador.'}), 400
+    if game:
+        from ..utils.player_field import clean_value, field_kind, validate_value
+        kind = field_kind(game)
+        if kind in ('email', 'username', 'phone'):
+            player_id = clean_value(kind, player_id)
+            if not player_id:
+                return jsonify({'ok': False, 'message': 'Escribe tu ID de jugador.'}), 400
+            problema_dato = validate_value(kind, player_id)
+            if problema_dato:
+                return jsonify({'ok': False, 'message': problema_dato}), 400
     if game and game.requires_zone_id and not zone_id:
         return jsonify({
             'ok': False,

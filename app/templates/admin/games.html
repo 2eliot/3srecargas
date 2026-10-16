@@ -45,7 +45,7 @@
                     <td>{{ game.position }}</td>
                     <td>
                         <div class="cell-stack">
-                            <small>{{ game.player_id_label }}{% if game.requires_zone_id %} + {{ game.zone_id_label }}{% endif %}</small>
+                            <small>{{ game.player_label }}{% if game.requires_zone_id %} + {{ game.zone_id_label }}{% endif %}</small>
                             {% if game.bs_rate_override is not none %}<small>Tasa Bs propia: {{ "%.4f"|format(game.bs_rate_override) }}</small>{% endif %}
                         </div>
                     </td>
@@ -97,9 +97,9 @@
                 </div>
                 <div class="form-group">
                     <label>Categoría *</label>
-                    <select name="category_id" required>
+                    <select name="category_id" id="addGameCategory" required>
                         {% for cat in categories %}
-                        <option value="{{ cat.id }}">{{ cat.icon }} {{ cat.name }}</option>
+                        <option value="{{ cat.id }}" data-slug="{{ cat.slug }}">{{ cat.icon }} {{ cat.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -113,16 +113,18 @@
                 </div>
                 <div class="form-group">
                     <label>Label Player ID</label>
-                    <input type="text" name="player_id_label" value="Player ID" placeholder="Player ID, UID, Nick...">
+                    <input type="text" name="player_id_label" id="addPlayerLabel" value="Player ID" placeholder="Player ID, UID, Nick...">
                 </div>
                 <div class="form-group">
                     <label>Tipo de campo principal</label>
-                    <select name="player_id_input_type">
-                        <option value="numeric" selected>Solo numeros</option>
+                    <select name="player_id_input_type" id="addPlayerInputType">
+                        <option value="numeric" selected>ID (solo numeros)</option>
                         <option value="email">Correo electronico</option>
                         <option value="username">Nombre de usuario</option>
+                        <option value="phone">Numero de telefono</option>
                         <option value="text">Texto libre</option>
                     </select>
+                    <small style="display:block;margin-top:4px;color:var(--text-muted);font-size:11px">El tipo decide que se acepta y donde se guarda; el nombre de arriba es lo que ve el cliente.</small>
                 </div>
                 <div class="form-group">
                     <label>Label Zone ID</label>
@@ -192,11 +194,13 @@
                 <div class="form-group">
                     <label>Tipo de campo principal</label>
                     <select name="player_id_input_type" id="editPlayerInputType">
-                        <option value="numeric">Solo numeros</option>
+                        <option value="numeric">ID (solo numeros)</option>
                         <option value="email">Correo electronico</option>
                         <option value="username">Nombre de usuario</option>
+                        <option value="phone">Numero de telefono</option>
                         <option value="text">Texto libre</option>
                     </select>
+                    <small style="display:block;margin-top:4px;color:var(--text-muted);font-size:11px">El tipo decide que se acepta y donde se guarda; el nombre de arriba es lo que ve el cliente.</small>
                 </div>
                 <div class="form-group">
                     <label>Label Zone ID</label>
@@ -253,7 +257,7 @@ function openEditGame(btn) {
     document.getElementById('editGameName').value = game.name;
     document.getElementById('editGameCategory').value = game.category_id || '';
     document.getElementById('editGamePosition').value = game.position;
-    document.getElementById('editPlayerLabel').value = game.player_id_label;
+    document.getElementById('editPlayerLabel').value = game.player_field_label || game.player_id_label;
     document.getElementById('editPlayerInputType').value = game.player_id_input_type || 'numeric';
     document.getElementById('editZoneLabel').value = game.zone_id_label;
     document.getElementById('editGameBsRateOverride').value = game.bs_rate_override || '';
@@ -264,5 +268,28 @@ function openEditGame(btn) {
     document.getElementById('editIsActive').checked = game.is_active !== false;
     openModal('editGameModal');
 }
+
+// Al elegir el tipo, el nombre del campo se rellena solo con el nombre normal de ese tipo (si el dueño no escribió uno propio).
+var NX_FIELD_NAMES = {numeric: 'Player ID', email: 'Correo electrónico', username: 'Nombre de usuario', phone: 'Número de teléfono', text: 'Dato del jugador'};
+function nxSyncFieldName(typeSelect, labelInput) {
+    if (!typeSelect || !labelInput) return;
+    var current = (labelInput.value || '').trim();
+    var isDefault = !current || Object.keys(NX_FIELD_NAMES).some(function (k) { return NX_FIELD_NAMES[k] === current; });
+    if (isDefault && NX_FIELD_NAMES[typeSelect.value]) labelInput.value = NX_FIELD_NAMES[typeSelect.value];
+}
+(function () {
+    var addType = document.getElementById('addPlayerInputType');
+    var addLabel = document.getElementById('addPlayerLabel');
+    var addCategory = document.getElementById('addGameCategory');
+    var editType = document.getElementById('editPlayerInputType');
+    var editLabel = document.getElementById('editPlayerLabel');
+    if (addType) addType.addEventListener('change', function () { nxSyncFieldName(addType, addLabel); });
+    if (editType) editType.addEventListener('change', function () { nxSyncFieldName(editType, editLabel); });
+    // Un producto nuevo de Wallet empieza pidiendo el correo (lo normal en Wallet); el dueño lo cambia si quiere.
+    if (addCategory && addType) addCategory.addEventListener('change', function () {
+        var opt = addCategory.options[addCategory.selectedIndex];
+        if (opt && opt.getAttribute('data-slug') === 'wallet') { addType.value = 'email'; nxSyncFieldName(addType, addLabel); }
+    });
+})();
 </script>
 {% endblock %}

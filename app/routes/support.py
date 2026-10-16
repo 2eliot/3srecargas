@@ -136,7 +136,7 @@ def page():
         if order.package:
             lines.append(f'Paquete adquirido: {order.package.name}')
         if order.player_id and order.game:
-            lines.append(f'{order.game.player_id_label}: {order.player_id}')
+            lines.append(f'{order.game.player_label}: {order.player_id}')
         if order.zone_id and order.game:
             lines.append(f'{order.game.zone_id_label}: {order.zone_id}')
         suggested = '\n'.join(lines)

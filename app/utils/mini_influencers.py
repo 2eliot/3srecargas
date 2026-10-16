@@ -261,11 +261,25 @@ def approve_withdrawal(withdrawal, proof_path=None):
         withdrawal.reviewed_at = datetime.utcnow()
         if proof_path:
             withdrawal.payment_proof = proof_path
-        notify_mini(affiliate, f'✅ Tu retiro de ${float(withdrawal.amount):.2f} fue aprobado.')
+        notify_mini(affiliate, f'✅ Tu retiro de ${float(withdrawal.amount):.2f} fue aprobado.' + (' Ya puedes ver tu comprobante de pago en Retiros.' if proof_path else ''))
         db.session.commit()
         return True, None
     finally:
         release_lock(lock_key, holder)
+
+
+def attach_withdrawal_proof(withdrawal, proof_path):
+    """Pone (o cambia) el comprobante de pago de un retiro YA aprobado y le avisa al mini. Devuelve (ok, error, comprobante_anterior).
+    El archivo viejo lo borra quien llama (la ruta del admin), solo si esto salió bien."""
+    if withdrawal.status != 'approved':
+        return False, 'Solo se puede adjuntar el comprobante a un retiro aprobado.', None
+    if not proof_path:
+        return False, 'No se pudo guardar el comprobante.', None
+    previous = withdrawal.payment_proof
+    withdrawal.payment_proof = proof_path
+    notify_mini(withdrawal.affiliate, f'📎 Ya puedes ver el comprobante de tu retiro de ${float(withdrawal.amount):.2f}. Está en la sección Retiros.')
+    db.session.commit()
+    return True, None, previous
 
 
 def reject_withdrawal(withdrawal, reason=''):

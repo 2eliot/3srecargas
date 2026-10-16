@@ -1,0 +1,25 @@
+{#- Filas del Top + paginador. La página completa lo incluye dentro de #topPanel y el cambio de pestaña (static/js/top-tabs.js) pide solo esto con ?partial=1. No depende de quién mira. -#}
+{% import 'profiles/_official.html' as official %}
+{%- macro thousands(n) -%}{{ '{:,}'.format(n or 0)|replace(',', '.') }}{%- endmacro -%}
+<div class="pf-rows" id="topRows">
+    {% for row in rows %}
+    <a class="pf-mini" href="{{ url_for('profiles_bp.public_profile', username=row.user.username) }}">
+        {%- set medal = {1: '👑', 2: '🥈', 3: '🥉'}.get(row.rank) if tab in ('mes', 'historico') else none -%}
+        <span class="pf-mini-rank is-{{ row.rank if row.rank <= 3 else 'x' }}{{ ' has-medal' if medal }}">{% if medal %}<i class="pf-mini-medal" title="Top {{ row.rank }} de Más compras {{ 'de este mes' if tab == 'mes' else 'de siempre' }}" aria-label="Top {{ row.rank }} de Más compras">{{ medal }}</i>{% endif %}{{ '#' ~ row.rank }}</span>
+        <span class="pf-mini-av">{% if row.avatar %}<img src="{{ url_for('static', filename='uploads/' + row.avatar) }}" alt="" loading="lazy">{% else %}{{ (row.name or '?')[0]|upper }}{% endif %}</span>
+        <span class="pf-mini-text"><strong>{{ row.name }}{% if is_official_user(row.user) %}{{ official.mark(true) }}{% endif %}</strong><small>@{{ row.user.username }}</small></span>
+        {% if row.xp %}<span class="pf-xpbadge is-small" style="--xp1: {{ row.xp.c1 }}; --xp2: {{ row.xp.c2 }}" title="Nivel {{ row.xp.level }}" aria-label="Nivel {{ row.xp.level }}">{{ row.xp.level }}</span>{% endif %}
+        {% if row.level and tab != 'nivel' %}<span class="pf-mini-lvl" style="--lv1: {{ row.level.c1 }}; --lv2: {{ row.level.c2 }}">{{ row.level.name }}</span>{% endif %}
+        {% if row.value is not none %}<span class="pf-mini-val">{{ thousands(row.value) }}{% if tab in ('nivel', 'mes', 'historico') %} <small class="pf-mini-unit">pts</small>{% endif %}</span>{% endif %}
+    </a>
+    {% else %}
+    <p class="pf-empty">Todavía no hay perfiles en este top.{% if tab == 'nivel' %} Aparecen cuando alguien gana puntos de experiencia.{% elif tab != 'reputacion' %} Aparecen cuando una cuenta recarga.{% endif %}</p>
+    {% endfor %}
+</div>
+{% if pages > 1 %}
+<div class="pf-pager">
+    <a class="{{ 'is-disabled' if page == 1 }}" href="{{ url_for('profiles_bp.top_profiles', tab=tab, page=page - 1) if page > 1 else '#' }}">Anterior</a>
+    {% for n in page_numbers %}<a class="{{ 'is-active' if n == page }}" href="{{ url_for('profiles_bp.top_profiles', tab=tab, page=n) }}">{{ n }}</a>{% endfor %}
+    <a class="{{ 'is-disabled' if page == pages }}" href="{{ url_for('profiles_bp.top_profiles', tab=tab, page=page + 1) if page < pages else '#' }}">Siguiente</a>
+</div>
+{% endif %}

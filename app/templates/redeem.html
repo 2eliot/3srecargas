@@ -137,6 +137,17 @@ body::before {
     var playerInput = document.getElementById('rdmPlayerId');
     var playerLabel = document.getElementById('rdmPlayerLabel');
     var playerFeedback = document.getElementById('rdmPlayerFeedback');
+    // El correo y el nombre de usuario no llevan espacios; el teléfono solo números y un + al inicio.
+    function limpiarCampoCanje(valor) {
+        var tipo = playerInput.dataset.fieldKind || '';
+        valor = String(valor || '');
+        if (tipo === 'email' || tipo === 'username') return valor.replace(/\s+/g, '');
+        if (tipo === 'phone') {
+            var v = valor.replace(/[^\d+]/g, '');
+            return (v.charAt(0) === '+' ? '+' : '') + v.replace(/\+/g, '');
+        }
+        return valor;
+    }
     var zoneWrap = document.getElementById('rdmZoneWrap');
     var zoneInput = document.getElementById('rdmZoneId');
     var zoneLabel = document.getElementById('rdmZoneLabel');
@@ -270,13 +281,13 @@ body::before {
                 document.getElementById('rdmPrizeGame').textContent = data.prize.game || '';
 
                 var juego = data.game || {};
-                playerLabel.textContent = 'Tu ' + (juego.player_id_label || 'ID de jugador');
-                playerInput.placeholder = 'Ingresa tu ' + (juego.player_id_label || 'ID');
-                var tipoCampo = String(juego.player_id_input_type || 'numeric').toLowerCase();
-                var slugJuego = String(juego.category_slug || '').toLowerCase();
-                playerInput.dataset.noSpaces = (tipoCampo === 'username' || tipoCampo === 'email' || slugJuego === 'wallet') ? '1' : '0';
-                playerInput.inputMode = (tipoCampo === 'numeric' && slugJuego !== 'wallet' && slugJuego !== 'tarjetas') ? 'numeric' : 'text';
-                playerInput.value = playerInput.dataset.noSpaces === '1' ? String(playerInput.value || '').replace(/\s+/g, '') : playerInput.value;
+                var nombreCampo = juego.player_field_label || juego.player_id_label || 'ID de jugador';
+                playerLabel.textContent = 'Tu ' + nombreCampo;
+                playerInput.placeholder = 'Ingresa tu ' + nombreCampo;
+                var tipoCampo = String(juego.player_field_kind || 'numeric').toLowerCase();
+                playerInput.dataset.fieldKind = tipoCampo;
+                playerInput.inputMode = tipoCampo === 'numeric' ? 'numeric' : (tipoCampo === 'phone' ? 'tel' : 'text');
+                playerInput.value = limpiarCampoCanje(playerInput.value);
                 if (juego.requires_zone_id) {
                     zoneWrap.hidden = false;
                     zoneLabel.textContent = juego.zone_id_label || 'Zone ID';
@@ -477,10 +488,8 @@ body::before {
 
     playerInput.addEventListener('input', function () {
         setFeedback(playerFeedback, '');
-        if (playerInput.dataset.noSpaces === '1') {
-            var sinEspacios = String(playerInput.value || '').replace(/\s+/g, '');
-            if (playerInput.value !== sinEspacios) playerInput.value = sinEspacios;
-        }
+        var limpioCampo = limpiarCampoCanje(playerInput.value);
+        if (playerInput.value !== limpioCampo) playerInput.value = limpioCampo;
         if (verifyState.enabled && verifyState.numericOnly) {
             var limpio = String(playerInput.value || '').replace(/\D+/g, '');
             if (playerInput.value !== limpio) playerInput.value = limpio;
@@ -498,7 +507,7 @@ body::before {
     });
 
     playerInput.addEventListener('keydown', function (evt) {
-        if (evt.key === ' ' && playerInput.dataset.noSpaces === '1') { evt.preventDefault(); return; }
+        if (evt.key === ' ' && (playerInput.dataset.fieldKind === 'email' || playerInput.dataset.fieldKind === 'username')) { evt.preventDefault(); return; }
         if (evt.key === 'Enter') { evt.preventDefault(); canjear(); }
     });
 

@@ -56,6 +56,7 @@ from ..utils.binance_pay import (
 )
 from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
+from ..utils.player_field import clean_value, field_kind, stores_in_email, validate_value
 from ..utils.locks import acquire_lock, check_rate_limit, client_ip, release_lock
 from ..utils.order_access import is_own_order, reference_tail_matches, remember_own_order
 
@@ -69,25 +70,13 @@ def _normalize_payer_phone(value):
 
 
 def _get_game_player_input_type(game):
-    category_slug = ((game.category.slug if game and game.category else '') or '').lower()
-    if category_slug == 'wallet':
-        return 'email'
-    if category_slug == 'tarjetas':
-        return 'none'
-
-    value = (getattr(game, 'player_id_input_type', '') or '').strip().lower()
-    return value if value in {'numeric', 'text', 'email', 'username'} else 'numeric'
+    """'none' (tarjetas) o el tipo del producto: numeric, email, username, phone o text (también en Wallet)."""
+    return field_kind(game)
 
 
 def _normalize_game_player_id(game, value):
-    cleaned = str(value or '').strip()
-    kind = _get_game_player_input_type(game)
-    if kind == 'numeric':
-        return _digits_only(cleaned)
-    if kind in ('email', 'username'):
-        # Ni el correo ni el nombre de usuario llevan espacios.
-        return ''.join(cleaned.split())
-    return cleaned
+    kind = field_kind(game)
+    return clean_value(kind, str(value or '').strip())
 from ..utils.reference_extraction import extract_reference_from_image_bytes, extract_reference_from_image_path
 from ..utils.auth_accounts import attach_matching_orders_to_customer, extract_customer_identifier_for_game, get_or_create_scoped_customer, is_account_user
 
@@ -742,7 +731,9 @@ def _get_active_session_affiliate_code():
 def checkout(package_id):
     package = Package.query.filter_by(id=package_id, is_active=True).first_or_404()
     game = package.game
-    is_wallet = game.category.slug == 'wallet'
+    # "is_wallet" = el dato del cliente es un correo de Wallet y se guarda en el campo "correo" de la orden (como Zinli desde siempre).
+    # Un producto de Wallet con tipo ID, usuario o teléfono guarda su dato en "dato de la cuenta", como los juegos.
+    is_wallet = stores_in_email(game)
 
     aff_from_query = (request.args.get('aff') or request.args.get('affiliate_code') or '').strip()
     if aff_from_query:
@@ -869,6 +860,9 @@ def checkout(package_id):
 
             if not tarjetas_without_id:
                 player_id = _normalize_game_player_id(game, player_id)
+                _field_problem = validate_value(_get_game_player_input_type(game), player_id)
+                if _field_problem:
+                    return _init_error(_field_problem)
 
             if is_wallet:
                 if not player_id:
@@ -878,7 +872,7 @@ def checkout(package_id):
                     return _init_error('Debes ingresar el correo de entrega para esta tarjeta o gift card.')
             elif not tarjetas_without_id:
                 if not player_id:
-                    return _init_error(f'{game.player_id_label} es obligatorio.')
+                    return _init_error(f'{game.player_label} es obligatorio.')
                 # Solo se recarga a IDs verificados en los juegos con verificador. El nick
                 # del formulario no cuenta como prueba: se confirma aquí, en el servidor.
                 from .verify import require_verified_player, VERIFIED_PLAYER_ERRORS

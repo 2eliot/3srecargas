@@ -274,6 +274,7 @@
         return function (value) {
             if (!value) return kind === 'player' ? 'Escribe tu ' + label + '.' : 'Escribe tu correo.';
             if (kind !== 'player') return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value) ? '' : 'Revisa tu correo: parece que no está bien escrito.';
+            if (P.game.player_kind === 'phone') return /^\+?\d{7,15}$/.test(value) ? '' : 'Revisa tu ' + label + ': debe tener entre 7 y 15 números (puede empezar con +).';
             if (P.game.player_id_numeric ? !/^\d{3,25}$/.test(value) : !/^[A-Za-z0-9_.@+-]{3,60}$/.test(value)) {
                 return P.game.player_id_numeric ? 'El ' + label + ' solo lleva números.' : 'Revisa tu ' + label + ': tiene caracteres que no son válidos.';
             }
@@ -291,7 +292,8 @@
         B.askValue(bubble, {
             placeholder: kind === 'player' ? P.game.player_id_label : 'correo@ejemplo.com',
             numeric: kind === 'player' && P.game.player_id_numeric,
-            noSpaces: true,
+            phone: kind === 'player' && P.game.player_kind === 'phone',
+            noSpaces: !(kind === 'player' && P.game.player_kind === 'phone'),
             maxLength: kind === 'player' ? 60 : 120,
             validate: idProblem(P),
             onDone: function (value) {

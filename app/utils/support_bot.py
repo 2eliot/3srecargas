@@ -98,11 +98,18 @@ def _number(value):
         return None
 
 
-def _id_kind(category_slug):
-    """Qué se le pide al cliente para recargar: su ID de jugador (juegos), su correo
-    (wallet: ahí el "ID" es el correo) o solo un correo de entrega (tarjetas)."""
-    slug = (category_slug or '').lower()
-    return 'email' if slug == 'wallet' else 'none' if slug == 'tarjetas' else 'player'
+def _id_kind(game):
+    """Qué se le pide al cliente para recargar: su dato de la cuenta (ID, usuario, teléfono... 'player'), su correo
+    (wallet con tipo correo: ahí el dato es el correo) o solo un correo de entrega (tarjetas: 'none')."""
+    from .player_field import field_kind, stores_in_email
+    if field_kind(game) == 'none':
+        return 'none'
+    return 'email' if stores_in_email(game) else 'player'
+
+
+def _player_kind(game):
+    from .player_field import field_kind
+    return field_kind(game)
 
 
 def list_games():
@@ -124,10 +131,11 @@ def list_games():
             'image': game.image or None,
             'category': game.category.name if game.category else '',
             'requires_zone': bool(game.requires_zone_id),
-            'player_id_label': game.player_id_label or 'Player ID',
+            'player_id_label': game.player_label,
             'zone_id_label': game.zone_id_label or 'Zona',
-            'player_id_numeric': (game.player_id_input_type or 'numeric') == 'numeric',
-            'id_kind': _id_kind(game.category.slug if game.category else ''),
+            'player_id_numeric': _player_kind(game) == 'numeric',
+            'player_kind': _player_kind(game),
+            'id_kind': _id_kind(game),
             'verifiable': game.id in verifiable,
         })
     return result
@@ -178,14 +186,16 @@ def game_packages(game_id):
             'available': not note, 'note': note,
             'image': p.get('image') or None,
         })
+    player_kind = game.get('player_field_kind') or 'numeric'
     return {
         'game': {
             'id': game['id'], 'slug': game['slug'], 'name': game['name'],
             'requires_zone': bool(game.get('requires_zone_id')),
-            'player_id_label': game.get('player_id_label') or 'Player ID',
+            'player_id_label': game.get('player_field_label') or game.get('player_id_label') or 'Player ID',
             'zone_id_label': game.get('zone_id_label') or 'Zona',
-            'player_id_numeric': (game.get('player_id_input_type') or 'numeric') == 'numeric',
-            'id_kind': _id_kind(game.get('category_slug')),
+            'player_id_numeric': player_kind == 'numeric',
+            'player_kind': player_kind,
+            'id_kind': 'none' if player_kind == 'none' else ('email' if game.get('player_data_in_email') else 'player'),
             'verifiable': game['id'] in verifiable_game_ids(),
         },
         'packages': packages,

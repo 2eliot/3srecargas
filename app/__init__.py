@@ -565,8 +565,10 @@ def create_app(config_class=Config):
         _ensure_tournament_entry_rules()
         _ensure_performance_indexes()
         _init_default_data(app)
-        from .utils.ranking_boards import ensure_default_boards
+        _migrate_wallet_input_types()
+        from .utils.ranking_boards import ensure_default_boards, migrate_accounts_units_label
         ensure_default_boards()
+        migrate_accounts_units_label()
         # El perfil oficial del administrador (usuario "3srecargas") ya viene creado; si algo falla aquí, la web arranca igual.
         try:
             from .utils.official_profile import ensure_official_profile
@@ -946,6 +948,25 @@ def _ensure_points_columns():
         if 'points_awarded' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN points_awarded BOOLEAN DEFAULT 0'))
             db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _migrate_wallet_input_types():
+    """Una sola vez: los productos de Wallet de antes ignoraban el tipo de campo (siempre pedían el correo), así que los que traían el valor de
+    fábrica ("solo números") o "texto" pasan a "correo", que es lo que sus clientes ven hoy. Desde ahí Wallet obedece el tipo que elija el dueño."""
+    try:
+        from .models import Category, Game, Setting
+        key = 'wallet_input_types_migrated_v1'
+        if Setting.query.filter_by(key=key).first():
+            return
+        wallet = Category.query.filter_by(slug='wallet').first()
+        if wallet is not None:
+            for game in Game.query.filter_by(category_id=wallet.id).all():
+                if (game.player_id_input_type or 'numeric') in ('numeric', 'text'):
+                    game.player_id_input_type = 'email'
+        db.session.add(Setting(key=key, value='1'))
+        db.session.commit()
     except Exception:
         db.session.rollback()
 

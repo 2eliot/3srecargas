@@ -24,7 +24,7 @@ from .timezone import now_ve, ve_day_start_utc_naive
 
 KINDS = {
     'game': {'label': 'Por juego (los IDs que más recargan)', 'short': 'Juego', 'units': 'Diamantes recargados'},
-    'accounts': {'label': 'Cuentas que más recargan', 'short': 'Cuentas', 'units': 'Diamantes recargados'},
+    'accounts': {'label': 'Cuentas que más compran', 'short': 'Cuentas', 'units': 'Puntos de compras'},
     'levels': {'label': 'Perfiles por nivel', 'short': 'Niveles', 'units': 'Puntos de nivel'},
 }
 PRIZE_TYPES = {
@@ -70,6 +70,22 @@ def _alias_game(aliases):
         if any(alias in haystack for alias in aliases):
             return game
     return None
+
+
+def migrate_accounts_units_label():
+    """Una sola vez: el ranking de Cuentas ahora cuenta PUNTOS de compras (no diamantes). Si todavía trae el nombre de siempre, se actualiza;
+    si el dueño ya le puso otro nombre, no se toca."""
+    key = 'ranking_accounts_points_label_v1'
+    try:
+        if _setting(key) == '1':
+            return
+        for board in RankingBoard.query.filter_by(kind='accounts').all():
+            if (board.units_label or '').strip() in ('', 'Diamantes recargados'):
+                board.units_label = KINDS['accounts']['units']
+        _set_setting(key, '1', 'El ranking de Cuentas pasó a puntos de compras')
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def ensure_default_boards():

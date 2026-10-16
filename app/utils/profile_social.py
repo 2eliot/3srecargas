@@ -11,6 +11,7 @@ import re
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import func, or_
 
@@ -44,6 +45,8 @@ SETTING_LIKE_LIMIT = 'profile_daily_like_limit'
 SETTING_REFRESHED = 'profile_stats_refreshed_at'
 SETTING_MONTH_CLOSED = 'profile_month_closed'
 DEFAULT_WHALE = 10000
+SETTING_TOP_POINTS = 'profile_top_points_per_dollar'
+DEFAULT_TOP_POINTS_PER_DOLLAR = 50
 DEFAULT_LIKE_LIMIT = 30
 STATS_MAX_AGE_MINUTES = 15
 # El recálculo normal lo hace el proceso de fondo cada STATS_MAX_AGE_MINUTES (utils/order_scheduler). Las páginas públicas solo lo
@@ -59,8 +62,9 @@ BADGES = {
     'fiel_3': {'name': 'Fiel', 'icon': '🛡️', 'rarity': 'Rara', 'desc': 'Recargó 3 meses seguidos.'},
     'veterano': {'name': 'Veterano', 'icon': '🎖️', 'rarity': 'Rara', 'desc': 'Lleva 1 año como cliente.'},
     'popular': {'name': 'Popular', 'icon': '❤️', 'rarity': 'Rara', 'desc': 'Recibió 50 me gusta en su perfil.'},
-    'top3_mes': {'name': 'Top 3 del mes', 'icon': '🏆', 'rarity': 'Épica', 'desc': 'Quedó entre los 3 primeros del ranking de un mes.'},
-    'ballena': {'name': 'Ballena', 'icon': '🐋', 'rarity': 'Legendaria', 'desc': 'Recargó muchísimo en un solo mes.'},
+    'top3_mes': {'name': 'Top 3 de Más compras', 'icon': '🏆', 'rarity': 'Épica', 'desc': 'Quedó entre los 3 primeros de "Más compras" de un mes.'},
+    'rey_compras': {'name': 'Rey de las compras', 'icon': '👑', 'rarity': 'Legendaria', 'desc': 'Fue el número 1 de "Más compras" de un mes.'},
+    'ballena': {'name': 'Ballena', 'icon': '🐋', 'rarity': 'Legendaria', 'desc': 'Compró muchísimo en un solo mes.'},
 }
 BADGE_ORDER = list(BADGES)
 POPULAR_LIKES = 50
@@ -81,7 +85,7 @@ def _set_setting(key, value, description=''):
 
 
 def get_thresholds():
-    """Diamantes del mes que hacen falta para cada nivel (editable en el admin)."""
+    """Puntos de compras del mes que hacen falta para cada nivel (editable en el admin)."""
     try:
         data = json.loads(_get_setting(SETTING_LEVELS, '') or '{}')
     except (ValueError, TypeError):
@@ -114,8 +118,8 @@ def save_thresholds(raw):
     values['bronce'] = 0
     ordered = [values[key] for key in LEVEL_KEYS]
     if any(ordered[i] >= ordered[i + 1] for i in range(len(ordered) - 1)):
-        return 'Cada nivel debe pedir más diamantes que el anterior (Bronce siempre es 0).'
-    _set_setting(SETTING_LEVELS, json.dumps(values), 'Diamantes del mes para cada nivel de perfil')
+        return 'Cada nivel debe pedir más puntos que el anterior (Bronce siempre es 0).'
+    _set_setting(SETTING_LEVELS, json.dumps(values), 'Puntos de compras del mes para cada nivel de perfil')
     return ''
 
 
@@ -124,6 +128,23 @@ def get_int_setting(key, default, lo=1, hi=10_000_000):
         return max(lo, min(hi, int(_get_setting(key, default))))
     except (TypeError, ValueError):
         return default
+
+
+def top_points_per_dollar():
+    """Puntos que da cada dólar comprado en "Más compras" (por defecto 50; el dueño lo cambia en Admin → Perfiles)."""
+    return get_int_setting(SETTING_TOP_POINTS, DEFAULT_TOP_POINTS_PER_DOLLAR, lo=1, hi=100000)
+
+
+def order_points(order, per_dollar=None):
+    """Puntos de "Más compras" de UNA compra: los dólares de la compra × los puntos de cada dólar, redondeado a un entero (0,75 $ × 50 = 37,5 → 38).
+    `order.amount` ya está en dólares y es lo que de verdad se pagó (con el descuento incluido): si el cliente pagó en bolívares, ese monto es el
+    de la tasa del día de la compra, así que no hay que volver a convertir nada."""
+    rate = per_dollar if per_dollar is not None else top_points_per_dollar()
+    try:
+        value = Decimal(str(order.amount or 0)) * Decimal(int(rate))
+        return max(0, int(value.quantize(Decimal('1'), rounding=ROUND_HALF_UP)))
+    except Exception:
+        return 0
 
 
 def level_for(diamonds, thresholds=None):
@@ -219,19 +240,22 @@ def verified_orders_query(user):
 
 
 def compute_numbers(user):
-    numbers = {'total': 0, 'orders': 0, 'per_month': defaultdict(int), 'first_order_at': None, 'favorite': '', 'order_dates': []}
+    # 'total' y 'per_month' son PUNTOS de compras (los del Top "Más compras"); 'units' son los diamantes/oro del nombre del paquete (solo los usa el nivel por números).
+    numbers = {'total': 0, 'units': 0, 'orders': 0, 'per_month': defaultdict(int), 'first_order_at': None, 'favorite': '', 'order_dates': []}
     per_product = {}   # nombre del paquete -> [cuántas órdenes, fecha de la última]
     query = verified_orders_query(user)
     if query is None:
         return numbers
+    rate = top_points_per_dollar()
     for order in query.order_by(Order.created_at.asc(), Order.id.asc()).all():
-        units = extract_order_units(order)
-        numbers['total'] += units
+        points = order_points(order, rate)
+        numbers['units'] += extract_order_units(order)
+        numbers['total'] += points
         numbers['orders'] += 1
         local = to_ve(order.created_at)
         if local is not None:
             numbers['order_dates'].append(local.date())   # día (hora de Venezuela) de cada recarga: lo usan las misiones del nivel por números
-        numbers['per_month'][month_key_of(order.created_at)] += units
+        numbers['per_month'][month_key_of(order.created_at)] += points
         if numbers['first_order_at'] is None:
             numbers['first_order_at'] = order.created_at
         name = ((order.package.name if order.package else '') or '').strip()
@@ -323,7 +347,7 @@ def refresh_user(user, commit=True, xp_cfg=None):
     # Nivel por números (como Steam): los puntos se calculan desde los hechos, nunca se suman a mano (ver utils/profile_xp.py).
     old_level, had_xp = stat.xp_level or 1, (stat.xp_total or 0) > 0
     xp = XP.compute_xp(
-        user.id, numbers['orders'], numbers['total'], numbers['order_dates'], stat.streak_months or 0, badge_count, top_months,
+        user.id, numbers['orders'], numbers['units'], numbers['order_dates'], stat.streak_months or 0, badge_count, top_months,
         profile_is_complete(profile), xp_cfg,
     )
     stat.xp_total = xp['total']
@@ -346,7 +370,7 @@ def xp_details_for(user, cfg=None):
     top_months = ProfileAward.query.filter(ProfileAward.user_id == user.id, ProfileAward.kind.in_(['top1', 'top2', 'top3'])).count()
     profile = UserProfile.query.filter_by(user_id=user.id).first()
     result = XP.compute_xp(
-        user.id, numbers['orders'], numbers['total'], numbers['order_dates'], streak, badge_count, top_months, profile_is_complete(profile), cfg,
+        user.id, numbers['orders'], numbers['units'], numbers['order_dates'], streak, badge_count, top_months, profile_is_complete(profile), cfg,
     )
     return {
         'parts': [part for part in result['parts'] if part['xp'] or part['count']],
@@ -396,8 +420,9 @@ def _month_totals_for(user, start, end):
     if query is None:
         return 0
     total = 0
+    rate = top_points_per_dollar()
     for order in query.filter(Order.created_at >= start, Order.created_at < end).all():
-        total += extract_order_units(order)
+        total += order_points(order, rate)
     return total
 
 
@@ -417,12 +442,14 @@ def month_candidates(key):
 
 
 def award_month(key):
-    """Cierra un mes: da la insignia "Top 3 del mes" y el premio de la vitrina (Campeón al primero) a los 3 mejores."""
+    """Cierra un mes: da la insignia "Top 3 de Más compras" (y "Rey de las compras" al primero) y el premio de la vitrina (Campeón al primero) a los 3 mejores."""
     candidates = month_candidates(key)
     month_name = MONTHS_ES[int(key[5:7]) - 1].capitalize()
     for position, (total, user) in enumerate(candidates[:3], start=1):
         kind = f'top{position}'
         _grant_badge(user.id, 'top3_mes')
+        if position == 1:
+            _grant_badge(user.id, 'rey_compras')
         exists = ProfileAward.query.filter_by(user_id=user.id, kind=kind, month_key=key).first()
         if exists is None:
             title = f'Campeón de {month_name}' if position == 1 else f'Top {position} de {month_name}'
@@ -490,7 +517,7 @@ ACCOUNT_RANKING_SIZE = 10
 
 
 def _account_ranking_query():
-    """Cuentas del mes en curso con diamantes, activas y que permiten salir en rankings (misma regla que el Top de perfiles)."""
+    """Cuentas del mes en curso con puntos de compras, activas y que permiten salir en rankings (misma regla que el Top de perfiles)."""
     return (
         db.session.query(ProfileStat, User, UserProfile)
         .join(User, User.id == ProfileStat.user_id)
@@ -722,7 +749,7 @@ def badge_cards(user_id):
             meta = BADGES[key]
             desc = meta['desc']
             if key == 'ballena':
-                desc = f"Recargó más de {get_int_setting(SETTING_WHALE, DEFAULT_WHALE):,} diamantes en un solo mes.".replace(',', '.')
+                desc = f"Compró más de {get_int_setting(SETTING_WHALE, DEFAULT_WHALE):,} puntos en un solo mes.".replace(',', '.')
             cards.append({'key': key, 'name': meta['name'], 'icon': meta['icon'], 'rarity': meta['rarity'], 'desc': desc, 'earned_at': earned[key].earned_at})
     return cards
 

@@ -214,6 +214,15 @@
         field.placeholder = opts.placeholder || '';
         field.autocomplete = 'off';
         if (opts.numeric) field.setAttribute('inputmode', 'numeric');
+        if (opts.phone) {
+            // Teléfono: solo números y un + al inicio (los espacios y guiones se quitan solos).
+            field.setAttribute('inputmode', 'tel');
+            field.addEventListener('input', function () {
+                var limpio = field.value.replace(/[^\d+]/g, '');
+                limpio = (limpio.charAt(0) === '+' ? '+' : '') + limpio.replace(/\+/g, '');
+                if (field.value !== limpio) field.value = limpio;
+            });
+        }
         if (opts.noSpaces) {
             // El correo y el nombre de usuario no llevan espacios: no se pueden escribir ni pegar.
             field.addEventListener('keydown', function (evt) { if (evt.key === ' ') evt.preventDefault(); });

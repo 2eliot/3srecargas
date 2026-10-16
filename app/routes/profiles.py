@@ -8,7 +8,7 @@ salen de las compras que hizo la cuenta (utils/profile_social.py). Las cuentas n
 """
 import json
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user
 from sqlalchemy import func
 
@@ -22,7 +22,7 @@ from ..utils.profile_social import (
     BADGES, SEARCH_MAX, SEARCH_MIN, STATS_FALLBACK_MINUTES, SocialError, badge_cards, ensure_fresh, get_thresholds, level_info, network_users, recompute_ranks,
     search_accounts,
     refresh_user, social_counts, target_visible, toggle_follow, toggle_like, top_rows, viewer_gate,
-    xp_details_for,
+    xp_details_for, top_points_per_dollar,
 )
 from ..utils.profile_frames import selected_frame_url, shop_frames, usable_frame
 from ..utils.profiles import (
@@ -281,23 +281,34 @@ def search_profiles():
 
 
 TOP_TABS = (
-    ('mes', 'Este mes', 'Diamantes recargados este mes'), ('historico', 'Histórico', 'Diamantes recargados desde siempre'),
+    ('mes', 'Este mes', 'Puntos de compras de este mes'), ('historico', 'Histórico', 'Puntos de compras desde siempre'),
     ('reputacion', 'Reputación', 'Puntos del perfil'), ('nivel', 'Nivel', 'Nivel y puntos de experiencia de la comunidad'),
 )
+# Lo que ve el cliente: arriba el período de las compras, abajo qué se mide. "mes" y "historico" son los dos períodos de "Más compras".
+TOP_PERIOD_TABS = tuple(t for t in TOP_TABS if t[0] in ('mes', 'historico'))
+TOP_KIND_TABS = (('compras', 'Más compras', 'Quién más compró (puntos): este mes o desde siempre'),) + tuple(t for t in TOP_TABS if t[0] in ('reputacion', 'nivel'))
 
 
 @profiles_bp.route('/perfiles/top')
 def top_profiles():
     """Top de perfiles: por recarga del mes, histórico o reputación. Solo entran perfiles públicos que lo permiten."""
     tab = request.args.get('tab') if request.args.get('tab') in {t[0] for t in TOP_TABS} else 'mes'
-    try:
-        ensure_fresh(STATS_FALLBACK_MINUTES)
-    except Exception:
-        db.session.rollback()
+    partial = request.args.get('partial') == '1'
+    if not partial:     # la lista sola (cambio de pestaña) ya viene detrás de una página completa que hizo esta comprobación
+        try:
+            ensure_fresh(STATS_FALLBACK_MINUTES)
+        except Exception:
+            db.session.rollback()
     rows, total, page, pages = top_rows(tab, request.args.get('page', type=int) or 1)
+    page_numbers = list(range(max(1, page - 2), min(pages, page + 2) + 1))
+    if partial:
+        response = make_response(render_template('profiles/_top_list.html', tab=tab, rows=rows, total=total, page=page, pages=pages, page_numbers=page_numbers))
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+    active_kind = 'compras' if tab in ('mes', 'historico') else tab
     return render_template(
-        'profiles/top.html', tab=tab, tabs=TOP_TABS, rows=rows, total=total, page=page, pages=pages,
-        page_numbers=list(range(max(1, page - 2), min(pages, page + 2) + 1)),
+        'profiles/top.html', tab=tab, tabs=TOP_TABS, period_tabs=TOP_PERIOD_TABS, kind_tabs=TOP_KIND_TABS, active_kind=active_kind,
+        rows=rows, total=total, page=page, pages=pages, page_numbers=page_numbers, points_per_dollar=top_points_per_dollar(),
         official_user=visible_official_user(),   # botón "Ver perfil del admin" (solo si ese perfil se puede abrir)
     )
 

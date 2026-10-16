@@ -589,6 +589,15 @@ html.lite .pf-bg-video { display: none !important; }
 .pf-tabs { display: flex; gap: 4px; padding: 5px; margin-bottom: 14px; border-radius: 14px; background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.14); }
 .pf-tab { flex: 1 1 0; text-align: center; padding: 10px 6px; border-radius: 10px; font-weight: 800; font-size: 12.5px; text-decoration: none; color: rgba(255,255,255,.6); }
 .pf-tab.is-active { color: #fff; background: linear-gradient(135deg, rgba(255,255,255,.18), rgba(255,255,255,.06)); border: 1px solid rgba(255,255,255,.25); }
+.pf-tab { border: 1px solid transparent; }
+/* Top: dos filas de pestañas (período arriba, qué se mide abajo) y la lista que se atenúa mientras carga */
+.pf-tabs-stack { display: grid; gap: 8px; margin-bottom: 14px; }
+.pf-tabs-stack .pf-tabs { margin-bottom: 0; }
+.pf-tabs-period { padding: 4px; }
+.pf-tabs-period .pf-tab { padding: 8px 6px; font-size: 12px; }
+.pf-tabs-period.is-idle .pf-tab:not(.is-active) { opacity: .5; }
+.pf-top-panel { transition: opacity .12s ease; }
+.pf-top-panel.is-loading { opacity: .45; pointer-events: none; }
 .pf-rows { display: grid; gap: 8px; }
 .pf-mini {
     display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; text-decoration: none; color: #fff;
@@ -598,6 +607,8 @@ html.lite .pf-bg-video { display: none !important; }
 .pf-mini:hover, .pf-mini:focus-visible { border-color: rgba(255,255,255,.55); outline: none; }
 .pf-mini:active { transform: scale(.985); }
 .pf-mini-rank { flex: 0 0 auto; min-width: 34px; text-align: center; font-weight: 900; font-size: 16px; color: rgba(255,255,255,.75); }
+.pf-mini-rank.has-medal { display: grid; justify-items: center; gap: 1px; line-height: 1.05; }
+.pf-mini-medal { font-style: normal; font-size: 16px; line-height: 1; filter: drop-shadow(0 0 5px rgba(255,214,102,.55)); }
 .pf-mini-rank.is-1 { color: #ffe08a; } .pf-mini-rank.is-2 { color: #e5e7eb; } .pf-mini-rank.is-3 { color: #f0a868; }
 .pf-mini-av { flex: 0 0 auto; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; overflow: hidden; font-weight: 900; background: linear-gradient(150deg, #e11d2e, #5a0610); border: 1px solid rgba(255,255,255,.3); }
 .pf-mini-av img { width: 100%; height: 100%; object-fit: cover; }

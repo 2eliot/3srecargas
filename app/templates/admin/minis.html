@@ -617,6 +617,7 @@
 {% if section == 'retiros' %}
 <div class="admin-card">
     <div class="card-header"><h3>Pendientes de revisión</h3></div>
+    <p class="form-hint" style="padding:0 18px 10px;margin:0">Al tocar <strong>Aprobar</strong> puedes <strong>adjuntar el comprobante del pago</strong> (foto o captura): el mini lo ve en su panel. Si se te olvida, lo adjuntas después desde el Historial.</p>
     <div class="table-wrap">
         <table class="admin-table">
             <thead><tr><th>Mini</th><th>Monto</th><th>Método</th><th>Datos de cobro</th><th>Fecha</th><th>Acciones</th></tr></thead>
@@ -658,7 +659,14 @@
                     <td>
                         {% if w.payment_proof %}
                         <a href="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" target="_blank" rel="noopener">Ver comprobante</a>
-                        {% else %}—{% endif %}
+                        {% elif w.status != 'approved' %}—{% endif %}
+                        {% if w.status == 'approved' %}
+                        <form method="POST" action="{{ url_for('admin_bp.mini_withdrawal_proof', w_id=w.id) }}" enctype="multipart/form-data" style="display:inline-block;margin-left:{{ '8px' if w.payment_proof else '0' }}">
+                            <label class="btn-sm btn-secondary" style="cursor:pointer">{{ 'Cambiar' if w.payment_proof else 'Adjuntar comprobante' }}
+                                <input type="file" name="payment_proof" accept="image/*" hidden onchange="this.form.submit()">
+                            </label>
+                        </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% else %}
@@ -675,9 +683,9 @@
         <div class="modal-header"><h3 id="withdrawalApproveTitle">Aprobar retiro</h3><button onclick="closeModal('withdrawalApproveModal')">✕</button></div>
         <form method="POST" id="withdrawalApproveForm" enctype="multipart/form-data">
             <div class="form-group">
-                <label>Comprobante de pago (opcional)</label>
+                <label>Adjuntar comprobante del pago (foto o captura)</label>
                 <input type="file" name="payment_proof" accept="image/*">
-                <p class="form-hint">El mini lo va a ver en su panel, en el historial de retiros.</p>
+                <p class="form-hint">Es opcional. El mini lo ve en su panel, en Retiros, junto a este retiro. Si no lo adjuntas ahora, puedes hacerlo después desde el Historial.</p>
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('withdrawalApproveModal')" class="btn-secondary">Cancelar</button>

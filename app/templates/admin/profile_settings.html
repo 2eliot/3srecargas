@@ -20,7 +20,7 @@
         <span>{% if refreshed_at %}Último cálculo: {{ refreshed_at[:16]|replace('T', ' ') }} (UTC){% else %}Aún no se ha calculado{% endif %}</span>
     </div>
     <form method="POST" style="padding:0 20px 20px;">
-        <p class="form-hint" style="margin:0 0 14px;">Diamantes que hay que recargar <b>en el mes</b> para tener cada nivel. El nivel se reinicia cada mes. Cada nivel debe pedir más que el anterior (Bronce siempre es 0).</p>
+        <p class="form-hint" style="margin:0 0 14px;">Puntos de compras que hay que juntar <b>en el mes</b> para tener cada nivel. El nivel se reinicia cada mes. Cada nivel debe pedir más que el anterior (Bronce siempre es 0).</p>
         <div class="form-grid-2">
             {% for key, name, c1, c2 in levels %}
             <div class="form-group">
@@ -29,8 +29,13 @@
             </div>
             {% endfor %}
             <div class="form-group">
-                <label for="whale">Insignia "Ballena": diamantes en un solo mes</label>
+                <label for="whale">Insignia "Ballena": puntos de compras en un solo mes</label>
                 <input type="number" id="whale" name="whale" min="1" max="10000000" value="{{ whale }}">
+            </div>
+            <div class="form-group">
+                <label for="top_points">Puntos por cada dólar comprado ("Más compras")</label>
+                <input type="number" id="top_points" name="top_points" min="1" max="100000" value="{{ top_points }}">
+                <p class="form-hint" style="margin:4px 0 0">Cada compra se redondea a un número entero (con 50: $0,75 = 38 puntos). Si pagó en bolívares se cuenta en dólares con la tasa del día de la compra. Al cambiarlo, el Top, los niveles y las insignias se recalculan en unos minutos.</p>
             </div>
             <div class="form-group">
                 <label for="like_limit">Me gusta que una cuenta puede dar por día</label>
@@ -146,12 +151,12 @@
     <div class="card-header"><h3>Cómo funciona</h3></div>
     <div style="padding:0 20px 20px;font-size:13px;line-height:1.6;">
         <ul style="margin:0;padding-left:18px;">
-            <li>Los números (diamantes, nivel, ranking, insignias) salen <b>solo de las compras que hace cada cuenta</b> con su sesión abierta. Las cuentas no dependen de ningún ID.</li>
-            <li>Cuentan órdenes aprobadas o completadas y pagadas (no premios), con los diamantes del nombre del paquete (igual que el Ranking mensual).</li>
+            <li>Los números (puntos, nivel, ranking, insignias) salen <b>solo de las compras que hace cada cuenta</b> con su sesión abierta. Las cuentas no dependen de ningún ID.</li>
+            <li>Cuentan órdenes aprobadas o completadas y pagadas (no premios). Cada compra da <b>{{ top_points }} puntos por cada dólar</b> que pagó (con el descuento ya aplicado; en bolívares se convierte a dólares con la tasa del día) y se redondea a un número entero. Los puntos del Top "Más compras" ya no dependen del número que lleve el nombre del paquete.</li>
             <li>Me gusta y seguir <b>no dan diamantes ni descuentos</b>: solo puntos de reputación. Solo pueden usarlos cuentas con al menos una recarga completada.</li>
             <li>Reputación = me gusta ×1 + seguidores ×2 + insignias ×5 + meses en el top 3 ×20 + perfil completo 10.</li>
             <li>El <b>nivel por números</b> es aparte del nivel del mes: suma los puntos que tú pones arriba y no se reinicia. Se ve junto al nombre en el perfil, en el Top de perfiles (pestaña "Nivel") y en "Mi red". Quien apaga "mostrar mis estadísticas" no muestra su nivel.</li>
-            <li>Al empezar cada mes se cierra el anterior: los 3 primeros reciben la insignia <b>Top 3 del mes</b> y un premio en su vitrina (el primero, "Campeón de &lt;mes&gt;" como título).</li>
+            <li>Al empezar cada mes se cierra el anterior: los 3 primeros de "Más compras" reciben la insignia <b>Top 3 de Más compras</b> (y el primero también <b>Rey de las compras</b>) y un premio en su vitrina (el primero, "Campeón de &lt;mes&gt;" como título).</li>
             <li>Los perfiles no muestran IDs, redes sociales ni comentarios (regla de la tienda). Puedes ocultar o restablecer cualquier perfil desde el detalle de la cuenta.</li>
         </ul>
     </div>

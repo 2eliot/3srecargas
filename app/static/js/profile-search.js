@@ -77,8 +77,9 @@
             var svg = document.createElementNS(ns, 'svg');
             svg.setAttribute('viewBox', '0 0 24 24');
             svg.setAttribute('aria-hidden', 'true');
-            var circle = document.createElementNS(ns, 'circle');
-            circle.setAttribute('cx', '12'); circle.setAttribute('cy', '12'); circle.setAttribute('r', '11');
+            var circle = document.createElementNS(ns, 'path');   // el sello con puntas (igual que el de las demás pantallas)
+            circle.setAttribute('class', 'pf-seal');
+            circle.setAttribute('d', 'M12.00 1.50 L15.18 4.33 L19.42 4.58 L19.67 8.82 L22.50 12.00 L19.67 15.18 L19.42 19.42 L15.18 19.67 L12.00 22.50 L8.82 19.67 L4.58 19.42 L4.33 15.18 L1.50 12.00 L4.33 8.82 L4.58 4.58 L8.82 4.33 Z');
             var check = document.createElementNS(ns, 'path');
             check.setAttribute('class', 'pf-verified-check');
             check.setAttribute('d', 'm7.4 12.6 3.1 3.1 6.1-6.6');

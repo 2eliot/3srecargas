@@ -10,6 +10,7 @@ from datetime import datetime
 from ..models import db, AccountNotice, AdminUser, Game, User, Order, UserLinkedId
 from .locks import acquire_lock, release_lock
 from .order_access import reference_tail_matches
+from .player_field import display_label, field_kind
 
 
 EMAIL_ACCOUNT_KINDS = {'wallet_email', 'delivery_email', 'binance_account', 'email', 'google_email'}
@@ -35,8 +36,7 @@ def is_account_user(user):
 
 
 def _get_game_player_input_type(game):
-    value = (getattr(game, 'player_id_input_type', '') or '').strip().lower()
-    return value if value in {'numeric', 'text', 'email', 'username'} else 'numeric'
+    return field_kind(game)
 
 
 def normalize_customer_identifier(raw_identifier, account_kind='generic'):
@@ -57,12 +57,12 @@ def get_game_account_meta(game):
     category_slug = ((game.category.slug if game and game.category else '') or '').lower()
     game_name = (game.name or '').strip() if game else 'Servicio'
     account_kind = 'player_id'
-    identifier_label = (getattr(game, 'player_id_label', '') or 'ID del jugador').strip()
+    identifier_label = display_label(game) if game is not None else 'ID del jugador'
 
     if category_slug == 'tarjetas':
         account_kind = 'delivery_email'
         identifier_label = 'Correo de entrega'
-    elif category_slug == 'wallet':
+    elif category_slug == 'wallet' and _get_game_player_input_type(game) == 'email':
         if 'binance' in game_name.lower():
             account_kind = 'binance_account'
             identifier_label = 'Pay ID o correo de destino'
