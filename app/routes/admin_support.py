@@ -22,7 +22,7 @@ from ..utils import support as support_service
 from ..utils import support_bot
 from ..utils.support import SupportError
 from ..utils.support_ai import (
-    gemini_key_configured, get_ai_settings, save_ai_settings, test_connection as test_support_ai
+    ai_replies_last_24h, gemini_key_configured, get_ai_settings, save_ai_settings, test_connection as test_support_ai
 )
 from ..utils.notifications import notify_support_admin_reply
 from ..utils.timezone import format_ve, now_ve, to_ve
@@ -524,6 +524,7 @@ def assistant():
     return render_template(
         'admin/support_assistant.html',
         support_ai=get_ai_settings(),
+        ai_replies_24h=ai_replies_last_24h(),
         gemini_key_ok=gemini_key_configured(),
         bot=support_bot.get_bot_settings(),
         bot_buttons=support_bot.BOT_BUTTONS,
@@ -547,6 +548,7 @@ def assistant_save():
             model=request.form.get('model'),
             handoff_tag_id=tag_id,
             max_failed=request.form.get('max_failed', type=int),
+            daily_limit=request.form.get('daily_limit', type=int),
             instructions=request.form.get('instructions'),
             base_url=request.form.get('base_url'),
             provider=provider,

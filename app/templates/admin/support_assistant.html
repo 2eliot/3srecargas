@@ -170,6 +170,15 @@
                     <input type="number" id="support_ai_max_failed" name="max_failed" min="1" max="10" value="{{ support_ai.max_failed }}">
                     <p class="form-hint">Veces que busca un pedido sin encontrarlo antes de pasar el chat a tu equipo.</p>
                 </div>
+                <div class="form-group">
+                    <label for="support_ai_daily_limit">Máximo de respuestas de la IA por día</label>
+                    <input type="number" id="support_ai_daily_limit" name="daily_limit" min="10" max="5000" value="{{ support_ai.daily_limit }}">
+                    <p class="form-hint">
+                        Últimas 24 horas: <strong>{{ ai_replies_24h }}</strong> de {{ support_ai.daily_limit }}. Al llegar al tope la IA deja de responder y atiende tu equipo.
+                        Cada chat tiene además su propio tope (12 por hora y 6 en 10 minutos). La IA solo contesta temas de la tienda: lo demás recibe un aviso fijo y,
+                        si insisten o repiten el mismo mensaje, el chat pasa a tu equipo y la IA deja de gastar.
+                    </p>
+                </div>
             </div>
 
             <div class="form-group">

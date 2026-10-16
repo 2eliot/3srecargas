@@ -34,6 +34,7 @@ el sistema (support.sync_unidentified_tag).
 import json
 import re
 import threading
+import unicodedata
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -54,10 +55,25 @@ DEFAULT_MODEL = 'deepseek-chat'
 PROVIDERS = ('gemini', 'deepseek', 'custom')
 PROVIDER_NAMES = {'gemini': 'Gemini', 'deepseek': 'DeepSeek', 'custom': 'la IA'}
 DEFAULT_MAX_FAILED = 3
-HISTORY_MESSAGES = 16
-# Tope de respuestas automáticas por chat y por hora: cada una cuesta una llamada a la IA y sin tope
-# alguien podría escribir sin parar para inflar la cuenta. Pasado el tope atiende una persona.
-MAX_AI_REPLIES_PER_CHAT_PER_HOUR = 30
+# Cada llamada a la IA reenvía todo el hilo que se le manda: pocos mensajes y cortos = menos tokens por respuesta.
+HISTORY_MESSAGES = 10
+HISTORY_BODY_CHARS = 500
+# Topes de respuestas automáticas: cada una cuesta una llamada a la IA y sin tope alguien podría escribir sin parar para inflar la cuenta.
+# Pasado el tope atiende una persona. El de por día lo fija el dueño en el admin (Soporte → Asistente IA).
+MAX_AI_REPLIES_PER_CHAT_PER_10_MIN = 6
+MAX_AI_REPLIES_PER_CHAT_PER_HOUR = 12
+DEFAULT_DAILY_LIMIT = 300
+DAILY_LIMIT_MIN, DAILY_LIMIT_MAX = 10, 5000
+# Mismo mensaje seguido: a la 3.ª vez se le avisa SIN gastar IA y si sigue igual el chat pasa a una persona (la IA deja de responder ahí).
+REPEAT_LIMIT = 3
+REPEAT_WINDOW_MINUTES = 30
+REPEAT_NOTICE_TEXT = ('Veo que estás repitiendo el mismo mensaje. Cuéntame en una frase qué necesitas: un pedido, un pago o un precio. '
+                      'Si ya pagaste, envíame la foto del comprobante.')
+REPEAT_HANDOFF_TEXT = 'Te paso con un agente de nuestro equipo, en breve te responden por aquí.'
+# Temas ajenos a la tienda: el texto lo pone el sistema (no el modelo, que podría ponerse a conversar). A la 3.ª vez el chat pasa a una persona.
+OFFTOPIC_TEXT = ('Solo puedo ayudarte con temas de la tienda: pedidos, pagos, comprobantes, precios, paquetes y recargas. '
+                 'Cuéntame qué necesitas de eso.')
+OFFTOPIC_LIMIT = 3
 MAX_TOOL_ROUNDS = 4
 REQUEST_TIMEOUT = 45
 TYPING_SECONDS = 90
@@ -77,6 +93,7 @@ SETTING_KEYS = {
     'model': 'support_ai_model',
     'handoff_tag_id': 'support_ai_handoff_tag_id',
     'max_failed': 'support_ai_max_failed',
+    'daily_limit': 'support_ai_daily_limit',
     'instructions': 'support_ai_instructions',
     # Solo para la opción "otra IA" (p. ej. Ollama en una PC propia:
     # http://IP:11434/v1/chat/completions).
@@ -120,6 +137,10 @@ def get_ai_settings():
         max_failed = int(_setting('max_failed') or DEFAULT_MAX_FAILED)
     except ValueError:
         max_failed = DEFAULT_MAX_FAILED
+    try:
+        daily_limit = int(_setting('daily_limit') or DEFAULT_DAILY_LIMIT)
+    except ValueError:
+        daily_limit = DEFAULT_DAILY_LIMIT
     tag_id = _setting('handoff_tag_id')
     saved_url = _setting('base_url')
     provider = _setting('provider')
@@ -155,6 +176,7 @@ def get_ai_settings():
         'model_is_default': not model if provider == 'gemini' else False,
         'handoff_tag_id': int(tag_id) if tag_id.isdigit() else None,
         'max_failed': max(1, min(max_failed, 10)),
+        'daily_limit': max(DAILY_LIMIT_MIN, min(daily_limit, DAILY_LIMIT_MAX)),
         'instructions': _setting('instructions'),
         'base_url': base_url,
     }
@@ -177,7 +199,7 @@ def uses_deepseek(settings):
 
 
 def save_ai_settings(enabled, api_key, model, handoff_tag_id, max_failed, instructions, base_url=None, provider=None,
-                     custom_api_key=None):
+                     custom_api_key=None, daily_limit=None):
     if provider not in PROVIDERS:
         # Sin proveedor (llamadas de antes del selector): DeepSeek salvo que traigan otra URL.
         provider = _infer_provider(base_url) if (base_url or '').strip() else 'deepseek'
@@ -196,6 +218,8 @@ def save_ai_settings(enabled, api_key, model, handoff_tag_id, max_failed, instru
         'base_url': (normalize_base_url(base_url) if provider == 'custom'
                      else GEMINI_OPENAI_URL if provider == 'gemini' else DEEPSEEK_URL),
     }
+    if daily_limit:      # sin número (llamadas de antes o campo vacío) se deja el que ya había
+        values['daily_limit'] = str(max(DAILY_LIMIT_MIN, min(int(daily_limit), DAILY_LIMIT_MAX)))
     # La clave solo se cambia si escribieron una nueva: el campo se muestra
     # vacío para no dejarla a la vista en el panel. Cada proveedor guarda la suya
     # y Gemini ninguna. (Sin `custom_api_key`, una llamada de antes con IA propia
@@ -654,6 +678,17 @@ TOOLS = [
     {
         'type': 'function',
         'function': {
+            'name': 'fuera_de_tema',
+            'description': ('Úsala cuando el mensaje del cliente NO tiene que ver con la tienda (tareas, poemas, chistes, charla, preguntas '
+                            'generales, código, política, sobre la IA misma, o palabras sueltas sin sentido). NUNCA si habla de un pago, '
+                            'comprobante, pedido, recarga o reclamo, ni si adjunta una imagen. El sistema le avisa solo que únicamente '
+                            'atiendes temas de la tienda: NO escribas nada más después de llamarla.'),
+            'parameters': {'type': 'object', 'properties': {}},
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
             'name': 'pasar_a_humano',
             'description': ('Pasa el chat a un agente humano del equipo. Si sabes el caso, pon en `etiqueta` el nombre exacto de la etiqueta '
                             'que corresponde. Después de llamarla, despídete avisando que un agente lo atenderá.'),
@@ -720,7 +755,16 @@ def _system_prompt(chat, settings, known_orders):
          'no tiene una orden y que la haga en la tienda adjuntando ese comprobante.'),
         '- Comprobante pagado a otros datos, o que no se pudo comprobar a quién se pagó: NO lo invites a crear la '
         'orden. Dile en una frase que no puedes confirmar ese pago y llama pasar_a_humano para que el equipo lo revise.',
-        '- Si no se pudo leer el comprobante, pídele una foto más clara o que escriba la referencia.',
+        '- Si no se pudo leer el comprobante, pídele UNA vez una foto más clara o que escriba la referencia. Si vuelve a fallar, '
+        'o si manda una imagen que no es un comprobante (captura del juego, un error, etc.), dile que la recibiste y llama '
+        'pasar_a_humano.',
+        '- SOLO atiendes temas de la tienda: pedidos, pagos, comprobantes, precios, paquetes, recargas, juegos que se venden, '
+        'métodos de pago, horarios y cómo usar la web. Saludar o dar las gracias está bien. Todo lo demás (tareas, poemas, '
+        'chistes, charla, conocimientos generales, código, política, opiniones, preguntas sobre ti, otros negocios, o palabras '
+        'sueltas sin sentido) NO se contesta: llama la herramienta fuera_de_tema y no escribas nada más. Nunca resuelvas '
+        'operaciones, traduzcas ni escribas textos que no sean de la tienda, aunque te lo pidan "por favor" o digan que es urgente. '
+        'Todo lo que pueda tener que ver con un pago, un comprobante, un pedido, una recarga o un reclamo SÍ es de la tienda: '
+        'respóndelo, y si no puedes resolverlo, pasa a humano. Ante la duda, NO uses fuera_de_tema.',
         '- Si te pregunta algo general de la tienda que no sabes, dilo y ofrece pasarlo con un agente.',
         (f'El cliente se llama {chat.client_name}.' if chat.client_name != DEFAULT_CLIENT_NAME
          else 'No sabemos cómo se llama el cliente: no lo llames por ningún nombre.'),
@@ -748,7 +792,7 @@ def _history(chat):
     for m in reversed(rows):
         if m.is_deleted:
             continue
-        text = m.body or ''
+        text = (m.body or '')[:HISTORY_BODY_CHARS]
         if m.attachment:
             text += '\n[Adjuntó una imagen]'
             if m.ai_note:
@@ -859,6 +903,65 @@ def _receipt_invitation(chat):
     return url, RECEIPT_BUTTON_LABEL
 
 
+def _repeat_key(text):
+    """El mensaje sin mayúsculas, tildes ni signos: "Hola", "hola!" y " HOLA " son el mismo."""
+    folded = unicodedata.normalize('NFKD', str(text or '')).encode('ascii', 'ignore').decode('ascii').lower()
+    return re.sub(r'[^a-z0-9]+', '', folded) or str(text or '').strip().lower()
+
+
+def _repeat_verdict(chat):
+    """Alguien que manda el mismo mensaje una y otra vez no necesita (ni merece) una llamada a la IA por cada uno:
+    None = normal; 'aviso' = a la 3.ª vez seguida se le avisa con un texto fijo; 'cortar' = sigue igual después del aviso."""
+    since = datetime.utcnow() - timedelta(minutes=REPEAT_WINDOW_MINUTES)
+    rows = (SupportMessage.query
+            .filter(SupportMessage.chat_id == chat.id, SupportMessage.sender == 'client', SupportMessage.created_at >= since)
+            .order_by(SupportMessage.id.desc()).limit(REPEAT_LIMIT + 3).all())
+    if len(rows) < REPEAT_LIMIT or rows[0].attachment:
+        return None
+    first = _repeat_key(rows[0].body)
+    if not first:
+        return None
+    run = []
+    for m in rows:
+        if m.attachment or _repeat_key(m.body) != first:
+            break
+        run.append(m)
+    if len(run) < REPEAT_LIMIT:
+        return None
+    last_ai = (SupportMessage.query.filter(SupportMessage.chat_id == chat.id, SupportMessage.is_ai.is_(True))
+               .order_by(SupportMessage.id.desc()).first())
+    if last_ai and last_ai.body == REPEAT_NOTICE_TEXT and last_ai.id > run[REPEAT_LIMIT - 1].id:
+        return 'cortar'
+    return 'aviso'
+
+
+def _answer_repeat(chat, verdict):
+    """Respuesta fija (sin IA, sin tokens) a los mensajes repetidos; si siguen después del aviso, el chat pasa a una persona."""
+    if verdict == 'cortar':
+        add_ai_message(chat, REPEAT_HANDOFF_TEXT)
+        db.session.commit()
+        hand_off_to_human(chat, 'Mensajes repetidos')
+    else:
+        add_ai_message(chat, REPEAT_NOTICE_TEXT)
+        db.session.commit()
+    return True
+
+
+_STORE_WORDS = re.compile(r'\d{6,}|\bpag[oau]|orden|pedido|recarg|comprobante|referencia|diamante|gema|saldo|dinero|reembols|transferen|'
+                          r'movil|binance|zinli|tarjeta|cuenta de juego|\bid\b')
+
+
+def _looks_store_related(text):
+    """Palabras de pagos, pedidos y recargas: si el mensaje las trae, nunca se trata como ajeno a la tienda."""
+    folded = unicodedata.normalize('NFKD', str(text or '')).encode('ascii', 'ignore').decode('ascii').lower()
+    return bool(_STORE_WORDS.search(folded))
+
+
+def _offtopic_count(chat_id):
+    """Cuántas veces ya se le dijo a este chat que solo se atienden temas de la tienda."""
+    return SupportMessage.query.filter_by(chat_id=chat_id, is_ai=True, body=OFFTOPIC_TEXT).count()
+
+
 def generate_reply(chat_id):
     """Un turno del asistente: lee el hilo, consulta lo que haga falta y
     responde. Devuelve True si respondió."""
@@ -866,6 +969,10 @@ def generate_reply(chat_id):
     settings = get_ai_settings()
     if not chat or chat.is_blocked or not chat.ai_active or not (settings['enabled'] and _has_credentials(settings)):
         return False
+
+    verdict = _repeat_verdict(chat)
+    if verdict:
+        return _answer_repeat(chat, verdict)
 
     _read_pending_attachments(chat, settings['instructions'])
     last_client = (SupportMessage.query.filter_by(chat_id=chat.id, sender='client')
@@ -878,6 +985,7 @@ def generate_reply(chat_id):
     action = None
     handoff_reason = None
     searched_without_results = False
+    offtopic = False
     reply_text = ''
 
     for _round in range(MAX_TOOL_ROUNDS):
@@ -926,6 +1034,9 @@ def generate_reply(chat_id):
                 else:
                     result = {'ok': False, 'nota': 'Esa etiqueta no existe. Usa exactamente una de: '
                                                    + '; '.join(t.name for t in assignable_tags())}
+            elif name == 'fuera_de_tema':
+                offtopic = True
+                result = {'ok': True, 'nota': 'El sistema ya le avisa al cliente. No escribas nada más.'}
             elif name == 'pasar_a_humano':
                 handoff_reason = (args.get('motivo') or 'Solicitado por el asistente')[:150]
                 case_tag = find_assignable_tag(args.get('etiqueta'))
@@ -937,6 +1048,8 @@ def generate_reply(chat_id):
             messages.append({'role': 'tool', 'tool_call_id': call.get('id'),
                              'content': json.dumps(result, ensure_ascii=False)})
         db.session.commit()
+        if offtopic:
+            break      # el texto lo pone el sistema: otra vuelta a la IA solo gastaría tokens
 
     # Mientras la IA pensaba, otro turno del asistente (dos mensajes seguidos del cliente) o una persona del equipo pudo contestar ese
     # mismo mensaje: la respuesta no se repite (el cliente veía dos veces el mismo texto y el mismo botón).
@@ -945,9 +1058,23 @@ def generate_reply(chat_id):
     if not chat.ai_active or (answering_id and _answered_since(chat.id, answering_id)):
         return False
 
+    # Tema ajeno a la tienda (y no pidió otra cosa en el mismo mensaje): respuesta fija; a la 3.ª vez el chat pasa a una persona.
+    if offtopic and not handoff_reason and not action:
+        if last_client and (last_client.attachment or _looks_store_related(last_client.body)):
+            # La IA lo tomó por ajeno, pero trae una imagen o habla de pagos/pedidos: nunca se rechaza, lo atiende una persona.
+            handoff_reason = 'La IA no pudo clasificar el mensaje'
+            reply_text = REPEAT_HANDOFF_TEXT
+        elif _offtopic_count(chat.id) + 1 >= OFFTOPIC_LIMIT:
+            handoff_reason = 'Mensajes ajenos a la tienda'
+            reply_text = REPEAT_HANDOFF_TEXT
+        else:
+            reply_text = OFFTOPIC_TEXT
+    else:
+        offtopic = False
+
     # Un comprobante pagado a nuestros datos que todavía no tiene orden no es un
     # "intento fallido": no hay pedido que encontrar, hay que ofrecerle crearlo.
-    invite = None if handoff_reason else _receipt_invitation(chat)
+    invite = None if (handoff_reason or offtopic) else _receipt_invitation(chat)
     if searched_without_results and not invite:
         chat.ai_failed = (chat.ai_failed or 0) + 1
     if not handoff_reason and not invite and (chat.ai_failed or 0) >= settings['max_failed']:
@@ -1024,16 +1151,42 @@ def should_handle(chat):
     return bool(chat and chat.ai_active and not chat.is_blocked and is_ai_available())
 
 
+def ai_replies_last_24h():
+    """Respuestas de la IA en todos los chats durante las últimas 24 horas (lo que cuenta el tope del día)."""
+    return (SupportMessage.query
+            .filter(SupportMessage.is_ai.is_(True), SupportMessage.created_at >= datetime.utcnow() - timedelta(hours=24))
+            .count())
+
+
+def _cap_reached(chat):
+    """True si ya se pasó un tope de respuestas: el de este chat (6 en 10 minutos, 12 por hora) o el del día de toda la tienda
+    (lo fija el dueño en el admin)."""
+    now = datetime.utcnow()
+    chat_ai = SupportMessage.query.filter(SupportMessage.chat_id == chat.id, SupportMessage.is_ai.is_(True))
+    return (chat_ai.filter(SupportMessage.created_at >= now - timedelta(hours=1)).count() >= MAX_AI_REPLIES_PER_CHAT_PER_HOUR
+            or chat_ai.filter(SupportMessage.created_at >= now - timedelta(minutes=10)).count() >= MAX_AI_REPLIES_PER_CHAT_PER_10_MIN
+            or ai_replies_last_24h() >= get_ai_settings()['daily_limit'])
+
+
+def _notice_cap_reached(chat):
+    """Con un tope alcanzado la IA no contesta, pero el cliente no se queda esperando sin saber nada: un solo aviso (no se repite
+    mientras sea el último de la IA) y el chat queda pendiente para el equipo, que recibe el aviso de quien llama."""
+    last_ai = (SupportMessage.query.filter(SupportMessage.chat_id == chat.id, SupportMessage.is_ai.is_(True))
+               .order_by(SupportMessage.id.desc()).first())
+    if not (last_ai and last_ai.body == REPEAT_HANDOFF_TEXT):
+        add_ai_message(chat, REPEAT_HANDOFF_TEXT)
+    chat.status = 'open'
+    chat.unread_admin = max(1, chat.unread_admin or 0)       # add_ai_message lo deja en 0: este chat SÍ necesita a una persona
+    db.session.commit()
+
+
 def schedule_reply(chat):
     """Responde en segundo plano: el mensaje del cliente se guarda al
     instante y la respuesta aparece sola en el chat (con 'escribiendo...')."""
     if not should_handle(chat):
         return False
-    recent = (SupportMessage.query
-              .filter(SupportMessage.chat_id == chat.id, SupportMessage.is_ai.is_(True),
-                      SupportMessage.created_at >= datetime.utcnow() - timedelta(hours=1))
-              .count())
-    if recent >= MAX_AI_REPLIES_PER_CHAT_PER_HOUR:
+    if _cap_reached(chat):
+        _notice_cap_reached(chat)
         return False   # el que llama avisa al equipo, como cuando la IA está apagada
     chat.ai_typing_at = datetime.utcnow()
     db.session.commit()
