@@ -142,6 +142,11 @@
                         <button class="close-packages-btn" onclick="closePackages()" aria-label="Cerrar" style="display:none">✕</button>
                     </div>
                     {#- Aviso de Wallet (plazo y horario de gestión): chiquito y en línea, sobre los paquetes; reemplaza al popup que tapaba la pantalla. main.js lo muestra solo si el juego lo tiene encendido. -#}
+                    {#- Aviso de "recarga manual" (juegos que piden datos de inicio de sesión): igual de chiquito y en línea; reemplaza al popup. main.js lo muestra solo si el juego lo necesita, o al tocar el "?" de los paquetes manuales. El horario es el real que se configura en el admin. -#}
+                    <div class="nx-wallet-note nx-manual-note" id="manualNoticeInline" role="note" hidden>
+                        <span class="nx-wallet-note-ic" aria-hidden="true">⚠️</span>
+                        <p><strong>Recarga manual:</strong> necesitaremos tus <strong>datos de inicio de sesión</strong> para completarla. Atención de <strong id="manualNoticeOpen">{{ manual_open_label }}</strong> a <strong id="manualNoticeClose">{{ manual_close_label }}</strong>, lo más rápido posible. Tus datos están protegidos.</p>
+                    </div>
                     <div class="nx-wallet-note" id="walletNoticeInline" role="note" hidden>
                         <span class="nx-wallet-note-ic" aria-hidden="true">⏰</span>
                         <p><strong>Entrega en 5 minutos</strong> · gestión manual de <strong id="walletNoticeOpen">{{ manual_open_label }}</strong> a <strong id="walletNoticeClose">{{ manual_close_label }}</strong></p>
@@ -420,26 +425,6 @@
     <div id="nxToast" style="position:fixed; bottom:22px; left:50%; transform:translate(-50%, 80px); z-index:1300; background:#0f172a; color:#fff; font-size:12px; font-weight:700; padding:10px 16px; border-radius:12px; border:1px solid #FF0000; box-shadow:0 10px 30px rgba(0,0,0,.6); display:flex; align-items:center; gap:8px; opacity:0; transition:all .3s ease; pointer-events:none; font-family:'Outfit',sans-serif">
         <span style="color:#FF0000">✔</span>
         <span id="nxToastMsg">Copiado al portapapeles</span>
-    </div>
-
-    <div class="store-popup-overlay" id="manualInfoPopup" style="display:none" aria-hidden="true">
-        <div class="store-popup-card" role="dialog" aria-modal="true" aria-labelledby="manualInfoTitle">
-            <div class="store-popup-header">
-                <span id="manualInfoTitle">AVISO: RECARGA MANUAL</span>
-            </div>
-            <div class="store-popup-body">
-                <p class="store-popup-lead">Este juego se procesa de forma manual y necesitaremos tus datos de inicio de sesión para completar la recarga con éxito.</p>
-                <ul class="store-popup-list">
-                    <li>Deberás facilitarnos tus <strong>DATOS DE INICIO DE SESIÓN</strong> para poder culminar la recarga o servicio correctamente.</li>
-                    <li>Nuestro horario de atención para procesar estas recargas es de <strong>10:00 AM a 10:00 PM</strong>.</li>
-                    <li>No te preocupes. Te atenderemos <strong>LO MÁS RÁPIDO POSIBLE</strong> para que no dejes de jugar.</li>
-                    <li>Tus datos están protegidos y se usan solo para completar el proceso de forma segura.</li>
-                </ul>
-            </div>
-            <div class="store-popup-actions">
-                <button type="button" class="store-popup-confirm" id="manualInfoCloseBtn">ENTIENDO, CONTINUAR</button>
-            </div>
-        </div>
     </div>
 
     <div class="store-popup-overlay" id="pendingCompletionPopup" style="display:none" aria-hidden="true">

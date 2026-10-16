@@ -109,8 +109,6 @@ window.nxDebug = function () {};
     var gamesNextBtn = document.getElementById('gamesNext');
     var applyDiscountBtn = document.getElementById('applyDiscountBtn');
     var discountApplyFeedback = document.getElementById('discountApplyFeedback');
-    var manualInfoPopup = document.getElementById('manualInfoPopup');
-    var manualInfoCloseBtn = document.getElementById('manualInfoCloseBtn');
     var discountInfoPopup = document.getElementById('discountInfoPopup');
     var discountInfoCloseBtn = document.getElementById('discountInfoCloseBtn');
     var gameSelectionPopup = document.getElementById('gameSelectionPopup');
@@ -1931,9 +1929,9 @@ window.nxDebug = function () {};
                 }
                 applyDeepLink();
                 if (data.game && data.game.requires_manual_login_popup) {
-                    openManualInfoPopup();
+                    showManualNote(data.game.manual_schedule);
                 } else {
-                    closeManualInfoPopup();
+                    hideManualNote();
                 }
                 if (data.game && data.game.show_selection_popup) {
                     openGameSelectionPopup();
@@ -3328,15 +3326,6 @@ window.nxDebug = function () {};
         });
     }
 
-    if (manualInfoCloseBtn && manualInfoPopup) {
-        manualInfoCloseBtn.addEventListener('click', closeManualInfoPopup);
-        manualInfoPopup.addEventListener('click', function (evt) {
-            if (evt.target === manualInfoPopup) {
-                closeManualInfoPopup();
-            }
-        });
-    }
-
     if (discountInfoCloseBtn && discountInfoPopup) {
         discountInfoCloseBtn.addEventListener('click', closeDiscountInfoPopup);
         discountInfoPopup.addEventListener('click', function (evt) {
@@ -3528,7 +3517,11 @@ window.nxDebug = function () {};
         var trigger = evt.target && evt.target.closest('#manualInfoTrigger');
         if (trigger) {
             evt.preventDefault();
-            openManualInfoPopup();
+            // El "?" de los paquetes manuales ya no abre una ventana: muestra el anuncio de recarga manual y lleva la vista hasta él.
+            var shownNote = showManualNote(typeof manualSchedule !== 'undefined' ? manualSchedule : null);
+            if (shownNote && shownNote.scrollIntoView) {
+                try { shownNote.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { shownNote.scrollIntoView(); }
+            }
             return;
         }
 
@@ -3541,23 +3534,29 @@ window.nxDebug = function () {};
     document.addEventListener('keydown', function (evt) {
         if (evt.key === 'Escape') {
             closePhoneCountryMenu();
-            closeManualInfoPopup();
             closeDiscountInfoPopup();
             closeGameSelectionPopup();
             closeRankingModal();
         }
     });
 
-    function openManualInfoPopup() {
-        if (!manualInfoPopup) return;
-        manualInfoPopup.style.display = 'flex';
-        manualInfoPopup.setAttribute('aria-hidden', 'false');
+    /* Aviso de "recarga manual" (juegos que piden datos de inicio de sesión): igual que el de Wallet, ya no es una ventana que tapa la
+       pantalla sino un cuadrito chico sobre los paquetes. Sale cuando el juego lo necesita (requires_manual_login_popup) y también al
+       tocar el "?" de los paquetes manuales. El horario es el real (el mismo que cierra los paquetes manuales fuera de hora). */
+    function showManualNote(schedule) {
+        var note = document.getElementById('manualNoticeInline');
+        if (!note) return null;
+        var open = document.getElementById('manualNoticeOpen');
+        var close = document.getElementById('manualNoticeClose');
+        if (schedule && schedule.open_label && open) open.textContent = schedule.open_label;
+        if (schedule && schedule.close_label && close) close.textContent = schedule.close_label;
+        note.hidden = false;
+        return note;
     }
 
-    function closeManualInfoPopup() {
-        if (!manualInfoPopup) return;
-        manualInfoPopup.style.display = 'none';
-        manualInfoPopup.setAttribute('aria-hidden', 'true');
+    function hideManualNote() {
+        var note = document.getElementById('manualNoticeInline');
+        if (note) note.hidden = true;
     }
 
     /* Aviso de Wallet (Zinli, TikTok, Binance): plazo y horario de gestión.
