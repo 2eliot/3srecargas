@@ -161,7 +161,9 @@
                         <option value="{{ tag.id }}" {{ 'selected' if support_ai.handoff_tag_id == tag.id }}>{{ tag.name }} ({{ tag.kind_label }})</option>
                         {% endfor %}
                     </select>
-                    <p class="form-hint">Se le pone al chat para que lo encuentres rápido. Las etiquetas se crean en Soporte → Etiquetas.</p>
+                    <p class="form-hint">Se le pone al chat para que lo encuentres rápido. Las etiquetas se crean en Soporte → Etiquetas.
+                        Además, la IA le pone a cada chat las etiquetas que correspondan a su caso (por ejemplo "Recarga no llegó" o "ID incorrecto"):
+                        explícale en las instrucciones cuándo usar cada una. Solo puede poner las que ya existen; "Sin identificar" se maneja sola.</p>
                 </div>
                 <div class="form-group">
                     <label for="support_ai_max_failed">Intentos fallidos antes de pasar a una persona</label>

@@ -23,6 +23,12 @@ Seguridad:
 Cuando no puede resolver (lo pide el cliente, ID inválido, orden rechazada,
 o varios intentos sin encontrar su pedido) pasa el chat a un humano: se
 apaga la IA en ese chat y se le pone la etiqueta configurada en el admin.
+
+Además clasifica cada chat según su caso con las etiquetas que el admin ya
+tiene (Pago no verificado, Recarga no llegó, ID incorrecto...): solo puede
+PONER etiquetas existentes (herramienta etiquetar_chat o el campo `etiqueta`
+de pasar_a_humano); no las crea, no las quita y "Sin identificar" lo mantiene
+el sistema (support.sync_unidentified_tag).
 """
 
 import json
@@ -37,7 +43,7 @@ from flask import current_app
 from ..models import Order, Setting, SupportChat, SupportMessage, SupportTag, db
 from . import receipt_check
 from .locks import acquire_lock, release_lock
-from .support import DEFAULT_CLIENT_NAME
+from .support import DEFAULT_CLIENT_NAME, add_tag
 from .timezone import format_ve
 
 DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions'
@@ -470,6 +476,48 @@ def hand_off_to_human(chat, reason=''):
             pass
 
 
+# ─── Etiquetas por caso ─────────────────────────────────────────────────────
+
+# "Sin identificar" no se le deja a la IA: la mantiene sola `support.sync_unidentified_tag` (entra y sale según se sepa de quién es el chat).
+AUTO_TAG_SLUGS = ('sin-identificar',)
+
+
+def assignable_tags():
+    """Etiquetas activas del catálogo que la IA puede poner. Solo las que ya existen: la IA no crea, edita ni quita etiquetas."""
+    return (SupportTag.query
+            .filter(SupportTag.is_active.is_(True), ~SupportTag.slug.in_(AUTO_TAG_SLUGS))
+            .order_by(SupportTag.kind, SupportTag.sort_order, SupportTag.id).all())
+
+
+def find_assignable_tag(name):
+    """La etiqueta que corresponde a lo que escribió el modelo (por nombre o por slug, sin importar mayúsculas ni tildes), o None."""
+    wanted = _norm(name)
+    if not wanted:
+        return None
+    for tag in assignable_tags():
+        # También vale "Nombre (Tipo)" tal como se ve en la lista del admin y en las reglas.
+        if wanted in (_norm(tag.name), _norm(tag.slug), _norm(f'{tag.name} {tag.kind_label}')):
+            return tag
+    return None
+
+
+MANUAL_PENDING_SITUATION = 'pago_confirmado_recarga_manual'     # ver describe_order: pagó, y la recarga la hace una persona del equipo
+
+
+def auto_tag_manual_orders(chat, infos):
+    """Pedido de recarga MANUAL con el pago ya confirmado: el sistema (no el modelo) le pone al chat la etiqueta "<JUEGO> (Pendiente)" del
+    juego del pedido (TIKTOK (Pendiente), ZINLI (Pendiente)...) para que la asistente humana lo vea en su bandeja y haga la recarga. El nombre del
+    juego se toma sin lo que va entre paréntesis ("TIKTOK (Monedas)" → "TIKTOK"). Solo con pedidos que el cliente demostró que son suyos
+    (`puedo_enviar_link`). Si ese juego no tiene etiqueta, no hace nada: si el dueño crea "Telegram (Pendiente)", "Binance (Pendiente)"..., se usa sola."""
+    for info in infos or []:
+        if info.get('situacion') != MANUAL_PENDING_SITUATION or not info.get('puedo_enviar_link'):
+            continue
+        base = re.sub(r'\s*\([^)]*\)\s*$', '', str(info.get('juego') or '')).strip()
+        tag = find_assignable_tag(f'{base} (Pendiente)') if base else None
+        if tag:
+            add_tag(chat, tag)
+
+
 # ─── Catálogo para el asistente ─────────────────────────────────────────────
 
 MAX_CATALOG_PACKAGES = 40
@@ -592,11 +640,29 @@ TOOLS = [
     {
         'type': 'function',
         'function': {
-            'name': 'pasar_a_humano',
-            'description': 'Pasa el chat a un agente humano del equipo. Después de llamarla, despídete avisando que un agente lo atenderá.',
+            'name': 'etiquetar_chat',
+            'description': ('Pone al chat una etiqueta que clasifica el caso del cliente (para que el equipo lo encuentre y lo '
+                            'ordene). Solo sirven las etiquetas de la lista de las reglas, con su nombre exacto. Puedes poner '
+                            'más de una.'),
             'parameters': {
                 'type': 'object',
-                'properties': {'motivo': {'type': 'string', 'description': 'Motivo corto para el equipo'}},
+                'properties': {'etiqueta': {'type': 'string', 'description': 'Nombre exacto de la etiqueta'}},
+                'required': ['etiqueta'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'pasar_a_humano',
+            'description': ('Pasa el chat a un agente humano del equipo. Si sabes el caso, pon en `etiqueta` el nombre exacto de la etiqueta '
+                            'que corresponde. Después de llamarla, despídete avisando que un agente lo atenderá.'),
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'motivo': {'type': 'string', 'description': 'Motivo corto para el equipo'},
+                    'etiqueta': {'type': 'string', 'description': 'Opcional: nombre exacto de la etiqueta del caso'},
+                },
                 'required': ['motivo'],
             },
         },
@@ -657,6 +723,11 @@ def _system_prompt(chat, settings, known_orders):
         (f'El cliente se llama {chat.client_name}.' if chat.client_name != DEFAULT_CLIENT_NAME
          else 'No sabemos cómo se llama el cliente: no lo llames por ningún nombre.'),
     ]
+    tags = assignable_tags()
+    if tags:
+        parts.append('- Etiquetas para clasificar el caso del chat: ' + '; '.join(f'{t.name} ({t.kind_label})' for t in tags) + '. En cuanto '
+                     'identifiques el caso, ponla con etiquetar_chat (o en el campo `etiqueta` de pasar_a_humano), con el nombre exacto, sin '
+                     'el paréntesis del tipo. Puedes poner más de una. Si ninguna encaja, no pongas ninguna. Nunca inventes etiquetas.')
     if schedule:
         parts.append(f'Horario de atención del equipo humano: {schedule}.')
     if known_orders:
@@ -796,6 +867,7 @@ def generate_reply(chat_id):
 
     _read_pending_attachments(chat, settings['instructions'])
     known = orders_already_known(chat)
+    auto_tag_manual_orders(chat, known)       # pedido manual ya pagado → etiqueta del juego, sin depender de que el modelo se acuerde
     messages = [{'role': 'system', 'content': _system_prompt(chat, settings, known)}] + _history(chat)
 
     action = None
@@ -824,6 +896,7 @@ def generate_reply(chat_id):
             if name == 'buscar_ordenes':
                 results = search_orders_for_chat(chat, args.get('numero_orden'), args.get('referencia'),
                                                  args.get('id_jugador'))
+                auto_tag_manual_orders(chat, results)
                 if not results:
                     searched_without_results = True
                 result = {'ordenes': results} if results else {
@@ -840,8 +913,19 @@ def generate_reply(chat_id):
                 result = catalog_for_ai(args.get('juego'))
             elif name == 'metodos_de_pago':
                 result = payment_methods_for_ai()
+            elif name == 'etiquetar_chat':
+                tag = find_assignable_tag(args.get('etiqueta'))
+                if tag:
+                    add_tag(chat, tag)
+                    result = {'ok': True, 'nota': f'Etiqueta «{tag.name}» puesta al chat.'}
+                else:
+                    result = {'ok': False, 'nota': 'Esa etiqueta no existe. Usa exactamente una de: '
+                                                   + '; '.join(t.name for t in assignable_tags())}
             elif name == 'pasar_a_humano':
                 handoff_reason = (args.get('motivo') or 'Solicitado por el asistente')[:150]
+                case_tag = find_assignable_tag(args.get('etiqueta'))
+                if case_tag:
+                    add_tag(chat, case_tag)
                 result = {'ok': True}
             else:
                 result = {'error': 'herramienta desconocida'}
