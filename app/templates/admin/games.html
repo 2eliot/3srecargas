@@ -149,6 +149,10 @@
                 <label class="check-label">
                     <input type="checkbox" name="show_selection_popup"> Mostrar popup al seleccionarlo en la tienda
                 </label>
+                <label class="check-label" id="addWalletNoticeRow" style="display:none">
+                    <input type="checkbox" name="show_wallet_notice" id="addShowWalletNotice" checked> Mostrar aviso de plazo y horario (solo Wallet)
+                </label>
+                <input type="hidden" name="show_wallet_notice_present" value="1">
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('addGameModal')" class="btn-secondary">Cancelar</button>
@@ -175,7 +179,7 @@
                     <label>Categoría *</label>
                     <select name="category_id" id="editGameCategory">
                         {% for cat in categories %}
-                        <option value="{{ cat.id }}">{{ cat.icon }} {{ cat.name }}</option>
+                        <option value="{{ cat.id }}" data-slug="{{ cat.slug }}">{{ cat.icon }} {{ cat.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -225,6 +229,10 @@
                 <label class="check-label">
                     <input type="checkbox" name="show_selection_popup" id="editShowSelectionPopup"> Mostrar popup en tienda
                 </label>
+                <label class="check-label" id="editWalletNoticeRow" style="display:none">
+                    <input type="checkbox" name="show_wallet_notice" id="editShowWalletNotice"> Mostrar aviso de plazo y horario (solo Wallet)
+                </label>
+                <input type="hidden" name="show_wallet_notice_present" value="1">
                 <label class="check-label">
                     <input type="checkbox" name="is_active" id="editIsActive"> Activo
                 </label>
@@ -265,8 +273,17 @@ function openEditGame(btn) {
     document.getElementById('editRequiresZone').checked = game.requires_zone_id;
     document.getElementById('editIsAutomated').checked = game.is_automated;
     document.getElementById('editShowSelectionPopup').checked = !!game.show_selection_popup;
+    document.getElementById('editShowWalletNotice').checked = game.show_wallet_notice !== false;
     document.getElementById('editIsActive').checked = game.is_active !== false;
+    nxToggleWalletRow(document.getElementById('editGameCategory'), document.getElementById('editWalletNoticeRow'));
     openModal('editGameModal');
+}
+
+// La casilla del aviso de Wallet solo tiene sentido en la categoría Wallet; en las demás queda escondida (y no cambia nada).
+function nxToggleWalletRow(categorySelect, row) {
+    if (!categorySelect || !row) return;
+    var opt = categorySelect.options[categorySelect.selectedIndex];
+    row.style.display = (opt && opt.getAttribute('data-slug') === 'wallet') ? '' : 'none';
 }
 
 // Al elegir el tipo, el nombre del campo se rellena solo con el nombre normal de ese tipo (si el dueño no escribió uno propio).
@@ -290,6 +307,12 @@ function nxSyncFieldName(typeSelect, labelInput) {
         var opt = addCategory.options[addCategory.selectedIndex];
         if (opt && opt.getAttribute('data-slug') === 'wallet') { addType.value = 'email'; nxSyncFieldName(addType, addLabel); }
     });
+    var addWalletRow = document.getElementById('addWalletNoticeRow');
+    var editCategory = document.getElementById('editGameCategory');
+    var editWalletRow = document.getElementById('editWalletNoticeRow');
+    if (addCategory) addCategory.addEventListener('change', function () { nxToggleWalletRow(addCategory, addWalletRow); });
+    if (editCategory) editCategory.addEventListener('change', function () { nxToggleWalletRow(editCategory, editWalletRow); });
+    nxToggleWalletRow(addCategory, addWalletRow);
 })();
 </script>
 {% endblock %}

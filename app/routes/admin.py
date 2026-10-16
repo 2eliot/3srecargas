@@ -721,6 +721,8 @@ def game_add():
     bs_rate_override_raw = request.form.get('bs_rate_override', '').strip()
     is_automated = bool(request.form.get('is_automated'))
     show_selection_popup = bool(request.form.get('show_selection_popup'))
+    # Aviso de plazo y horario de Wallet: encendido salvo que el formulario traiga la casilla apagada.
+    show_wallet_notice = bool(request.form.get('show_wallet_notice')) if request.form.get('show_wallet_notice_present') else True
     position = int(request.form.get('position', 100))
     description = request.form.get('description', '').strip()
 
@@ -751,6 +753,7 @@ def game_add():
         zone_id_label=zone_id_label, is_automated=is_automated,
         bs_rate_override=bs_rate_override,
         show_selection_popup=show_selection_popup,
+        show_wallet_notice=show_wallet_notice,
         position=position, description=description, image=image,
     )
     db.session.add(game)
@@ -774,6 +777,8 @@ def game_edit(game_id):
     bs_rate_override_raw = request.form.get('bs_rate_override', '')
     game.is_automated = bool(request.form.get('is_automated'))
     game.show_selection_popup = bool(request.form.get('show_selection_popup'))
+    if request.form.get('show_wallet_notice_present'):    # sin el marcador (formulario viejo) se deja como estaba
+        game.show_wallet_notice = bool(request.form.get('show_wallet_notice'))
     game.position = int(request.form.get('position', game.position))
     game.description = request.form.get('description', game.description or '').strip()
     game.is_active = bool(request.form.get('is_active'))

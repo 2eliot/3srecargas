@@ -141,6 +141,11 @@
                         </div>
                         <button class="close-packages-btn" onclick="closePackages()" aria-label="Cerrar" style="display:none">✕</button>
                     </div>
+                    {#- Aviso de Wallet (plazo y horario de gestión): chiquito y en línea, sobre los paquetes; reemplaza al popup que tapaba la pantalla. main.js lo muestra solo si el juego lo tiene encendido. -#}
+                    <div class="nx-wallet-note" id="walletNoticeInline" role="note" hidden>
+                        <span class="nx-wallet-note-ic" aria-hidden="true">⏰</span>
+                        <p><strong>Entrega en 5 minutos</strong> · gestión manual de <strong id="walletNoticeOpen">{{ manual_open_label }}</strong> a <strong id="walletNoticeClose">{{ manual_close_label }}</strong></p>
+                    </div>
                     {#- Apartados del juego (Moneda / Pases / Tarjetas): solo se muestra si el juego tiene paquetes en más de un apartado. Lo dibuja main.js. -#}
                     <div class="pkg-sections-wrap"><div class="pkg-sections glass-panel" id="pkgSections" role="tablist" aria-label="Apartado de los paquetes" hidden></div></div>
                     <p class="panel-hint">Selecciona un paquete para continuar</p>
@@ -393,25 +398,6 @@
         </div>
     </form>
 
-
-    <!-- Aviso de Wallet (Zinli, TikTok, Binance…): se gestionan a mano -->
-    <div class="payment-warning-modal" id="walletNoticeModal" aria-hidden="true" style="display:none">
-        <div class="payment-warning-card" role="dialog" aria-modal="true" aria-labelledby="walletNoticeTitle">
-            <div class="payment-warning-head" id="walletNoticeTitle">⚠ ¡ATENCIÓN: LEE ESTO ANTES DE CONTINUAR! ⚠</div>
-            <div class="payment-warning-body">
-                <div class="payment-warning-item">
-                    <span class="payment-warning-icon">⚡</span>
-                    <p><strong>TIEMPO DE ENTREGA</strong><br>Las recargas de este paquete se realizan en un <strong>plazo de 5 minutos</strong>.</p>
-                </div>
-                <div class="payment-warning-item">
-                    <span class="payment-warning-icon">⏰</span>
-                    <p><strong>HORARIO DE GESTIÓN</strong><br>Las recargas de este paquete se gestionan manualmente de <strong>{{ manual_open_label }} a {{ manual_close_label }}</strong></p>
-                </div>
-            </div>
-            <div class="payment-warning-footer">🚀 ¡Agradecemos tu paciencia y comprensión! 🚀</div>
-            <button type="button" class="payment-warning-ack" id="walletNoticeAcknowledge">OK, ENTIENDO ➡</button>
-        </div>
-    </div>
 
     <!-- Modal video tutorial (src dinámico según el método de pago) -->
     <div class="nx-video-modal" id="nxVideoModal" aria-hidden="true">

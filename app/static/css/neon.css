@@ -1079,6 +1079,12 @@ body.drawer-open { overflow: hidden; }
     max-width: 100%; overflow: hidden; padding: 4px !important; border-radius: 13px !important;
 }
 .nx-store .pkg-sections[hidden] { display: none !important; }
+/* Aviso de Wallet (plazo y horario de gestión): cuadrito chico en línea sobre los paquetes, en vez del popup que tapaba la pantalla. Sin animaciones. */
+.nx-store .nx-wallet-note { display: flex; align-items: flex-start; gap: 7px; margin: 2px 0 12px; padding: 7px 10px; border-radius: 11px; border: 1px solid rgba(251, 191, 36, .45); background: rgba(251, 191, 36, .08); }
+.nx-store .nx-wallet-note[hidden] { display: none !important; }
+.nx-store .nx-wallet-note-ic { flex: none; font-size: 13px; line-height: 1.3; }
+.nx-store .nx-wallet-note p { margin: 0; font-size: 11.5px; line-height: 1.35; color: #e5e7eb; }
+.nx-store .nx-wallet-note strong { color: var(--nx-amber); font-weight: 700; }
 .nx-store .pkg-sec-btn {
     position: relative; z-index: 1; flex: 0 1 auto; min-width: 0; white-space: nowrap;
     padding: 7px 16px; border-radius: 10px; border: 1px solid transparent; background: transparent; cursor: pointer;

@@ -43,6 +43,8 @@ class Game(db.Model):
     bs_rate_override = db.Column(db.Numeric(10, 4))
     is_automated = db.Column(db.Boolean, default=False)
     show_selection_popup = db.Column(db.Boolean, default=False)
+    # Aviso de plazo y horario que sale al entrar a un producto de Wallet; el dueño lo apaga juego por juego (vacío = encendido).
+    show_wallet_notice = db.Column(db.Boolean, default=True)
     is_active = db.Column(db.Boolean, default=True)
     packages = db.relationship(
         'Package', backref='game', lazy='dynamic',
@@ -86,6 +88,7 @@ class Game(db.Model):
             'bs_rate_override': str(self.bs_rate_override) if self.bs_rate_override is not None else None,
             'is_automated': self.is_automated,
             'show_selection_popup': self.show_selection_popup,
+            'show_wallet_notice': self.show_wallet_notice is not False,
             'is_active': self.is_active,
             'position': self.position,
         }

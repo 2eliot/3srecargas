@@ -1941,9 +1941,9 @@ window.nxDebug = function () {};
                     closeGameSelectionPopup();
                 }
                 if (data.game && data.game.requires_wallet_notice) {
-                    openWalletNotice();
+                    showWalletNote(data.game.manual_schedule);
                 } else {
-                    closeWalletNotice();
+                    hideWalletNote();
                 }
             })
             .catch(function (err) {
@@ -3337,17 +3337,6 @@ window.nxDebug = function () {};
         });
     }
 
-    var walletNoticeModal = document.getElementById('walletNoticeModal');
-    var walletNoticeAck = document.getElementById('walletNoticeAcknowledge');
-    if (walletNoticeAck && walletNoticeModal) {
-        walletNoticeAck.addEventListener('click', closeWalletNotice);
-        walletNoticeModal.addEventListener('click', function (evt) {
-            if (evt.target === walletNoticeModal) {
-                closeWalletNotice();
-            }
-        });
-    }
-
     if (discountInfoCloseBtn && discountInfoPopup) {
         discountInfoCloseBtn.addEventListener('click', closeDiscountInfoPopup);
         discountInfoPopup.addEventListener('click', function (evt) {
@@ -3553,7 +3542,6 @@ window.nxDebug = function () {};
         if (evt.key === 'Escape') {
             closePhoneCountryMenu();
             closeManualInfoPopup();
-            closeWalletNotice();
             closeDiscountInfoPopup();
             closeGameSelectionPopup();
             closeRankingModal();
@@ -3573,19 +3561,22 @@ window.nxDebug = function () {};
     }
 
     /* Aviso de Wallet (Zinli, TikTok, Binance): plazo y horario de gestión.
-       Se muestra cada vez que se entra al producto, que es lo que se pidió. */
-    function openWalletNotice() {
-        var modal = document.getElementById('walletNoticeModal');
-        if (!modal) return;
-        modal.style.display = 'flex';
-        modal.setAttribute('aria-hidden', 'false');
+       Ya no es una ventana que tapa la pantalla: es un cuadrito chico sobre los paquetes. El servidor solo lo pide
+       (requires_wallet_notice) si el juego es de Wallet y el dueño no lo apagó en Admin → Juegos. El horario sale
+       de la configuración de hoy que trae la misma respuesta de paquetes. */
+    function showWalletNote(schedule) {
+        var note = document.getElementById('walletNoticeInline');
+        if (!note) return;
+        var open = document.getElementById('walletNoticeOpen');
+        var close = document.getElementById('walletNoticeClose');
+        if (schedule && schedule.open_label && open) open.textContent = schedule.open_label;
+        if (schedule && schedule.close_label && close) close.textContent = schedule.close_label;
+        note.hidden = false;
     }
 
-    function closeWalletNotice() {
-        var modal = document.getElementById('walletNoticeModal');
-        if (!modal) return;
-        modal.style.display = 'none';
-        modal.setAttribute('aria-hidden', 'true');
+    function hideWalletNote() {
+        var note = document.getElementById('walletNoticeInline');
+        if (note) note.hidden = true;
     }
 
     function openDiscountInfoPopup() {

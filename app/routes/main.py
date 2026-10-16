@@ -611,7 +611,8 @@ def api_packages(game_id):
     # cliente tiene que saber el plazo y el horario antes de pagar. Es un
     # aviso distinto al de recarga manual (ese pide datos de inicio de
     # sesión), por eso va en su propio flag y no reutiliza el anterior.
-    game_dict['requires_wallet_notice'] = bool(pkg_list and is_wallet)
+    # El dueño puede apagarlo juego por juego (Admin → Juegos → "Mostrar aviso de plazo y horario"); sin dato = encendido.
+    game_dict['requires_wallet_notice'] = bool(pkg_list and is_wallet and game.show_wallet_notice is not False)
 
     # El front lo usa para el badge "CERRADO" y para el texto del aviso.
     game_dict['manual_schedule'] = {

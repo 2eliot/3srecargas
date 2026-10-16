@@ -977,6 +977,7 @@ def _ensure_game_columns():
             'show_selection_popup BOOLEAN DEFAULT FALSE',
             "player_id_input_type VARCHAR(20) DEFAULT 'numeric'",
             'bs_rate_override NUMERIC(10, 4)',
+            'show_wallet_notice BOOLEAN DEFAULT TRUE',
         ]):
             return
 
@@ -987,6 +988,8 @@ def _ensure_game_columns():
         existing = {r[1] for r in rows}
         if 'show_selection_popup' not in existing:
             db.session.execute(text('ALTER TABLE games ADD COLUMN show_selection_popup BOOLEAN DEFAULT 0'))
+        if 'show_wallet_notice' not in existing:
+            db.session.execute(text('ALTER TABLE games ADD COLUMN show_wallet_notice BOOLEAN DEFAULT 1'))
         if 'player_id_input_type' not in existing:
             db.session.execute(text("ALTER TABLE games ADD COLUMN player_id_input_type VARCHAR(20) DEFAULT 'numeric'"))
         if 'bs_rate_override' not in existing:
