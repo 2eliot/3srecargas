@@ -161,6 +161,7 @@
                     <select name="section" required>
                         <option value="" selected disabled>— Elige el apartado —</option>
                         {% for key, label in package_sections.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                        <option value="__new__">Crear nuevo +</option>
                     </select>
                     <small class="form-hint">Así lo ven los clientes: si un juego tiene paquetes en más de un apartado, sale una barrita para elegir entre ellos.</small>
                 </div>
@@ -252,6 +253,7 @@
                     <label>¿En qué apartado va? *</label>
                     <select name="section" id="editPkgSection" required>
                         {% for key, label in package_sections.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                        <option value="__new__">Crear nuevo +</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -288,6 +290,26 @@
         </form>
     </div>
 </div>
+
+<!-- "Crear nuevo +" de la lista "¿En qué apartado va?": popup para ponerle nombre a un apartado propio -->
+<div class="modal-overlay" id="newSectionModal" style="display:none; z-index:1000" aria-hidden="true">
+    <div class="modal-box" style="max-width:380px" role="dialog" aria-modal="true" aria-labelledby="newSectionTitle">
+        <div class="modal-header">
+            <h3 id="newSectionTitle">Nuevo apartado</h3>
+            <button type="button" id="newSectionClose" aria-label="Cerrar">✕</button>
+        </div>
+        <div class="form-group">
+            <label for="newSectionName">Nombre del apartado *</label>
+            <input type="text" id="newSectionName" maxlength="24" autocomplete="off" placeholder="Ej: Ofertas, Combos, Membresías">
+            <small class="form-hint">Así lo ven los clientes en la pestañita de la tienda (máximo 24 letras).</small>
+            <p id="newSectionError" role="alert" hidden style="color:#f87171; font-size:13px; margin:8px 0 0"></p>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary" id="newSectionCancel">Cancelar</button>
+            <button type="button" class="btn-primary" id="newSectionCreate">Crear</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -314,5 +336,81 @@ function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive, h
     document.getElementById('editPkgPoints').value = (pointsReward === '' || pointsReward === undefined || pointsReward === null) ? '' : pointsReward;
     openModal('editPkgModal');
 }
+
+/* "Crear nuevo +" en la lista "¿En qué apartado va?": se abre un popup para ponerle nombre al apartado, se crea en el servidor, se agrega a las dos listas
+   (crear y editar paquete) y queda elegido en la que lo pidió. Si cancela, la lista vuelve a lo que tenía. */
+(function () {
+    var NEW = '__new__';
+    var modal = document.getElementById('newSectionModal');
+    var input = document.getElementById('newSectionName');
+    var errBox = document.getElementById('newSectionError');
+    var createBtn = document.getElementById('newSectionCreate');
+    var origin = null;
+
+    function selects() { return Array.prototype.slice.call(document.querySelectorAll('select[name="section"]')); }
+    function showError(text) { errBox.textContent = text; errBox.hidden = !text; }
+
+    function openNewSection() {
+        showError('');
+        input.value = '';
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
+        setTimeout(function () { input.focus(); }, 30);
+    }
+
+    function closeNewSection(restore) {
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+        if (restore && origin) origin.value = origin.dataset.prev || '';
+        origin = null;
+    }
+
+    async function createSection() {
+        var name = input.value.trim();
+        if (!name) { showError('Escribe el nombre del apartado.'); input.focus(); return; }
+        createBtn.disabled = true;
+        showError('');
+        try {
+            var res = await fetch('/admin/packages/sections/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name }),
+            });
+            var data = await res.json().catch(function () { return {}; });
+            if (!res.ok || !data.ok) { showError(data.error || 'No se pudo crear el apartado.'); return; }
+            selects().forEach(function (sel) {
+                var opt = document.createElement('option');
+                opt.value = data.key;
+                opt.textContent = data.name;
+                sel.insertBefore(opt, sel.querySelector('option[value="' + NEW + '"]'));
+            });
+            if (origin) { origin.value = data.key; origin.dataset.prev = data.key; }
+            closeNewSection(false);
+        } catch (err) {
+            showError('No se pudo conectar. Intenta otra vez.');
+        } finally {
+            createBtn.disabled = false;
+        }
+    }
+
+    selects().forEach(function (sel) {
+        sel.dataset.prev = sel.value;
+        sel.addEventListener('focus', function () { if (sel.value !== NEW) sel.dataset.prev = sel.value; });   // lo que tenía antes, por si cancela
+        sel.addEventListener('change', function () {
+            if (sel.value === NEW) { origin = sel; openNewSection(); }
+            else sel.dataset.prev = sel.value;
+        });
+    });
+    createBtn.addEventListener('click', createSection);
+    document.getElementById('newSectionCancel').addEventListener('click', function () { closeNewSection(true); });
+    document.getElementById('newSectionClose').addEventListener('click', function () { closeNewSection(true); });
+    modal.addEventListener('click', function (evt) { if (evt.target === modal) closeNewSection(true); });
+    input.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Enter') { evt.preventDefault(); createSection(); }
+    });
+    document.addEventListener('keydown', function (evt) {          // Escape cierra el popup estés donde estés (sin cerrar el formulario de atrás)
+        if (evt.key === 'Escape' && modal.style.display !== 'none') { evt.preventDefault(); evt.stopPropagation(); closeNewSection(true); }
+    }, true);
+})();
 </script>
 {% endblock %}

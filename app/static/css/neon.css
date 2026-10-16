@@ -1075,7 +1075,7 @@ body.drawer-open { overflow: hidden; }
    y su mismo cuadro de cristal que se desliza de un apartado a otro. Solo sale si el juego tiene paquetes en más de un apartado. */
 .nx-store .pkg-sections-wrap { display: flex; justify-content: center; margin: 2px 0 12px; }
 .nx-store .pkg-sections {
-    position: relative; display: inline-flex; align-items: center; gap: 2px;
+    position: relative; display: inline-flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 2px;   /* con apartados propios pueden ser más y pasar a otra línea */
     max-width: 100%; overflow: hidden; padding: 4px !important; border-radius: 13px !important;
 }
 .nx-store .pkg-sections[hidden] { display: none !important; }

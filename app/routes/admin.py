@@ -75,6 +75,7 @@ from ..utils.central_one import (
     get_centralone_env, probe_codes_permission, sync_catalog as sync_central_one_catalog,
 )
 from ..models import PushSubscription, PACKAGE_SECTION_LABELS
+from ..utils.package_sections import create_section, section_labels, valid_section_key
 from ..utils.push_notifications import is_push_configured, send_push_broadcast, send_push_to_order_subscribers_async
 from ..utils.site_notifications import BODY_MAX, TITLE_MAX, clean_link
 from ..utils.points import (
@@ -863,7 +864,7 @@ def packages():
         packages=all_packages,
         games=all_games,
         selected_game_id=game_id,
-        package_sections=PACKAGE_SECTION_LABELS,
+        package_sections=section_labels(),
     )
 
 
@@ -876,10 +877,23 @@ def _normalize_package_announcement_type(raw_value):
 
 
 def _normalize_package_section(raw_value):
-    """Apartado elegido en el formulario del paquete ('main' | 'pass' | 'card'); cualquier otra cosa = no se eligió (None)."""
-    from ..models import PACKAGE_SECTION_LABELS
-    value = (raw_value or '').strip()
-    return value if value in PACKAGE_SECTION_LABELS else None
+    """Apartado elegido en el formulario del paquete: uno de los 3 de siempre ('main' | 'pass' | 'card') o uno propio ('c<id>');
+    cualquier otra cosa = no se eligió (None)."""
+    return valid_section_key(raw_value)
+
+
+@admin_bp.route('/packages/sections/add', methods=['POST'])
+@login_required
+def package_section_add():
+    """"Crear nuevo +" de la lista "¿En qué apartado va?": crea un apartado propio con el nombre que escribió el dueño y devuelve su clave,
+    para que el formulario lo agregue a la lista y lo deje elegido."""
+    data = request.get_json(silent=True) or request.form
+    section, error = create_section(data.get('name'))
+    if error:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': error}), 400
+    db.session.commit()
+    return jsonify({'ok': True, 'key': section.key, 'name': section.name})
 
 
 def _normalize_package_points(raw_value):

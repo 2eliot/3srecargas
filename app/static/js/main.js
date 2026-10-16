@@ -1923,6 +1923,7 @@ window.nxDebug = function () {};
                 manualSchedule = (data.game && data.game.manual_schedule) || null;
                 applyGameToSidebar(data.game);
                 if (packageSections.gameId !== gameId) { packageSections.gameId = gameId; packageSections.active = null; }
+                setSectionMeta(data.game && data.game.package_sections);
                 renderPackages(data.packages);
                 if (previousPackageId) {
                     reselectPackage(previousPackageId, previousTotal);
@@ -2123,6 +2124,23 @@ window.nxDebug = function () {};
     var SECTION_LABELS = { main: 'Moneda', pass: 'Pases', card: 'Tarjetas' };
     var SECTION_TITLES = { main: 'Moneda principal', pass: 'Pases', card: 'Tarjetas' };
     var packageSections = { all: [], active: null, gameId: null, present: [] };
+
+    /* El servidor manda los apartados que existen (los 3 de siempre y los que el dueño creó con "Crear nuevo +") con su nombre y su orden.
+       Si no los manda (página vieja en caché) se quedan los 3 de siempre. */
+    function setSectionMeta(list) {
+        if (!Array.isArray(list) || !list.length) return;
+        var order = [], labels = {}, titles = {};
+        list.forEach(function (s) {
+            if (!s || !s.key) return;
+            order.push(s.key);
+            labels[s.key] = s.label || s.title || s.key;
+            titles[s.key] = s.title || s.label || s.key;
+        });
+        if (order.indexOf('main') < 0) return;
+        SECTION_ORDER = order;
+        SECTION_LABELS = labels;
+        SECTION_TITLES = titles;
+    }
 
     function pkgSection(pkg) {
         var s = pkg && pkg.section;

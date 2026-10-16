@@ -94,8 +94,28 @@ class Game(db.Model):
         }
 
 
-# Apartados donde se puede poner un paquete (clave -> nombre que ve el dueño en el admin).
+# Apartados donde se puede poner un paquete (clave -> nombre que ve el dueño en el admin). Son los 3 de siempre; el dueño puede crear más
+# desde el formulario del paquete ("Crear nuevo +"): viven en la tabla `package_sections` y su clave es 'c<id>' (ver utils/package_sections.py).
 PACKAGE_SECTION_LABELS = {'main': 'Moneda principal', 'pass': 'Pases', 'card': 'Tarjetas'}
+
+
+class PackageSection(db.Model):
+    """Apartado propio de la tienda, creado por el dueño con el nombre que quiera. Lo que se guarda en `Package.section` es su clave 'c<id>'."""
+    __tablename__ = 'package_sections'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(30), nullable=False)
+    sort_order = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def key(self):
+        return f'c{self.id}'
+
+
+def _known_section_key(raw):
+    """Clave de apartado válida (los 3 de siempre o uno propio); cualquier otra cosa, o vacío, cuenta como 'main'."""
+    from .utils.package_sections import valid_section_key
+    return valid_section_key(raw) or 'main'
 
 
 class Package(db.Model):
@@ -159,7 +179,7 @@ class Package(db.Model):
             'pin_count': self.pin_count if self.is_automated else None,
             'announcement_type': self.announcement_type or '',
             'points_reward': self.points_reward,
-            'section': self.section if self.section in PACKAGE_SECTION_LABELS else 'main',
+            'section': _known_section_key(self.section),
         }
 
 

@@ -614,6 +614,10 @@ def api_packages(game_id):
     # El dueño puede apagarlo juego por juego (Admin → Juegos → "Mostrar aviso de plazo y horario"); sin dato = encendido.
     game_dict['requires_wallet_notice'] = bool(pkg_list and is_wallet and game.show_wallet_notice is not False)
 
+    # Apartados (Moneda / Pases / Tarjetas y los que el dueño creó): nombre y orden para dibujar las pestañitas.
+    from ..utils.package_sections import section_meta
+    game_dict['package_sections'] = section_meta()
+
     # El front lo usa para el badge "CERRADO" y para el texto del aviso.
     game_dict['manual_schedule'] = {
         'open_hour': manual_schedule['open_hour'],
