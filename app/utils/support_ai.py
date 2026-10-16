@@ -681,10 +681,12 @@ def _system_prompt(chat, settings, known_orders):
         '- Responde en español, breve (1 a 4 frases), amable y claro. Sin markdown ni asteriscos.',
         '- NUNCA inventes el estado de un pedido: consulta siempre con la herramienta buscar_ordenes y usa '
         'solo lo que devuelve (que_pasa y que_debe_hacer).',
-        '- Para consultar un pedido pide cualquiera de estos: el número de orden, la referencia del pago '
-        '(al menos los últimos 6 dígitos) o una foto del comprobante. También sirve el ID de jugador, pero '
-        'con solo el ID no puedes enviar el link de la orden (por seguridad): en ese caso dile el estado y '
-        'pídele la referencia o el número de orden para mandarle el link.',
+        '- Para consultar un pedido NUNCA pidas el número de orden ni el ID de jugador: pide solo el comprobante '
+        'del pago (la foto o captura). El sistema lee la referencia y te cuenta si ya hay una orden con ese pago. '
+        'Si no puede mandar la foto, acepta que escriba la referencia (al menos los últimos 6 dígitos); si tampoco '
+        'la tiene, pasa a humano. Si el cliente te da por su cuenta un número de orden o un ID de jugador, úsalos '
+        'con buscar_ordenes; con solo el ID no puedes enviar el link de la orden (por seguridad): dile el estado y '
+        'pídele el comprobante del pago.',
         '- Cuando la orden tenga puedo_enviar_link=true y el cliente deba hacer algo en ella (completar un '
         'pago que falta, ver el estado), usa enviar_link_orden.',
         '- situacion=falta_dinero: explícale cuánto falta, envíale el link y dile que en esa página puede '
@@ -866,6 +868,9 @@ def generate_reply(chat_id):
         return False
 
     _read_pending_attachments(chat, settings['instructions'])
+    last_client = (SupportMessage.query.filter_by(chat_id=chat.id, sender='client')
+                   .order_by(SupportMessage.id.desc()).first())
+    answering_id = last_client.id if last_client else 0      # el mensaje del cliente al que este turno va a contestar
     known = orders_already_known(chat)
     auto_tag_manual_orders(chat, known)       # pedido manual ya pagado → etiqueta del juego, sin depender de que el modelo se acuerde
     messages = [{'role': 'system', 'content': _system_prompt(chat, settings, known)}] + _history(chat)
@@ -908,7 +913,7 @@ def generate_reply(chat_id):
                     action = (f'/order/{order.order_number}', f'Ver mi orden #{order.order_number}')
                     result = {'ok': True, 'nota': 'El botón con el link se adjuntará a tu respuesta.'}
                 else:
-                    result = {'ok': False, 'nota': 'No puedes enviar ese link: pide la referencia del pago o el número de orden.'}
+                    result = {'ok': False, 'nota': 'No puedes enviar ese link: pídele el comprobante del pago (la foto o la referencia).'}
             elif name == 'consultar_catalogo':
                 result = catalog_for_ai(args.get('juego'))
             elif name == 'metodos_de_pago':
@@ -933,6 +938,13 @@ def generate_reply(chat_id):
                              'content': json.dumps(result, ensure_ascii=False)})
         db.session.commit()
 
+    # Mientras la IA pensaba, otro turno del asistente (dos mensajes seguidos del cliente) o una persona del equipo pudo contestar ese
+    # mismo mensaje: la respuesta no se repite (el cliente veía dos veces el mismo texto y el mismo botón).
+    db.session.commit()
+    db.session.refresh(chat)
+    if not chat.ai_active or (answering_id and _answered_since(chat.id, answering_id)):
+        return False
+
     # Un comprobante pagado a nuestros datos que todavía no tiene orden no es un
     # "intento fallido": no hay pedido que encontrar, hay que ofrecerle crearlo.
     invite = None if handoff_reason else _receipt_invitation(chat)
@@ -954,6 +966,13 @@ def generate_reply(chat_id):
     if handoff_reason:
         hand_off_to_human(chat, handoff_reason)
     return bool(reply_text or action)
+
+
+def _answered_since(chat_id, client_message_id):
+    """True si después de ese mensaje del cliente ya hay una respuesta (del asistente o de una persona del equipo)."""
+    return (db.session.query(SupportMessage.id)
+            .filter(SupportMessage.chat_id == chat_id, SupportMessage.sender == 'admin', SupportMessage.id > client_message_id)
+            .first()) is not None
 
 
 def _pending_client_message(chat_id):

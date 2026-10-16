@@ -536,12 +536,16 @@ def send_quick_reply(chat, quick_reply, admin_id=None):
 
 
 def close_chat(chat, by_admin=False, admin_id=None):
-    chat.status = 'closed'
-    chat.closed_at = datetime.utcnow()
-    chat.unread_admin = 0
-    add_system_message(chat, 'El chat fue cerrado por soporte.' if by_admin
-                       else 'El cliente cerró el chat.')
+    # El cierre se decide en la base (UPDATE condicionado) y no en la copia que ya tenía este proceso: con un doble toque o dos procesos a
+    # la vez, solo el primero cierra y avisa; antes cada uno dejaba su aviso "El chat fue cerrado por soporte." y salía repetido.
+    closed_now = (SupportChat.query
+                  .filter(SupportChat.id == chat.id, SupportChat.status != 'closed')
+                  .update({'status': 'closed', 'closed_at': datetime.utcnow(), 'unread_admin': 0}, synchronize_session=False))
+    if closed_now:
+        add_system_message(chat, 'El chat fue cerrado por soporte.' if by_admin
+                           else 'El cliente cerró el chat.')
     db.session.commit()
+    db.session.refresh(chat)
     return chat
 
 

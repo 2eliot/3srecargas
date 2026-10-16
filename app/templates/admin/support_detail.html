@@ -872,9 +872,18 @@ body.is-embed .sup-bar-back{display:none}
         return head;
     }
 
+    // Un mensaje puede llegar dos veces (la respuesta del envío y un sondeo que ya iba en camino): cada uno se pinta una sola vez.
+    function alreadyShown(id) {
+        return !!id && !!thread.querySelector('.sup-msg[data-id="' + id + '"]');
+    }
+
     // textContent y no innerHTML: el cuerpo lo escribe el cliente y llega
     // por JSON, sin pasar por el autoescape de Jinja.
     function render(m) {
+        if (alreadyShown(m.id)) {
+            lastId = Math.max(lastId, m.id);
+            return;
+        }
         var el = document.createElement('div');
         el.className = 'sup-msg ' + m.sender + (m.is_deleted ? ' deleted' : '');
         el.dataset.id = m.id;
@@ -985,7 +994,11 @@ body.is-embed .sup-bar-back{display:none}
         el.appendChild(deletedText);
     }
 
+    // Una sola pregunta a la vez (si el servidor tarda, no se amontonan); una colgada más de 15 s deja pasar otra.
+    var polling = 0;
     function poll() {
+        if (polling && Date.now() - polling < 15000) return;
+        polling = Date.now();
         fetch('/admin/soporte/' + CHAT_ID + '/hilo.json?after_id=' + lastId,
               { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
@@ -994,7 +1007,8 @@ body.is-embed .sup-bar-back{display:none}
                 (data.messages || []).forEach(render);
                 (data.deleted_ids || []).forEach(applyDeleted);
             })
-            .catch(function () {});
+            .catch(function () {})
+            .then(function () { polling = 0; });
     }
 
     // ── Borrar respuesta rápida: modal propio en vez del confirm() nativo ──
@@ -1114,10 +1128,13 @@ body.is-embed .sup-bar-back{display:none}
     var input = document.getElementById('supReplyBody');
 
     if (form) {
+        var replySending = false;     // un doble Enter / doble toque mandaba el mensaje dos veces
         form.addEventListener('submit', function (evt) {
             evt.preventDefault();
+            if (replySending) return;
             var body = (input.value || '').trim();
             if (!body) return;
+            replySending = true;
             input.value = '';
             input.style.height = '';
 
@@ -1132,7 +1149,8 @@ body.is-embed .sup-bar-back{display:none}
                     if (data && data.ok) render(data.message);
                     else { input.value = body; alert((data && data.error) || 'No se pudo enviar.'); }
                 })
-                .catch(function () { input.value = body; });
+                .catch(function () { input.value = body; })
+                .then(function () { replySending = false; });
         });
     }
 

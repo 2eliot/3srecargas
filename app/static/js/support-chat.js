@@ -68,9 +68,19 @@
             { hour: '2-digit', minute: '2-digit' });
     }
 
+    // Un mensaje puede llegar dos veces (la respuesta del envío y un sondeo que ya iba en camino, o dos sondeos al mismo tiempo mientras
+    // el asistente "escribe"): cada uno se pinta una sola vez, el id lo decide.
+    function alreadyShown(id) {
+        return !!id && !!thread.querySelector('.sc-msg[data-id="' + id + '"]');
+    }
+
     // textContent y nunca innerHTML: el cuerpo lo escribe una persona y
     // llega por JSON, sin pasar por el autoescape de Jinja.
     function render(message) {
+        if (alreadyShown(message.id)) {
+            state.lastId = Math.max(state.lastId, message.id || 0);
+            return;
+        }
         var el = document.createElement('div');
         el.className = 'sc-msg ' + (message.sender || 'admin') + (message.is_deleted ? ' deleted' : '');
         el.dataset.id = message.id;
@@ -232,6 +242,10 @@
 
     function poll() {
         if (!state.token) return;
+        // Una sola pregunta a la vez: con el asistente escribiendo se pregunta cada 1,5 s y si el servidor tarda se amontonaban
+        // varias iguales. Si una se quedó colgada más de 15 s, se deja pasar otra.
+        if (state.polling && Date.now() - state.polling < 15000) return;
+        state.polling = Date.now();
         fetch('/soporte/hilo?after_id=' + state.lastId, {
             credentials: 'same-origin',
             headers: headers()
@@ -246,7 +260,8 @@
                 applyChat(data.chat);
                 (data.deleted_ids || []).forEach(applyDeleted);
             })
-            .catch(function () {});
+            .catch(function () {})
+            .then(function () { state.polling = 0; });
     }
 
     // 5 s con la pestana a la vista. En segundo plano no se pregunta nada:
