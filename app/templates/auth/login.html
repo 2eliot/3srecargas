@@ -267,6 +267,7 @@
 
             {#- ── Mi cuenta: usuario o correo + contraseña, o Google ── #}
             <div class="nx-auth-pane" data-pane="cuenta" {% if active_tab != 'cuenta' %}hidden{% endif %}>
+                {% if from_points_shop %}<div class="flash flash-info">Inicia sesión para ver y gastar los puntos de tu cuenta.</div>{% endif %}
                 <form method="POST" action="{{ url_for('auth_bp.account_login', next=next_url or None) }}" id="accountLoginForm" class="rdm-step">
                     <div>
                         <label class="rdm-label" for="acc_login">Usuario o correo</label>
@@ -296,6 +297,7 @@
 
             {#- ── Registrarse: usuario, correo, contraseña y repetirla (o con Google) ── #}
             <div class="nx-auth-pane" data-pane="registro" {% if active_tab != 'registro' %}hidden{% endif %}>
+                {% if from_points_shop %}<div class="flash flash-info">Crea una cuenta para que puedas guardar tus puntos.</div>{% endif %}
                 <form method="POST" action="{{ url_for('auth_bp.register', next=next_url or None) }}" id="registerForm" class="rdm-step">
                     <div>
                         <label class="rdm-label" for="reg_username">Nombre de usuario</label>

@@ -1,7 +1,9 @@
 """Sistema de puntos por recarga.
 
 Cada recarga POR ID (nunca códigos ni wallet) otorga puntos proporcionales
-al monto pagado, guardados por (juego, player_id). El cliente los canjea
+al monto pagado, guardados por (juego, player_id) — o, si se recargó con la
+sesión de una cuenta abierta, en la bolsa de esa CUENTA (account_points.py,
+se gastan en /tiendapuntos). El cliente los canjea
 en una ruleta tipo Counter-Strike: cada giro cuesta una cantidad fija de
 puntos y, cada cierta cantidad de giros (de todos los clientes juntos, por
 juego), se entrega el premio real configurado — reusando el mismo mecanismo
@@ -165,10 +167,32 @@ def award_points_for_order(order):
     if points <= 0:
         return None
 
+    # Regla del dueño (2026-10-16): una recarga hecha con la sesión de una cuenta abierta deja los puntos en la CUENTA (se gastan en /tiendapuntos);
+    # sin cuenta, quedan en el ID como siempre. Nunca en los dos sitios. Si la cuenta ya no existe, los puntos no se pierden: van al ID.
+    if credit_points_to_account(order, points):
+        return points
+
     # Suma atómica en la base (no "leer, sumar en Python y escribir"): un giro o canje del mismo ID a la vez no se pisa, y dos primeras órdenes del mismo ID
     # no chocan al crear la fila.
     credit_player_points(order.game_id, order.player_id, points)
     return points
+
+
+def credit_points_to_account(order, points):
+    """Si la orden la hizo una cuenta con su sesión abierta, le suma `points` a su bolsa y devuelve True; si no (o si la cuenta ya no existe), False."""
+    from ..models import User
+    from . import account_points
+
+    account_id = getattr(order, 'account_user_id', None)
+    if not account_id or db.session.get(User, account_id) is None:
+        return False
+    game_name = order.game.name if order.game else ''
+    package_name = order.package.name if order.package else ''
+    account_points.credit(
+        account_id, points, kind='compra', note=f'Recarga #{order.order_number}: {package_name} ({game_name})'.strip(),
+        game_id=order.game_id, player_id=order.player_id,
+    )
+    return True
 
 
 def get_points_enabled_games():
@@ -222,9 +246,12 @@ def credit_player_points(game_id, player_id, amount):
     return int(value or 0)
 
 
-def spend_points_and_spin(game_id, player_id):
+def spend_points_and_spin(game_id, player_id, account_user=None):
     """Gasta los puntos de un giro y resuelve el resultado. Lanza
-    ValueError con un mensaje listo para mostrar si algo no procede."""
+    ValueError con un mensaje listo para mostrar si algo no procede.
+
+    `account_user`: si se pasa, el giro se paga con los puntos de esa CUENTA (tienda de puntos, pestaña "Ruletas") en vez de los del ID. Todo lo demás es
+    IGUAL: el mismo contador de giros del juego (cuenta en los mismos giros que los de los IDs), el mismo premio y la misma entrega al ID que se escribió."""
     game_id = int(game_id)
     player_id = str(player_id or '').strip()
     if not player_id:
@@ -236,18 +263,40 @@ def spend_points_and_spin(game_id, player_id):
 
     cost = get_points_spin_cost()
 
+    # Con una cuenta, también se bloquea SU bolsa (el mismo candado de la tienda de puntos): un giro y un canje de la misma cuenta a la vez no se pisan.
+    account_lock = None
+    if account_user is not None:
+        account_lock = (f'points_shop:{account_user.id}', f'spin-acct-{datetime.utcnow().timestamp()}')
+        if not acquire_lock(account_lock[0], 150, account_lock[1]):
+            raise ValueError('Tu canje anterior todavía se está procesando. Espera un momento.')
+
     # Candado por (juego, ID): serializa los giros del mismo jugador para que
     # el contador de premios y el saldo no se pisen entre peticiones paralelas.
     lock_key = f'points_spin:{game_id}:{player_id}'
     lock_holder = f'spin-{datetime.utcnow().timestamp()}'
     if not acquire_lock(lock_key, 150, lock_holder):   # más que lo que tarda la entrega más lenta (el bot tiene hasta 120 s)
+        if account_lock:
+            release_lock(*account_lock)
         raise ValueError('Tu giro anterior todavía se está procesando. Espera un momento.')
 
+    def balance_now():
+        if account_user is not None:
+            from . import account_points
+            return account_points.balance(account_user.id)
+        return get_player_points_balance(game_id, player_id)
+
     try:
-        if not _spend_points_atomic(game_id, player_id, cost):
+        if account_user is not None:
+            from . import account_points
+            game_name = mapping.game.name if mapping.game else f'#{game_id}'
+            paid = cost <= 0 or account_points.debit(
+                account_user.id, cost, kind='tienda', note=f'Ruleta de {game_name}'[:200], game_id=game_id, player_id=player_id,
+            )
+        else:
+            paid = _spend_points_atomic(game_id, player_id, cost)
+        if not paid:
             db.session.rollback()
-            balance = get_player_points_balance(game_id, player_id)
-            raise ValueError(f'No tienes suficientes puntos. Cada giro cuesta {cost} puntos y tienes {balance}.')
+            raise ValueError(f'No tienes suficientes puntos. Cada giro cuesta {cost} puntos y tienes {balance_now()}.')
 
         counter_key = f'points_{game_id}'
         counter = MiniGameCounter.query.filter_by(game_key=counter_key).first()
@@ -272,7 +321,7 @@ def spend_points_and_spin(game_id, player_id):
             game = Game.query.get(game_id)
             prize_order, approval = deliver_prize_to_player(
                 game, mapping.package, player_id,
-                note=f'Premio canjeado con puntos ({cost} pts, giro #{spin_position}).',
+                note=f'Premio canjeado con puntos ({cost} pts, giro #{spin_position}).' + (f' Cuenta @{account_user.username}.' if account_user is not None else ''),
                 reference_prefix='PUNTOS',
             )
             reward_label = mapping.package.name
@@ -289,15 +338,22 @@ def spend_points_and_spin(game_id, player_id):
         )
         db.session.add(log)
         db.session.commit()
+    except Exception:
+        # Se deshace lo pendiente (cobro y contador) ANTES de soltar los candados: soltar un candado hace commit de la sesión y, si no, dejaría guardado
+        # un cobro de un giro que falló. (Si el premio ya llegó a guardarse, ese commit ya quedó hecho y todo es consistente.)
+        db.session.rollback()
+        raise
     finally:
         release_lock(lock_key, lock_holder)
+        if account_lock:
+            release_lock(*account_lock)
 
     return {
         'won': is_win,
         'reward_label': reward_label if is_win else 'Fallaste',
         'prize_label': mapping.package.name,
         'points_spent': cost,
-        'points_balance': get_player_points_balance(game_id, player_id),
+        'points_balance': balance_now(),
     }
 
 

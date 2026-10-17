@@ -98,6 +98,8 @@ def usable_frame(user, frame_id, kind):
         frame_id = int(frame_id)
     except (TypeError, ValueError):
         return None
+    if not 0 < frame_id < 2_147_483_647:    # un número gigante a mano no debe llegar a la base (daba un error en vez de "no existe")
+        return None
     frame = db.session.get(ProfileFrame, frame_id)
     if frame is None or not frame.is_active or frame.kind != kind or not frame_url(frame.image_path):
         return None

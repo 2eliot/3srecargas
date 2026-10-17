@@ -340,8 +340,9 @@ def mission_completions(events, cfg):
     return result
 
 
-def compute_xp(user_id, orders, units, order_dates, streak_months, badge_count, top_months, profile_complete, cfg=None):
-    """Puntos totales de una cuenta y de dónde salen. Todo sale de hechos, así que es seguro recalcular cuantas veces se quiera."""
+def compute_xp(user_id, orders, units, order_dates, streak_months, badge_count, top_months, profile_complete, cfg=None, bonus_xp=0):
+    """Puntos totales de una cuenta y de dónde salen. Todo sale de hechos, así que es seguro recalcular cuantas veces se quiera.
+    `bonus_xp`: puntos de nivel que la cuenta compró en la tienda de puntos (canjes que siguen "done"; un canje devuelto ya no cuenta)."""
     cfg = cfg or get_config()
     points, caps = cfg['points'], cfg['caps']
     events = collect_events(user_id, order_dates)
@@ -361,6 +362,8 @@ def compute_xp(user_id, orders, units, order_dates, streak_months, badge_count, 
     add('top3', 'Top 3 del mes', top_months, top_months * points['top3'])
     done = mission_completions(events, cfg)
     add('missions', 'Misiones completadas', sum(done.values()), sum(done[key] * cfg['missions'][key]['xp'] for key in MISSION_KEYS))
+    if bonus_xp > 0:   # solo se lista cuando existe, así las cuentas que no compraron nada no ven una fila de ceros
+        add('shop', 'Comprados en la tienda de puntos', 1, bonus_xp)
     return {'total': sum(part['xp'] for part in parts), 'parts': parts, 'events': events}
 
 

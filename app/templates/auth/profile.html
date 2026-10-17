@@ -125,14 +125,14 @@
             {% endif %}
         {% endwith %}
 
-        {% if is_account and points_balance %}
-        {#- Puntos de la tienda del perfil: solo llegan por un premio de ranking o porque el administrador se los pone. Se usan pasándolos a un ID. -#}
+        {% if is_account %}
+        {#- Puntos de la CUENTA: los de las recargas hechas con la sesión abierta, los premios de ranking y los que el administrador pone. Se gastan en la tienda de puntos. -#}
         <section class="glass-panel nx-prof-card nx-prof-points" id="profilePoints">
-            <h2 class="nx-prof-h">Puntos de tu perfil</h2>
+            <h2 class="nx-prof-h">Puntos de tu cuenta</h2>
             <p class="nx-prof-points-amount"><b>{{ points_balance }}</b> puntos</p>
-            <p class="nx-prof-text">Los puntos de la tienda funcionan por ID: para usarlos, ábrelos en "Canjear puntos" y elige a qué ID (juego + ID) se los vas a recargar. Desde ahí giras la ruleta o los canjeas por paquetes.</p>
+            <p class="nx-prof-text">Cada recarga que haces con tu sesión abierta suma puntos aquí, igual que los premios de ranking. Gástalos en la tienda de puntos: recargas, tarjetas, nivel, reputación y cosas premium para tu perfil.</p>
             <div class="nx-prof-actions">
-                <a class="rdm-btn red-glow-pill rdm-btn-link" href="{{ url_for('main_bp.index') }}#puntos"><span class="rdm-btn-label">Usar mis puntos</span></a>
+                <a class="rdm-btn red-glow-pill rdm-btn-link" href="{{ url_for('points_shop_bp.shop_page') }}"><span class="rdm-btn-label">Ir a la tienda de puntos</span></a>
             </div>
         </section>
         {% endif %}

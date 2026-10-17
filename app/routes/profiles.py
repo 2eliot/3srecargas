@@ -17,6 +17,7 @@ from ..utils.auth_accounts import ACCOUNT_KINDS, is_account_user
 from ..utils.contact_filter import MASK_MESSAGE, mask_contact_info, public_name
 from ..utils.locks import check_rate_limit, client_ip
 from ..utils.official_profile import admin_return_user, clear_admin_return, is_official_user, visible_official_user
+from ..utils import profile_shop as PSHOP
 from ..utils import profile_xp as XP
 from ..utils.profile_social import (
     BADGES, SEARCH_MAX, SEARCH_MIN, STATS_FALLBACK_MINUTES, SocialError, badge_cards, ensure_fresh, get_thresholds, level_info, network_users, recompute_ranks,
@@ -126,6 +127,9 @@ def frame_for_view(profile, user, kind):
     if profile is None:
         return ''
     frame_id = profile.avatar_frame_id if kind == 'avatar' else profile.banner_frame_id
+    premium = PSHOP.frame_path(profile, kind)       # marco premium de la tienda de puntos que la cuenta tiene puesto
+    if premium:
+        return media_url_path(premium)
     if frame_id == -1:
         return ''
     shop_url = selected_frame_url(profile, user, kind) if frame_id else ''
@@ -145,7 +149,11 @@ def build_view(user, profile, owner_view=False, preview=False, viewer=None):
     social = build_social(user, profile, viewer, owner_view=owner_view, preview=preview)
     level_key = social['level']['key'] if social['level'] else None
     banner_frame_url = frame_for_view(profile, user, 'banner')
-    media = {'background': profile.background_path if profile else '', 'banner': profile.banner_path if profile else '',
+    # Foto, portada y fondo: lo premium de la tienda de puntos si la cuenta lo tiene puesto; si no, lo propio.
+    avatar_path = PSHOP.effective_avatar_path(profile)
+    banner_path = PSHOP.effective_banner_path(profile)
+    background_path = PSHOP.effective_background_path(profile)
+    media = {'background': background_path, 'banner': banner_path,
              'banner_frame': banner_frame_url}   # el marco solo se usa para saber si "Cuánto sobresale" aplica (hay marco puesto)
     return {
         'user': user,
@@ -158,11 +166,11 @@ def build_view(user, profile, owner_view=False, preview=False, viewer=None):
         'handle': user.username,
         'bio': shown_bio,
         'status_text': shown_status,
-        'avatar': media_url_path(profile.avatar_path) if profile else '',
-        'banner': media_url_path(profile.banner_path) if profile else '',
+        'avatar': media_url_path(avatar_path) if profile else '',
+        'banner': media_url_path(banner_path) if profile else '',
         # el fondo puede ser una imagen o un VIDEO corto: `background` es la imagen (vacía si es video) y `background_video` el video
-        'background': media_url_path(profile.background_path) if profile and not is_video_path(profile.background_path) else '',
-        'background_video': media_url_path(profile.background_path) if profile and is_video_path(profile.background_path) else '',
+        'background': media_url_path(background_path) if profile and not is_video_path(background_path) else '',
+        'background_video': media_url_path(background_path) if profile and is_video_path(background_path) else '',
         'avatar_frame': frame_for_view(profile, user, 'avatar'),
         'banner_frame': frame_for_view(profile, user, 'banner'),
         'owner_view': owner_view,
@@ -330,6 +338,9 @@ def _editor_context(user, profile):
         'banner_frame_choice': _frame_choice(profile, 'banner'),
         'own_avatar_frame': media_url_path(profile.avatar_frame_path) if profile else '',
         'own_banner_frame': media_url_path(profile.banner_frame_path) if profile else '',
+        # Lo premium que la cuenta consiguió en la tienda de puntos ("Ver mis marcos / fotos / fondos") y lo que tiene puesto. No cuenta en el tope.
+        'owned': {kind: PSHOP.owned_for_editor(user.id, kind) for kind in PSHOP.EQUIP_COLUMN},
+        'shop_choice': {kind: PSHOP.current_choice(profile, kind) for kind in PSHOP.EQUIP_COLUMN},
         'max_images': MAX_PROFILE_IMAGES,
         'image_count': profile_image_count(profile),
         'image_slots': {kind: bool(profile and (getattr(profile, spec[0]) or '').strip()) for kind, spec in MEDIA_KINDS.items()},
@@ -344,6 +355,9 @@ def _editor_context(user, profile):
 
 def _frame_choice(profile, kind):
     """Qué marco tiene puesto la cuenta en el editor: 'none', 'own' (el que subió) o el id (texto) de uno de la tienda."""
+    premium = PSHOP.current_choice(profile, 'frame_avatar' if kind == 'avatar' else 'frame_banner')
+    if premium:
+        return premium
     frame_id = (profile.avatar_frame_id if kind == 'avatar' else profile.banner_frame_id) if profile else None
     if frame_id == -1:
         return 'none'
@@ -357,6 +371,13 @@ def _apply_frame_choice(profile, user, kind, raw):
     """Guarda el marco elegido en el editor: 'none', 'own' o el id de uno de la tienda que la cuenta pueda usar. Algo inválido no cambia nada."""
     value = (raw or '').strip().lower()
     column = 'avatar_frame_id' if kind == 'avatar' else 'banner_frame_id'
+    premium_kind = 'frame_avatar' if kind == 'avatar' else 'frame_banner'
+    if PSHOP.parse_choice(value) is not None:
+        # Un marco premium de la tienda de puntos: solo si la cuenta lo tiene. Uno que no es suyo no cambia nada.
+        if PSHOP.apply_choice(profile, user, premium_kind, value):
+            setattr(profile, column, None)
+        return
+    PSHOP.apply_choice(profile, user, premium_kind, '')    # cualquier otra elección suelta el marco premium
     if value == 'none':
         setattr(profile, column, -1)
     elif value == 'own':
@@ -442,6 +463,11 @@ def edit_profile():
     for kind in ('avatar', 'banner'):
         if f'{kind}_frame_choice' in request.form:
             _apply_frame_choice(profile, user, kind, request.form.get(f'{kind}_frame_choice'))
+    # Foto de perfil, portada y fondo de la tienda de puntos (solo los que la cuenta tiene).
+    for shop_kind, field_name in (('avatar_photo', 'avatar_photo_choice'), ('banner_photo', 'banner_photo_choice'), ('background', 'background_choice')):
+        if field_name in request.form:
+            picked = PSHOP.apply_choice(profile, user, shop_kind, request.form.get(field_name))
+            background_uploaded = background_uploaded or (shop_kind == 'background' and picked)
     if background_uploaded and theme['background']['mode'] in ('gradient', 'color'):
         # Quien sube una imagen de fondo quiere verla: sin esto quedaba guardada pero el fondo seguía siendo el degradado.
         theme['background']['mode'] = 'image'

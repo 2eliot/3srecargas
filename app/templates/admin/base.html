@@ -142,12 +142,21 @@
                 </button>
                 <div class="nav-submenu"><div class="nav-submenu-inner">
                     <a href="{{ url_for('admin_bp.points') }}"
-                       class="nav-item nav-subitem {% if request.endpoint and 'points' in request.endpoint %}active{% endif %}">
+                       class="nav-item nav-subitem {% if request.endpoint and request.endpoint.startswith('admin_bp.points') %}active{% endif %}">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="9"/>
                             <path d="M12 7v5l3 3"/>
                         </svg>
-                        <span class="nav-label">Puntos</span>
+                        <span class="nav-label">Puntos por ID</span>
+                    </a>
+                    <a href="{{ url_for('admin_points_shop_bp.index') }}"
+                       class="nav-item nav-subitem {% if request.endpoint and request.endpoint.startswith('admin_points_shop_bp') %}active{% endif %}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                            <line x1="3" y1="6" x2="21" y2="6"/>
+                            <path d="M16 10a4 4 0 0 1-8 0"/>
+                        </svg>
+                        <span class="nav-label">Puntos por cuenta</span>
                     </a>
                     <a href="{{ url_for('admin_bp.gift_codes') }}"
                        class="nav-item nav-subitem {% if 'gift' in request.endpoint %}active{% endif %}">

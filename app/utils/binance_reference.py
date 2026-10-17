@@ -5,12 +5,13 @@ referencia (el ID de la operación que muestra Binance), y aquí se busca esa re
 (API de Binance Pay, llave de solo lectura en el .env: BINANCE_API_KEY / BINANCE_API_SECRET). Si todo coincide, la orden se aprueba sola.
 
 Lo que se comprueba antes de dar el pago por bueno:
-- la referencia aparece en el historial como ID de la operación (transactionId / orderId); se acepta el ID completo o su parte final
-  (mínimo 8 caracteres) porque el cliente a veces copia solo los números;
+- la referencia es el ID COMPLETO de la operación (transactionId / orderId), como pide el dueño: NO se acepta una referencia más corta (como solo la parte
+  final, que en Pago Móvil dejaba pasar referencias cualquiera). Solo se perdonan las letras del inicio ("M_P_71505104267788288" y "71505104267788288" son
+  el mismo ID) y los guiones, espacios y mayúsculas;
 - es un pago RECIBIDO, en USDT (no uno que salió de la cuenta ni otra moneda);
 - el monto cubre el precio de la orden con una tolerancia de 2 % (mínimo aceptado = 98 % del precio; si pagó de más, se acepta);
 - ese pago no se usó antes en otra orden;
-- el pago es de las horas anteriores a la orden o posterior (no se aceptan pagos viejos).
+- el pago es de hasta 48 horas antes de la orden (el cliente suele pagar y enviar la orden horas después) o posterior; no se aceptan pagos más viejos.
 Si algo no cuadra NO se aprueba solo: queda una nota para que el administrador lo revise a mano.
 
 El resultado tiene la misma forma que el de Pabilo (`verify_order_payment`), así que el resto del sistema (aprobar, notas, reintentos,
@@ -28,11 +29,12 @@ PROVIDER = 'Binance'
 # Tolerancia del 2 %: el pago puede llegar hasta 2 % por debajo del precio (comisiones, redondeos) y se acepta igual.
 BINANCE_MIN_ACCEPTANCE_RATIO = Decimal('0.98')
 MIN_REFERENCE_LENGTH = 8
-# El cliente suele pagar ANTES de confirmar la orden: se miran los pagos desde unas horas antes de que se creó.
-LOOKBACK_BEFORE_ORDER_MINUTES = 180
+# El cliente suele pagar ANTES de confirmar la orden (a veces paga en la mañana y la envía en la noche): se miran los pagos desde 48 horas antes de que se creó
+# (pedido del dueño, 2026-10-17; antes eran 3 horas). Sigue acotado por MAX_WINDOW_DAYS.
+LOOKBACK_BEFORE_ORDER_MINUTES = 48 * 60
 MAX_WINDOW_DAYS = 7
 PAGE_LIMIT = 100          # la API entrega como máximo 100 pagos por consulta
-MAX_SPLIT_DEPTH = 3       # si llegan 100, la ventana se parte a la mitad hasta 3 veces (8 consultas como máximo)
+MAX_SPLIT_DEPTH = 6       # si llegan 100, la ventana se parte a la mitad hasta 6 veces (con la ventana de 48 horas, tramos de unos 50 minutos; solo se parte si hay 100 o más pagos)
 ID_KEYS = ('transactionId', 'orderId', 'prepayId', 'merchantTradeNo')
 
 
@@ -55,15 +57,20 @@ def _tx_ids(tx):
     return ids
 
 
+def _id_core(tid):
+    """El ID sin las letras del inicio ("MP71505104267788288" -> "71505104267788288"): el cliente a veces copia solo la parte de números COMPLETA."""
+    return re.sub(r'^[A-Z]+', '', tid)
+
+
 def reference_matches(reference, tx):
-    """La referencia es el ID de la operación o su parte final (o el ID es la parte final de lo que escribió el cliente)."""
+    """La referencia tiene que ser el ID COMPLETO de la operación (o ese ID sin las letras del inicio). Una referencia MÁS CORTA (la parte final, por ejemplo)
+    NO coincide: así nadie acierta un pago poniendo unos pocos números. Si el cliente escribió de MÁS (un prefijo, "Order ID: ..."), el ID completo está dentro y sí."""
     ref = normalize_reference(reference)
     if len(ref) < MIN_REFERENCE_LENGTH:
         return False
     for tid in _tx_ids(tx):
-        if tid == ref:
-            return True
-        if tid.endswith(ref):
+        core = _id_core(tid)
+        if tid == ref or (len(core) >= MIN_REFERENCE_LENGTH and core == ref):
             return True
         if len(tid) >= 12 and ref.endswith(tid):
             return True
@@ -149,7 +156,9 @@ def verify_order_by_reference(order, app=None):
         return _result('El pago todavía no aparece en Binance.')
     tx_ids = {BP._tx_id(tx) for tx in matched}
     if len(tx_ids) > 1:
-        return _result('Esa referencia coincide con más de un pago de Binance: un operador la revisa a mano.')
+        shown = ', '.join(sorted(tx_ids)[:5])
+        return _result(f'ATENCIÓN, REFERENCIA REPETIDA: esa referencia coincide con más de un pago de Binance ({len(tx_ids)} pagos: {shown}). '
+                       'No se aprueba sola: un operador la revisa a mano.')
     tx = matched[0]
     tx_id = BP._tx_id(tx)
     used_by = candidates[0]
@@ -164,8 +173,15 @@ def verify_order_by_reference(order, app=None):
         return _result(f'Ese pago de Binance no es un cobro recibido en USDT (es {direction}, moneda {currency}). Un operador lo revisa a mano.')
 
     claimed = BP._claimed_tx_ids()
-    if tx_id in claimed or find_order_using_payment_id(tx_id, order.id):
-        return _result('Ese pago de Binance ya fue usado en otra orden.', ok=False)
+    other = find_order_using_payment_id(tx_id, order.id)
+    if other is None and tx_id in claimed:
+        from ..models import Order
+        other = Order.query.filter(Order.binance_tx_id == tx_id, Order.id != order.id).first()
+    if tx_id in claimed or other is not None:
+        # Se avisa en las notas de la orden (lo hace quien llama con este mensaje): qué pago es y en qué orden ya se usó.
+        who = f' (orden #{other.order_number})' if other is not None and getattr(other, 'order_number', None) else ''
+        return _result(f'ATENCIÓN, PAGO YA USADO: ese pago de Binance (ID {tx_id}) ya fue usado en otra orden{who}. '
+                       'No se aprueba sola: un operador debe revisar si el cliente repitió la referencia de un pago anterior.', ok=False)
 
     reported = Decimal(str(abs(BP._tx_amount(tx))))
     minimum = (expected * BINANCE_MIN_ACCEPTANCE_RATIO).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)

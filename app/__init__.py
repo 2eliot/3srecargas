@@ -214,6 +214,8 @@ def create_app(config_class=Config):
     from .routes.admin_support import admin_support_bp
     from .routes.admin_tournaments import admin_tournaments_bp
     from .routes.promos import promos_bp
+    from .routes.points_shop import points_shop_bp
+    from .routes.admin_points_shop import admin_points_shop_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
@@ -229,6 +231,8 @@ def create_app(config_class=Config):
     app.register_blueprint(admin_support_bp)
     app.register_blueprint(admin_tournaments_bp)
     app.register_blueprint(promos_bp)
+    app.register_blueprint(points_shop_bp)
+    app.register_blueprint(admin_points_shop_bp)
 
     @app.template_filter('datetime_ve')
     def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):
@@ -1489,6 +1493,11 @@ def _ensure_profile_social_columns():
             'in_rankings BOOLEAN DEFAULT TRUE',
             'avatar_frame_id INTEGER',
             'banner_frame_id INTEGER',
+            'avatar_frame_item_id INTEGER',
+            'banner_frame_item_id INTEGER',
+            'avatar_photo_item_id INTEGER',
+            'banner_photo_item_id INTEGER',
+            'background_item_id INTEGER',
         ]) or done
         done = _ensure_postgres_columns('profile_stats', [
             "favorite_product VARCHAR(100) DEFAULT ''",
@@ -1506,7 +1515,9 @@ def _ensure_profile_social_columns():
             wanted = {
                 'user_linked_ids': [('verified_at', 'DATETIME')],
                 'user_profiles': [('status_text', "VARCHAR(60) DEFAULT ''"), ('show_stats', 'BOOLEAN DEFAULT 1'), ('in_rankings', 'BOOLEAN DEFAULT 1'),
-                                  ('avatar_frame_id', 'INTEGER'), ('banner_frame_id', 'INTEGER')],
+                                  ('avatar_frame_id', 'INTEGER'), ('banner_frame_id', 'INTEGER'),
+                                  ('avatar_frame_item_id', 'INTEGER'), ('banner_frame_item_id', 'INTEGER'), ('avatar_photo_item_id', 'INTEGER'),
+                                  ('banner_photo_item_id', 'INTEGER'), ('background_item_id', 'INTEGER')],
                 'profile_awards': [('kind', "VARCHAR(10) DEFAULT 'manual'"), ('month_key', "VARCHAR(7) DEFAULT ''")],
                 'profile_stats': [('favorite_product', "VARCHAR(100) DEFAULT ''"), ('xp_total', 'INTEGER DEFAULT 0'), ('xp_level', 'INTEGER DEFAULT 1'),
                                   ('xp_rank', 'INTEGER')],

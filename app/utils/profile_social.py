@@ -16,12 +16,13 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import func, or_
 
 from ..models import (
-    ProfileAward, ProfileFollow, ProfileLike, ProfileStat, Order, Setting, User, UserBadge, UserProfile, db,
+    PointsShopOrder, ProfileAward, ProfileFollow, ProfileLike, ProfileStat, Order, Setting, User, UserBadge, UserProfile, db,
 )
 from .contact_filter import public_name
 from .auth_accounts import ACCOUNT_KINDS, is_account_user
 from .locks import acquire_lock, check_rate_limit, release_lock
 from .official_profile import is_official_user
+from .profile_shop import effective_avatar_path, effective_banner_path
 from .order_units import extract_order_units
 from . import profile_xp as XP
 from .timezone import now_ve, to_ve, ve_day_start_utc_naive
@@ -299,7 +300,20 @@ def _grant_badge(user_id, key):
 
 
 def profile_is_complete(profile):
-    return bool(profile and profile.avatar_path and profile.banner_path and (profile.bio or profile.status_text))
+    # la foto y la portada pueden ser propias o premium de la tienda de puntos
+    return bool(profile and (profile.bio or profile.status_text) and effective_avatar_path(profile) and effective_banner_path(profile))
+
+
+def shop_bonus(user_id):
+    """Puntos de nivel y de reputación que la cuenta compró en la tienda de puntos. Se calculan desde los canjes que siguen "done": si el admin
+    devuelve un canje, deja de contar sin tocar nada más. {'xp': n, 'reputation': n}"""
+    rows = (
+        db.session.query(PointsShopOrder.kind, func.coalesce(func.sum(PointsShopOrder.amount), 0))
+        .filter(PointsShopOrder.user_id == user_id, PointsShopOrder.status == 'done', PointsShopOrder.kind.in_(['xp', 'reputation']))
+        .group_by(PointsShopOrder.kind).all()
+    )
+    totals = {kind: int(total or 0) for kind, total in rows}
+    return {'xp': totals.get('xp', 0), 'reputation': totals.get('reputation', 0)}
 
 
 def refresh_user(user, commit=True, xp_cfg=None):
@@ -342,13 +356,17 @@ def refresh_user(user, commit=True, xp_cfg=None):
     badge_count = UserBadge.query.filter_by(user_id=user.id).count()
     top_months = ProfileAward.query.filter(ProfileAward.user_id == user.id, ProfileAward.kind.in_(['top1', 'top2', 'top3'])).count()
     profile = UserProfile.query.filter_by(user_id=user.id).first()
-    stat.reputation = counts['likes'] * 1 + counts['followers'] * 2 + badge_count * 5 + top_months * 20 + (10 if profile_is_complete(profile) else 0)
+    bonus = shop_bonus(user.id)   # lo comprado en la tienda de puntos: se suma encima de lo que sale de la actividad
+    stat.reputation = (
+        counts['likes'] * 1 + counts['followers'] * 2 + badge_count * 5 + top_months * 20 + (10 if profile_is_complete(profile) else 0)
+        + bonus['reputation']
+    )
 
     # Nivel por números (como Steam): los puntos se calculan desde los hechos, nunca se suman a mano (ver utils/profile_xp.py).
     old_level, had_xp = stat.xp_level or 1, (stat.xp_total or 0) > 0
     xp = XP.compute_xp(
         user.id, numbers['orders'], numbers['units'], numbers['order_dates'], stat.streak_months or 0, badge_count, top_months,
-        profile_is_complete(profile), xp_cfg,
+        profile_is_complete(profile), xp_cfg, bonus_xp=bonus['xp'],
     )
     stat.xp_total = xp['total']
     stat.xp_level = XP.level_for_xp(stat.xp_total, xp_cfg)
@@ -371,6 +389,7 @@ def xp_details_for(user, cfg=None):
     profile = UserProfile.query.filter_by(user_id=user.id).first()
     result = XP.compute_xp(
         user.id, numbers['orders'], numbers['units'], numbers['order_dates'], streak, badge_count, top_months, profile_is_complete(profile), cfg,
+        bonus_xp=shop_bonus(user.id)['xp'],
     )
     return {
         'parts': [part for part in result['parts'] if part['xp'] or part['count']],
@@ -552,7 +571,7 @@ def account_month_ranking(limit=ACCOUNT_RANKING_SIZE, reveal=False):
         shows = reveal or profile is None or profile.show_stats is not False
         rows.append({
             'position': len(rows) + 1, 'user_id': user.id, 'name': _shown_name(user, profile), 'handle': user.username,
-            'avatar': (media_url_path(profile.avatar_path) or '') if (profile and profile.avatar_path) else '',
+            'avatar': (media_url_path(effective_avatar_path(profile)) or '') if profile else '',
             'total_units': stat.month_diamonds if shows else None,
         })
         if len(rows) >= limit:
@@ -601,7 +620,7 @@ def level_ranking(limit=ACCOUNT_RANKING_SIZE, reveal=False):
         shows = reveal or profile is None or profile.show_stats is not False
         rows.append({
             'position': len(rows) + 1, 'user_id': user.id, 'name': _shown_name(user, profile), 'handle': user.username,
-            'avatar': (media_url_path(profile.avatar_path) or '') if (profile and profile.avatar_path) else '',
+            'avatar': (media_url_path(effective_avatar_path(profile)) or '') if profile else '',
             'total_units': stat.xp_total if shows else None, 'level': (stat.xp_level or 1) if shows else None,
         })
         if len(rows) >= limit:
@@ -670,7 +689,7 @@ def search_accounts(query, limit=SEARCH_LIMIT):
         order = 0 if low == text else (1 if low.startswith(text) else 2)
         found.append((order, len(handle), low, {
             'name': _shown_name(user, profile), 'handle': handle, 'official': is_official_user(user),
-            'avatar': (media_url_path(profile.avatar_path) or '') if (profile and profile.avatar_path) else '',
+            'avatar': (media_url_path(effective_avatar_path(profile)) or '') if profile else '',
         }))
     found.sort(key=lambda item: item[:3])
     return [item[3] for item in found[:limit]]
@@ -790,7 +809,7 @@ def top_rows(kind, page=1):
             'rank': getattr(stat, attr), 'user': user, 'profile': profile, 'level': info,
             'xp': XP.badge_for(stat.xp_level) if shows_stats else None,
             'name': public_name(profile.display_name, user.username) if profile and profile.display_name else user.username,
-            'avatar': profile.avatar_path if profile else '',
+            'avatar': effective_avatar_path(profile) if profile else '',
             'value': getattr(stat, value_attr) if (kind == 'reputacion' or shows_stats) else None,
         })
     return rows, total, page, pages
@@ -803,7 +822,7 @@ def mini_card(user):
     return {
         'user': user, 'profile': profile,
         'name': public_name(profile.display_name, user.username) if profile and profile.display_name else user.username,
-        'avatar': profile.avatar_path if profile else '',
+        'avatar': effective_avatar_path(profile) if profile else '',
         'level': level_info(stat, get_thresholds()) if shows else None,
         'xp': XP.badge_for(stat.xp_level) if (shows and stat is not None and (stat.xp_total or 0) > 0) else None,
     }

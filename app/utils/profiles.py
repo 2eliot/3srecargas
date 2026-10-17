@@ -533,6 +533,9 @@ def reset_profile(profile, keep_privacy=False):
         setattr(profile, column, '')
     profile.avatar_frame_id = None
     profile.banner_frame_id = None
+    # lo premium de la tienda de puntos que tenía puesto (la colección de la cuenta no se toca: lo puede volver a poner)
+    for column in ('avatar_frame_item_id', 'banner_frame_item_id', 'avatar_photo_item_id', 'banner_photo_item_id', 'background_item_id'):
+        setattr(profile, column, None)
     profile.display_name = ''
     profile.bio = ''
     profile.status_text = ''

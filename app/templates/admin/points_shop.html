@@ -1,0 +1,281 @@
+{% extends 'admin/base.html' %}
+{% block title %}Puntos por cuenta{% endblock %}
+{% block page_title %}Puntos por cuenta · Tienda{% endblock %}
+
+{% block extra_css %}
+<style>
+.ps-stats { display: flex; gap: 12px; flex-wrap: wrap; padding: 0 20px 18px; }
+.ps-stat { background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; min-width: 130px; }
+.ps-stat b { display: block; font-size: 20px; }
+.ps-stat span { font-size: 12px; color: var(--text-muted); }
+.ps-kind-block { padding: 0 20px 6px; }
+.ps-kind-block h4 { margin: 18px 0 10px; font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+.ps-item { display: grid; grid-template-columns: 64px 1fr auto; gap: 14px; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: 14px; margin-bottom: 10px; background: rgba(255,255,255,.02); }
+.ps-item.is-off { opacity: .6; }
+.ps-thumb { width: 64px; height: 64px; border-radius: 12px; background: rgba(255,255,255,.05); display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 26px; }
+.ps-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.ps-name { font-weight: 700; }
+.ps-meta { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.ps-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.ps-edit { grid-column: 1 / -1; border-top: 1px dashed var(--border); padding-top: 12px; }
+.ps-edit summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+.ps-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px 16px; }
+.ps-form-grid .wide { grid-column: 1 / -1; }
+.ps-hidden { display: none !important; }
+.ps-free { color: #4ade80; font-weight: 700; }
+@media (max-width: 700px) { .ps-item { grid-template-columns: 52px 1fr; } .ps-thumb { width: 52px; height: 52px; } .ps-actions { grid-column: 1 / -1; justify-content: flex-start; } }
+</style>
+{% endblock %}
+
+{% macro item_fields(item, prefix) %}
+{% set kind = item.kind if item else '' %}
+<div class="ps-form-grid">
+    <div class="form-group">
+        <label for="{{ prefix }}name">Nombre</label>
+        <input type="text" id="{{ prefix }}name" name="name" maxlength="80" required value="{{ item.name if item else '' }}" placeholder="Ej: 110 diamantes de Free Fire">
+    </div>
+    <div class="form-group">
+        <label for="{{ prefix }}cost">Precio en puntos <small>(0 = gratis)</small></label>
+        <input type="number" id="{{ prefix }}cost" name="points_cost" min="0" step="1" required value="{{ item.points_cost if item else '' }}" placeholder="Ej: 150">
+    </div>
+    <div class="form-group wide">
+        <label for="{{ prefix }}desc">Descripción corta (opcional)</label>
+        <input type="text" id="{{ prefix }}desc" name="description" maxlength="300" value="{{ item.description if item and item.description else '' }}" placeholder="Lo que ve el cliente debajo del nombre">
+    </div>
+
+    <div class="form-group wide" data-kinds="package card">
+        <label for="{{ prefix }}pkg">Paquete que se entrega</label>
+        <select id="{{ prefix }}pkg" name="package_id" data-package-select>
+            <option value="">— Elige un paquete —</option>
+            {% for p in package_options %}
+            <option value="{{ p.id }}" data-card="{{ '1' if p.card else '0' }}" {{ 'selected' if item and item.package_id == p.id }}>{{ p.label }}</option>
+            {% endfor %}
+        </select>
+        <p class="form-hint" data-kinds="package">El cliente escribe el ID donde le llega (y la zona si el juego la pide). Se entrega como cualquier premio: si el paquete es automático, llega solo.</p>
+        <p class="form-hint" data-kinds="card">Las tarjetas de regalo se entregan al <b>correo de la cuenta</b>. Si no quedan códigos en el stock, el artículo aparece agotado.</p>
+    </div>
+
+    <div class="form-group" data-kinds="xp reputation">
+        <label for="{{ prefix }}amount">Cuántos puntos suma a la cuenta</label>
+        <input type="number" id="{{ prefix }}amount" name="amount" min="1" step="1" value="{{ item.amount if item and item.amount else '' }}" placeholder="Ej: 500">
+    </div>
+
+    <div class="form-group">
+        <label for="{{ prefix }}stock">Existencias <small>(vacío = sin límite)</small></label>
+        <input type="number" id="{{ prefix }}stock" name="stock" min="0" step="1" value="{{ item.stock if item and item.stock is not none else '' }}" placeholder="Ej: 20">
+    </div>
+    <div class="form-group" data-kinds="package card xp reputation">
+        <label for="{{ prefix }}limit">Máximo por persona <small>(vacío = sin límite)</small></label>
+        <input type="number" id="{{ prefix }}limit" name="per_user_limit" min="1" step="1" value="{{ item.per_user_limit if item and item.per_user_limit else '' }}" placeholder="Ej: 1">
+    </div>
+    <div class="form-group" data-kinds="package card xp reputation">
+        <label for="{{ prefix }}period">¿Cada cuánto?</label>
+        <select id="{{ prefix }}period" name="limit_period">
+            {% for key, label in limit_periods.items() %}<option value="{{ key }}" {{ 'selected' if item and item.limit_period == key }}>{{ label }}</option>{% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="{{ prefix }}starts">Disponible desde <small>(hora de Venezuela, opcional)</small></label>
+        <input type="datetime-local" id="{{ prefix }}starts" name="starts_at" value="{{ local_value(item.starts_at) if item else '' }}">
+    </div>
+    <div class="form-group">
+        <label for="{{ prefix }}ends">Disponible hasta <small>(opcional)</small></label>
+        <input type="datetime-local" id="{{ prefix }}ends" name="ends_at" value="{{ local_value(item.ends_at) if item else '' }}">
+    </div>
+    <div class="form-group">
+        <label for="{{ prefix }}sort">Orden en la tienda</label>
+        <input type="number" id="{{ prefix }}sort" name="sort_order" step="1" value="{{ item.sort_order if item else 0 }}">
+    </div>
+    <div class="form-group" data-kinds="package card xp reputation">
+        <label for="{{ prefix }}image">Imagen en la tienda <small>(opcional)</small></label>
+        <input type="file" id="{{ prefix }}image" name="image" accept="image/png,image/jpeg,image/webp,image/gif">
+        <p class="form-hint" data-kinds="package card">Si no subes una, se usa la imagen del paquete.</p>
+        {% if item and item.image %}<label class="check-label" style="margin-top:6px;"><input type="checkbox" name="remove_image" value="1"> Quitar la imagen actual</label>{% endif %}
+    </div>
+
+    <div class="form-group wide" data-kinds="frame_avatar frame_banner background banner_photo avatar_photo">
+        <label for="{{ prefix }}asset">Archivo que se desbloquea <small>(el marco, fondo o foto)</small></label>
+        <input type="file" id="{{ prefix }}asset" name="asset" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,.mp4,.webm">
+        <p class="form-hint" data-kinds="frame_avatar">Marco de la <b>foto de perfil</b>: PNG, WEBP o GIF animado con el centro transparente, cuadrado (600 × 600). Máximo 3 MB.</p>
+        <p class="form-hint" data-kinds="frame_banner">Marco de la <b>portada</b>: PNG, WEBP o GIF animado con el centro transparente, 1500 × 600 (o 1500 × 1200 si algo sobresale). Máximo 5 MB.</p>
+        <p class="form-hint" data-kinds="avatar_photo">Foto de perfil lista: se recorta cuadrada. PNG, JPG, WEBP o GIF animado. Máximo 3 MB.</p>
+        <p class="form-hint" data-kinds="banner_photo">Portada lista: horizontal (proporción 5:2, por ejemplo 1500 × 600). PNG, JPG, WEBP o GIF animado. Máximo 4 MB.</p>
+        <p class="form-hint" data-kinds="background">Fondo de la página del perfil: una imagen (máximo 4 MB) o un video corto MP4 o WEBM de hasta 1 MB.</p>
+        {% if item and item.asset_path %}
+        <div style="margin-top:8px;">
+            {% if item.asset_path.rsplit('.', 1)[-1] in ('mp4', 'webm') %}
+            <video src="{{ url_for('static', filename='uploads/' + item.asset_path) }}" muted loop playsinline autoplay style="max-height:90px;border-radius:8px;"></video>
+            {% else %}
+            <img src="{{ url_for('static', filename='uploads/' + item.asset_path) }}" alt="" style="max-height:90px;max-width:100%;border-radius:8px;background:#222;">
+            {% endif %}
+        </div>
+        <label class="check-label" style="margin-top:6px;"><input type="checkbox" name="remove_asset" value="1"> Quitar el archivo actual (tendrás que subir otro)</label>
+        {% endif %}
+    </div>
+
+    <div class="form-group wide">
+        <label class="check-label"><input type="checkbox" name="is_active" value="1" {{ 'checked' if (not item) or item.is_active }}> Se ve en la tienda</label>
+    </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="admin-card" style="margin-bottom:18px;">
+    <div class="card-header">
+        <h3>Tienda de puntos de las cuentas</h3>
+        <span>3srecargas.com/tiendapuntos</span>
+    </div>
+    <p class="form-hint" style="padding:0 20px;">
+        Aquí armas lo que las <b>cuentas</b> canjean con los puntos de su perfil: paquetes de cualquier juego, tarjetas de regalo, puntos de nivel, reputación, y marcos, fondos y fotos premium para el perfil.
+        Los puntos de una cuenta llegan cuando <b>recarga con la sesión abierta</b>, por un premio de ranking o porque tú se los das. Lo que se recarga sin cuenta deja los puntos en el ID y se gasta en
+        <a href="{{ url_for('admin_bp.points') }}">Puntos por ID</a>. Un artículo con precio <b>0 es gratis</b>, pero la persona igual lo canjea para que quede guardado en su colección.
+    </p>
+    <div class="ps-stats">
+        <div class="ps-stat"><b>{{ stats['items'] }}</b><span>artículos ({{ stats['active'] }} activos)</span></div>
+        <div class="ps-stat"><b>{{ stats['orders'] }}</b><span>canjes hechos</span></div>
+        <div class="ps-stat"><b>{{ stats['points_spent'] }}</b><span>puntos gastados</span></div>
+    </div>
+</div>
+
+<div class="admin-card" style="margin-bottom:18px;" id="nuevo">
+    <div class="card-header"><h3>Nuevo artículo</h3></div>
+    <form method="POST" action="{{ url_for('admin_points_shop_bp.item_save') }}" enctype="multipart/form-data" style="padding:0 20px 20px;" id="psNewForm"
+          onsubmit="if (this.dataset.sent) { return false; } this.dataset.sent = '1';">
+        <div class="form-group" style="max-width:340px;">
+            <label for="psKind">¿Qué vas a crear?</label>
+            <select id="psKind" name="kind" required>
+                <option value="">— Elige el tipo —</option>
+                {% for key, label in kinds.items() %}
+                <option value="{{ key }}" {{ 'disabled' if key not in enabled_kinds }}>{{ label }}{{ ' (próximamente)' if key not in enabled_kinds }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div id="psNewFields" class="ps-hidden">
+            {{ item_fields(none, 'n_') }}
+            <div style="margin-top:14px;"><button type="submit" class="btn-primary">Crear artículo</button></div>
+        </div>
+    </form>
+</div>
+
+<div class="admin-card" style="margin-bottom:18px;">
+    <div class="card-header"><h3>Artículos</h3><span>{{ items|length }}</span></div>
+    {% if not items %}
+    <p class="form-hint" style="padding:0 20px 20px;">Todavía no hay artículos. Crea el primero arriba y aparecerá en la tienda.</p>
+    {% endif %}
+    {% for kind_key, kind_label in kinds.items() %}
+    {% set group = items|selectattr('kind', 'equalto', kind_key)|list %}
+    {% if group %}
+    <div class="ps-kind-block">
+        <h4>{{ kind_label }}</h4>
+        {% for item in group %}
+        {% set thumb = item.image or (item.package.image if item.package else none) %}
+        <div class="ps-item {{ '' if item.is_active else 'is-off' }}" id="a{{ item.id }}">
+            <div class="ps-thumb">{% if thumb %}<img src="{{ url_for('static', filename='uploads/' + thumb) }}" alt="">{% else %}🎁{% endif %}</div>
+            <div>
+                <div class="ps-name">{{ item.name }}
+                    <span class="badge {{ 'badge-active' if item.is_active else 'badge-inactive' }}">{{ 'Visible' if item.is_active else 'Oculto' }}</span>
+                </div>
+                <div class="ps-meta">
+                    <span>{% if item.points_cost %}{{ item.points_cost }} puntos{% else %}<span class="ps-free">Gratis</span>{% endif %}</span>
+                    {% if item.package %}<span>{{ item.package.game.name }} · {{ item.package.name }}</span>{% endif %}
+                    {% if item.amount %}<span>+{{ item.amount }}</span>{% endif %}
+                    <span>{% if item.stock is none %}sin límite de existencias{% else %}quedan {{ item.stock }}{% endif %}</span>
+                    {% if item.per_user_limit %}<span>máx. {{ item.per_user_limit }} {{ limit_periods.get(item.limit_period, '') }} por persona</span>{% endif %}
+                    {% if item.starts_at %}<span>desde {{ item.starts_at|datetime_ve('%d/%m %H:%M') }}</span>{% endif %}
+                    {% if item.ends_at %}<span>hasta {{ item.ends_at|datetime_ve('%d/%m %H:%M') }}</span>{% endif %}
+                    <span>{{ sold.get(item.id, 0) }} canjes</span>
+                </div>
+            </div>
+            <div class="ps-actions">
+                <form method="POST" action="{{ url_for('admin_points_shop_bp.item_toggle', item_id=item.id) }}">
+                    <button class="btn-sm btn-outline" type="submit">{{ 'Ocultar' if item.is_active else 'Mostrar' }}</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin_points_shop_bp.item_delete', item_id=item.id) }}">
+                    <button class="btn-sm btn-danger" type="submit" onclick="return confirm('¿Eliminar este artículo? Si ya lo canjearon, solo se oculta de la tienda.')">Eliminar</button>
+                </form>
+            </div>
+            <details class="ps-edit">
+                <summary>Editar</summary>
+                <form method="POST" action="{{ url_for('admin_points_shop_bp.item_save') }}" enctype="multipart/form-data" style="margin-top:12px;"
+                      onsubmit="if (this.dataset.sent) { return false; } this.dataset.sent = '1';" data-edit-kind="{{ item.kind }}">
+                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                    {{ item_fields(item, 'e' ~ item.id ~ '_') }}
+                    <div style="margin-top:12px;"><button type="submit" class="btn-primary">Guardar cambios</button></div>
+                </form>
+            </details>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<div class="admin-card" id="canjes">
+    <div class="card-header"><h3>Canjes recientes</h3><span>últimos {{ recent|length }}</span></div>
+    <div class="table-wrap" style="padding:0 20px 20px;">
+        {% if recent %}
+        <table class="admin-table">
+            <thead><tr><th>Fecha</th><th>Cuenta</th><th>Artículo</th><th>Puntos</th><th>Entrega</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+            {% for r in recent %}
+            {% set u = users.get(r.user_id) %}
+            <tr>
+                <td>{{ r.created_at|datetime_ve('%d/%m/%Y %H:%M') if r.created_at else '—' }}</td>
+                <td>{% if u %}<a href="{{ url_for('admin_bp.account_detail', user_id=u.id) }}">@{{ u.username }}</a>{% else %}—{% endif %}</td>
+                <td>{{ r.item_name }}</td>
+                <td>{{ r.points_spent or 'Gratis' }}</td>
+                <td>
+                    {% if r.order %}<a href="{{ url_for('admin_bp.order_detail', order_id=r.order.id) }}">#{{ r.order.order_number }}</a>
+                        {% if r.player_id %}· {{ r.player_id }}{% endif %}
+                    {% else %}—{% endif %}
+                </td>
+                <td><span class="badge {{ 'badge-active' if r.status == 'done' else 'badge-inactive' }}">{{ 'Hecho' if r.status == 'done' else 'Devuelto' }}</span></td>
+                <td>
+                    {% if r.status == 'done' and r.points_spent %}
+                    <form method="POST" action="{{ url_for('admin_points_shop_bp.order_refund', order_id=r.id) }}">
+                        <button class="btn-sm btn-outline" type="submit" onclick="return confirm('¿Devolver {{ r.points_spent }} puntos a la cuenta? La orden de premio no se cancela: eso se hace en Órdenes.')">Devolver puntos</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="form-hint">Todavía no hay canjes.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    // Muestra solo los campos que sirven para el tipo de artículo elegido.
+    function applyKind(scope, kind) {
+        scope.querySelectorAll('[data-kinds]').forEach(function (el) {
+            var show = !!kind && el.getAttribute('data-kinds').split(/\s+/).indexOf(kind) >= 0;
+            el.classList.toggle('ps-hidden', !show);
+        });
+        // Una tarjeta solo puede ser un paquete de Tarjetas; un paquete normal, uno que no lo sea.
+        scope.querySelectorAll('[data-package-select] option[data-card]').forEach(function (o) {
+            var isCard = o.getAttribute('data-card') === '1';
+            o.hidden = (kind === 'card') !== isCard;
+            o.disabled = o.hidden;
+        });
+    }
+    var select = document.getElementById('psKind');
+    var fields = document.getElementById('psNewFields');
+    if (select && fields) {
+        select.addEventListener('change', function () {
+            fields.classList.toggle('ps-hidden', !select.value);
+            applyKind(fields, select.value);
+        });
+    }
+    document.querySelectorAll('form[data-edit-kind]').forEach(function (form) {
+        applyKind(form, form.getAttribute('data-edit-kind'));
+    });
+})();
+</script>
+{% endblock %}

@@ -4566,7 +4566,7 @@ def points_gift():
     amount = int(raw_amount)
     account_points.credit(user.id, amount, kind='admin', note=note or 'Regalo del administrador')
     db.session.commit()
-    flash(f'Le regalaste {amount} puntos a @{user.username}. Ahora tiene {account_points.balance(user.id)} puntos en su perfil; los pasa a un ID desde "Canjear puntos".', 'success')
+    flash(f'Le regalaste {amount} puntos a @{user.username}. Ahora tiene {account_points.balance(user.id)} puntos en su cuenta; los gasta en la tienda de puntos.', 'success')
     return redirect(back)
 
 
@@ -6416,7 +6416,7 @@ def account_points_adjust(user_id):
     else:
         account_points.credit(user.id, amount, kind='admin', note=note or 'Puntos del administrador')
         db.session.commit()
-        flash(f'Se le dieron {amount} puntos al perfil. Ahora tiene {account_points.balance(user.id)}. Los usa desde "Canjear puntos", pasándolos a un ID.', 'success')
+        flash(f'Se le dieron {amount} puntos al perfil. Ahora tiene {account_points.balance(user.id)}. Los gasta en la tienda de puntos.', 'success')
     return redirect(url_for('admin_bp.account_detail', user_id=user.id) + '#accountPointsCard')
 
 

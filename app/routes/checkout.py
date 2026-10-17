@@ -2003,71 +2003,14 @@ def points_balance():
 
 @checkout_bp.route('/api/points/wallet')
 def points_wallet():
-    """Puntos de la bolsa del PERFIL de quien tiene la sesión abierta (solo cuentas) y los juegos donde se pueden pasar a un ID."""
+    """Saldo de la bolsa de puntos de la CUENTA de quien tiene la sesión abierta (solo cuentas). La ventana "Canjear puntos" lo muestra en el botón
+    "Puntos de mi cuenta", que lleva a la tienda de puntos (/tiendapuntos)."""
     from ..utils import account_points
     from ..utils.auth_accounts import is_account_user
 
     user = current_user if current_user.is_authenticated else None
     is_account = is_account_user(user)
-    balance = account_points.balance(user.id) if is_account else 0
-    response = jsonify({
-        'ok': True, 'logged_in': is_account, 'balance': balance,
-        'games': account_points.usable_games() if balance > 0 else [],
-    })
-    response.headers['Cache-Control'] = 'no-store'
-    return response
-
-
-@checkout_bp.route('/api/points/transfer', methods=['POST'])
-def points_transfer():
-    """Pasa puntos de la bolsa del perfil a un ID (juego + ID). Los puntos solo funcionan por ID: aquí es donde el perfil elige a cuál."""
-    from ..utils import account_points
-    from ..utils.auth_accounts import is_account_user
-
-    if not is_account_user(current_user if current_user.is_authenticated else None):
-        return jsonify({'ok': False, 'message': 'Inicia sesión con tu cuenta para pasar los puntos de tu perfil.'}), 401
-    if not check_rate_limit(f'points_action:{client_ip()}', POINTS_ACTIONS_PER_MINUTE, 60):
-        return jsonify({'ok': False, 'message': 'Demasiados intentos seguidos. Espera un momento.'}), 429
-    payload = request.get_json(silent=True) or {}
-    try:
-        game_id = int(payload.get('game_id'))
-    except (TypeError, ValueError):
-        return jsonify({'ok': False, 'message': 'Elige un juego válido.'}), 400
-    player_id = str(payload.get('player_id') or '').strip()
-    if not player_id:
-        return jsonify({'ok': False, 'message': 'Ingresa el ID del juego.'}), 400
-    game = Game.query.filter_by(id=game_id, is_active=True).first()
-    if not game:
-        return jsonify({'ok': False, 'message': 'Juego no encontrado.'}), 404
-
-    # El ID tiene que existir de verdad en el juego (cuando hay verificador configurado) ANTES de moverle puntos: así nadie manda sus puntos a un ID
-    # inventado o con un error de dedo. De paso, el nombre real se le muestra para que confirme que es el ID correcto.
-    from .verify import verifiable_game_ids, verify_player_nick
-    player_nick = None
-    if game_id in verifiable_game_ids():
-        verify_payload, verify_status = verify_player_nick(player_id, str(game_id), mode='auto')
-        if not verify_payload.get('ok'):
-            return jsonify({'ok': False, 'message': verify_payload.get('error') or 'No se pudo verificar tu ID.'}), verify_status
-        player_nick = verify_payload.get('nick')
-
-    try:
-        moved = account_points.transfer_to_id(current_user.id, game_id, player_id, payload.get('amount'))
-    except ValueError as exc:
-        db.session.rollback()
-        return jsonify({'ok': False, 'message': str(exc)}), 400
-    except Exception:
-        db.session.rollback()
-        return jsonify({'ok': False, 'message': 'No se pudieron pasar los puntos. Intenta de nuevo.'}), 500
-
-    response = jsonify({
-        'ok': True,
-        'wallet_balance': moved['wallet_balance'],
-        # Mismo formato que /api/points/balance: la ventana de puntos sigue directo con ese ID.
-        'points': {
-            'ok': True, 'game_id': game_id, 'game_name': game.name, 'player_id': player_id, 'player_nick': player_nick,
-            'balance': moved['id_balance'], 'spin_cost': get_points_spin_cost(),
-        },
-    })
+    response = jsonify({'ok': True, 'logged_in': is_account, 'balance': account_points.balance(user.id) if is_account else 0})
     response.headers['Cache-Control'] = 'no-store'
     return response
 

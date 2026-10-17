@@ -4784,134 +4784,6 @@ a.rk-pod-avatar:focus-visible, a.rk-row-avatar:focus-visible { outline: 2px soli
   text-align:center;
 }
 
-/* Lanzador del chat de soporte: se apila sobre el flotante de WhatsApp,
-   que sigue disponible para quien prefiera ese camino. */
-.nx-chat-float {
-    position: fixed;
-    bottom: 20px; right: 20px;
-    z-index: 900;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 9px 16px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.4);
-    background: var(--nx-red);
-    color: #fff;
-    text-decoration: none;
-    font-family: var(--nx-font-display);
-    font-weight: 800;
-    font-size: 12px;
-    letter-spacing: .02em;
-    cursor: pointer;
-    box-shadow: 0 0 25px rgba(255,0,0,0.8);
-    transition: transform .25s ease, filter .25s ease;
-    animation: nx-pulse-glow 2.5s infinite ease-in-out;
-}
-.nx-chat-float:hover { transform: scale(1.05); filter: brightness(1.1); }
-.nx-chat-float svg { width: 15px; height: 15px; flex: none; }
-.nx-chat-float--raised { bottom: 68px; }
-
-.nx-chat-float-dot {
-    position: absolute;
-    top: -4px; right: -4px;
-    width: 12px; height: 12px;
-    border-radius: 50%;
-    background: #22c55e;
-    border: 2px solid #0b0b12;
-    box-shadow: 0 0 0 1px rgba(255,255,255,.35);
-}
-
-@media (max-width: 480px) {
-    .nx-chat-float { bottom: 16px; right: 14px; padding: 8px 13px; font-size: 11px; }
-    .nx-chat-float--raised { bottom: 58px; }
-    .nx-chat-float svg { width: 14px; height: 14px; }
-}
-
-/* Botón "Tutorial": abajo del todo, en la esquina. Si existe, el botón de
-   Soporte (.nx-chat-float--raised) se apila justo arriba de él. */
-.nx-tutorial-float {
-    position: fixed;
-    bottom: 20px; right: 20px;
-    z-index: 900;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 9px 16px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,.4);
-    background: var(--nx-red);
-    color: #fff;
-    font-family: var(--nx-font-display);
-    font-weight: 800;
-    font-size: 12px;
-    letter-spacing: .02em;
-    cursor: pointer;
-    box-shadow: 0 0 18px rgba(255,0,0,.55);
-    transition: transform .2s ease, filter .2s ease;
-}
-.nx-tutorial-float:hover { transform: scale(1.05); filter: brightness(1.1); }
-.nx-tutorial-float svg { width: 15px; height: 15px; flex: none; }
-
-@media (max-width: 480px) {
-    .nx-tutorial-float { bottom: 16px; right: 14px; padding: 8px 13px; font-size: 11px; }
-}
-
-.nx-tutorial-modal {
-    position: fixed;
-    top:0;right:0;bottom:0;left:0;
-    z-index: 1200;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-}
-.nx-tutorial-modal:not([hidden]) { display: flex; }
-.nx-tutorial-modal-backdrop {
-    position: absolute;
-    top:0;right:0;bottom:0;left:0;
-    background: rgba(0,0,0,.82);
-}
-.nx-tutorial-modal-card {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-    max-width: 420px;
-    background: #0b0b12;
-    border: 1px solid rgba(255,255,255,.14);
-    border-radius: 16px;
-    box-shadow: 0 20px 50px rgba(0,0,0,.6);
-    overflow: hidden;
-    font-family: var(--nx-font-display);
-}
-.nx-tutorial-modal-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 14px;
-    color: #fff;
-    font-family: var(--nx-font-display);
-    font-size: 13px;
-    border-bottom: 1px solid rgba(255,255,255,.08);
-}
-.nx-tutorial-modal-head button {
-    background: rgba(255,255,255,.08);
-    border: none;
-    color: #fff;
-    width: 26px; height: 26px;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 13px;
-    line-height: 1;
-}
-.nx-tutorial-modal-head button:hover { background: rgba(255,0,0,.3); }
-.nx-tutorial-modal-card video {
-    display: block;
-    width: 100%;
-    max-height: 70vh;
-    background: #000;
-}
-
 .support-attach-btn{
   flex:none;
   width:42px;
@@ -6273,7 +6145,7 @@ html.lite .site-drawer, html.lite .notif-panel, html.lite .nx-dock-bar, html.lit
 html.lite .nx-prof-modal-sheet, html.lite .pf-menu-sheet, html.lite .sc-window, html.lite .nx-dock-toast {
     background: rgba(16, 16, 22, .95) !important;
 }
-html.lite .nx-chat-float, html.lite .pwa-install-toggle, html.lite .nx-dock-blink, html.lite .footer-support-btn,
+html.lite .pwa-install-toggle, html.lite .nx-dock-blink, html.lite .footer-support-btn,
 html.lite .nx-tutorial-blink, html.lite .community-popup-join, html.lite .community-popup-join::after {
     animation: none !important;
 }
@@ -6325,21 +6197,12 @@ html.lite .nx-dock-toast.is-on { animation: none !important; opacity: 1; transfo
 html.lite .main-footer { content-visibility: auto; contain-intrinsic-size: auto 700px; }
 html.lite .rdm-bgimg { display: none !important; }   /* la foto grande del fondo de la pantalla de entrar: en liviano se ve el fondo de ondas */
 
-/* ── Puntos del PERFIL (bolsa de puntos de una cuenta): se pasan a un ID para usarlos ── */
-.points-wallet { margin: 0 28px 14px; padding: 14px 16px; border-radius: 16px; display: flex; align-items: center; gap: 12px;
-    background: linear-gradient(135deg, rgba(255,0,0,.14) 0%, rgba(255,255,255,.02) 100%); border: 1px solid rgba(255,0,0,.4); border-top-color: rgba(255,255,255,.22);
-    box-shadow: inset 0 1px 1px rgba(255,255,255,.08), 0 10px 25px rgba(0,0,0,.3); }
-.points-wallet-ico { font-size: 26px; flex: none; }
-.points-wallet-text strong { display: block; font-family: var(--nx-font-display); font-weight: 800; font-size: 14px; color: #fff; }
-.points-wallet-text strong b { font-weight: 900; font-size: 17px; }
-.points-wallet-text small { display: block; margin-top: 3px; font-size: 11.5px; color: var(--nx-muted); line-height: 1.4; }
-.points-wallet-text small b { color: #fff; }
-#pointsWalletBtn { margin-bottom: 12px; }
-#pointsLookupStep.has-wallet #pointsLookupBtn { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14); border-top-color: rgba(255,255,255,.24); box-shadow: none; color: #d1d5db; }
-#pointsLookupStep.has-wallet #pointsLookupBtn:hover:not(:disabled) { background: rgba(255,255,255,.1); box-shadow: none; border-color: rgba(255,0,0,.5); }
+/* ── "Canjear puntos": primer paso (¿dónde gastarlos?). El botón de la cuenta es un enlace a /tiendapuntos con el mismo aspecto que los de la ruleta. ── */
+a.points-choice-option { text-decoration: none; }
+.points-where-title { font-family: var(--nx-font-display); font-weight: 900; font-size: 15px; color: #fff; text-align: center; }
+#pointsLookupStep > .points-secondary-btn { margin-top: 10px; margin-bottom: 28px; }
 .nx-prof-points-amount { margin: 2px 0 8px; font-family: var(--nx-font-display); font-size: 14px; color: var(--nx-muted); }
 .nx-prof-points-amount b { font-size: 30px; font-weight: 900; color: #fff; margin-right: 4px; }
-#pointsTransferNote { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.45); color: #86efac; }
 
 /* Cuentas del ranking de cuentas y de niveles: se pueden tocar (podio y lista) y abren el cuadro con "Ver perfil" */
 .rk-pod.is-tappable, .rk-row.is-tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .14s ease, background-color .14s ease; }

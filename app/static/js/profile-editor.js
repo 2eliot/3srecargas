@@ -140,14 +140,20 @@
     var KINDS = ['avatar', 'banner', 'background', 'avatar_frame', 'banner_frame'];
     var media = {};
     function frameWrap(kind) { return form.querySelector('[data-frame-kind="' + kind + '"]'); }
+    // La imagen PROPIA que ya estaba guardada de cada tipo (la lee de su zona "Elegir imagen", no de la vista previa: así una foto, portada o fondo de la
+    // tienda de puntos que ya esté puesto no se confunde con una imagen propia ni cuenta en el tope de 5).
+    function dropOrig(kind) {
+        var zone = form.querySelector('[data-file-kind="' + kind + '"] [data-drop]');
+        return { url: zone ? (zone.getAttribute('data-orig-url') || '') : '', video: !!zone && zone.getAttribute('data-orig-video') === '1' };
+    }
     function originalMedia() {
-        var avImg = scope.querySelector('#pfAvatar img');
         var avWrap = frameWrap('avatar'), bnWrap = frameWrap('banner');
+        var bg = dropOrig('background');
         return {
-            avatar: avImg ? avImg.getAttribute('src') : '',
-            banner: scope.style.getPropertyValue('--bn-image') || '',
-            background: scope.style.getPropertyValue('--bg-image') || '',
-            backgroundVideo: (scope.querySelector('.pf-bg-video') || { getAttribute: function () { return ''; } }).getAttribute('src') || '',
+            avatar: dropOrig('avatar').url,
+            banner: dropOrig('banner').url,
+            background: bg.video ? '' : bg.url,
+            backgroundVideo: bg.video ? bg.url : '',
             avatar_frame: avWrap ? (avWrap.getAttribute('data-own-url') || '') : '',
             banner_frame: bnWrap ? (bnWrap.getAttribute('data-own-url') || '') : ''
         };
@@ -155,14 +161,30 @@
     var orig = originalMedia();
     KINDS.forEach(function (kind) { media[kind] = { file: '', removed: false, isVideo: false }; });
 
-    function effective(kind) {
+    // Lo propio: la imagen que la cuenta subió (recién elegida o ya guardada). Es lo que cuenta para el tope de 5 imágenes.
+    function ownEffective(kind) {
         if (media[kind].file) return media[kind].file;
         if (media[kind].removed) return '';
         // el fondo puede ser un VIDEO (MP4 o WEBM): se guarda aparte porque no se dibuja como imagen de fondo
         return orig[kind] || (kind === 'background' ? orig.backgroundVideo : '');
     }
-    // ¿lo que se ve de fondo es un video? (el recién elegido, o el que ya estaba guardado)
+    // Foto, portada o fondo de la tienda de puntos elegido en "Ver mis fotos / fondos" (el radio marcado que no es "Mi ..."), o null.
+    var SHOP_CHOICE = { avatar: 'avatar_photo_choice', banner: 'banner_photo_choice', background: 'background_choice' };
+    function shopRadio(kind) {
+        var name = SHOP_CHOICE[kind];
+        var radio = name ? form.querySelector('input[name="' + name + '"]:checked') : null;
+        return radio && radio.value !== 'own' ? radio : null;
+    }
+    // Lo que se VE: lo de la tienda si está elegido; si no, lo propio.
+    function effective(kind) {
+        var radio = shopRadio(kind);
+        if (radio && radio.getAttribute('data-asset-url')) return radio.getAttribute('data-asset-url');
+        return ownEffective(kind);
+    }
+    // ¿lo que se ve de fondo es un video? (el de la tienda elegido, el recién elegido, o el que ya estaba guardado)
     function backgroundIsVideo() {
+        var radio = shopRadio('background');
+        if (radio) return radio.getAttribute('data-asset-video') === '1';
         if (media.background.file) return media.background.isVideo;
         return !media.background.removed && !orig.background && !!orig.backgroundVideo;
     }
@@ -250,13 +272,13 @@
 
     // Tope de imágenes propias: con el máximo ya subido, los espacios vacíos se apagan (para subir otra hay que quitar una).
     function applyImageLimit() {
-        var count = KINDS.filter(function (kind) { return !!effective(kind); }).length;
+        var count = KINDS.filter(function (kind) { return !!ownEffective(kind); }).length;
         Array.prototype.forEach.call(document.querySelectorAll('[data-image-count]'), function (out) { out.textContent = String(count); });
         Array.prototype.forEach.call(document.querySelectorAll('[data-image-meter]'), function (out) { out.classList.toggle('is-full', count >= MAX_IMAGES); });
         KINDS.forEach(function (kind) {
             var input = document.getElementById('f_' + kind);
             if (!input) return;
-            var blocked = count >= MAX_IMAGES && !effective(kind);
+            var blocked = count >= MAX_IMAGES && !ownEffective(kind);
             input.disabled = blocked;
             var wrap = input.closest('[data-file-kind]');
             var note = wrap ? wrap.querySelector('.pf-file-limit') : null;
@@ -583,8 +605,21 @@
     });
     form.addEventListener('change', function (evt) {
         if (evt.target && evt.target.type === 'file') return;
+        // Elegir un fondo de la tienda de puntos lo pone a verse (igual que al subir una imagen propia).
+        if (evt.target && evt.target.name === 'background_choice' && evt.target.value !== 'own') setBackgroundMode('image');
         refresh();
         markDirty();
+    });
+    // "Ver mis marcos / fotos / fondos": abre y cierra la lista de lo que la cuenta consiguió en la tienda de puntos.
+    form.addEventListener('click', function (evt) {
+        var btn = evt.target.closest ? evt.target.closest('[data-owned-toggle]') : null;
+        if (!btn) return;
+        var wrap = btn.closest('[data-owned]');
+        var panel = wrap ? wrap.querySelector('[data-owned-panel]') : null;
+        if (!panel) return;
+        var opening = panel.hidden;
+        panel.hidden = !opening;
+        btn.setAttribute('aria-expanded', opening ? 'true' : 'false');
     });
     form.addEventListener('submit', function () {
         submitting = true;

@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-{% set hide_floats = true %}
 {% block body_class %}has-dock{% endblock %}
 
 {% block title %}3S Recargas — Recarga Fácil y Rápida{% endblock %}
@@ -294,7 +293,7 @@
                     <input type="text" id="nxReference" name="payment_reference" maxlength="30" autocomplete="off"
                            placeholder="Ej: 123456" class="glass-input"
                            style="width:100%; padding:11px 14px; text-align:center; letter-spacing:.15em; font-size:14px">
-                    <p class="form-hint" id="nxRefBinanceHint" style="display:none; margin-top:8px">En tu comprobante de Binance Pay copia el <strong>ID de la orden</strong> (Order ID) o el ID de la transacción. Si subes el comprobante, lo leemos por ti.</p>
+                    <p class="form-hint" id="nxRefBinanceHint" style="display:none; margin-top:8px">En tu comprobante de Binance Pay copia el <strong>ID de la orden</strong> (Order ID) o el ID de la transacción, <strong>completo</strong> (no solo los últimos números). Si subes el comprobante, lo leemos por ti.</p>
                 </div>
 
                 <!-- Verificación de pagador (Pabilo con teléfono + DNI) -->

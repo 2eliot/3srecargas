@@ -812,6 +812,13 @@ class UserProfile(db.Model):
     # Marco elegido de la tienda de marcos (ver ProfileFrame); si no hay, se usa el marco propio que la cuenta subió (avatar_frame_path / banner_frame_path).
     avatar_frame_id = db.Column(db.Integer, nullable=True)
     banner_frame_id = db.Column(db.Integer, nullable=True)
+    # Lo premium que la cuenta consiguió en la TIENDA DE PUNTOS (PointsShopItem) y tiene puesto: marco de la foto, marco de la portada, foto de
+    # perfil, foto de la portada y fondo. NULL = no usa ninguno (queda lo propio o lo gratis). Solo cuenta si la cuenta todavía lo tiene (UserShopItem).
+    avatar_frame_item_id = db.Column(db.Integer, nullable=True)
+    banner_frame_item_id = db.Column(db.Integer, nullable=True)
+    avatar_photo_item_id = db.Column(db.Integer, nullable=True)
+    banner_photo_item_id = db.Column(db.Integer, nullable=True)
+    background_item_id = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -1208,6 +1215,90 @@ class PointsRedeemLog(db.Model):
     game = db.relationship('Game')
     package = db.relationship('Package')
     prize_order = db.relationship('Order')
+
+
+SHOP_KINDS = {
+    # clave: nombre que ve el admin
+    'package': 'Paquete de un juego',
+    'card': 'Tarjeta de regalo',
+    'xp': 'Puntos de nivel',
+    'reputation': 'Reputación',
+    'frame_avatar': 'Marco de perfil',
+    'frame_banner': 'Marco de banner',
+    'background': 'Fondo de pantalla del perfil',
+    'banner_photo': 'Foto de banner',
+    'avatar_photo': 'Foto de perfil',
+}
+
+
+class PointsShopItem(db.Model):
+    """Artículo de la TIENDA DE PUNTOS DE LAS CUENTAS (/tiendapuntos). Lo arma el admin ("Puntos por cuenta") y se paga con la bolsa de puntos de la
+    cuenta (`AccountPoints`). `points_cost` 0 = gratis, pero igual hay que canjearlo para que quede guardado en la colección de la cuenta.
+
+    package/card: se entregan como una orden de premio al ID (o al correo de la cuenta, las tarjetas). xp/reputation: se suman a la cuenta como bono.
+    frame_*/background/banner_photo/avatar_photo: se desbloquean para el perfil (`UserShopItem`); `asset_path` es el archivo que se usa."""
+    __tablename__ = 'points_shop_items'
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(20), nullable=False, index=True)
+    name = db.Column(db.String(80), nullable=False)
+    description = db.Column(db.String(300))
+    image = db.Column(db.String(255))              # lo que se ve en la tienda (uploads/shop/...)
+    points_cost = db.Column(db.Integer, nullable=False, default=0)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=True)
+    amount = db.Column(db.Integer)                 # puntos de nivel o de reputación que suma
+    asset_path = db.Column(db.String(255))         # marco / fondo / foto que se desbloquea
+    stock = db.Column(db.Integer)                  # None = sin límite
+    per_user_limit = db.Column(db.Integer)         # None = sin límite
+    limit_period = db.Column(db.String(8), nullable=False, default='always')   # always | day | week | month
+    starts_at = db.Column(db.DateTime)
+    ends_at = db.Column(db.DateTime)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    package = db.relationship('Package')
+
+
+class PointsShopOrder(db.Model):
+    """Cada canje de la tienda de puntos de las cuentas (historial de la cuenta y del admin). Guarda el nombre y el costo de ese momento: si el admin
+    edita o borra el artículo después, el historial no se rompe."""
+    __tablename__ = 'points_shop_orders'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('points_shop_items.id'), nullable=True, index=True)
+    item_name = db.Column(db.String(80), nullable=False)
+    kind = db.Column(db.String(20), nullable=False)
+    points_spent = db.Column(db.Integer, nullable=False, default=0)
+    # Puntos de nivel o de reputación que dio este canje (solo en esos dos tipos). El nivel y la reputación se calculan desde los hechos, así que este
+    # número es lo que se suma mientras el canje siga "done": si se devuelve (status 'refunded') deja de contar solo.
+    amount = db.Column(db.Integer, nullable=False, default=0)
+    status = db.Column(db.String(12), nullable=False, default='done')    # done | refunded
+    game_id = db.Column(db.Integer, db.ForeignKey('games.id'), nullable=True)
+    player_id = db.Column(db.String(100))
+    zone_id = db.Column(db.String(100))
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True)    # la orden de premio (paquetes y tarjetas)
+    note = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    item = db.relationship('PointsShopItem')
+    order = db.relationship('Order')
+    game = db.relationship('Game')
+
+
+class UserShopItem(db.Model):
+    """Colección de una cuenta: los marcos, fondos y fotos que canjeó (con puntos o gratis). Son suyos para siempre."""
+    __tablename__ = 'user_shop_items'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('points_shop_items.id'), nullable=False)
+    points_spent = db.Column(db.Integer, nullable=False, default=0)
+    acquired_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    item = db.relationship('PointsShopItem')
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'item_id', name='uq_user_shop_item'),
+    )
 
 
 class SiteNotification(db.Model):

@@ -103,6 +103,39 @@
         {% if not shop %}<p class="pf-hint">Todavía no hay marcos en la tienda. Mientras tanto puedes subir uno tuyo abajo.</p>{% endif %}
     </div>
     {%- endmacro -%}
+    {#- "Ver mis marcos / fotos / fondos": lo premium que la cuenta ya consiguió en la tienda de puntos (solo muestra lo que tiene) y "Conseguir más", que abre
+        la tienda en esa pestaña. Los marcos comparten el grupo de opciones del selector de marcos; las fotos y fondos llevan "Mi foto / Mi portada / Mi fondo" para volver a lo propio. -#}
+    {%- macro owned_panel(kind, name, plural, tab, empty, own_text='', wide=False) -%}
+    {%- set items = owned[kind] -%}
+    {%- set chosen = shop_choice[kind] -%}
+    <div class="pf-field pf-owned" data-owned="{{ kind }}">
+        <button type="button" class="pf-btn pf-owned-toggle" data-owned-toggle aria-expanded="{{ 'true' if chosen else 'false' }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 15 5-5 5 5 3-3 5 5"/></svg>
+            Ver mis {{ plural }} <span class="pf-owned-count">({{ items|length }})</span>
+        </button>
+        <div class="pf-owned-panel" data-owned-panel {% if not chosen %}hidden{% endif %}>
+            {% if items or own_text %}
+            <div class="pf-framegrid{{ ' is-wide' if wide }}" role="radiogroup">
+                {% if own_text %}
+                <label class="pf-frame-card">
+                    <input type="radio" name="{{ name }}" value="own" {% if not chosen %}checked{% endif %}>
+                    <span class="pf-frame-thumb is-none"><i>{{ own_text }}</i></span>
+                </label>
+                {% endif %}
+                {% for it in items %}
+                <label class="pf-frame-card" data-owned-id="{{ it.id }}">
+                    <input type="radio" name="{{ name }}" value="{{ it.choice }}" data-frame-url="{{ url_for('static', filename=it.url) }}" data-asset-url="{{ url_for('static', filename=it.url) }}" data-asset-video="{{ '1' if it.video else '0' }}" {% if chosen == it.choice %}checked{% endif %}>
+                    <span class="pf-frame-thumb{{ '' if kind.startswith('frame') else ' is-photo' }}">{% if it.video %}<video src="{{ url_for('static', filename=it.url) }}" muted loop playsinline autoplay aria-hidden="true"></video>{% else %}<img src="{{ url_for('static', filename=it.url) }}" alt="" loading="lazy">{% endif %}</span>
+                    <span class="pf-frame-name">{{ it.name }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if not items %}<p class="pf-hint">{{ empty }}</p>{% endif %}
+            <a class="pf-btn pf-owned-more" href="{{ url_for('points_shop_bp.shop_page', tab={'frame_avatar': 'marcos', 'frame_banner': 'marcos', 'background': 'fondos'}.get(kind, 'fotos'), sub=kind) }}">Conseguir más</a>
+        </div>
+    </div>
+    {%- endmacro -%}
     {#- Ventana (popup): el perfil pequeño arriba, las opciones abajo y los botones fijos al pie -#}
     {%- macro pop(id, title) -%}
     <div class="pf-pop" id="{{ id }}" data-pop role="dialog" aria-modal="true" aria-labelledby="{{ id }}_t" hidden>
@@ -222,6 +255,7 @@
 
             {% call pop('pop_photo', 'Foto de perfil') %}
                 {{ file_field('avatar', 'Foto', 'PNG, JPG, WEBP o GIF animado. Se recorta cuadrada.', profile and profile.avatar_path) }}
+                {{ owned_panel('avatar_photo', 'avatar_photo_choice', 'fotos', 'fotos', 'Todavía no tienes fotos de perfil de la tienda de puntos.', 'Mi foto') }}
                 <div class="pf-field">
                     <span class="pf-label">Forma</span>
                     {{ radio_group('avatar_shape', th.avatar.shape, [('circle', 'Círculo'), ('squircle', 'Cuadrado redondeado')]) }}
@@ -230,6 +264,7 @@
                 <hr class="pf-sep">
                 <p class="pf-subtitle">Marco de la foto</p>
                 {{ frame_picker('avatar', 'Elige un marco (puede tener movimiento)', avatar_frame_choice, own_avatar_frame, shop_avatar_frames) }}
+                {{ owned_panel('frame_avatar', 'avatar_frame_choice', 'marcos', 'marcos', 'Todavía no tienes marcos de la tienda de puntos.') }}
                 <hr class="pf-sep">
                 <p class="pf-subtitle">Hacer mi propio marco</p>
                 {{ file_field('avatar_frame', 'Mi marco para la foto', 'Una imagen con el centro transparente (PNG, WEBP o GIF animado) que se pone encima de tu foto. Cuenta como una de tus imágenes.', profile and profile.avatar_frame_path, '600 × 600 píxeles (cuadrada). Deja el hueco transparente del centro de unos 430 píxeles (72 % del ancho) para que tu foto encaje justo con el tamaño 140 % de abajo. Si tiene movimiento (GIF, WEBP o PNG animado) se conserva: hasta 300 cuadros.') }}
@@ -240,6 +275,7 @@
 
             {% call pop('pop_banner', 'Portada (banner)') %}
                 {{ file_field('banner', 'Imagen de la portada', 'PNG, JPG, WEBP o GIF animado. Se ve horizontal (5:2).', profile and profile.banner_path) }}
+                {{ owned_panel('banner_photo', 'banner_photo_choice', 'fotos', 'fotos', 'Todavía no tienes portadas de la tienda de puntos.', 'Mi portada', True) }}
                 <details class="pf-sub">
                     <summary>Colores de la portada <small>(si no subes imagen)</small></summary>
                     <div class="pf-sub-body">
@@ -256,6 +292,7 @@
                 <hr class="pf-sep">
                 <p class="pf-subtitle">Marco de la portada</p>
                 {{ frame_picker('banner', 'Elige un marco (puede tener movimiento)', banner_frame_choice, own_banner_frame, shop_banner_frames) }}
+                {{ owned_panel('frame_banner', 'banner_frame_choice', 'marcos', 'marcos', 'Todavía no tienes marcos de la tienda de puntos.', '', True) }}
                 <hr class="pf-sep">
                 <p class="pf-subtitle">Hacer mi propio marco</p>
                 {{ file_field('banner_frame', 'Mi marco para la portada', 'Una imagen con el centro transparente (PNG, WEBP o GIF animado) que se estira encima de la portada. Cuenta como una de tus imágenes.', profile and profile.banner_frame_path, '1500 × 600 píxeles (horizontal, proporción 5:2, la misma de la portada) para que encaje perfecto y sin deformarse. Dibuja el marco en los bordes y deja transparente el centro para que se vea tu portada. Si tiene movimiento (GIF, WEBP o PNG animado) se conserva: hasta 300 cuadros.') }}
@@ -267,6 +304,7 @@
             {% endcall %}
 
             {% call pop('pop_bg', 'Fondo de la página') %}
+                {{ owned_panel('background', 'background_choice', 'fondos', 'fondos', 'Todavía no tienes fondos de la tienda de puntos.', 'Mi fondo', True) }}
                 <div class="pf-field">
                     <span class="pf-label">Tipo de fondo</span>
                     {{ radio_group('background_mode', th.background.mode, [('gradient', 'Degradado'), ('color', 'Color liso'), ('image', 'Mi imagen o video'), ('banner', 'Mi banner difuminado')]) }}

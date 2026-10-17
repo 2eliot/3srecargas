@@ -1,12 +1,12 @@
 {% extends 'admin/base.html' %}
 {% block title %}Puntos{% endblock %}
-{% block page_title %}Sistema de Puntos{% endblock %}
+{% block page_title %}Puntos por ID{% endblock %}
 
 {% block content %}
 <div class="admin-card" style="margin-bottom:20px;">
     <div class="card-header">
         <h2>Configuración general</h2>
-        <p class="form-hint">Los puntos solo se ganan recargando por ID (nunca con códigos ni wallet) y solo sirven para canjearse por premios reales del mismo juego. Una cuenta (perfil) solo recibe puntos como premio de un ranking o porque tú se los regalas aquí abajo.</p>
+        <p class="form-hint"><b>Puntos por ID.</b> Aquí van los puntos de las recargas que se hacen <b>sin iniciar sesión</b>: quedan en el ID (nunca con códigos ni wallet) y solo sirven para canjearse por premios reales del mismo juego (ruleta y paquetes de canje). Las recargas hechas con la <b>sesión de una cuenta abierta</b> dejan sus puntos en la cuenta y se gastan en <a href="{{ url_for('admin_points_shop_bp.index') }}">Puntos por cuenta</a>. Una cuenta también recibe puntos como premio de un ranking o porque tú se los regalas aquí abajo.</p>
     </div>
     <form method="POST" style="padding:0 20px 20px;">
         <input type="hidden" name="form_action" value="settings">
@@ -35,7 +35,7 @@
 <div class="admin-card" style="margin-bottom:20px;" id="regalarPuntos">
     <div class="card-header">
         <h2>Regalar puntos a una cuenta</h2>
-        <p class="form-hint">Escribe el <b>usuario o el correo</b> de la cuenta y cuántos puntos le das. Son puntos de la tienda, los mismos que sirven para <b>girar la ruleta y canjear paquetes</b>. Quedan en la bolsa del perfil y su dueño los pasa al ID que quiera desde "Canjear puntos" (los puntos funcionan por ID).</p>
+        <p class="form-hint">Escribe el <b>usuario o el correo</b> de la cuenta y cuántos puntos le das. Son puntos de la bolsa de la <b>cuenta</b>: su dueño los gasta en la tienda de puntos (<a href="{{ url_for('admin_points_shop_bp.index') }}">Puntos por cuenta</a>).</p>
     </div>
     <form method="POST" action="{{ url_for('admin_bp.points_gift') }}" style="padding:0 20px 20px;" onsubmit="if (this.dataset.sent) { return false; } this.dataset.sent = '1';">
         <div class="form-grid-2">

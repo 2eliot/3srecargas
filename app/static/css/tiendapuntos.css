@@ -1,0 +1,140 @@
+/* ─── Tienda de puntos de las cuentas (/tiendapuntos) ─────────────────────
+   Página propia: estos estilos solo se cargan aquí (la portada no los baja). Mismos cristales, rojos y tipografías de la tienda (neon.css).
+   Pensada para el celular: una columna angosta y centrada también en PC. Las tarjetas NO llevan desenfoque (son muchas): solo fondo translúcido. */
+.tp-page { max-width: 520px; margin: 0 auto; padding: 14px 12px 48px; }
+.tp-page [hidden], .tp-modal[hidden] { display: none !important; }
+
+.tp-back {
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px; padding: 7px 13px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.03); color: rgba(255,255,255,.72);
+    font-size: 11.5px; font-weight: 700; text-decoration: none; transition: border-color .2s ease, color .2s ease;
+}
+.tp-back:hover { border-color: var(--nx-red); color: #fff; }
+
+.tp-head { padding: 22px 18px 18px; border-radius: 20px; text-align: center; margin-bottom: 14px; }
+.tp-kicker { display: inline-block; font-family: var(--nx-font-display); font-size: 10px; font-weight: 900; letter-spacing: .18em; text-transform: uppercase; color: var(--nx-red); margin-bottom: 8px; }
+.tp-title { font-family: var(--nx-font-display); font-weight: 900; font-size: 25px; letter-spacing: -.01em; color: #fff; margin: 0 0 8px; }
+.tp-sub { font-family: var(--nx-font-display); font-size: 12.5px; color: rgba(255,255,255,.55); line-height: 1.5; margin: 0 auto 16px; max-width: 36ch; }
+
+.tp-balance {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 16px; text-align: left;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14); border-top: 1px solid rgba(255,255,255,.24);
+}
+.tp-balance-label { display: block; font-size: 10.5px; font-weight: 700; color: #a3a3a3; text-transform: uppercase; letter-spacing: .08em; }
+.tp-balance-value { font-family: var(--nx-font-display); font-size: 28px; font-weight: 900; color: #fff; line-height: 1.1; }
+
+.tp-primary-btn, .tp-ghost-btn {
+    display: inline-flex; align-items: center; justify-content: center; padding: 12px 18px; border-radius: 14px; border: 0; cursor: pointer; text-decoration: none;
+    font-family: var(--nx-font-display); font-weight: 900; font-size: 12.5px; letter-spacing: .05em; transition: all .2s ease;
+}
+.tp-primary-btn { background: linear-gradient(135deg, #ff0000 0%, #cc0000 50%, #990000 100%); color: #fff; box-shadow: 0 0 24px rgba(255,0,0,.4); }
+.tp-primary-btn:hover:not(:disabled) { box-shadow: 0 0 36px rgba(255,0,0,.65); }
+.tp-primary-btn:disabled { opacity: .5; cursor: not-allowed; }
+.tp-ghost-btn { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.16); color: #e5e7eb; }
+.tp-ghost-btn:hover { border-color: rgba(255,0,0,.55); color: #fff; }
+
+.tp-login-text { font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,.7); margin: 0 0 14px; }
+.tp-login-actions { display: flex; flex-direction: column; gap: 10px; }
+
+/* Pestañas: se deslizan hacia el lado si no caben. */
+.tp-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; margin: 0 -2px; scrollbar-width: none; }
+.tp-tabs::-webkit-scrollbar { display: none; }
+.tp-tab {
+    flex: 0 0 auto; padding: 9px 15px; border-radius: 999px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14); color: #d4d4d4;
+    font-family: var(--nx-font-display); font-weight: 800; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+}
+.tp-tab.is-active { background: rgba(255,0,0,.18); border-color: rgba(255,0,0,.7); color: #fff; }
+
+/* Subpestañas (juegos o tipos): chips con logo redondeado, más chicos que las pestañas; también se deslizan hacia el lado. */
+.tp-subs { display: flex; gap: 8px; overflow-x: auto; padding: 0 2px 12px; margin: -2px -2px 0; scrollbar-width: none; }
+.tp-subs::-webkit-scrollbar { display: none; }
+.tp-subtab {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px 5px 5px; border-radius: 14px; cursor: pointer; white-space: nowrap;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.12); color: #d4d4d4; font-family: var(--nx-font-display); font-weight: 800; font-size: 12px;
+}
+.tp-subtab-logo { width: 28px; height: 28px; border-radius: 9px; background: rgba(255,255,255,.08); display: inline-flex; align-items: center; justify-content: center; overflow: hidden; font-size: 13px; font-weight: 900; color: #fff; }
+.tp-subtab-logo img { width: 100%; height: 100%; object-fit: cover; }
+.tp-subtab-count { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.7); }
+.tp-subtab.is-active { border-color: rgba(255,0,0,.7); background: rgba(255,0,0,.12); color: #fff; }
+.tp-subtab.is-active .tp-subtab-count { background: rgba(255,0,0,.35); color: #fff; }
+
+
+/* Tarjetas chicas: 3 por fila (2 en pantallas muy angostas). La descripción no va en la tarjeta: se ve al tocar "Canjear". */
+.tp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 359px) { .tp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tp-card {
+    position: relative; display: flex; flex-direction: column; gap: 4px; padding: 7px; border-radius: 13px; text-align: left; color: #fff;
+    background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.14); border-top: 1px solid rgba(255,255,255,.24);
+    box-shadow: inset 0 1px 1px rgba(255,255,255,.06);
+}
+.tp-card.is-disabled { opacity: .55; }
+.tp-card-img { aspect-ratio: 1 / 1; border-radius: 10px; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 26px; }
+.tp-card-img img { width: 100%; height: 100%; object-fit: contain; }
+.tp-card-img video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tp-card-name { font-family: var(--nx-font-display); font-weight: 900; font-size: 11.5px; line-height: 1.2; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tp-card-game { font-size: 9.5px; color: var(--nx-dim); }
+.tp-card-meta { display: flex; flex-wrap: wrap; gap: 3px; }
+.tp-chip { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; background: rgba(255,255,255,.08); color: #d4d4d4; font-family: var(--nx-font-display); }
+.tp-chip.is-free { background: rgba(16,185,129,.18); color: #6ee7b7; }
+.tp-chip.is-warn { background: rgba(251,191,36,.16); color: #fcd34d; }
+.tp-card-price { margin-top: auto; font-family: var(--nx-font-display); font-weight: 900; font-size: 14px; display: flex; align-items: baseline; gap: 3px; flex-wrap: wrap; }
+/* Los puntos se ven como en los paquetes de la web: dorados y con una estrella (★) para que se note que son puntos. */
+.tp-pts { display: inline-flex; align-items: baseline; gap: 3px; color: #ffc73d; text-shadow: 0 0 8px rgba(255,190,0,.3); white-space: nowrap; }
+.tp-pts::before { content: '★'; font-size: .8em; line-height: 1; align-self: center; }
+.tp-pts small { color: #ffc73d; opacity: .85; text-transform: none; letter-spacing: 0; }
+.tp-balance-value::before { content: '★'; color: #ffc73d; font-size: .6em; margin-right: 8px; vertical-align: .2em; text-shadow: 0 0 8px rgba(255,190,0,.35); }
+.tp-card-price small { font-size: 9px; font-weight: 700; color: var(--nx-dim); text-transform: uppercase; letter-spacing: .06em; }
+.tp-card-btn { width: 100%; padding: 8px 4px; border-radius: 10px; font-size: 10.5px; letter-spacing: .02em; }
+
+.tp-empty { text-align: center; color: var(--nx-dim); font-size: 13px; padding: 24px 12px; }
+
+/* Ventana de canje / historial */
+.tp-modal { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: flex-end; justify-content: center; background: rgba(0,0,0,.72); padding: 0; }
+.tp-modal-card { position: relative; width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto; padding: 22px 18px 20px; border-radius: 22px 22px 0 0; background: rgba(12,12,16,.96) !important; }
+@media (min-width: 560px) { .tp-modal { align-items: center; padding: 20px; } .tp-modal-card { border-radius: 22px; } }
+.tp-modal-close { position: absolute; top: 10px; right: 12px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; font-size: 14px; }
+.tp-modal h3 { font-family: var(--nx-font-display); font-weight: 900; font-size: 19px; margin: 0 28px 4px 0; color: #fff; }
+.tp-modal-sub { font-size: 12.5px; color: rgba(255,255,255,.6); margin: 0 0 14px; line-height: 1.45; }
+.tp-modal-desc { font-size: 12px; color: rgba(255,255,255,.7); margin: -6px 0 14px; line-height: 1.45; }
+.tp-summary { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); margin-bottom: 14px; }
+.tp-summary .tp-card-img { width: 54px; flex: 0 0 54px; font-size: 24px; }
+.tp-summary-text { flex: 1; min-width: 0; }
+.tp-summary-text strong { display: block; font-family: var(--nx-font-display); font-size: 13.5px; overflow-wrap: anywhere; }
+.tp-summary-text span { font-size: 11.5px; color: var(--nx-dim); }
+.tp-field { margin-bottom: 12px; }
+.tp-field label { display: block; font-size: 11.5px; font-weight: 800; color: #d4d4d4; margin-bottom: 6px; font-family: var(--nx-font-display); }
+.tp-field input { width: 100%; padding: 12px 14px; font-size: 14px; }
+.tp-nick { margin: -4px 0 12px; padding: 9px 12px; border-radius: 12px; background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.4); color: #a7f3d0; font-size: 12.5px; }
+.tp-modal-error { margin: 0 0 12px; padding: 9px 12px; border-radius: 12px; background: rgba(255,0,0,.1); border: 1px solid rgba(255,0,0,.4); color: #fecaca; font-size: 12.5px; }
+.tp-modal-actions { display: flex; gap: 10px; margin-top: 6px; }
+.tp-modal-actions > * { flex: 1; }
+.tp-result { text-align: center; padding: 8px 0 4px; }
+.tp-result-icon { font-size: 46px; line-height: 1; margin-bottom: 8px; }
+.tp-result h3 { margin: 0 0 6px; }
+.tp-result p { font-size: 13px; color: rgba(255,255,255,.7); line-height: 1.5; margin: 0 0 14px; }
+.tp-result a { color: #fff; font-weight: 800; }
+
+.tp-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.tp-history li { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); font-size: 12.5px; }
+.tp-history li small { display: block; color: var(--nx-dim); font-size: 10.5px; margin-top: 2px; }
+.tp-history b { font-family: var(--nx-font-display); white-space: nowrap; }
+
+/* Modo liviano: sin desenfoque ni brillos que no paran. */
+html.lite .tp-primary-btn { box-shadow: none; }
+html.lite .tp-modal-card { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+@media (prefers-reduced-motion: reduce) { .tp-primary-btn, .tp-ghost-btn, .tp-back { transition: none; } }
+
+/* Aviso bajo las subpestañas de "Marcos" y la marca de "vista previa" en las tarjetas de marcos, fotos y fondos. */
+.tp-hint { font-size: 11.5px; color: var(--nx-dim); text-align: center; margin: -2px 0 10px; }
+.tp-card-img { position: relative; }
+.tp-card-eye { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; border-radius: 50%; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.25); display: flex; align-items: center; justify-content: center; font-size: 10px; pointer-events: none; }
+.tp-card.is-previewable .tp-card-img { cursor: pointer; }
+.tp-card.is-previewable .tp-card-img:focus-visible { outline: 2px solid rgba(255,255,255,.8); outline-offset: 2px; }
+
+/* Vista previa del perfil dentro de la ventana: la misma miniatura del editor (profile.css, se pide solo al abrirla). */
+.tp-modal .tp-preview.pf-pop-preview { max-height: 330px; padding: 0; margin: 0 0 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 14px; }
+.tp-preview-note { margin: 0 0 12px; padding: 14px 12px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); font-size: 12.5px; color: rgba(255,255,255,.75); text-align: center; line-height: 1.45; }
+.tp-preview-note img { display: block; max-width: 100%; max-height: 140px; margin: 0 auto 10px; border-radius: 10px; }
+.tp-modal-actions.is-stack { flex-direction: column; }
+.tp-modal-actions .tp-card-btn { width: auto; padding: 12px 16px; font-size: 12.5px; }
+.tp-card-price .tp-pts small { text-transform: none; letter-spacing: 0; font-size: 10px; }

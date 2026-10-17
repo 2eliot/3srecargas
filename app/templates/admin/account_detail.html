@@ -171,7 +171,7 @@
 <div class="admin-card" id="accountPointsCard">
     <div class="card-header"><h3>Puntos del perfil</h3><span><b>{{ points_balance|string|replace(',', '.') }}</b> puntos</span></div>
     <div style="padding:0 20px 20px;">
-        <p class="form-hint" style="margin:0 0 12px;">Los puntos de la tienda se ganan recargando <b>por ID</b> y quedan guardados en ese ID. Un perfil solo recibe puntos como <b>premio de un ranking</b> o <b>porque tú se los pones aquí</b> (por ejemplo, por una dinámica de perfil). Para usarlos, el dueño del perfil los pasa a un ID desde "Canjear puntos".</p>
+        <p class="form-hint" style="margin:0 0 12px;">Estos son los puntos de la <b>cuenta</b>: le llegan cuando <b>recarga con la sesión abierta</b>, como <b>premio de un ranking</b> o <b>porque tú se los pones aquí</b>. Los gasta en la tienda de puntos (<a href="/tiendapuntos" target="_blank" rel="noopener">/tiendapuntos</a>). Los puntos de las recargas sin cuenta quedan en el ID.</p>
         <form method="POST" action="{{ url_for('admin_bp.account_points_adjust', user_id=account.id) }}" style="display:grid;gap:10px;" onsubmit="if (this.dataset.sent) { return false; } this.dataset.sent = '1';">
             <div class="form-grid-2">
                 <div class="form-group"><label for="ptAmount">Cantidad de puntos</label><input type="number" id="ptAmount" name="amount" min="1" max="{{ points_max }}" step="1" required placeholder="Ej: 500"></div>

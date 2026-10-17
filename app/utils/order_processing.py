@@ -1182,8 +1182,11 @@ def force_approve_order_manually(order, admin_note=''):
         release_lock(lock_key, lock_holder)
 
 
-def deliver_prize_to_player(game, package, player_id, zone_id=None, note='', reference_prefix='PREMIO'):
+def deliver_prize_to_player(game, package, player_id, zone_id=None, note='', reference_prefix='PREMIO', email=None):
     """Entrega un premio (minijuego ganado o canje de puntos) a un ID real.
+
+    `email`: el correo al que llega el premio. Se guarda en la orden (el de un Wallet de correo, y el de una TARJETA de regalo, que no tiene ID: su
+    código le llega al correo de quien la canjeó).
 
     Crea una orden interna de $0 y la manda por el MISMO camino de entrega
     automática que cualquier compra real (PIN propio o Revendedores), en
@@ -1202,7 +1205,10 @@ def deliver_prize_to_player(game, package, player_id, zone_id=None, note='', ref
         }
 
     clean_player_id = str(player_id or '').strip()
-    if not clean_player_id:
+    clean_email = str(email or '').strip() or None
+    is_card = (game.category.slug if game.category else '').lower() == 'tarjetas'
+    # Una tarjeta de regalo no pide ID: basta el correo al que se manda su código.
+    if not clean_player_id and not (is_card and clean_email):
         return None, {
             'ok': False, 'changed': False,
             'message': 'No hay un ID de jugador válido para entregar el premio.',
@@ -1212,7 +1218,8 @@ def deliver_prize_to_player(game, package, player_id, zone_id=None, note='', ref
     order = Order(
         game_id=game.id,
         package_id=package.id,
-        player_id=clean_player_id,
+        player_id=clean_player_id or None,
+        email=clean_email,
         zone_id=(str(zone_id or '').strip() or None),
         payment_method='prize',
         payment_reference=f'{reference_prefix}-{uuid4().hex[:10].upper()}',

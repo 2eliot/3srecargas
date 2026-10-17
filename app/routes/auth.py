@@ -85,6 +85,8 @@ def _render_login_page(tab='id', status=200, values=None, admin_prompt=False):
         verifiable_ids=list(verifiable_game_ids()),
         google_login_enabled=google_login.get_config()['enabled'],
         next_url=_safe_next_url(request.args.get('next')) or '',
+        # Llegó desde la tienda de puntos: se le explica para qué sirve la cuenta (los puntos de sus recargas se guardan en ella).
+        from_points_shop=(_safe_next_url(request.args.get('next')) or '').split('?')[0].rstrip('/') == '/tiendapuntos',
         active_tab=tab if tab in LOGIN_TABS else DEFAULT_LOGIN_TAB,
         form_values=values or {},
         id_customer_session=current_user.is_authenticated and current_user.__class__.__name__ == 'User',
@@ -132,7 +134,7 @@ def register():
         return _render_login_page('registro', 409, values)
 
     login_user(user, remember=True)
-    flash('¡Tu cuenta está lista! Las compras que hagas con ella se guardan en tu historial. Si quieres usar los puntos y las partidas de tu ID, enlázalo en tu cuenta.', 'success')
+    flash('¡Tu cuenta está lista! Las compras que hagas con ella se guardan en tu historial y los puntos de tus recargas se guardan en ella.', 'success')
     return redirect(_safe_next_url(request.args.get('next')) or url_for('auth_bp.profile'))
 
 

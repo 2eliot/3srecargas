@@ -1145,7 +1145,9 @@ body.modal-open {
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
-    touch-action: pan-y;
+    /* El dedo desliza la fila de juegos con el desplazamiento NATIVO del teléfono (con inercia y ajuste a cada tarjeta). Antes solo se dejaba pasar lo vertical (pan-y)
+       y lo horizontal lo movía un código propio que peleaba con el ajuste: con más juegos de los que caben, la fila se quedaba "pegada" a veces. */
+    touch-action: pan-x pan-y;
     scrollbar-width: none;
 }
 .games-viewport::-webkit-scrollbar { height: 0; }

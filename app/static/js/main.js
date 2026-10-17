@@ -1021,7 +1021,8 @@ window.nxDebug = function () {};
     var pointsState = {
         gameId: null, playerId: '', spinCost: 5, spinning: false, gamesLoaded: false,
         gameCaps: {}, lastBalanceData: null, selectedRedeemOptionId: null, redeemBusy: false,
-        walletBalance: 0, walletBusy: false
+        // 'id' = los puntos del ID (como siempre) | 'account' = la ruleta de la tienda de puntos, que se paga con los puntos de la CUENTA (abre tiendapuntos.js)
+        mode: 'id', preselectGame: null
     };
 
     function pointsEl(id) { return document.getElementById(id); }
@@ -1038,7 +1039,7 @@ window.nxDebug = function () {};
             var spinData = results[0];
             var redeemData = results[1];
             if (!spinData && !redeemData) {   // sin conexión: no se da por cargado, al abrir otra vez se vuelve a pedir (antes quedaba vacío hasta recargar)
-                select.innerHTML = '<option value="">No se pudo cargar. Cierra y vuelve a abrir esta ventana.</option>';
+                select.innerHTML = '<option value="">No se pudo cargar. Toca "Volver" e inténtalo otra vez.</option>';
                 return;
             }
             pointsState.gamesLoaded = true;
@@ -1055,116 +1056,76 @@ window.nxDebug = function () {};
                 caps[g.game_id].hasRedeem = true;
             });
             pointsState.gameCaps = caps;
-
-            var gameIds = Object.keys(caps);
-            if (!gameIds.length) {
-                select.innerHTML = '<option value="">Todavía no hay premios de puntos disponibles</option>';
-                return;
-            }
-            select.innerHTML = '<option value="">Selecciona un juego</option>' + gameIds.map(function (id) {
-                var g = caps[id];
-                return '<option value="' + id + '" data-prize="' + escHtml(g.prizeLabel || '') + '">' + escHtml(g.name) + '</option>';
-            }).join('');
+            renderPointsGameOptions();
         });
     }
 
+    // La lista de juegos del paso del ID. En modo cuenta solo salen los que tienen ruleta, y viene elegido el que se tocó en la tienda.
+    function renderPointsGameOptions() {
+        var select = pointsEl('pointsGameSelect');
+        if (!select) return;
+        var caps = pointsState.gameCaps;
+        var onlySpin = pointsState.mode === 'account';
+        var gameIds = Object.keys(caps).filter(function (id) { return !onlySpin || caps[id].hasSpin; });
+        if (!gameIds.length) {
+            select.innerHTML = '<option value="">Todavía no hay premios de puntos disponibles</option>';
+            return;
+        }
+        select.innerHTML = '<option value="">Selecciona un juego</option>' + gameIds.map(function (id) {
+            var g = caps[id];
+            return '<option value="' + id + '" data-prize="' + escHtml(g.prizeLabel || '') + '">' + escHtml(g.name) + '</option>';
+        }).join('');
+        if (pointsState.preselectGame && caps[pointsState.preselectGame]) select.value = String(pointsState.preselectGame);
+    }
+
+    // Textos del paso del ID según el modo (el de siempre, o el de la ruleta con puntos de la cuenta).
+    var pointsHintId = null;
+    var POINTS_HINT_ACCOUNT = 'Giras con los puntos de tu cuenta. Elige el juego y escribe el ID donde quieres recibir el premio. Cuenta en los mismos giros de la ruleta de los IDs.';
+    function pointsLookupLabel() { return pointsState.mode === 'account' ? 'CONTINUAR' : 'CONSULTAR SALDO'; }
+    function setPointsLookupTexts() {
+        var hint = document.querySelector('#pointsLookupStep .points-modal-hint');
+        if (hint) {
+            if (pointsHintId === null) pointsHintId = hint.textContent;
+            hint.textContent = pointsState.mode === 'account' ? POINTS_HINT_ACCOUNT : pointsHintId;
+        }
+        var btn = pointsEl('pointsLookupBtn');
+        if (btn && !btn.disabled) btn.textContent = pointsLookupLabel();
+    }
+
     function hidePointsSteps() {
-        ['pointsChoiceStep', 'pointsSpinStep', 'pointsRedeemStep'].forEach(function (id) {
+        ['pointsWhereStep', 'pointsChoiceStep', 'pointsSpinStep', 'pointsRedeemStep'].forEach(function (id) {
             var el = pointsEl(id);
             if (el) el.style.display = 'none';
         });
     }
 
-    // ── Puntos del PERFIL: solo para cuentas que tienen puntos (premio de ranking o puestos por el administrador). Los puntos de la tienda funcionan
-    // por ID, así que aquí se pregunta a qué ID (juego + ID) se los vas a recargar. Si el perfil no tiene puntos, no se ve nada de esto.
-    function renderPointsWallet() {
-        var balance = Math.max(0, parseInt(pointsState.walletBalance, 10) || 0);
-        var has = balance > 0;
-        var box = pointsEl('pointsWalletBox');
-        var step = pointsEl('pointsLookupStep');
-        if (box) box.style.display = has ? 'flex' : 'none';
-        Array.prototype.forEach.call(document.querySelectorAll('#pointsModal .points-wallet-only'), function (el) {
-            el.style.display = has ? 'block' : 'none';
-        });
-        if (step) step.classList.toggle('has-wallet', has);
-        var label = pointsEl('pointsWalletBalance');
-        if (label) label.textContent = String(balance);
-        var amount = pointsEl('pointsWalletAmount');
-        if (amount) {
-            amount.max = String(balance);
-            amount.placeholder = 'Máx. ' + balance;
-        }
+    // ── Primer paso: ¿dónde se gastan los puntos? Los de un ID se gastan aquí mismo (ruleta y canje por paquete, como siempre); los de la CUENTA
+    // se gastan en su propia página (/tiendapuntos), así la portada no carga la tienda. Si la cuenta tiene sesión, el botón muestra su saldo.
+    function showPointsWhereStep() {
+        hidePointsSteps();
+        var lookup = pointsEl('pointsLookupStep');
+        if (lookup) lookup.style.display = 'none';
+        var where = pointsEl('pointsWhereStep');
+        if (where) where.style.display = 'block';
     }
 
-    function loadPointsWallet() {
+    function loadPointsAccountNote() {
+        var note = pointsEl('pointsWhereAccountNote');
+        if (!note) return;
         fetch('/api/points/wallet', { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                pointsState.walletBalance = (data && data.ok && data.logged_in) ? (parseInt(data.balance, 10) || 0) : 0;
-                renderPointsWallet();
-            })
-            .catch(function () { /* sin conexión: el canje normal por ID sigue funcionando */ });
-    }
-
-    function handlePointsWalletTransfer() {
-        if (pointsState.walletBusy) return;
-        var select = pointsEl('pointsGameSelect');
-        var idInput = pointsEl('pointsPlayerIdInput');
-        var amountInput = pointsEl('pointsWalletAmount');
-        var errEl = pointsEl('pointsLookupError');
-        var btn = pointsEl('pointsWalletBtn');
-        var gameId = select ? select.value : '';
-        var playerId = idInput ? idInput.value.trim() : '';
-        var amount = amountInput ? parseInt(amountInput.value, 10) : NaN;
-
-        function fail(text) {
-            if (errEl) { errEl.textContent = text; errEl.style.display = 'block'; }
-        }
-        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
-        if (!gameId) return fail('Elige un juego.');
-        if (!playerId) return fail('Ingresa el ID al que quieres recargar tus puntos.');
-        if (!amount || amount < 1) return fail('Escribe cuántos puntos quieres recargar.');
-        if (amount > pointsState.walletBalance) return fail('Tu perfil solo tiene ' + pointsState.walletBalance + ' puntos.');
-
-        pointsState.walletBusy = true;
-        if (btn) { btn.disabled = true; btn.textContent = 'RECARGANDO...'; }
-        fetch('/api/points/transfer', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ game_id: gameId, player_id: playerId, amount: amount })
-        })
-            .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
-            .then(function (res) {
-                pointsState.walletBusy = false;
-                if (btn) { btn.disabled = false; btn.textContent = 'RECARGAR PUNTOS A ESTE ID'; }
-                if (!res.data.ok) {
-                    fail(res.data.message || 'No se pudieron pasar los puntos.');
-                    return;
+                if (data && data.ok && data.logged_in) {
+                    var balance = parseInt(data.balance, 10) || 0;
+                    note.textContent = 'Tienes ' + balance + ' puntos · tienda de premios';
                 }
-                pointsState.walletBalance = parseInt(res.data.wallet_balance, 10) || 0;
-                renderPointsWallet();
-                if (amountInput) amountInput.value = '';
-                var note = pointsEl('pointsTransferNote');
-                if (note) {
-                    note.textContent = '✔ Se recargaron ' + amount + ' puntos al ID ' + playerId + (res.data.points && res.data.points.player_nick ? ' (' + res.data.points.player_nick + ')' : '') + '.';
-                    note.style.display = 'block';
-                }
-                showPointsBalance(res.data.points);
             })
-            .catch(function () {
-                pointsState.walletBusy = false;
-                if (btn) { btn.disabled = false; btn.textContent = 'RECARGAR PUNTOS A ESTE ID'; }
-                fail('Error de conexión. Intenta de nuevo.');
-            });
+            .catch(function () { /* sin conexión: queda el texto de siempre */ });
     }
 
     function resetPointsModal() {
         var lookupStep = pointsEl('pointsLookupStep');
         if (lookupStep) lookupStep.style.display = 'block';
-        renderPointsWallet();
-        var transferNote = pointsEl('pointsTransferNote');
-        if (transferNote) { transferNote.style.display = 'none'; transferNote.textContent = ''; }
         hidePointsSteps();
         var err = pointsEl('pointsLookupError');
         if (err) { err.style.display = 'none'; err.textContent = ''; }
@@ -1175,15 +1136,40 @@ window.nxDebug = function () {};
         var redeemResult = pointsEl('pointsRedeemResult');
         if (redeemResult) { redeemResult.style.display = 'none'; redeemResult.textContent = ''; }
         pointsState.selectedRedeemOptionId = null;
+        setPointsLookupTexts();
     }
 
     function openPointsModal() {
         if (!pointsModal) return;
-        loadPointsGames();
+        pointsState.mode = 'id';
+        pointsState.preselectGame = null;
         resetPointsModal();
-        loadPointsWallet();
+        showPointsWhereStep();
+        loadPointsAccountNote();
         openModal(pointsModal);
     }
+
+    // "Puntos en mi ID": sigue el camino de siempre (elegir juego, escribir el ID, ver el saldo).
+    function chooseIdPoints() {
+        pointsState.mode = 'id';
+        pointsState.preselectGame = null;
+        loadPointsGames();
+        if (pointsState.gamesLoaded) renderPointsGameOptions();
+        resetPointsModal();
+    }
+
+    // La tienda de puntos (pestaña Ruletas) abre ESTA misma ruleta, pero pagando con los puntos de la cuenta. gameId = el juego que se tocó.
+    function openAccountRoulette(gameId) {
+        if (!pointsModal) return false;
+        pointsState.mode = 'account';
+        pointsState.preselectGame = parseInt(gameId, 10) || null;
+        resetPointsModal();
+        loadPointsGames();
+        if (pointsState.gamesLoaded) renderPointsGameOptions();
+        openModal(pointsModal);
+        return true;
+    }
+    window.openAccountRoulette = openAccountRoulette;
 
     function closePointsModal() {
         closeModal(pointsModal);
@@ -1450,7 +1436,9 @@ window.nxDebug = function () {};
         var caps = pointsState.gameCaps[data.game_id] || {};
         pointsEl('pointsLookupStep').style.display = 'none';
 
-        if (caps.hasSpin && caps.hasRedeem) {
+        if (pointsState.mode === 'account') {
+            enterPointsSpinStep(data);        // con los puntos de la cuenta solo está la ruleta (el canje por paquete vive en la tienda)
+        } else if (caps.hasSpin && caps.hasRedeem) {
             enterPointsChoiceStep(data);
         } else if (caps.hasRedeem) {
             enterPointsRedeemStep(data);
@@ -1480,14 +1468,14 @@ window.nxDebug = function () {};
         var btn = pointsEl('pointsLookupBtn');
         if (btn) { btn.disabled = true; btn.textContent = 'Consultando...'; }
 
-        fetch('/api/points/balance', {
+        fetch(pointsState.mode === 'account' ? '/api/tiendapuntos/ruleta/saldo' : '/api/points/balance', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ game_id: gameId, player_id: playerId })
         })
             .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
             .then(function (res) {
-                if (btn) { btn.disabled = false; btn.textContent = 'CONSULTAR SALDO'; }
+                if (btn) { btn.disabled = false; btn.textContent = pointsLookupLabel(); }
                 if (!res.data.ok) {
                     if (errEl) { errEl.textContent = res.data.message || 'No se pudo consultar el saldo.'; errEl.style.display = 'block'; }
                     return;
@@ -1495,7 +1483,7 @@ window.nxDebug = function () {};
                 showPointsBalance(res.data);
             })
             .catch(function () {
-                if (btn) { btn.disabled = false; btn.textContent = 'CONSULTAR SALDO'; }
+                if (btn) { btn.disabled = false; btn.textContent = pointsLookupLabel(); }
                 if (errEl) { errEl.textContent = 'Error de conexión. Intenta de nuevo.'; errEl.style.display = 'block'; }
             });
     }
@@ -1511,7 +1499,7 @@ window.nxDebug = function () {};
         if (spinBtn) { spinBtn.disabled = true; spinBtn.textContent = 'GIRANDO...'; }
         if (changeBtn) changeBtn.disabled = true;
 
-        fetch('/api/points/spin', {
+        fetch(pointsState.mode === 'account' ? '/api/tiendapuntos/ruleta/girar' : '/api/points/spin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ game_id: pointsState.gameId, player_id: pointsState.playerId })
@@ -1533,6 +1521,9 @@ window.nxDebug = function () {};
                 var result = res.data.result;
                 var statusEl = pointsEl('pointsStatusMsg');
                 pointsEl('pointsBalanceValue').textContent = result.points_balance;
+                if (pointsState.mode === 'account') {   // la tienda de puntos actualiza su saldo y sus botones
+                    document.dispatchEvent(new CustomEvent('points-account-balance', { detail: { balance: result.points_balance } }));
+                }
                 if (statusEl) statusEl.textContent = 'Abriendo caja...';
                 spinPointsStripTo(result.won);
 
@@ -3393,9 +3384,16 @@ window.nxDebug = function () {};
         pointsLookupBtnEl.addEventListener('click', handlePointsLookup);
     }
 
-    var pointsWalletBtnEl = document.getElementById('pointsWalletBtn');
-    if (pointsWalletBtnEl) {
-        pointsWalletBtnEl.addEventListener('click', handlePointsWalletTransfer);
+    var pointsWhereIdBtnEl = document.getElementById('pointsWhereIdBtn');
+    if (pointsWhereIdBtnEl) {
+        pointsWhereIdBtnEl.addEventListener('click', chooseIdPoints);
+    }
+    var pointsLookupBackBtnEl = document.getElementById('pointsLookupBackBtn');
+    if (pointsLookupBackBtnEl) {
+        pointsLookupBackBtnEl.addEventListener('click', function () {
+            if (pointsState.mode === 'account') closePointsModal();     // en la ruleta de la cuenta no hay primer paso al que volver
+            else showPointsWhereStep();
+        });
     }
 
     var pointsChangeIdBtnEl = document.getElementById('pointsChangeIdBtn');

@@ -5,7 +5,7 @@ El dueño crea los rankings que quiera (RankingBoard) de tres tipos y le pone pr
                  ganador) o un texto (lo entrega él).
   * 'accounts' — las CUENTAS que más recargaron en el mes (con su sesión abierta, a cualquier ID). Premio: puntos (a la bolsa del perfil) o texto.
   * 'levels'   — las CUENTAS con más nivel. Premio: puntos (a la bolsa del perfil) o texto.
-Un perfil nunca gana puntos recargando: solo por el premio de un ranking o porque el administrador se los pone (ver utils/account_points.py).
+Una cuenta gana puntos recargando con la sesión abierta, por el premio de un ranking o porque el administrador se los pone (ver utils/account_points.py).
 
 Al empezar cada mes se cierra el anterior: se archivan los ganadores (RankingArchive) y se entregan solos los premios marcados "automático".
 """

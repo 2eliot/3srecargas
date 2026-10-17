@@ -438,6 +438,16 @@ html.lite .pf-bg-video { display: none !important; }
 .pf-framegrid.is-wide .pf-frame-thumb { width: 100%; height: 56px; margin: 2px 0 4px; border-radius: 10px; }
 .pf-framegrid.is-wide .pf-frame-thumb img { top:0;right:0;bottom:0;left:0; width: 100%; height: 100%; object-fit: fill; }
 .pf-frame-name { font-size: 11.5px; font-weight: 800; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Lo premium de la tienda de puntos: "Ver mis marcos / fotos / fondos" abre la lista de lo que la cuenta ya consiguió + "Conseguir más" */
+.pf-owned { display: grid; gap: 10px; }
+.pf-owned-toggle { justify-self: start; gap: 8px; }
+.pf-owned-count { opacity: .7; font-weight: 700; }
+.pf-owned-toggle[aria-expanded="true"] { border-color: #ff3b4e; }
+.pf-owned-panel { display: grid; gap: 10px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.12); }
+.pf-owned-panel[hidden] { display: none; }
+.pf-owned-more { justify-self: start; text-decoration: none; }
+.pf-framegrid .pf-frame-thumb.is-photo { overflow: hidden; }
+.pf-framegrid .pf-frame-thumb.is-photo img, .pf-framegrid .pf-frame-thumb.is-photo video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .pf-frame-price { font-size: 10.5px; font-weight: 800; color: #ffd0d4; }
 .pf-frame-card.is-locked .pf-frame-thumb img { opacity: .75; }
 .pf-frame-buy {

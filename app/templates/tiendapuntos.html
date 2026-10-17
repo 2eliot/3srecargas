@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}Tienda de puntos — 3S Recargas{% endblock %}
+{% block body_class %}has-dock{% endblock %}
+
+{% block extra_css %}
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="{{ static_v('css/tiendapuntos.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="nx-store tp-page" id="tpPage" data-profile-css="{{ static_v('css/profile.css') }}">
+
+    <a href="{{ url_for('main_bp.index') }}" class="tp-back">← Volver a la tienda</a>
+
+    <section class="glass-panel tp-head">
+        <span class="tp-kicker">Tienda de puntos</span>
+        <h1 class="tp-title">Gasta los puntos de tu cuenta</h1>
+        <p class="tp-sub">Recargas, tarjetas, nivel, reputación y cosas premium para tu perfil.</p>
+
+        <!-- Con sesión: el saldo. Sin sesión: la invitación a entrar o crear la cuenta. Lo pinta tiendapuntos.js. -->
+        <div class="tp-balance" id="tpBalance" hidden>
+            <div>
+                <span class="tp-balance-label">Tus puntos</span>
+                <strong class="tp-balance-value" id="tpBalanceValue">0</strong>
+            </div>
+            <button type="button" class="tp-ghost-btn" id="tpHistoryBtn">Mis canjes</button>
+        </div>
+
+        <div class="tp-login" id="tpLogin" hidden>
+            <p class="tp-login-text">Para guardar y gastar tus puntos necesitas una cuenta. <b>Los puntos de tus recargas se guardan en ella</b> cuando compras con la sesión abierta.</p>
+            <div class="tp-login-actions">
+                <a class="tp-primary-btn" href="{{ url_for('auth_bp.register', next=login_next) }}">Crear mi cuenta</a>
+                <a class="tp-ghost-btn" href="{{ url_for('auth_bp.login', tab='cuenta', next=login_next) }}">Ya tengo cuenta</a>
+            </div>
+        </div>
+    </section>
+
+    <nav class="tp-tabs" id="tpTabs" aria-label="Categorías de la tienda" hidden></nav>
+    <!-- Subpestañas: bajo Recargas y Tarjetas, los juegos; bajo las demás, los tipos (Nivel / Reputación, Foto de perfil / Portada...). Solo salen si hay más de una. -->
+    <nav class="tp-subs" id="tpSubs" aria-label="Juegos o tipos" hidden></nav>
+    <p class="tp-hint" id="tpHint" hidden>Toca un marco, foto o fondo para ver cómo te queda en tu perfil.</p>
+
+    <section class="tp-grid" id="tpGrid" aria-live="polite"></section>
+
+    <p class="tp-empty" id="tpEmpty" hidden>Todavía no hay artículos en la tienda. Vuelve pronto.</p>
+</div>
+
+<!-- Ventana de canje: pide el ID cuando el artículo es una recarga, confirma y muestra el resultado. -->
+<div class="tp-modal" id="tpModal" hidden>
+    <div class="tp-modal-card glass-panel" role="dialog" aria-modal="true" aria-labelledby="tpModalTitle">
+        <button type="button" class="tp-modal-close" id="tpModalClose" aria-label="Cerrar">✕</button>
+        <div id="tpModalBody"></div>
+    </div>
+</div>
+
+<script type="application/json" id="tpBoot">{{ boot|tojson }}</script>
+
+{#- La misma barra de abajo de la portada y del perfil (Perfil, Ranking/Puntos, Inicio, Juegos, Soporte); aquí el botón rojo descansa en Juegos (de ahí se llega a "Canjear puntos") -#}
+{% set dock_page = 'shop' %}
+{% set dock_rest = 'games' %}
+{% include '_dock.html' %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ static_v('js/dock.js') }}" defer></script>
+<script src="{{ static_v('js/tiendapuntos.js') }}" defer></script>
+{% endblock %}
