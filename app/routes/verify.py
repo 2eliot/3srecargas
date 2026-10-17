@@ -51,6 +51,15 @@ def _set_setting(key, value, description=""):
     db.session.commit()
 
 
+# Interruptor del dueño (Admin → Configuración → Verificación de ID): apaga la verificación de Free Fire (Revendedores, con FFMania de respaldo) sin borrar
+# el ID del juego. Sin valor guardado = encendido, así que nada cambia mientras no lo apague.
+FF_VERIFY_ENABLED_KEY = "ff_verify_enabled"
+
+
+def free_fire_verify_enabled():
+    return (_get_setting(FF_VERIFY_ENABLED_KEY, "1") or "1").strip() != "0"
+
+
 # ── Verificación compartida ──────────────────────────────────────────────────
 
 def _verify_free_fire(uid, gid_raw):
@@ -140,7 +149,7 @@ def verify_player_nick(uid, gid_raw, mode='auto'):
 
     ff_game_id = (_get_setting("active_login_game_id", "") or "").strip()
     bs_game_id = (_get_setting("bs_package_id", "") or "").strip()
-    is_ff = mode in ('ff', 'auto') and bool(ff_game_id) and ff_game_id == gid_raw
+    is_ff = mode in ('ff', 'auto') and bool(ff_game_id) and ff_game_id == gid_raw and free_fire_verify_enabled()
     is_bs = mode in ('bs', 'auto') and bool(bs_game_id) and bs_game_id == gid_raw
 
     if is_ff:
@@ -159,7 +168,10 @@ def verifiable_game_ids():
     if not current_app.config.get('SCRAPE_ENABLED', True):
         return set()
     ids = set()
+    ff_on = free_fire_verify_enabled()
     for key in ("active_login_game_id", "bs_package_id"):
+        if key == "active_login_game_id" and not ff_on:
+            continue
         val = (_get_setting(key, "") or "").strip()
         if val.isdigit():
             ids.add(int(val))
@@ -267,6 +279,25 @@ def admin_config_active_login_game_set():
     val = (data.get("active_login_game_id") or "").strip()
     _set_setting("active_login_game_id", val, "ID del juego activo para verificación de ID (Free Fire)")
     return jsonify({"ok": True, "active_login_game_id": val})
+
+
+@verify_bp.route('/admin/config/ff_verify_enabled', methods=['GET'])
+@login_required
+@_admin_only
+def admin_config_ff_verify_enabled_get():
+    return jsonify({"ok": True, "enabled": free_fire_verify_enabled()})
+
+
+@verify_bp.route('/admin/config/ff_verify_enabled', methods=['POST'])
+@login_required
+@_admin_only
+def admin_config_ff_verify_enabled_set():
+    data = request.get_json(silent=True) or {}
+    if "enabled" not in data:
+        return jsonify({"ok": False, "error": "Falta indicar si se enciende o se apaga."}), 400
+    enabled = data["enabled"] is True or str(data["enabled"]).strip().lower() in ("1", "true", "yes", "on")
+    _set_setting(FF_VERIFY_ENABLED_KEY, "1" if enabled else "0", "Verificación de ID de Free Fire (Revendedores): 1 encendida, 0 apagada")
+    return jsonify({"ok": True, "enabled": enabled})
 
 
 @verify_bp.route('/admin/config/bs_package_id', methods=['GET'])

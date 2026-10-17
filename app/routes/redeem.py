@@ -73,7 +73,8 @@ def _verify_payload(game):
 
     ff_game_id = _setting('active_login_game_id')
     bs_game_id = _setting('bs_package_id')
-    is_ff = bool(ff_game_id) and ff_game_id == str(game.id)
+    from .verify import free_fire_verify_enabled
+    is_ff = bool(ff_game_id) and ff_game_id == str(game.id) and free_fire_verify_enabled()
     is_bs = bool(bs_game_id) and bs_game_id == str(game.id)
     scrape_enabled = bool(current_app.config.get('SCRAPE_ENABLED', True))
 

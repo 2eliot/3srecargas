@@ -529,13 +529,24 @@
             Configura qué juegos activan la verificación automática de ID del jugador antes de comprar.
         </p>
 
+        <div class="switch-field" style="margin-bottom:16px; padding:12px; border-radius:10px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.10);">
+            <label class="switch-toggle">
+                <input type="checkbox" id="ff_verify_enabled" checked>
+                <span class="switch-slider"></span>
+            </label>
+            <div>
+                <span class="switch-field-label">Verificar el ID de Free Fire (API de Revendedores)</span>
+                <small class="switch-field-hint">Encendido: antes de comprar se comprueba el nombre del jugador con Revendedores (FFMania queda solo de respaldo). Apagado: Free Fire no verifica nada y acepta cualquier ID. Se guarda al instante, sin usar el botón de abajo.</small>
+            </div>
+        </div>
+
         <div class="form-grid-2">
             <div class="form-group">
-                <label for="active_login_game_id">ID del juego Free Fire (verificación FFMania)</label>
+                <label for="active_login_game_id">ID del juego Free Fire (verificación Revendedores)</label>
                 <input type="number" id="active_login_game_id" placeholder="Ej: 1">
                 <p class="form-hint">
                     Coloca el ID del juego de Free Fire en tu tienda. Al ingresar un ID de jugador en ese juego,
-                    se validará automáticamente contra FFMania.
+                    se validará automáticamente con la API de Revendedores (FFMania queda solo de respaldo).
                 </p>
             </div>
             <div class="form-group">
@@ -572,6 +583,14 @@
                 }
             }).catch(function() {});
 
+        fetch('/admin/config/ff_verify_enabled', {credentials: 'same-origin'})
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.ok) {
+                    document.getElementById('ff_verify_enabled').checked = !!d.enabled;
+                }
+            }).catch(function() {});
+
         fetch('/admin/config/bs_package_id', {credentials: 'same-origin'})
             .then(function(r) { return r.json(); })
             .then(function(d) {
@@ -588,6 +607,33 @@
                 }
             }).catch(function() {});
     }
+
+    // Interruptor de Free Fire: se guarda al instante; si falla, vuelve a como estaba.
+    var ffToggle = document.getElementById('ff_verify_enabled');
+    ffToggle.addEventListener('change', function() {
+        var status = document.getElementById('verifyConfigStatus');
+        var wanted = ffToggle.checked;
+        ffToggle.disabled = true;
+        fetch('/admin/config/ff_verify_enabled', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: wanted})
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (!d.ok) { throw new Error('no se guardó'); }
+            ffToggle.checked = !!d.enabled;
+            status.style.color = 'var(--accent)';
+            status.textContent = d.enabled ? 'Verificación de Free Fire ENCENDIDA.' : 'Verificación de Free Fire APAGADA: ya no se comprueba el ID.';
+        }).catch(function() {
+            ffToggle.checked = !wanted;
+            status.style.color = '#ef4444';
+            status.textContent = 'No se pudo guardar el interruptor. Intenta de nuevo.';
+        }).then(function() {
+            ffToggle.disabled = false;
+            status.style.display = 'block';
+            setTimeout(function() { status.style.display = 'none'; }, 4000);
+        });
+    });
 
     document.getElementById('btnSaveVerifyConfig').addEventListener('click', function() {
         var btn = this;

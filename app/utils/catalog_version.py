@@ -26,6 +26,7 @@ CATALOG_SETTING_KEYS = frozenset({
     'usd_rate_bs',
     'default_auto_package_id',
     'active_login_game_id',
+    'ff_verify_enabled',
     'bs_package_id',
     'binance_wallet_address',
     'promo_banner_image',

@@ -563,7 +563,8 @@ def api_packages(game_id):
 
     game_dict = game.to_dict()
     game_dict['scrape_enabled'] = scrape_enabled
-    game_dict['is_ff_verify'] = (active_login_game_id and str(game.id) == str(active_login_game_id))
+    from .verify import free_fire_verify_enabled
+    game_dict['is_ff_verify'] = (active_login_game_id and str(game.id) == str(active_login_game_id) and free_fire_verify_enabled())
     game_dict['is_bs_verify'] = (bs_package_id and str(game.id) == str(bs_package_id))
 
     # Determine which packages have an active auto-mapping (revendedores)
