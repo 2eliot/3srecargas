@@ -1989,3 +1989,5 @@ body.is-embed .admin-flashes { top: 8px; right: 8px; }
 .btn-pause-icon:hover { background: #f59e0b; color: #000; }
 .btn-resume-icon { background: rgba(34,197,94,.15); border: 1px solid var(--success); color: var(--success); cursor: pointer; }
 .btn-resume-icon:hover { background: var(--success); color: #000; }
+/* Versión compacta (junto al estado, arriba del detalle de la orden). */
+.btn-pause.btn-sm, .btn-resume.btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
