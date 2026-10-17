@@ -9,6 +9,13 @@
     </a>
 </div>
 
+{% if order.status == 'pending' and order.is_paused %}
+<div class="pause-banner" role="status">
+    <strong>⏸ ORDEN EN PAUSA</strong>
+    <span>El sistema NO manda ninguna petición al proveedor con esta orden (ni reintentos automáticos ni "Aprobar"). Corrige lo que haga falta (por ejemplo el ID del jugador) y toca <strong>▶ Reanudar</strong>. Mientras tanto puedes rechazarla o marcarla como entregada a mano.</span>
+</div>
+{% endif %}
+
 <div class="detail-grid">
     <!-- Order Info -->
     <div class="detail-section">
@@ -25,6 +32,7 @@
             <span class="detail-label">Estado</span>
             <span class="detail-value">
                 <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
+                {% if order.status == 'pending' and order.is_paused %}<span class="status-badge status-paused" style="margin-left:6px">⏸ En pausa</span>{% endif %}
             </span>
         </div>
         {% if delivery_info %}
@@ -155,7 +163,7 @@
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                     <button type="submit" class="btn-sm btn-secondary">Guardar ID</button>
-                    <button type="submit" name="reprocess" value="1" class="btn-sm btn-primary">Guardar ID y reprocesar</button>
+                    <button type="submit" name="reprocess" value="1" class="btn-sm btn-primary"{% if order.is_paused %} disabled title="La orden está en pausa: reanúdala primero"{% endif %}>Guardar ID y reprocesar</button>
                     {% if can_verify_player %}
                     <button type="button" class="btn-sm btn-outline" id="orderVerifyPlayerBtn" data-order-id="{{ order.id }}">Verificar nombre</button>
                     <span class="gift-nick" id="orderVerifyPlayerResult" hidden></span>
@@ -456,15 +464,30 @@
             <label class="file-attach-btn file-attach-btn-lg" for="delivery_proof" title="Adjuntar comprobante para el correo (opcional)">📎</label>
             <input id="delivery_proof" name="delivery_proof" type="file" accept="image/*" class="file-attach-input">
             {% endif %}
+            {% if order.is_paused %}
+            <button type="button" class="btn-primary approve-btn" disabled title="La orden está en pausa: reanúdala primero" style="opacity:.45;cursor:not-allowed">✓ Aprobar Orden</button>
+            {% else %}
             <button type="button" class="btn-primary approve-btn" onclick="document.getElementById('approveModal').style.display='flex'">✓ Aprobar Orden</button>
+            {% endif %}
         </form>
         <button class="btn-danger-solid" onclick="document.getElementById('rejectModal').style.display='flex'">
             ✕ Rechazar Orden
         </button>
+        {% if order.is_paused %}
+        <button type="button" class="btn-resume" onclick="document.getElementById('resumeModal').style.display='flex'">▶ Reanudar orden</button>
+        {% else %}
+        <form method="POST" action="{{ url_for('admin_bp.order_pause', order_id=order.id) }}" style="margin:0">
+            <button type="submit" class="btn-pause" title="Detiene todo lo automático de esta orden: no se manda ninguna petición al proveedor hasta que la reanudes">⏸ Pausar orden</button>
+        </form>
+        {% endif %}
     </div>
     {% if can_send_delivery_proof %}
     <small style="display:block;margin-top:10px;color:var(--text-muted);font-size:11px">📎 Comprobante opcional para el correo de entrega.</small>
     {% endif %}
+    <small style="display:block;margin-top:10px;color:var(--text-muted);font-size:11px">
+        ⏸ <strong>Pausar</strong>: para cuando el cliente puso mal el ID u otro dato y no quieres que el sistema siga mandando peticiones al proveedor.
+        En pausa no se procesa nada solo; corriges el dato y tocas <strong>Reanudar</strong>.
+    </small>
 
     <div style="margin-top:18px;padding-top:16px;border-top:1px dashed var(--border-color)">
         <button type="button" class="btn-sm" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.5);color:#f59e0b" onclick="document.getElementById('forceApproveModal').style.display='flex'">
@@ -503,6 +526,24 @@
         </form>
     </div>
 </div>
+
+{% if order.is_paused %}
+<div class="modal-overlay" id="resumeModal" style="display:none">
+    <div class="modal-box">
+        <h3>▶ ¿Reanudar esta orden?</h3>
+        <p class="form-hint" style="margin-top:10px">
+            El sistema vuelve a procesarla solo: si el pago ya está verificado, se mandará la recarga al proveedor con el ID que tiene ahora la orden
+            (<strong>{{ order.player_id or '—' }}</strong>). Revisa que sea el correcto antes de continuar.
+        </p>
+        <form method="POST" action="{{ url_for('admin_bp.order_resume', order_id=order.id) }}">
+            <div class="modal-actions" style="margin-top:16px">
+                <button type="button" onclick="document.getElementById('resumeModal').style.display='none'" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-resume">▶ Sí, reanudar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
 
 <div class="modal-overlay" id="forceApproveModal" style="display:none">
     <div class="modal-box">

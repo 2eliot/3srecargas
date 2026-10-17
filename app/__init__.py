@@ -554,6 +554,7 @@ def create_app(config_class=Config):
         _ensure_order_payment_completion_columns()
         _ensure_order_payment_verification_raw_response_column()
         _ensure_order_idempotency_column()
+        _ensure_order_pause_column()
         _ensure_ranking_archive_columns()
         _ensure_ranking_board_columns()
         _ensure_revendedores_mapping_columns()
@@ -1239,6 +1240,24 @@ def _ensure_order_payment_verification_raw_response_column():
         existing = {r[1] for r in rows}
         if 'payment_verification_raw_response' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN payment_verification_raw_response TEXT'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_pause_column():
+    """Columna de la pausa de emergencia de una orden (orders.is_paused, ver utils/order_pause.py). En Postgres las órdenes que ya existen quedan en FALSE."""
+    try:
+        if _ensure_postgres_columns('orders', ['is_paused BOOLEAN DEFAULT FALSE']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'is_paused' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN is_paused BOOLEAN DEFAULT 0'))
         db.session.commit()
     except Exception:
         db.session.rollback()

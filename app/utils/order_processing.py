@@ -12,6 +12,7 @@ from ..models import (
 from .locks import acquire_lock, release_lock
 from .minigames import ensure_minigame_opportunity
 from .notifications import notify_order_approved, notify_order_completed
+from .order_pause import order_paused_now, paused_result
 from .points import award_points_for_order
 
 # TTL del lock de aprobación por orden: cubre el peor caso realista (un
@@ -355,6 +356,19 @@ def _check_revendedores_attempt_status(base_url, api_key, external_order_id):
     return data, True
 
 
+def _paused_mid_queue(order, auto_resp, step_index):
+    """La orden se pausó en medio de la cola de Revendedores: se guarda lo que YA se entregó (para que al reanudar no se repita) y se detiene sin mandar nada más."""
+    if _state_has_activity(auto_resp):
+        auto_resp['pending_verification'] = True
+        auto_resp['current_step_index'] = step_index
+        order.automation_response = json.dumps(auto_resp)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    return paused_result(order)
+
+
 def process_revendedores_queue(order, base_state=None, force=False):
     """Avanza la cola de recargas de Revendedores para `order`.
 
@@ -407,6 +421,10 @@ def process_revendedores_queue(order, base_state=None, force=False):
     for step_index, step in enumerate(steps):
         if step.get('success'):
             continue
+
+        # Pausa de emergencia: se revisa antes de CADA paso, también el 2.º o 3.º de una orden con varios pasos.
+        if order_paused_now(order):
+            return _paused_mid_queue(order, auto_resp, step_index)
 
         # Si este paso ya quedó marcado como rechazo DEFINITIVO (ID
         # inválido, paquete dado de baja), no se vuelve a llamar a
@@ -1007,6 +1025,10 @@ def process_order_delivery(order, base_state=None, force=False):
             }
         return None
 
+    # Pausa de emergencia: con la orden en pausa no se manda NADA al proveedor (ni recargas ni consultas) hasta que el admin la reanude.
+    if order_paused_now(order):
+        return paused_result(order)
+
     lock_key = f'order_delivery:{order.id}'
     lock_holder = uuid4().hex
     if not acquire_lock(lock_key, ORDER_DELIVERY_LOCK_TTL_SECONDS, lock_holder):
@@ -1027,6 +1049,8 @@ def process_order_delivery(order, base_state=None, force=False):
                 'ok': False, 'changed': False, 'pending_verification': False,
                 'message': 'La orden ya no está pendiente.', 'category': 'warning',
             }
+        if order.is_paused:
+            return paused_result(order)
 
         state = _load_delivery_state(order)
         provider = _state_provider(state)
@@ -1083,6 +1107,10 @@ def approve_order(order, delivery_proof_path=None):
             'category': 'warning',
         }
 
+    # Pausa de emergencia: una orden pausada no se aprueba ni se manda al proveedor hasta que el admin la reanude.
+    if order_paused_now(order):
+        return paused_result(order)
+
     lock_key = f'order_approve:{order.id}'
     lock_holder = uuid4().hex
     if not acquire_lock(lock_key, ORDER_APPROVE_LOCK_TTL_SECONDS, lock_holder):
@@ -1102,6 +1130,8 @@ def approve_order(order, delivery_proof_path=None):
                 'message': 'Solo se pueden aprobar órdenes pendientes.',
                 'category': 'warning',
             }
+        if order.is_paused:
+            return paused_result(order)
         return _approve_order_locked(order, delivery_proof_path=delivery_proof_path)
     finally:
         release_lock(lock_key, lock_holder)

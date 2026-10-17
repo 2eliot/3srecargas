@@ -38,6 +38,7 @@ from ..models import CentralOneCatalogItem, db
 from .locks import acquire_lock, release_lock
 from .minigames import ensure_minigame_opportunity
 from .notifications import notify_order_completed
+from .order_pause import order_paused_now, paused_result
 from .order_processing import get_order_centralone_items, process_affiliate_commission
 from .points import award_points_for_order
 
@@ -574,6 +575,11 @@ def process_centralone_queue(order, base_state=None, force=False):
     for step_index, step in enumerate(steps):
         if step['success']:
             continue
+        # Pausa de emergencia: se revisa antes de CADA paso. Lo ya entregado queda guardado para que al reanudar no se repita.
+        if order_paused_now(order):
+            if any(s.get('success') for s in steps):
+                _persist(order, auto_resp, steps)
+            return {**paused_result(order), 'provider': 'centralone'}
         item, defaults = items[step_index]
         outcome = _advance_step(order, auto_resp, steps, step_index, step, item, defaults, force)
         if outcome is not None:

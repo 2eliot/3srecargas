@@ -54,6 +54,7 @@ from ..utils.mini_influencers import (
     suggested_reward_for_views,
 )
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive, today_ve_str
+from ..utils.order_pause import PAUSED_MESSAGE, pause_order, resume_order
 from ..utils.minigames import (
     get_minigame_slot_defs,
     get_minigame_slots_config,
@@ -1141,6 +1142,8 @@ def _apply_order_filters(
             Order.status == 'pending',
             Order.payment_verified_at.isnot(None),
         )
+    elif status_filter == 'paused':
+        query = query.filter(Order.status == 'pending', Order.is_paused.is_(True))
     elif status_filter:
         query = query.filter_by(status=status_filter)
 
@@ -1251,6 +1254,7 @@ def orders():
         packages=packages,
         to_deliver_count=count_orders_to_deliver(),
         pending_count=Order.query.filter(Order.status == 'pending').count(),
+        paused_count=Order.query.filter(Order.status == 'pending', Order.is_paused.is_(True)).count(),
     )
 
 
@@ -1309,8 +1313,10 @@ def _order_row_payload(o):
         'status_label': o.status_label,
         'status_class': o.status_class,
         'payment_verified': bool(o.payment_verified_at),
+        'paused': bool(o.is_paused) and o.status == 'pending',
         'created_at': format_ve(o.created_at, '%d/%m/%Y %H:%M'),
-        'automation_response': o.automation_response or '',
+        # En pausa no se consulta al proveedor: sin esto la lista seguiría preguntando por la recarga cada pocos segundos.
+        'automation_response': '' if (o.is_paused and o.status == 'pending') else (o.automation_response or ''),
         'pin_delivered': o.pin_delivered or '',
         'can_send_delivery_proof': order_supports_delivery_proof(o),
     }
@@ -1795,6 +1801,46 @@ def order_force_approve(order_id):
         )
         flash('Ocurrió un error interno al forzar la aprobación. Revisa el log del servidor para el detalle.', 'danger')
     return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+
+
+def _pause_redirect_target(order):
+    """Vuelve a donde estaba el admin (la lista o el detalle de la orden); solo dentro de este sitio."""
+    referrer = request.referrer or ''
+    if referrer.startswith(request.host_url):
+        return referrer
+    return url_for('admin_bp.order_detail', order_id=order.id)
+
+
+@admin_bp.route('/orders/<int:order_id>/pause', methods=['POST'])
+@login_required
+def order_pause(order_id):
+    """Botón de PAUSA de emergencia: el sistema deja de mandar peticiones al proveedor con esta orden hasta que se reanude (ver utils/order_pause.py)."""
+    order = Order.query.get_or_404(order_id)
+    try:
+        result = pause_order(order)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Error al pausar la orden %s', getattr(order, 'id', None))
+        flash('Ocurrió un error al pausar la orden. Intenta de nuevo.', 'danger')
+        return redirect(_pause_redirect_target(order))
+    flash(result['message'], result['category'])
+    return redirect(_pause_redirect_target(order))
+
+
+@admin_bp.route('/orders/<int:order_id>/resume', methods=['POST'])
+@login_required
+def order_resume(order_id):
+    """Quita la pausa: la orden vuelve a poder procesarse sola (no se manda nada en este momento; sigue su camino normal)."""
+    order = Order.query.get_or_404(order_id)
+    try:
+        result = resume_order(order)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Error al reanudar la orden %s', getattr(order, 'id', None))
+        flash('Ocurrió un error al reanudar la orden. Intenta de nuevo.', 'danger')
+        return redirect(_pause_redirect_target(order))
+    flash(result['message'], result['category'])
+    return redirect(_pause_redirect_target(order))
 
 
 @admin_bp.route('/orders/<int:order_id>/reject', methods=['POST'])
@@ -5760,6 +5806,9 @@ def order_verify_recharge(order_id):
     order = Order.query.get_or_404(order_id)
     if order.status != 'pending':
         return jsonify({'ok': True, 'result': 'already_processed', 'order_status': order.status})
+
+    if order.is_paused:
+        return jsonify({'ok': True, 'result': 'paused', 'can_approve': False, 'order_status': order.status, 'message': PAUSED_MESSAGE})
 
     auto_resp = {}
     try:

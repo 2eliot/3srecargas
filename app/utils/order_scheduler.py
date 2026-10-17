@@ -122,6 +122,10 @@ def _run_tick(app):
         if processed >= _MAX_ORDERS_PER_TICK:
             break
 
+        # Pausa de emergencia (botón del admin): el sistema no toca esta orden hasta que se reanude, y no gasta turno.
+        if order.is_paused:
+            continue
+
         try:
             auto_resp = json.loads(order.automation_response or '{}')
         except Exception:

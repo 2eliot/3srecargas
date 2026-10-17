@@ -27,6 +27,13 @@
            class="filter-tab {% if status_filter == 'completed' %}active{% endif %}">Completadas</a>
         <a href="{{ url_for('admin_bp.orders', status='rejected', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab {% if status_filter == 'rejected' %}active{% endif %}">Rechazadas</a>
+        {% if paused_count or status_filter == 'paused' %}
+        <a href="{{ url_for('admin_bp.orders', status='paused', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
+           class="filter-tab filter-tab-paused {% if status_filter == 'paused' %}active{% endif %}">
+            ⏸ Pausadas
+            {% if paused_count %}<span class="filter-tab-count">{{ paused_count }}</span>{% endif %}
+        </a>
+        {% endif %}
     </div>
     <form method="GET" action="{{ url_for('admin_bp.orders') }}" class="orders-search-form">
         {% if status_filter %}
@@ -117,6 +124,9 @@
                                 {% if order.status == 'pending' and order.payment_verified_at %}
                                 <span class="status-badge status-paid-pending" title="El pago ya se verificó: falta hacer la recarga">Pagada · falta entregar</span>
                                 {% endif %}
+                                {% if order.status == 'pending' and order.is_paused %}
+                                <span class="status-badge status-paused" title="Orden en pausa: el sistema no manda nada al proveedor con ella hasta que la reanudes">⏸ En pausa</span>
+                                {% endif %}
                             </div>
                             <div class="admin-order-card__package">{{ order.package.name }}</div>
                             <div class="admin-order-card__meta">
@@ -162,16 +172,29 @@
                         {% set can_send_delivery_proof = not order.package.is_automated and (order.game.category.slug|lower != 'tarjetas') %}
                         <div class="action-btns" id="actions-{{ order.id }}"
                              data-order-id="{{ order.id }}"
-                             data-auto-resp="{{ order.automation_response|default('',true)|e }}">
+                             data-auto-resp="{{ '' if order.is_paused else order.automation_response|default('',true)|e }}">
                             <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline" title="Gestionar">Gestionar</a>
                             <form method="POST" action="{{ url_for('admin_bp.order_approve', order_id=order.id) }}" class="approve-form" enctype="multipart/form-data">
                                 {% if can_send_delivery_proof %}
                                 <label class="file-attach-btn" for="proof-{{ order.id }}" title="Adjuntar comprobante para el correo (opcional)">📎</label>
                                 <input type="file" name="delivery_proof" id="proof-{{ order.id }}" accept="image/*" class="file-attach-input">
                                 {% endif %}
+                                {% if order.is_paused %}
+                                <button class="btn-sm btn-success btn-icon-only approve-btn" type="submit" title="En pausa: reanúdala primero" disabled style="opacity:.4;cursor:not-allowed">✓</button>
+                                {% else %}
                                 <button class="btn-sm btn-success btn-icon-only approve-btn" type="submit" title="Aprobar">✓</button>
+                                {% endif %}
                             </form>
                             <button type="button" class="btn-sm btn-danger btn-icon-only reject-order-btn" data-order-id="{{ order.id }}" title="Rechazar">✕</button>
+                            {% if order.is_paused %}
+                            <form method="POST" action="{{ url_for('admin_bp.order_resume', order_id=order.id) }}" class="pause-form">
+                                <button class="btn-sm btn-icon-only btn-resume-icon" type="submit" title="Reanudar la orden">▶</button>
+                            </form>
+                            {% else %}
+                            <form method="POST" action="{{ url_for('admin_bp.order_pause', order_id=order.id) }}" class="pause-form">
+                                <button class="btn-sm btn-icon-only btn-pause-icon" type="submit" title="Pausar: detiene todo lo automático de esta orden">⏸</button>
+                            </form>
+                            {% endif %}
                         </div>
                         {% elif order.status == 'completed' and order.pin_delivered %}
                         <div class="action-btns">
@@ -380,9 +403,12 @@ function _renderOrderRow(o) {
             '<a href="/admin/orders/' + o.id + '" class="btn-sm btn-outline" title="Gestionar">Gestionar</a>' +
             '<form method="POST" action="/admin/orders/' + o.id + '/approve" class="approve-form" enctype="multipart/form-data">' +
                 (o.can_send_delivery_proof ? '<label class="file-attach-btn" for="proof-' + o.id + '" title="Adjuntar comprobante para el correo (opcional)">📎</label><input type="file" name="delivery_proof" id="proof-' + o.id + '" accept="image/*" class="file-attach-input">' : '') +
-                '<button class="btn-sm btn-success btn-icon-only approve-btn" type="submit" title="Aprobar">✓</button>' +
+                '<button class="btn-sm btn-success btn-icon-only approve-btn" type="submit" title="' + (o.paused ? 'En pausa: reanúdala primero' : 'Aprobar') + '"' + (o.paused ? ' disabled style="opacity:.4;cursor:not-allowed"' : '') + '>✓</button>' +
             '</form>' +
             '<button type="button" class="btn-sm btn-danger btn-icon-only reject-order-btn" data-order-id="' + o.id + '" title="Rechazar">✕</button>' +
+            (o.paused
+                ? '<form method="POST" action="/admin/orders/' + o.id + '/resume" class="pause-form"><button class="btn-sm btn-icon-only btn-resume-icon" type="submit" title="Reanudar la orden">▶</button></form>'
+                : '<form method="POST" action="/admin/orders/' + o.id + '/pause" class="pause-form"><button class="btn-sm btn-icon-only btn-pause-icon" type="submit" title="Pausar: detiene todo lo automático de esta orden">⏸</button></form>') +
         '</div>';
     } else if (o.status === 'completed' && o.pin_delivered) {
         actions = '<div class="action-btns">' +
@@ -396,6 +422,9 @@ function _renderOrderRow(o) {
     var statusHtml = '<span class="status-badge ' + _escapeHtml(o.status_class) + '">' + _escapeHtml(o.status_label) + '</span>';
     if (o.status === 'pending' && o.payment_verified) {
         statusHtml += ' <span class="status-badge status-paid-pending" title="El pago ya se verificó: falta hacer la recarga">Pagada · falta entregar</span>';
+    }
+    if (o.paused) {
+        statusHtml += ' <span class="status-badge status-paused" title="Orden en pausa: el sistema no manda nada al proveedor con ella hasta que la reanudes">⏸ En pausa</span>';
     }
 
     var html = '';
@@ -475,6 +504,8 @@ function _kickAutoVerification(scopeEl) {
                             if (btn) { btn.textContent = 'Reintentar verificar'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'button'; }
                             btn.onclick = function(e) { e.preventDefault(); attempts = 0; btn.disabled = true; btn.textContent = 'Verificando...'; btn.style.opacity = '0.6'; poll(); };
                         }
+                    } else if (data.result === 'paused') {
+                        if (btn) { btn.disabled = true; btn.textContent = '✓'; btn.style.opacity = '.4'; btn.title = 'La orden está en pausa: reanúdala primero'; }
                     } else if (data.can_approve) {
                         if (btn) { btn.disabled = false; btn.textContent = '✓'; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
                         var msg = data.message || 'Recarga no se completó. Puedes reintentar.';
@@ -660,6 +691,8 @@ function _kickAutoVerification(scopeEl) {
                             if (btn) { btn.textContent = 'Reintentar verificar'; btn.disabled = false; btn.style.opacity = '1'; btn.type = 'button'; }
                             btn.onclick = function(e) { e.preventDefault(); attempts = 0; btn.disabled = true; btn.textContent = 'Verificando...'; btn.style.opacity = '0.6'; poll(); };
                         }
+                    } else if (data.result === 'paused') {
+                        if (btn) { btn.disabled = true; btn.textContent = '✓'; btn.style.opacity = '.4'; btn.title = 'La orden está en pausa: reanúdala primero'; }
                     } else if (data.can_approve) {
                         if (btn) { btn.disabled = false; btn.textContent = '✓'; btn.style.opacity = '1'; btn.type = 'submit'; btn.onclick = null; }
                         var msg = data.message || 'Recarga no se completó. Puedes reintentar.';

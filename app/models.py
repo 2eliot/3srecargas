@@ -273,6 +273,9 @@ class Order(db.Model):
     # Evita otorgar puntos dos veces a la misma orden si el flujo de
     # aprobación se re-ejecuta (reintentos del scheduler, doble clic, etc.).
     points_awarded = db.Column(db.Boolean, default=False)
+    # Pausa de emergencia (botón "Pausar" del admin): mientras sea True el sistema NO manda ninguna petición de recarga al proveedor con esta orden
+    # (ni reintentos del scheduler, ni "Aprobar", ni el webhook). Ver utils/order_pause.py.
+    is_paused = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

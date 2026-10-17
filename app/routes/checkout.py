@@ -20,6 +20,7 @@ from ..models import Setting
 from ..models import OrderMiniGameOpportunity
 from ..utils.availability import get_purchase_block_reason
 from ..utils.order_processing import approve_order, order_qualifies_for_auto_fulfillment
+from ..utils.order_pause import CUSTOMER_MESSAGE as PAUSED_CUSTOMER_MESSAGE, order_paused_now
 from ..utils.minigames import (
     ensure_minigame_opportunity,
     get_order_minigame_state,
@@ -202,6 +203,19 @@ def auto_verify_and_process_order(order, force=False, customer_request=False):
 
     if not order or order.status != 'pending' or not is_auto_verify_enabled() or not payment_verify_allowed:
         return {'checked': False, 'verified': False, 'message': '', 'stop_polling': True}
+
+    # Pausa de emergencia: ni se verifica el pago ni se manda nada al proveedor. Al cliente se le dice (sin hablar de "pausa") que la están revisando.
+    if order_paused_now(order):
+        return {
+            'checked': False,
+            'verified': bool(order.payment_verified_at),
+            'payment_verified': bool(order.payment_verified_at),
+            'message': PAUSED_CUSTOMER_MESSAGE,
+            'stop_polling': False,
+            'next_retry_in_seconds': 120,
+            'noop': True,
+            'paused': True,
+        }
 
     if order.awaiting_payment_completion:
         # Ya sabemos que ese pago no alcanza: reintentar la MISMA referencia
@@ -1638,7 +1652,7 @@ def order_auto_verify(order_number):
         'manual_review_required': result.get('manual_review_required', False),
         'underpaid': result.get('underpaid', False),
         'missing_amount': result.get('missing_amount'),
-        'message': result.get('message', ''),
+        'message': PAUSED_CUSTOMER_MESSAGE if result.get('paused') else result.get('message', ''),
         'stop_polling': result.get('stop_polling', False),
         'next_retry_in_seconds': result.get('next_retry_in_seconds', 0),
         'status': order.status,
@@ -1854,10 +1868,10 @@ def order_complete_payment(order_number):
     db.session.commit()
     approval = approve_order(order)
     return jsonify({
-        'ok': approval.get('ok', False),
+        'ok': approval.get('ok', False) or bool(approval.get('paused')),
         'verified': True,
         'covered': True,
-        'message': approval.get('message', ''),
+        'message': PAUSED_CUSTOMER_MESSAGE if approval.get('paused') else approval.get('message', ''),
         'status': order.status,
     })
 
