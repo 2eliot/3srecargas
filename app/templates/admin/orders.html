@@ -127,6 +127,13 @@
                                 {% if order.status == 'pending' and order.is_paused %}
                                 <span class="status-badge status-paused" title="Orden en pausa: el sistema no manda nada al proveedor con ella hasta que la reanudes">⏸ En pausa</span>
                                 {% endif %}
+                                {% for flag in payment_flags.get(order.id, []) %}
+                                {% if flag.order_id %}
+                                <a class="status-badge status-review" href="{{ url_for('admin_bp.order_detail', order_id=flag.order_id) }}" title="{{ flag.title }}">{{ flag.label }} · #{{ flag.order_number }}</a>
+                                {% else %}
+                                <span class="status-badge status-review" title="{{ flag.title }}">{{ flag.label }}</span>
+                                {% endif %}
+                                {% endfor %}
                             </div>
                             <div class="admin-order-card__package">{{ order.package.name }}</div>
                             <div class="admin-order-card__meta">
@@ -387,6 +394,20 @@ document.getElementById('whatsAppComposeForm').addEventListener('submit', functi
     closeAdminWhatsAppModal();
 });
 
+// Etiquetas rojas de pago dudoso (las manda el servidor en o.review_flags): solo avisan.
+function _reviewFlagsHtml(flags) {
+    var html = '';
+    (flags || []).forEach(function(f) {
+        var text = _escapeHtml(f.label) + (f.order_number ? ' · #' + _escapeHtml(f.order_number) : '');
+        if (f.order_id) {
+            html += ' <a class="status-badge status-review" href="/admin/orders/' + encodeURIComponent(f.order_id) + '" title="' + _escapeHtml(f.title) + '">' + text + '</a>';
+        } else {
+            html += ' <span class="status-badge status-review" title="' + _escapeHtml(f.title) + '">' + text + '</span>';
+        }
+    });
+    return html;
+}
+
 function _renderOrderRow(o) {
     var playerBits = '';
     if (o.player_id) playerBits += '<span class="admin-order-card__player-id">' + _escapeHtml(o.player_id) + '</span>';
@@ -426,6 +447,7 @@ function _renderOrderRow(o) {
     if (o.paused) {
         statusHtml += ' <span class="status-badge status-paused" title="Orden en pausa: el sistema no manda nada al proveedor con ella hasta que la reanudes">⏸ En pausa</span>';
     }
+    statusHtml += _reviewFlagsHtml(o.review_flags);
 
     var html = '';
     html += '<article class="admin-order-card" data-order-id="' + o.id + '">';
@@ -579,6 +601,11 @@ function _kickAutoVerification(scopeEl) {
                             if (badge) {
                                 badge.insertAdjacentHTML('afterend', ' <span class="status-badge status-paid-pending" title="El pago ya se verificó: falta hacer la recarga">Pagada · falta entregar</span>');
                             }
+                        }
+                        // Etiqueta roja de pago dudoso que apareció después (p. ej. Pabilo dijo "ya fue usado").
+                        if (o.review_flags && o.review_flags.length && !tr.querySelector('.status-review')) {
+                            var titleRow = tr.querySelector('.admin-order-card__title-row');
+                            if (titleRow) titleRow.insertAdjacentHTML('beforeend', _reviewFlagsHtml(o.review_flags));
                         }
                         return;
                     }

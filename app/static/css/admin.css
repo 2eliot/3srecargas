@@ -959,6 +959,15 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
     color: #fbbf24;
     border: 1px solid rgba(251,191,36,.5);
 }
+/* Pago dudoso (utils/payment_flags.py): etiqueta roja que solo avisa. Si lleva enlace, abre la otra orden. */
+.status-review {
+    background: rgba(239,68,68,.18);
+    color: #f87171;
+    border: 1px solid rgba(239,68,68,.55);
+    font-weight: 700;
+    text-decoration: none;
+}
+a.status-review:hover { background: rgba(239,68,68,.3); color: #fecaca; }
 /* Pago verificado pero recarga manual todavía sin hacer. */
 .status-paid-pending {
     background: rgba(56,189,248,.15);

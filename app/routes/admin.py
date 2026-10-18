@@ -99,6 +99,7 @@ from ..utils.auth_accounts import (
     validate_new_password,
     validate_username,
 )
+from ..utils.payment_flags import order_payment_flags
 from ..utils.payment_verification import (
     apply_underpaid_verification,
     clear_pabilo_verification_state,
@@ -1235,6 +1236,7 @@ def orders():
     return render_template(
         'admin/orders.html',
         orders=all_orders,
+        payment_flags=order_payment_flags(all_orders),
         status_filter=status_filter,
         search_query=search_query,
         date_from=date_from,
@@ -1291,10 +1293,11 @@ def orders_latest():
     newest = query.order_by(Order.id.desc()).limit(20).all()
     newest.reverse()
 
-    return jsonify({'ok': True, 'orders': [_order_row_payload(o) for o in newest]})
+    flags = order_payment_flags(newest)
+    return jsonify({'ok': True, 'orders': [_order_row_payload(o, flags) for o in newest]})
 
 
-def _order_row_payload(o):
+def _order_row_payload(o, flags=None):
     return {
         'id': o.id,
         'order_number': o.order_number,
@@ -1314,6 +1317,8 @@ def _order_row_payload(o):
         'status_class': o.status_class,
         'payment_verified': bool(o.payment_verified_at),
         'paused': bool(o.is_paused) and o.status == 'pending',
+        # Etiquetas rojas de pago dudoso (utils/payment_flags.py): solo avisan.
+        'review_flags': (flags or {}).get(o.id, []),
         'created_at': format_ve(o.created_at, '%d/%m/%Y %H:%M'),
         # En pausa no se consulta al proveedor: sin esto la lista seguiría preguntando por la recarga cada pocos segundos.
         'automation_response': '' if (o.is_paused and o.status == 'pending') else (o.automation_response or ''),
@@ -1341,7 +1346,8 @@ def orders_refresh():
         return jsonify({'ok': True, 'orders': []})
 
     rows = Order.query.filter(Order.id.in_(ids)).all()
-    return jsonify({'ok': True, 'orders': [_order_row_payload(o) for o in rows]})
+    flags = order_payment_flags(rows)
+    return jsonify({'ok': True, 'orders': [_order_row_payload(o, flags) for o in rows]})
 
 
 @admin_bp.route('/orders/<int:order_id>')
