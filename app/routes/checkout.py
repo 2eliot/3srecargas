@@ -505,14 +505,9 @@ def get_checkout_discount_result(code, package_price, player_id=None, email=None
         return result
 
     if affiliate:
-        # Anti-abuso: un afiliado no puede aplicarse su propio código para
-        # generarse comisión comprándose a sí mismo. Es un guard best-effort
-        # por email (el único dato de identidad que llega hasta aquí desde
-        # el checkout) — no hay vínculo player_id<->afiliado en este repo.
-        if email and affiliate.email and email.strip().lower() == affiliate.email.strip().lower():
-            result['error'] = 'No puedes usar tu propio código de afiliado.'
-            return result
-
+        # El afiliado SÍ puede usar su propio código (decisión del dueño: da el mismo descuento que el código principal de la tienda). Antes se
+        # rechazaba aquí por el correo, pero la pantalla ya había mostrado el descuento: el cliente pagaba el precio con descuento y la orden salía
+        # por el precio lleno (pago incompleto). Lo que NO se hace es pagarle comisión por comprarse a sí mismo (ver process_affiliate_commission).
         rate = float(affiliate.client_discount_rate or 0)
         if rate <= 0:
             rate = float(affiliate.commission_rate or 0)
@@ -887,6 +882,9 @@ def checkout(package_id):
             elif not tarjetas_without_id:
                 if not player_id:
                     return _init_error(f'{game.player_label} es obligatorio.')
+                # La zona es obligatoria en los juegos que la piden (Zone ID / Servidor): sin ella el proveedor no puede recargar y la orden se queda trabada.
+                if game.requires_zone_id and not zone_id:
+                    return _init_error(f'Debes ingresar tu {(game.zone_id_label or "").strip() or "Zone ID"}: sin ese dato no se puede hacer la recarga.')
                 # Solo se recarga a IDs verificados en los juegos con verificador. El nick
                 # del formulario no cuenta como prueba: se confirma aquí, en el servidor.
                 from .verify import require_verified_player, VERIFIED_PLAYER_ERRORS
@@ -997,6 +995,12 @@ def checkout(package_id):
                 return _confirm_fail('Tu sesión expiró. Por favor repite el proceso desde la tienda.', code='session_expired')
             flash('Tu sesión expiró. Por favor repite el proceso desde la tienda.', 'danger')
             return redirect(url_for('main_bp.index'))
+        # La zona también se exige al confirmar: un paso 1 hecho antes de esta regla (pestaña vieja) no puede crear una orden sin zona.
+        if not is_wallet and game.requires_zone_id and (data.get('player_id') or '').strip() and not (data.get('zone_id') or '').strip():
+            return _confirm_fail(
+                f'Debes ingresar tu {(game.zone_id_label or "").strip() or "Zone ID"}: sin ese dato no se puede hacer la recarga. Vuelve a la tienda y complétalo.',
+                code='zone_required',
+            )
         # Segunda barrera antes de crear la orden (usa la caché del paso 1, no reconsulta).
         if not is_wallet and (data.get('player_id') or '').strip():
             from .verify import require_verified_player, VERIFIED_PLAYER_ERRORS

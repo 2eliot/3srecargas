@@ -1294,6 +1294,14 @@
             playerIdInput && !playerIdInput.value.trim()) {
             return; // main.js muestra el aviso correspondiente
         }
+        // La zona es obligatoria en los juegos que la piden: si falta, main.js muestra el aviso y aquí no se sigue con el pago.
+        var zoneGroupEl = document.getElementById('zoneIdGroup');
+        var zoneInputEl = document.getElementById('zoneId');
+        if (playerSection && playerSection.style.display !== 'none' &&
+            zoneGroupEl && window.getComputedStyle(zoneGroupEl).display !== 'none' &&
+            zoneInputEl && !zoneInputEl.value.trim()) {
+            return; // main.js muestra el aviso de la zona
+        }
 
         evt.preventDefault();
         if (preparing) return;

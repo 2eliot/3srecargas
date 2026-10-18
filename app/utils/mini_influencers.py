@@ -119,11 +119,16 @@ def count_qualifying_uses(affiliate_id):
     """Órdenes con el código del mini que ya cobraron: mismo criterio
     (status approved/completed) que ya dispara process_affiliate_commission
     en order_processing.py, así rango y comisión quedan sincronizados sin
-    un contador aparte."""
-    return Order.query.filter(
+    un contador aparte. Las compras del propio mini con su código (mismo correo) no cuentan: tiene el descuento pero no sube de rango con ellas."""
+    query = Order.query.filter(
         Order.affiliate_id == affiliate_id,
         Order.status.in_(['approved', 'completed']),
-    ).count()
+    )
+    affiliate = db.session.get(Affiliate, affiliate_id)
+    owner_email = ((affiliate.email if affiliate else '') or '').strip().lower()
+    if owner_email:
+        query = query.filter(db.func.lower(db.func.trim(db.func.coalesce(Order.email, ''))) != owner_email)
+    return query.count()
 
 
 def _ranks_paid_list(raw):

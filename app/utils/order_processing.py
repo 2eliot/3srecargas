@@ -45,6 +45,13 @@ _ROUTE_CAUSE_TEXT = {
 }
 
 
+def is_affiliate_self_purchase(order, affiliate):
+    """La compra la hizo el propio afiliado: el correo del pedido es el del afiliado."""
+    buyer = (getattr(order, 'email', None) or '').strip().lower()
+    owner = (getattr(affiliate, 'email', None) or '').strip().lower()
+    return bool(buyer and owner and buyer == owner)
+
+
 def process_affiliate_commission(order):
     if not order.affiliate_id:
         return
@@ -53,6 +60,12 @@ def process_affiliate_commission(order):
         return
     affiliate = Affiliate.query.get(order.affiliate_id)
     if not affiliate or not affiliate.is_active:
+        return
+    if is_affiliate_self_purchase(order, affiliate):
+        # El afiliado puede usar su propio código (tiene el descuento), pero comprarse a sí mismo no le genera comisión.
+        note = '[Afiliado] Compra del propio afiliado con su código: tiene el descuento y no genera comisión.'
+        if note not in (order.notes or ''):
+            order.notes = ((order.notes or '') + '\n' + note).strip()
         return
     commission_amount = round(float(order.amount) * float(affiliate.commission_rate) / 100, 2)
     commission = AffiliateCommission(

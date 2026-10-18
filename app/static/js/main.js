@@ -2572,6 +2572,19 @@ window.nxDebug = function () {};
         return 'Por favor ingresa tu ' + getPlayerFieldLabel(game) + '.';
     }
 
+    // La zona (Zone ID / Servidor) es OBLIGATORIA en los juegos que la piden: sin ella el proveedor no puede recargar y la orden se queda trabada.
+    function isZoneRequired(game) {
+        return !!(game && game.requires_zone_id && game.category_slug !== 'wallet' && getPlayerInputType(game) !== 'none');
+    }
+
+    function getZoneLabel(game) {
+        return String((game && game.zone_id_label) || '').trim() || 'Zona / Región';
+    }
+
+    function getZoneRequiredMessage(game) {
+        return 'Por favor ingresa tu ' + getZoneLabel(game) + ': sin ese dato no se puede hacer la recarga.';
+    }
+
     /* ── Aviso de orden con pago incompleto (cualquier juego) ──────────── */
     var pendingCompletionState = { lastChecked: '', timer: null };
 
@@ -2800,6 +2813,7 @@ window.nxDebug = function () {};
         var zoneGroup = document.getElementById('zoneIdGroup');
         var playerIdLabel = document.getElementById('playerIdLabel');
         var zoneIdLabel = document.getElementById('zoneIdLabel');
+        var zoneInput = document.getElementById('zoneId');
         var playerHint = document.getElementById('playerHint');
         var playerInput = document.getElementById('playerId');
         var playerInputType = getPlayerInputType(game);
@@ -2865,10 +2879,21 @@ window.nxDebug = function () {};
             }
 
             if (!isWallet && game.requires_zone_id) {
+                var zoneLabelText = getZoneLabel(game);
                 if (zoneGroup) zoneGroup.style.display = 'block';
-                if (zoneIdLabel) zoneIdLabel.textContent = game.zone_id_label || 'Zona / Región';
+                // Obligatoria: se marca con * y la ayuda lo dice, para que nadie la deje en blanco creyendo que es opcional.
+                if (zoneIdLabel) zoneIdLabel.textContent = zoneLabelText + ' *';
+                if (zoneInput) {
+                    zoneInput.placeholder = 'Ingresa tu ' + zoneLabelText;
+                    zoneInput.setAttribute('aria-required', 'true');
+                }
+                if (playerHint) playerHint.textContent = 'Ingresa correctamente tu ' + fieldLabel + ' y tu ' + zoneLabelText + ' (los dos son obligatorios) para evitar errores en la recarga.';
             } else {
                 if (zoneGroup) zoneGroup.style.display = 'none';
+                if (zoneInput) {
+                    zoneInput.placeholder = 'Zona / Región';
+                    zoneInput.removeAttribute('aria-required');
+                }
             }
         }
 
@@ -3865,6 +3890,15 @@ window.nxDebug = function () {};
                     alert(getPlayerInputRequiredMessage(currentGame));
                     playerIdInput.focus();
                     return;
+                }
+                if (isZoneRequired(currentGame)) {
+                    var zoneInput = document.getElementById('zoneId');
+                    if (zoneInput && !zoneInput.value.trim()) {
+                        e.preventDefault();
+                        alert(getZoneRequiredMessage(currentGame));
+                        zoneInput.focus();
+                        return;
+                    }
                 }
             }
             
