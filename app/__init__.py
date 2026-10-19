@@ -14,7 +14,6 @@ from .utils.timezone import VENEZUELA_TIMEZONE, format_ve, today_ve_str
 from .utils.catalog_version import register_catalog_version_hook, site_version
 from .utils.promos import (
     get_accumulated_enabled_games, get_raffle_enabled_games, get_guess_enabled_games,
-    get_horde_enabled_games,
 )
 from config import Config
 
@@ -216,6 +215,7 @@ def create_app(config_class=Config):
     from .routes.promos import promos_bp
     from .routes.points_shop import points_shop_bp
     from .routes.admin_points_shop import admin_points_shop_bp
+    from .routes.admin_hordas import admin_hordas_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(checkout_bp)
@@ -233,6 +233,7 @@ def create_app(config_class=Config):
     app.register_blueprint(promos_bp)
     app.register_blueprint(points_shop_bp)
     app.register_blueprint(admin_points_shop_bp)
+    app.register_blueprint(admin_hordas_bp)
 
     @app.template_filter('datetime_ve')
     def datetime_ve_filter(value, fmt='%d/%m/%Y %H:%M'):
@@ -445,7 +446,7 @@ def create_app(config_class=Config):
             'drawer_bg_canjear', 'drawer_bg_mini', 'drawer_bg_login',
         ]
         wanted_keys = (
-            ['site_logo', 'support_avatar', 'site_background_image', 'support_email', 'support_whatsapp', 'support_schedule', 'support_location']
+            ['hordas_enabled', 'site_logo', 'support_avatar', 'site_background_image', 'support_email', 'support_whatsapp', 'support_schedule', 'support_location']
             + ['site_tutorial_video_file', 'site_tutorial_video_title']
             + social_keys
             + drawer_bg_keys
@@ -487,7 +488,8 @@ def create_app(config_class=Config):
             'recarga_acumulada': bool(get_accumulated_enabled_games()),
             'sorteo': bool(get_raffle_enabled_games()),
             'adivina': bool(get_guess_enabled_games()),
-            'hordas': bool(get_horde_enabled_games()),
+            # Hordas es un solo juego para todos (utils/hordas.py): el link está siempre, salvo que el admin lo apague en Dinámicas → Hordas.
+            'hordas': (values.get('hordas_enabled') or '1').strip() != '0',
             'torneos': True,   # la página existe siempre (por ahora "muy pronto"); cuando tenga reglas se podrá apagar desde el admin
         }
 

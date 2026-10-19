@@ -1934,6 +1934,88 @@ class PromoHordeWinner(db.Model):
     prize_order = db.relationship('Order')
     package = db.relationship('Package')
 
+
+# ───────────────────────── Hordas de Diamantes por CUENTA (desde la semana del 19/10/2026) ─────────────────────────
+# Un solo Hordas para todos los juegos: se juega con la cuenta (no con un ID), el ranking es de cuentas y el premio son puntos de la tienda que
+# caen en la cuenta. Las tablas de arriba (`promo_horde_*`, por ID y por juego) quedan solo para cerrar y pagar la última semana de ese sistema.
+class HordeAccountRun(db.Model):
+    """Una partida de una cuenta. Nace al empezar (con la hora del servidor) y se cierra una sola vez al terminar; los cristales aceptados se topan
+    según el tiempo real que duró, medido por el servidor."""
+    __tablename__ = 'horde_account_runs'
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(32), nullable=False, unique=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    week_key = db.Column(db.String(10), nullable=False, index=True)  # lunes 'AAAA-MM-DD' hora Venezuela
+    day_key = db.Column(db.String(10), nullable=False, index=True)
+    ip = db.Column(db.String(64))
+    diamonds = db.Column(db.Integer, default=0, nullable=False)
+    claimed_diamonds = db.Column(db.Integer, default=0, nullable=False)
+    kills = db.Column(db.Integer, default=0, nullable=False)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = db.Column(db.DateTime)
+    # Puntos de la cuenta gastados para abrir esta partida (0 = partida gratis del día).
+    points_spent = db.Column(db.Integer, default=0, nullable=False)
+    # Semilla que decide qué enemigos salen (el servidor calcula con ella cuántos cristales existen de verdad en la partida).
+    seed = db.Column(db.Integer)
+    wave = db.Column(db.Integer)
+    # Motivo si la partida parece trampa (p. ej. 'gano_oleada_final').
+    flag = db.Column(db.String(40))
+    # Resultado de volver a jugar la grabación en el admin: 'ok' / 'dudoso' / 'no_coincide', con la oleada y los cristales de la repetición.
+    replay_check = db.Column(db.String(20))
+    replay_wave = db.Column(db.Integer)
+    replay_diamonds = db.Column(db.Integer)
+
+    user = db.relationship('User')
+
+
+class HordeAccountReplay(db.Model):
+    """Grabación de una partida (semilla + movimientos del dedo + mejoras), en una tabla aparte para que el ranking nunca la lea. Al cerrar la
+    semana solo se conservan las del top 5."""
+    __tablename__ = 'horde_account_replays'
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.Integer, db.ForeignKey('horde_account_runs.id'), nullable=False, unique=True, index=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    week_key = db.Column(db.String(10), nullable=False, index=True)
+    width = db.Column(db.Integer, nullable=False)
+    height = db.Column(db.Integer, nullable=False)
+    character_slot = db.Column(db.Integer, default=0)
+    # Versión de las reglas con que se jugó (la repetición usa las mismas).
+    rules = db.Column(db.Integer, default=1)
+    data = db.Column(db.Text, nullable=False)
+    size = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class HordeAccountBan(db.Model):
+    """Cuenta bloqueada en Hordas (por trampa): no puede jugar, no sale en el ranking y no recibe premio."""
+    __tablename__ = 'horde_account_bans'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True, index=True)
+    reason = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User')
+
+
+class HordeAccountWinner(db.Model):
+    """Ganador de una semana de Hordas. El premio (puntos de la tienda) no sale solo: queda 'pending' hasta que el admin revisa las repeticiones y
+    aprueba (entonces los puntos caen en la cuenta)."""
+    __tablename__ = 'horde_account_winners'
+    __table_args__ = (db.UniqueConstraint('week_key', 'user_id', name='uq_horde_account_winner'),)
+    id = db.Column(db.Integer, primary_key=True)
+    week_key = db.Column(db.String(10), nullable=False, index=True)
+    place = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    diamonds = db.Column(db.Integer, default=0)
+    # Puntos de la tienda que gana (se anotan al armar el ganador: si luego el admin cambia los premios, este no cambia).
+    points = db.Column(db.Integer, nullable=False, default=0)
+    status = db.Column(db.String(20), nullable=False, default='pending')   # pending | approving | approved
+    reviewed_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User')
+
+
 # ───────────────────────── Torneos ─────────────────────────
 # El dueño publica el link del torneo en su canal de WhatsApp y, a la hora, abre las inscripciones desde el admin. Cada torneo tiene SALAS
 # (nombre, ID y clave de la sala del juego, y cuántos jugadores caben); la gente entra por orden de llegada con su ID verificado y la web

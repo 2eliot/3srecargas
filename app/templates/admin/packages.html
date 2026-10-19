@@ -33,7 +33,7 @@
             </thead>
             <tbody>
                 {% for pkg in packages %}
-                <tr>
+                <tr data-pkg-id="{{ pkg.id }}" data-active="{{ 1 if pkg.is_active else 0 }}">
                     <td>
                         {% if pkg.image %}
                         <img src="{{ url_for('static', filename='uploads/' + pkg.image) }}"
@@ -70,7 +70,7 @@
                         {% else %}—{% endif %}
                     </td>
                     <td>
-                        <span class="badge {% if pkg.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+                        <span class="badge pkg-state-badge {% if pkg.is_active %}badge-active{% else %}badge-inactive{% endif %}">
                             {{ 'Activo' if pkg.is_active else 'Inactivo' }}
                         </span>
                     </td>
@@ -80,10 +80,12 @@
                                     onclick="openEditPkg({{ pkg.id }}, {{ ((pkg.name))|jsattr }}, {{ ((pkg.price))|jsattr }}, {{ ((pkg.usd_price if pkg.usd_price is not none else ''))|jsattr }}, {{ (((pkg.description or '')))|jsattr }}, {{ pkg.sort_order }}, {{ pkg.is_automated | lower }}, {{ pkg.is_active | lower }}, {{ 1 if pkg.image else 0 }}, {{ ((pkg.announcement_type or ''))|jsattr }}, {{ ((pkg.points_reward if pkg.points_reward is not none else ''))|jsattr }}, {{ (pkg.show_support_fallback if pkg.show_support_fallback is not none else true) | lower }}, {{ ((pkg.bs_price if pkg.bs_price is not none else ''))|jsattr }}, {{ ((pkg.cost_usd if pkg.cost_usd is not none else ''))|jsattr }}, {{ ((pkg.section or 'main'))|jsattr }})">
                                 Editar
                             </button>
-                            <form method="POST" action="{{ url_for('admin_bp.package_delete', pkg_id=pkg.id) }}" style="display:inline">
-                                <button class="btn-sm btn-danger" type="submit"
-                                        onclick="return confirm('¿Desactivar paquete?')">Off</button>
-                            </form>
+                            {# Interruptor: enciende o apaga el paquete en la tienda al instante (sin recargar la lista). Sin JavaScript no hace nada: la casilla solo se ve. #}
+                            <label class="switch-toggle" title="Activar o desactivar este paquete en la tienda">
+                                <input type="checkbox" class="pkg-active-switch" aria-label="Activar o desactivar {{ pkg.name }}"
+                                       data-url="{{ url_for('admin_bp.package_set_active', pkg_id=pkg.id) }}" {{ 'checked' if pkg.is_active }}>
+                                <span class="switch-slider"></span>
+                            </label>
                             <form method="POST" action="{{ url_for('admin_bp.package_delete_permanent', pkg_id=pkg.id) }}" style="display:inline">
                                 <button class="btn-sm btn-danger" type="submit"
                                         onclick="return confirm({{ ('¿ELIMINAR el paquete \'' ~ (pkg.name) ~ '\' permanentemente? Esto no se puede deshacer. Si tiene órdenes asociadas, no se podrá eliminar.')|jsattr }})">Eliminar</button>
@@ -317,7 +319,39 @@
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
+/* Enciende o apaga un paquete con el interruptor de la lista: manda el estado que se quiere, actualiza la etiqueta "Activo / Inactivo" de la fila y, si
+   algo falla, deja el interruptor como estaba y avisa. La página no se recarga (se conserva el lugar en la lista). */
+document.querySelectorAll('.pkg-active-switch').forEach(function (box) {
+    box.addEventListener('change', function () {
+        var row = box.closest('tr');
+        var wanted = box.checked;
+        box.disabled = true;
+        fetch(box.getAttribute('data-url'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'fetch' },
+            body: 'active=' + (wanted ? '1' : '0'),
+            credentials: 'same-origin'
+        }).then(function (res) { return res.json(); }).then(function (data) {
+            if (!data || !data.ok) throw new Error('sin respuesta');
+            box.checked = !!data.active;
+            row.setAttribute('data-active', data.active ? '1' : '0');
+            var badge = row.querySelector('.pkg-state-badge');
+            if (badge) {
+                badge.textContent = data.active ? 'Activo' : 'Inactivo';
+                badge.classList.toggle('badge-active', !!data.active);
+                badge.classList.toggle('badge-inactive', !data.active);
+            }
+        }).catch(function () {
+            box.checked = !wanted;
+            alert('No se pudo cambiar el paquete. Revisa tu conexión e intenta de nuevo.');
+        }).then(function () { box.disabled = false; });
+    });
+});
+
 function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive, hasImage, announcementType, pointsReward, showSupportFallback, bsPrice, costUsd, section) {
+    // Si ya se usó el interruptor de la lista, el estado que vale es el de la fila (no el que traía la página al cargar).
+    var liveRow = document.querySelector('tr[data-pkg-id="' + id + '"]');
+    if (liveRow) isActive = liveRow.getAttribute('data-active') === '1';
     document.getElementById('editPkgForm').action = '/admin/packages/' + id + '/edit';
     document.getElementById('editPkgName').value = name;
     document.getElementById('editPkgPrice').value = price;

@@ -71,7 +71,7 @@ button, input, select { touch-action: manipulation; }
     border-left: 1px solid rgba(255,255,255,0.25);
     box-shadow: 0 15px 35px rgba(0,0,0,0.15), inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1.5px 2px rgba(0,0,0,0.02), 0 0 30px rgba(255,0,0,0.08);
 }
-/* Igual a la barra "Ingresa tu ID" de la tienda. Al escribir solo se
+/* Igual a la barra de ID de la tienda. Al escribir solo se
    aclara un poco el borde (antes se prendía un brillo rojo fuerte). */
 .glass-input-field {
     background: rgba(0,0,0,0.55);
@@ -93,7 +93,7 @@ button, input, select { touch-action: manipulation; }
 .rank-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 /* Botones rojos principales con su propio color: no dependen de que el
    Tailwind del CDN termine de generar el degradado (a veces quedaban negros). */
-#playBtn, #againBtn, #resumeBtn, #lookupBtn {
+#playBtn, #againBtn, #resumeBtn {
     background-color: #dc2626;
     background-image: linear-gradient(90deg, #dc2626, #e11d48, #b91c1c);
     color: #fff;
@@ -123,6 +123,10 @@ button, input, select { touch-action: manipulation; }
 .replay-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,.85); border-top: 1px solid rgba(255,255,255,.15); z-index: 3; }
 .replay-result { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); width: min(92%, 520px); padding: 12px 14px; border-radius: 14px; background: rgba(0,0,0,.9); border: 1px solid rgba(250,204,21,.5); font-size: 12px; z-index: 3; }
 .rank-more-btn { width: 100%; text-align: center; padding: 8px; border-radius: 12px; border: 1px dashed rgba(255,255,255,.18); color: #d4d4d4; font-size: 11px; font-weight: 800; }
+.acc-btn { flex: 1; display: block; text-align: center; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .05em; padding: 10px 8px; border-radius: 12px; text-decoration: none; }
+.acc-btn-primary { background: linear-gradient(135deg, #ff1a1a, #c80000); border: 1px solid rgba(255,255,255,0.4); box-shadow: 0 4px 16px rgba(255,0,0,0.45), inset 0 1.5px 2px rgba(255,255,255,0.45); color: #fff; }
+.acc-btn-ghost { border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.05); color: #e5e5e5; }
+.rank-avatar { width: 30px; height: 30px; border-radius: 99px; flex-shrink: 0; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; background: #262626; border: 1px solid rgba(255,255,255,.22); color: #fff; font-size: 12px; font-weight: 900; }
 .lookup-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.1); overflow: hidden; }
 .lookup-bar > div { height: 100%; background: linear-gradient(90deg, #22d3ee, #a855f7); }
 .rank-row.is-me { border-color: rgba(34,211,238,.7) !important; background: rgba(34,211,238,.08) !important; }
@@ -186,28 +190,14 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
     </header>
 
     <main class="w-full flex flex-col items-center gap-2.5">
-        {% if not games %}
+        {% if not enabled %}
         <div class="glass-card w-full p-6 rounded-2xl text-center text-slate-300 text-sm">
-            Este juego no está activo en este momento. Vuelve pronto.
+            Hordas de Diamantes no está activo en este momento. Vuelve pronto.
         </div>
         {% else %}
 
-        {% if games|length > 1 %}
-        <div class="w-full">
-            <span class="text-xs uppercase tracking-widest text-white font-extrabold block mb-1.5">Selecciona un Juego:</span>
-            <div class="w-full flex flex-wrap gap-2">
-                {% for g in games %}
-                <button type="button" onclick="switchGame({{ g.id }})"
-                        class="glass-game-btn flex-1 min-w-[100px] text-center px-3 py-2.5 rounded-xl text-xs font-bold {% if game and game.id == g.id %}is-selected text-white{% else %}text-slate-300{% endif %}">
-                    {{ g.name }}
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
         <div class="glass-card w-full p-2.5 rounded-2xl text-center">
-            <div class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Premio de la semana</div>
+            <div class="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Premios de la semana</div>
             <div id="prizeLine" class="text-sm font-black text-amber-400 mt-0.5 leading-tight">Cargando...</div>
             <div id="weekCountdown" class="text-xs font-black text-red-400 mt-1"></div>
         </div>
@@ -216,14 +206,30 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
             <div class="id-box rounded-xl p-2">
                 <div class="flex items-center gap-2 mb-1.5">
                     <span class="id-step">1</span>
-                    <span class="text-sm font-black text-white">Ingresa tu ID</span>
+                    <span class="text-sm font-black text-white">Tu cuenta</span>
                 </div>
-                <div class="w-full flex gap-2">
-                    <input type="tel" inputmode="numeric" id="playerIdInput" placeholder="Ingresa tu ID"
-                           class="glass-input-field flex-1 min-w-0 rounded-xl px-4 py-2.5 text-sm focus:outline-none">
-                    <button type="button" id="verifyIdBtn" class="verify-btn flex-shrink-0 font-black text-[11px] px-4 rounded-xl uppercase tracking-wider">Verificar</button>
+                <p id="accountLoading" class="text-[11px] font-bold text-slate-400">Cargando tu cuenta...</p>
+                <div id="accountGuest" hidden>
+                    <p class="text-[12px] font-bold text-slate-200 leading-snug mb-2">Para jugar necesitas una cuenta: así tus puntos y tu puesto quedan guardados.</p>
+                    <div class="flex gap-2">
+                        <a href="{{ url_for('auth_bp.register', next=login_next) }}" class="acc-btn acc-btn-primary">Crear mi cuenta</a>
+                        <a href="{{ url_for('auth_bp.login', tab='cuenta', next=login_next) }}" class="acc-btn acc-btn-ghost">Ya tengo cuenta</a>
+                    </div>
                 </div>
-                <p id="verifyIdMsg" class="text-[11px] font-bold mt-1 min-h-[12px]"></p>
+                <div id="accountNeed" hidden>
+                    <p id="accountNeedText" class="text-[12px] font-bold text-amber-300 leading-snug mb-2"></p>
+                    <a id="accountNeedLink" href="#" class="acc-btn acc-btn-ghost" hidden></a>
+                </div>
+                <div id="accountReady" hidden class="flex items-center justify-between gap-2">
+                    <span class="min-w-0">
+                        <span class="block text-[10px] uppercase tracking-widest text-slate-400 font-bold">Jugando como</span>
+                        <span id="accountName" class="block text-sm font-black text-emerald-400 truncate"></span>
+                    </span>
+                    <span class="text-right flex-shrink-0">
+                        <span class="block text-[10px] uppercase tracking-widest text-slate-400 font-bold">Tus puntos</span>
+                        <span id="accountPoints" class="block text-sm font-black text-amber-400">⭐ 0</span>
+                    </span>
+                </div>
             </div>
             {% if characters|length > 1 %}
             <div>
@@ -256,15 +262,10 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
             <div id="rankingMoreBox" class="flex flex-col gap-1.5 mt-1.5" hidden></div>
             <button type="button" id="rankingMoreBtn" class="rank-more-btn mt-1.5" hidden></button>
 
-            <div class="glass-inset rounded-xl p-2 mt-2">
-                <div class="text-[11px] font-extrabold text-white mb-1.5">🔎 Tu posición actual</div>
-                <div class="flex gap-2">
-                    <input type="tel" inputmode="numeric" id="lookupIdInput" placeholder="Busca tu ID de juego..."
-                           class="glass-input-field flex-1 min-w-0 rounded-xl px-4 py-2.5 text-sm focus:outline-none">
-                    <button type="button" id="lookupBtn" class="flex-shrink-0 bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold text-[11px] px-4 rounded-xl uppercase">Ver</button>
-                </div>
-                <p id="lookupMsg" class="text-[11px] font-bold mt-1.5 min-h-[14px]"></p>
-                <div id="lookupResult" hidden></div>
+            <div id="myPositionBox" class="glass-inset rounded-xl p-2 mt-2" hidden>
+                <div class="text-[11px] font-extrabold text-white mb-1.5">📍 Tu posición actual</div>
+                <p id="myPositionMsg" class="text-[11px] font-bold text-slate-300 min-h-[14px]"></p>
+                <div id="myPositionResult" hidden></div>
             </div>
         </div>
 
@@ -281,8 +282,9 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
             <p>• 🔥 Desde la oleada 6 <b class="text-red-400">el borde quema</b>: si te quedas pegado a la orilla pierdes vida. Además, algunos monstruos te cortan el paso: no sirve solo dar vueltas.</p>
             <p>• ❤️ Cada oleada empieza con tu vida llena. Al terminar cada oleada eliges una mejora. Cada 5 oleadas sale un jefe, y desde la oleada 5 algunos enemigos (los azules) te disparan: esquiva sus balas.</p>
             <p>• Los grandes tienen poderes: cuando brillan, algo viene. Los morados te embisten en línea recta (quítate del camino amarillo) y el jefe dispara en círculo, invoca esbirros o también embiste.</p>
-            <p id="howToPoints" {% if not (games and horde_extra_cost) %}hidden{% endif %}>• ¿Se acabaron tus partidas gratis del día? Sigue jugando canjeando los puntos que ganas con tus recargas en ese ID ({{ horde_extra_cost }} pts por partida) y sube más en el top.</p>
-            <p>• Antes de entregar los premios revisamos las partidas de los ganadores. Si hay trampa, ese ID queda bloqueado y el premio pasa al siguiente.</p>
+            <p id="howToPoints" hidden></p>
+            <p>• Los premios son <b class="text-amber-300">puntos de la tienda</b>: caen en tu cuenta y los gastas en la tienda de puntos.</p>
+            <p>• Antes de entregar los premios revisamos las partidas de los ganadores. Si hay trampa, esa cuenta queda bloqueada y el premio pasa al siguiente.</p>
             <p>• Todos los cristales de tus partidas de la semana suman en el ranking. La semana cierra el domingo a las 11:59 PM (Venezuela).</p>
         </div>
         {% endif %}
@@ -297,7 +299,7 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
         <div class="text-4xl mb-1">⭐</div>
         <h3 class="text-lg font-black text-white">Te faltan puntos</h3>
         <p id="noPointsText" class="text-[12px] text-slate-300 font-bold mt-2 leading-relaxed"></p>
-        <p class="text-[11px] text-amber-300 font-bold mt-2">Cada recarga a tu ID te da puntos para seguir jugando y subir en el top.</p>
+        <p class="text-[11px] text-amber-300 font-bold mt-2">Cada recarga que haces con tu cuenta abierta te da puntos para seguir jugando y subir en el top.</p>
         <a href="{{ url_for('main_bp.index') }}" class="block w-full mt-4 bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black text-sm py-3 rounded-xl uppercase" style="background-image:linear-gradient(90deg,#f59e0b,#f97316);">💎 Recargar ahora</a>
     </div>
 </div>
@@ -378,20 +380,15 @@ body.is-playing { -webkit-user-select: none; user-select: none; -webkit-touch-ca
 </div>
 
 <script>
-const GAME_ID = {{ (game.id if game else 'null') }};
-const VERIFIABLE = {{ 'true' if verifiable else 'false' }};
 const CHARACTERS = {{ characters|tojson }};
 // Solo en el admin: datos de una partida grabada para verla o comprobarla.
 const REPLAY = {{ (replay or none)|tojson }};
 const REPLAY_MODE = !!REPLAY;
 const REPLAY_BAR_H = REPLAY_MODE && !REPLAY.check ? 64 : 0;
 const $ = (id) => document.getElementById(id);
-
-function switchGame(id) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('game_id', id);
-    window.location.href = url.toString();
-}
+// Hordas se juega con la CUENTA (la de "Mi cuenta"): el servidor sabe quién eres por la sesión y aquí no se escribe ningún ID.
+const ACCOUNT_URLS = { profile: {{ url_for('auth_bp.profile')|tojson }}, edit: {{ url_for('profiles_bp.edit_profile')|tojson }} };
+let account = { logged_in: false, ready: false, code: '', message: '', name: '', handle: '', balance: null };
 
 function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -426,14 +423,19 @@ function startWeekCountdown(iso) {
 
 function renderPrizes(prizes) {
     const medals = ['🥇', '🥈', '🥉'];
-    const names = ['1er lugar', '2do lugar', '3er lugar'];
-    if (!prizes || !prizes.length) { $('prizeLine').textContent = '🏆 El #1 gana premio'; return; }
+    if (!prizes || !prizes.length) { $('prizeLine').textContent = '🏆 Sube al Top de la semana'; return; }
     $('prizeLine').innerHTML = prizes.map((p) => `
         <div class="flex items-center justify-center gap-1.5 ${p.place === 1 ? 'text-sm' : 'text-xs text-amber-300/90'}">
-            <span>${medals[p.place - 1]}</span>
-            <span class="text-slate-300 font-bold text-[11px]">${names[p.place - 1]}:</span>
-            <span>${escapeHtml(p.label)}</span>
+            <span>${medals[p.place - 1] || '🏅'}</span>
+            <span class="text-slate-300 font-bold text-[11px]">${p.place}.º lugar:</span>
+            <span>⭐ ${Number(p.points).toLocaleString('es')} puntos</span>
         </div>`).join('');
+}
+
+function avatarHtml(who) {
+    return who.avatar
+        ? `<img class="rank-avatar" src="${escapeHtml(who.avatar)}" alt="" loading="lazy" draggable="false">`
+        : `<span class="rank-avatar">${escapeHtml(String(who.name || '?').slice(0, 1).toUpperCase())}</span>`;
 }
 
 function renderRanking(data) {
@@ -441,6 +443,8 @@ function renderRanking(data) {
     $('playersCount').textContent = data.total_players ? `${data.total_players} jugador(es)` : '';
     if (!data.ranking.length) {
         box.innerHTML = '<div class="glass-inset rounded-xl p-2 text-center text-slate-400 text-xs">Nadie ha jugado esta semana. ¡Sé el primero!</div>';
+        $('rankingMoreBox').innerHTML = '';
+        $('rankingMoreBtn').hidden = true;
         return;
     }
     const medals = ['🥇', '🥈', '🥉'];
@@ -448,10 +452,13 @@ function renderRanking(data) {
     const rowHtml = (r) => `
         <div class="rank-row glass-inset ${prizePlaces.has(r.place) ? 'is-prize' : ''} rounded-xl px-2.5 py-1.5 ${r.is_me ? 'is-me' : ''}">
             <span class="text-sm font-black text-center">${medals[r.place - 1] || '#' + r.place}</span>
-            <span class="min-w-0">
-                <span class="block text-[12px] font-black text-white truncate">${escapeHtml(r.nick)}${r.is_me ? ' <span class="text-cyan-300">(tú)</span>' : ''}</span>
-                <span class="block text-[10px] font-bold text-slate-500">ID: ${escapeHtml(r.player_id)}</span>
-            </span>
+            <a href="/u/${encodeURIComponent(r.handle)}" class="min-w-0 flex items-center gap-2" style="text-decoration:none">
+                ${avatarHtml(r)}
+                <span class="min-w-0">
+                    <span class="block text-[12px] font-black text-white truncate">${escapeHtml(r.name)}${r.is_me ? ' <span class="text-cyan-300">(tú)</span>' : ''}</span>
+                    <span class="block text-[10px] font-bold text-slate-500 truncate">@${escapeHtml(r.handle)}</span>
+                </span>
+            </a>
             <span class="text-sm font-black text-cyan-300">💎 ${r.diamonds} <small class="text-[10px] font-bold text-cyan-200">cristales</small></span>
         </div>`;
     // Top 4 a la vista; el resto dentro del desplegable (se queda abierto
@@ -479,55 +486,34 @@ $('rankingMoreBtn').addEventListener('click', () => {
     updateRankingMore();
 });
 
-// Buscador de posición por ID (como el ranking de recargas): se verifica
-// el ID con el juego y se muestra el puesto y cuánto falta para subir.
-async function lookupPosition() {
-    const input = $('lookupIdInput'), btn = $('lookupBtn'), msg = $('lookupMsg'), out = $('lookupResult');
-    const playerId = input.value.trim();
-    out.hidden = true;
-    msg.className = 'text-[11px] font-bold mt-1.5 min-h-[14px] text-red-400';
-    if (!playerId) { msg.textContent = 'Escribe tu ID primero.'; return; }
-    btn.disabled = true; btn.textContent = '...';
+// Tu posición (como el ranking de recargas): sale sola con tu cuenta, sin buscar nada.
+function renderMyPosition(data) {
+    const box = $('myPositionBox');
+    if (!account.ready) { box.hidden = true; return; }
+    box.hidden = false;
+    const out = $('myPositionResult'), msg = $('myPositionMsg');
+    const p = data.me;
+    if (!p) { msg.textContent = 'Todavía no tienes cristales esta semana. ¡Juega para entrar al ranking!'; out.hidden = true; return; }
     msg.textContent = '';
-    try {
-        if (VERIFIABLE) {
-            const vr = await fetch(`/promos/api/verify-player?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
-            const vd = await vr.json();
-            if (!vd.ok && vr.status !== 403) throw new Error(vd.error || 'ID no encontrado.');
-        }
-        const res = await fetch(`/promos/api/hordas/posicion?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error || 'No se pudo buscar.');
-        const p = data.position;
-        if (!p) { msg.textContent = 'Ese ID todavía no tiene cristales esta semana. ¡Juega para entrar al ranking!'; return; }
-        msg.textContent = '';
-        const medal = ['🥇', '🥈', '🥉'][p.place - 1] || '';
-        const hint = p.place === 1
-            ? '¡Vas de primero! Sigue jugando para que nadie te alcance.'
-            : `Te faltan 💎 ${p.missing} cristales para pasar al puesto #${p.place - 1}.`;
-        out.innerHTML = `
-            <div class="flex items-center justify-between gap-2">
-                <span class="min-w-0">
-                    <span class="block text-[12px] font-black text-white truncate">${escapeHtml(p.nick)}</span>
-                    <span class="block text-[10px] font-bold text-slate-500">ID: ${escapeHtml(p.player_id)} · de ${p.total_players} jugador(es)</span>
-                </span>
-                <span class="text-right flex-shrink-0">
-                    <span class="block text-lg font-black text-amber-400">${medal} #${p.place}</span>
-                    <span class="block text-[12px] font-black text-cyan-300">💎 ${p.diamonds} cristales</span>
-                </span>
-            </div>
-            <div class="lookup-bar mt-2"><div style="width:${p.progress_percent}%"></div></div>
-            <div class="text-[11px] font-bold text-slate-300 mt-1.5">${hint}</div>`;
-        out.hidden = false;
-    } catch (e) {
-        msg.textContent = (e && (e.name === 'TypeError' || e.name === 'AbortError')) ? 'Sin conexión. Revisa tu internet e intenta de nuevo.' : ((e && e.message) || 'ID no encontrado.');
-    } finally {
-        btn.disabled = false; btn.textContent = 'Ver';
-    }
+    const medal = ['🥇', '🥈', '🥉'][p.place - 1] || '';
+    const hint = p.place === 1
+        ? '¡Vas de primero! Sigue jugando para que nadie te alcance.'
+        : `Te faltan 💎 ${p.missing} cristales para pasar al puesto #${p.place - 1}.`;
+    out.innerHTML = `
+        <div class="flex items-center justify-between gap-2">
+            <span class="min-w-0">
+                <span class="block text-[12px] font-black text-white truncate">${escapeHtml(account.name || account.handle)}</span>
+                <span class="block text-[10px] font-bold text-slate-500">de ${p.total_players} jugador(es)</span>
+            </span>
+            <span class="text-right flex-shrink-0">
+                <span class="block text-lg font-black text-amber-400">${medal} #${p.place}</span>
+                <span class="block text-[12px] font-black text-cyan-300">💎 ${p.diamonds} cristales</span>
+            </span>
+        </div>
+        <div class="lookup-bar mt-2"><div style="width:${p.progress_percent}%"></div></div>
+        <div class="text-[11px] font-bold text-slate-300 mt-1.5">${hint}</div>`;
+    out.hidden = false;
 }
-$('lookupBtn').addEventListener('click', lookupPosition);
-$('lookupIdInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') lookupPosition(); });
-$('lookupIdInput').value = storageGet('hordas_player_id');
 
 function renderPastWinners(list) {
     const container = $('pastWinnersContainer');
@@ -535,13 +521,16 @@ function renderPastWinners(list) {
     container.hidden = false;
     $('pastWinnersBox').innerHTML = list.map((w) => `
         <div class="glass-inset is-prize rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px]">
-            <span class="min-w-0 truncate"><span class="text-amber-400 font-black">#${w.place}</span> <span class="font-black text-white">${escapeHtml(w.nick)}</span> <span class="text-slate-500">· ${escapeHtml(w.player_id)}</span></span>
-            <span class="flex-shrink-0 text-slate-400 font-bold">Sem. ${escapeHtml(w.week_key)} · 💎 ${w.diamonds} cristales</span>
+            <a href="/u/${encodeURIComponent(w.handle)}" class="min-w-0 flex items-center gap-2" style="text-decoration:none">
+                ${avatarHtml(w)}
+                <span class="min-w-0 truncate"><span class="text-amber-400 font-black">#${w.place}</span> <span class="font-black text-white">${escapeHtml(w.name)}</span> <span class="text-slate-500">· @${escapeHtml(w.handle)}</span></span>
+            </a>
+            <span class="flex-shrink-0 text-slate-400 font-bold text-right">Sem. ${escapeHtml(w.week_key)} · 💎 ${w.diamonds}${w.points ? ` · ⭐ ${Number(w.points).toLocaleString('es')}` : ''}</span>
         </div>`).join('');
 }
 
-// Partidas extra con puntos: al acabarse las gratis del día, el botón pasa a
-// "Jugar por X pts" y el servidor descuenta los puntos al abrir la partida.
+// Partidas extra con puntos de la cuenta: al acabarse las gratis del día, el botón pasa a "Jugar por X pts" y el servidor descuenta los puntos al abrir la
+// partida. El costo y las partidas gratis los pone el dueño en el admin.
 let extraRunCost = 0;
 let pointsBalance = null;
 
@@ -553,38 +542,28 @@ function updatePlayButton() {
     const label = $('pointsLabel');
     if (extraRunCost > 0) {
         label.hidden = false;
-        label.innerHTML = pointsBalance === null
-            ? `⭐ ¿Se te acabaron las partidas? Sigue jugando con <b>${extraRunCost} puntos</b> por partida y sube en el top.`
-            : `⭐ Tus puntos: <b>${pointsBalance}</b> · Partida extra: <b>${extraRunCost} pts</b>`;
+        label.innerHTML = account.ready
+            ? `⭐ Tus puntos: <b>${pointsBalance}</b> · Partida extra: <b>${extraRunCost} pts</b>`
+            : `⭐ ¿Se te acabaron las partidas? Con tu cuenta puedes seguir jugando con <b>${extraRunCost} puntos</b> por partida.`;
     } else {
         label.hidden = true;
     }
-    if (!IS_MOBILE) return;
-    $('playBtn').disabled = idBanned;
-    $('playBtn').classList.toggle('opacity-50', idBanned);
-    $('playBtn').textContent = idBanned ? '⛔ ID bloqueado'
-        : (needsPoints() ? `▶ Jugar por ${extraRunCost} pts` : '▶ Jugar');
-}
-
-// ID bloqueado por el admin en este juego (por trampa).
-let idBanned = false;
-const BANNED_TEXT = '⛔ Este ID está bloqueado en Hordas de Diamantes para este juego.';
-
-function showBanned(banned) {
-    const was = idBanned;
-    idBanned = !!banned;
-    const msg = $('verifyIdMsg');
-    if (idBanned) {
-        msg.className = 'text-[11px] font-bold mt-1.5 min-h-[14px] text-red-400';
-        msg.textContent = BANNED_TEXT;
-    } else if (was && msg.textContent === BANNED_TEXT) {
-        msg.textContent = '';
+    const how = $('howToPoints');
+    if (how) {
+        how.hidden = !(extraRunCost > 0);
+        how.textContent = `• ¿Se acabaron tus partidas gratis del día? Sigue jugando con los puntos de tu cuenta (${extraRunCost} pts por partida) y sube más en el top. Los puntos los ganas recargando con tu cuenta abierta.`;
     }
+    if (!IS_MOBILE) return;
+    const blocked = !account.ready;
+    $('playBtn').disabled = blocked;
+    $('playBtn').classList.toggle('opacity-50', blocked);
+    $('playBtn').textContent = !account.logged_in ? '🔒 Entra con tu cuenta para jugar'
+        : (!account.ready ? '⛔ No puedes jugar ahora' : (needsPoints() ? `▶ Jugar por ${extraRunCost} pts` : '▶ Jugar'));
 }
 
 function showNoPoints(balance) {
     $('noPointsText').textContent =
-        `La partida extra cuesta ${extraRunCost} pts y este ID tiene ${balance == null ? 0 : balance}. Ya usaste tus partidas gratis de hoy.`;
+        `La partida extra cuesta ${extraRunCost} pts y tu cuenta tiene ${balance == null ? 0 : balance}. Ya usaste tus partidas gratis de hoy.`;
     $('noPointsModal').hidden = false;
 }
 $('noPointsClose').addEventListener('click', () => { $('noPointsModal').hidden = true; });
@@ -592,112 +571,51 @@ $('noPointsModal').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) e.currentTarget.hidden = true; // tocar fuera también cierra
 });
 
+// Quién eres: sin sesión se invita a crear la cuenta o entrar; con sesión pero sin usuario elegido (o con el perfil privado) se explica qué falta.
+function renderAccount() {
+    $('accountLoading').hidden = true;
+    const need = account.logged_in && !account.ready;
+    $('accountGuest').hidden = account.logged_in;
+    $('accountNeed').hidden = !need;
+    $('accountReady').hidden = !account.ready;
+    if (need) {
+        $('accountNeedText').textContent = account.message || '';
+        const link = $('accountNeedLink');
+        const target = account.code === 'username' ? [ACCOUNT_URLS.profile, 'Elegir mi nombre de usuario']
+            : (account.code === 'hidden' ? [ACCOUNT_URLS.edit, 'Cambiar la privacidad de mi perfil'] : null);
+        link.hidden = !target;
+        if (target) { link.href = target[0]; link.textContent = target[1]; }
+    }
+    if (account.ready) {
+        $('accountName').textContent = account.name || account.handle || '';
+        $('accountPoints').textContent = `⭐ ${Number(account.balance || 0).toLocaleString('es')}`;
+    }
+}
+
 async function refreshState() {
-    if (!GAME_ID) return;
-    const playerId = $('playerIdInput').value.trim();
+    if (!$('playBtn')) return;   // Hordas apagado: la página solo trae el aviso
     try {
-        const res = await fetch(`/promos/api/hordas/estado?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
+        const res = await fetch('/promos/api/hordas/estado', { cache: 'no-store' });
         const data = await res.json();
         if (!data.ok || !data.enabled) return;
+        account = data.account || account;
+        renderAccount();
         renderPrizes(data.prizes);
         startWeekCountdown(data.week_ends_at);
-        runsLeftToday = playerId ? data.runs_left_today : null;
+        runsLeftToday = account.ready ? data.runs_left_today : null;
         extraRunCost = data.extra_run_cost || 0;
-        pointsBalance = playerId ? data.points_balance : null;
-        showBanned(playerId && data.banned);
-        $('runsLeftLabel').textContent = playerId
+        pointsBalance = account.ready ? account.balance : null;
+        $('runsLeftLabel').textContent = account.ready
             ? `Partidas gratis hoy: ${data.runs_left_today} de ${data.runs_per_day}`
             : `${data.runs_per_day} partidas gratis por día`;
         updatePlayButton();
-        $('myWeekLabel').textContent = playerId && data.my_total
+        $('myWeekLabel').textContent = account.ready && data.my_total
             ? `Tu semana: 💎 ${data.my_total} cristales${data.my_rank ? ` (#${data.my_rank})` : ''}`
             : '';
         renderRanking(data);
+        renderMyPosition(data);
         renderPastWinners(data.past_winners);
     } catch (e) {}
-}
-
-// ─── ID y verificación ──────────────────────────────────────────────────────
-
-const playerIdInput = $('playerIdInput');
-const verifyIdBtn = $('verifyIdBtn');
-const VERIFY_MSG = 'text-[11px] font-bold mt-1.5 min-h-[14px]';
-let verifiedPlayerId = null;
-
-playerIdInput.value = storageGet('hordas_player_id');
-if (playerIdInput.value && storageGet('hordas_verified_id') === playerIdInput.value) {
-    verifiedPlayerId = playerIdInput.value;
-    const nick = storageGet('hordas_verified_nick');
-    if (nick) {
-        $('verifyIdMsg').className = VERIFY_MSG + ' text-emerald-400';
-        $('verifyIdMsg').textContent = `✅ ${nick}`;
-    }
-    setVerifyBtnOk(true);
-}
-
-function setVerifyBtnOk(ok) {
-    verifyIdBtn.classList.toggle('is-ok', ok);
-    verifyIdBtn.textContent = ok ? '✓ Listo' : 'Verificar';
-}
-
-let refreshTimer = null;
-playerIdInput.addEventListener('input', () => {
-    if (verifiedPlayerId !== null && playerIdInput.value.trim() !== verifiedPlayerId) {
-        verifiedPlayerId = null;
-        $('verifyIdMsg').textContent = '';
-        setVerifyBtnOk(false);
-    }
-    clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(refreshState, 500);
-});
-
-if (verifyIdBtn) {
-    verifyIdBtn.addEventListener('click', async () => {
-        const playerId = playerIdInput.value.trim();
-        const msg = $('verifyIdMsg');
-        if (!playerId) {
-            msg.className = VERIFY_MSG + ' text-red-400';
-            msg.textContent = 'Escribe tu ID primero.';
-            return;
-        }
-        verifyIdBtn.disabled = true;
-        verifyIdBtn.textContent = '⏳...';
-        msg.className = VERIFY_MSG + ' text-slate-400';
-        msg.textContent = 'Consultando tu ID...';
-        let ok = false;
-        try {
-            const res = await fetch(`/promos/api/verify-player?game_id=${GAME_ID}&player_id=${encodeURIComponent(playerId)}`);
-            const data = await res.json();
-            if (res.status === 403) {
-                // Este juego no tiene la verificación configurada: se puede
-                // jugar igual con el ID escrito.
-                storageSet('hordas_player_id', playerId);
-                msg.className = VERIFY_MSG + ' text-amber-300';
-                msg.textContent = 'La verificación no está disponible ahora. Puedes jugar igual con este ID.';
-                refreshState();
-            } else if (!data.ok) {
-                verifiedPlayerId = null;
-                msg.className = VERIFY_MSG + ' text-red-400';
-                msg.textContent = data.error || 'No se pudo verificar tu ID.';
-            } else {
-                ok = true;
-                verifiedPlayerId = playerId;
-                storageSet('hordas_player_id', playerId);
-                storageSet('hordas_verified_id', playerId);
-                storageSet('hordas_verified_nick', data.nick || '');
-                msg.className = VERIFY_MSG + ' text-emerald-400';
-                msg.textContent = `✅ ${data.nick}`;
-                refreshState();
-            }
-        } catch (e) {
-            msg.className = VERIFY_MSG + ' text-red-400';
-            msg.textContent = 'Error de conexión, intenta de nuevo.';
-        } finally {
-            verifyIdBtn.disabled = false;
-            setVerifyBtnOk(ok);
-        }
-    });
-    playerIdInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') verifyIdBtn.click(); });
 }
 
 // ─── Motor del juego ────────────────────────────────────────────────────────
@@ -2618,14 +2536,7 @@ function hordeErrorText(e) {
 async function requestRun() {
     if (!IS_MOBILE) { setPlayMsg('📱 Este juego solo se puede jugar desde un teléfono.', 'error'); return null; }
     if (!isPortrait()) { setPlayMsg('📱 Pon tu teléfono en vertical para jugar.', 'error'); return null; }
-    const playerId = playerIdInput.value.trim();
-    if (!playerId) { setPlayMsg('Escribe tu ID de juego primero.', 'error'); return null; }
-    if (VERIFIABLE && playerId !== verifiedPlayerId) {
-        setPlayMsg('⚠️ Verifica tu ID primero (botón "Verificar").', 'error');
-        return null;
-    }
-    storageSet('hordas_player_id', playerId);
-    if (idBanned) { setPlayMsg(BANNED_TEXT, 'error'); return null; }
+    if (!account.ready) { setPlayMsg(account.message || 'Inicia sesión o crea tu cuenta para jugar.', 'error'); return null; }
     if (needsPoints() && pointsBalance !== null && pointsBalance < extraRunCost) {
         showNoPoints(pointsBalance);
         return null;
@@ -2633,8 +2544,9 @@ async function requestRun() {
     const { data } = await hordeFetch('/promos/api/hordas/iniciar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // Versión del juego de esta página: si el juego se actualizó mientras
-        // estaba abierta, el servidor pide recargar antes de jugar.
-        body: JSON.stringify({ game_id: GAME_ID, player_id: playerId, use_points: needsPoints(), rules: RULES_VERSION }),
+        // estaba abierta, el servidor pide recargar antes de jugar. `mode`
+        // distingue esta versión (con cuenta) de la vieja (con ID).
+        body: JSON.stringify({ mode: 'cuenta', use_points: needsPoints(), rules: RULES_VERSION }),
     }, HORDE_START_TIMEOUT_MS);
     if (!data.ok) {
         if (data.code === 'outdated') {
@@ -2651,7 +2563,10 @@ async function requestRun() {
         refreshState();
         return null;
     }
-    if (data.points_balance !== null && data.points_balance !== undefined) pointsBalance = data.points_balance;
+    if (data.points_balance !== null && data.points_balance !== undefined) {
+        pointsBalance = data.points_balance;
+        $('accountPoints').textContent = `⭐ ${Number(pointsBalance).toLocaleString('es')}`;
+    }
     return data;
 }
 

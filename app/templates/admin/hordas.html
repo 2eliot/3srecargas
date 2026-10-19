@@ -1,0 +1,307 @@
+{% extends 'admin/base.html' %}
+{% block title %}Hordas de Diamantes{% endblock %}
+{% block page_title %}💎 Hordas de Diamantes{% endblock %}
+
+{% block extra_css %}
+<style>
+.hz-body { padding: 0 20px 18px; }
+.hz-prizes { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0 16px; margin-top: 6px; }
+.hz-prize-row[hidden] { display: none; }
+.hz-banner { display: block; text-decoration: none; margin: 0 20px 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(250,204,21,.6); background: rgba(250,204,21,.08); color: #facc15; font-weight: 700; }
+.hz-legacy { margin: 0 20px 18px; padding: 14px; border-radius: 14px; border: 1px solid rgba(250,204,21,.45); background: rgba(250,204,21,.05); }
+.hz-legacy-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.hz-legacy-row:first-of-type { border-top: 0; }
+.hz-who { display: flex; align-items: center; gap: 8px; }
+.hz-avatar { width: 30px; height: 30px; border-radius: 99px; object-fit: cover; background: #262626; border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; flex-shrink: 0; }
+.hz-chars { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.hz-char { border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+</style>
+{% endblock %}
+
+{% macro who_cell(w) %}
+<span class="hz-who">
+    {% if w and w.avatar %}<img class="hz-avatar" src="{{ w.avatar }}" alt="">{% else %}<span class="hz-avatar">{{ ((w.name if w else '?')[:1])|upper }}</span>{% endif %}
+    <span><strong>{{ w.name if w else 'Cuenta borrada' }}</strong>{% if w %}<br><small>@{{ w.handle }}</small>{% endif %}</span>
+</span>
+{% endmacro %}
+
+{% block content %}
+<div class="admin-card">
+    <div class="card-header">
+        <h2>Hordas de Diamantes</h2>
+        <span class="badge {% if settings.enabled %}badge-active{% else %}badge-inactive{% endif %}">{{ 'Activo' if settings.enabled else 'Apagado' }}</span>
+    </div>
+    <div class="hz-body">
+        <p class="form-hint">
+            Un solo Hordas para todos los juegos: el cliente juega con su <b>cuenta</b> (no con un ID), sobrevive oleadas de enemigos y junta cristales. Todos los cristales
+            de sus partidas de la semana (lunes a domingo, hora Venezuela) suman en el ranking de <b>cuentas</b>. Al cerrar la semana, los puestos con premio quedan
+            <b>pendientes de tu aprobación</b>: cuando revisas sus repeticiones y das Aprobar, los <b>puntos de la tienda</b> caen en su cuenta.
+            El servidor mide cuánto duró cada partida y descarta puntajes imposibles para ese tiempo.
+        </p>
+        <a href="{{ url_for('admin_hordas_bp.replays') }}" class="btn-primary" style="text-decoration:none; padding:8px 14px; display:inline-block;">🎬 Premios y repeticiones</a>
+    </div>
+</div>
+
+{% if pending_count %}
+<a class="hz-banner" href="{{ url_for('admin_hordas_bp.replays') }}" style="margin-top:16px;">⏳ Hay {{ pending_count }} premio(s) de Hordas esperando tu aprobación. Los puntos no caen hasta que los apruebes → Revisar ahora</a>
+{% endif %}
+
+{% if legacy_pending %}
+<div class="admin-card" style="margin-top:16px;">
+    <div class="card-header"><h2>⏳ Última semana jugada por ID (premios en paquete)</h2></div>
+    <p class="form-hint" style="padding:0 20px;">
+        La semana del 12 al 18 de octubre se jugó todavía por ID y por juego: sus ganadores reciben el <b>paquete</b> en su ID. Apruébalos como siempre (mira las repeticiones primero).
+        Cuando no quede ninguno pendiente, esta tarjeta desaparece.
+    </p>
+    <div class="hz-legacy">
+        {% for w in legacy_pending %}
+        <div class="hz-legacy-row">
+            <strong>#{{ w.place }}</strong>
+            <span style="min-width:0;">
+                {{ games.get(w.game_id, 'Juego') }} · ID {{ w.player_id }}{% if w.player_nick %} · {{ w.player_nick }}{% endif %} · 💎 {{ w.diamonds }}<br>
+                <small>Semana {{ w.week_key }} · Premio: {{ w.package.name if w.package else 'sin paquete' }}</small>
+            </span>
+            <span style="margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <a href="{{ url_for('admin_bp.promos_horde_replays', game_id=w.game_id, week=w.week_key) }}">🎬 Repeticiones</a>
+                <form method="POST" action="{{ url_for('admin_bp.promos_horde_winner_approve', winner_id=w.id) }}" style="margin:0;"
+                      onsubmit="return confirm({{ ('¿Aprobar y ENTREGAR ahora el premio (' ~ (w.package.name if w.package else 'sin paquete') ~ ') a ' ~ w.player_id ~ '?')|jsattr }});">
+                    <input type="hidden" name="back" value="{{ request.path }}">
+                    <button type="submit" class="btn-sm btn-success">✅ Aprobar y entregar</button>
+                </form>
+                <form method="POST" action="{{ url_for('admin_bp.promos_horde_winner_reject', winner_id=w.id) }}" style="margin:0;"
+                      onsubmit="const r = prompt({{ ('¿Rechazar a ' ~ w.player_id ~ ' por trampa? Se bloqueará en ese juego y los siguientes suben de puesto.\n\nMotivo (opcional):')|jsattr }}, 'Repetición no coincide'); if (r === null) return false; this.reason.value = r; return true;">
+                    <input type="hidden" name="reason" value="">
+                    <input type="hidden" name="back" value="{{ request.path }}">
+                    <button type="submit" class="btn-sm btn-danger">❌ Rechazar</button>
+                </form>
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="admin-card" style="margin-top:16px;">
+    <div class="card-header"><h2>Ajustes</h2></div>
+    <div class="hz-body">
+        <form method="POST" action="{{ url_for('admin_hordas_bp.save') }}" id="hordasForm">
+            <div class="form-group">
+                <label class="check-label">
+                    <input type="checkbox" name="enabled" value="1" {{ 'checked' if settings.enabled }}>
+                    Hordas de Diamantes activo (si lo apagas, desaparece del menú de la tienda)
+                </label>
+            </div>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="runsPerDay">Partidas gratis por cuenta al día</label>
+                    <input type="number" id="runsPerDay" name="runs_per_day" min="1" max="100" required value="{{ settings.runs_per_day }}">
+                </div>
+                <div class="form-group">
+                    <label for="extraCost">Puntos de la cuenta por cada partida extra</label>
+                    <input type="number" id="extraCost" name="extra_cost" min="0" step="1" value="{{ settings.extra_cost }}">
+                    <small class="form-hint" style="display:block;margin-top:4px;">Al acabarse las partidas gratis del día, el cliente puede seguir jugando con estos puntos de su cuenta (los que gana recargando con su sesión abierta o como premio). 0 = no se venden partidas extra.</small>
+                </div>
+            </div>
+
+            <div class="form-group" style="max-width:300px;">
+                <label for="prizePlaces">¿Cuántos puestos reciben premio? (Top)</label>
+                <input type="number" id="prizePlaces" name="prize_places" min="1" max="{{ max_places }}" required value="{{ prize_count }}">
+                <small class="form-hint" style="display:block;margin-top:4px;">Por ejemplo 3 = Top 3, 5 = Top 5. Máximo {{ max_places }}.</small>
+            </div>
+            <div class="hz-prizes" id="prizeRows">
+                {% for place in range(1, max_places + 1) %}
+                <div class="form-group hz-prize-row" data-place="{{ place }}">
+                    <label>{{ ['🥇','🥈','🥉'][place - 1] if place <= 3 else '🏅' }} Puntos del puesto #{{ place }}</label>
+                    <input type="number" name="prize_points_{{ place }}" min="0" max="{{ max_points }}" step="1" value="{{ settings.prizes[place - 1] if place <= settings.prizes|length else '' }}" placeholder="Ej: 1000">
+                </div>
+                {% endfor %}
+            </div>
+            <p class="form-hint">Son <b>puntos de la tienda</b> que caen en la cuenta del ganador y gasta en la tienda de puntos. Un puesto en 0 (o vacío) no tiene premio.
+                {% if not settings.prizes or not (settings.prizes|select('gt', 0)|list) %}<br><b style="color:#f87171;">⚠ Todavía no hay premios configurados: si cierra la semana así, nadie gana puntos.</b>{% endif %}</p>
+            <div class="form-group">
+                <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="admin-card" style="margin-top:16px;">
+    <div class="card-header"><h2>Personajes</h2></div>
+    <div class="hz-body">
+        <p class="form-hint" style="margin:0 0 10px;">El jugador elige uno de estos viendo la portada; el diseño solo se ve al jugar. Solo aparecen los que tienen diseño. Si ninguno tiene imagen, se usa el dibujo por defecto.</p>
+        <div class="hz-chars">
+        {% for ch in characters %}
+        <form method="POST" action="{{ url_for('admin_bp.promos_horde_image_save') }}" enctype="multipart/form-data" class="hz-char">
+            <input type="hidden" name="slot" value="{{ ch.slot }}">
+            <strong style="display:block; margin-bottom:8px;">Personaje {{ ch.slot }}</strong>
+            <div style="display:flex; gap:12px; margin-bottom:10px;">
+                {% for label, path, empty in (('Portada', ch.cover, 'Usa el diseño'), ('Diseño en el juego', ch.image, 'Sin imagen')) %}
+                <div style="text-align:center;">
+                    <div style="width:84px; height:84px; border-radius:12px; border:1px dashed var(--border); background:#07070a; display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                        {% if path %}
+                        <img src="{{ url_for('static', filename='uploads/' + path) }}" alt="{{ label }}" style="width:100%; height:100%; object-fit:{{ 'cover' if loop.first else 'contain' }};">
+                        {% else %}
+                        <span class="form-hint" style="text-align:center; padding:4px;">{{ empty }}</span>
+                        {% endif %}
+                    </div>
+                    <small class="form-hint" style="display:block; margin-top:4px;">{{ label }}</small>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="form-group">
+                <label>Nombre</label>
+                <input type="text" name="name" maxlength="24" value="{{ ch.name }}">
+            </div>
+            <div class="form-group">
+                <label>Portada (la que ven al elegir)</label>
+                <input type="file" name="cover_image" accept="image/png,image/webp,image/gif,image/jpeg">
+                <small class="form-hint" style="display:block;margin-top:4px;">Cuadrada (unos 400×400). Si no subes una, se muestra el diseño.</small>
+            </div>
+            {% if ch.cover %}
+            <label class="check-label" style="margin-bottom:10px;">
+                <input type="checkbox" name="remove_cover" value="on"> Quitar portada
+            </label>
+            {% endif %}
+            <div class="form-group">
+                <label>Diseño en el juego (solo se ve jugando)</label>
+                <input type="file" name="player_image" accept="image/png,image/webp,image/gif,image/jpeg">
+                <small class="form-hint" style="display:block;margin-top:4px;">Mejor PNG con fondo transparente y cuadrada (unos 256×256).</small>
+            </div>
+            <div class="form-group">
+                <label>¿Cómo está dibujado?</label>
+                <select name="image_mode">
+                    <option value="flip" {{ 'selected' if ch.mode == 'flip' }}>De frente (se voltea a izquierda/derecha según dispara)</option>
+                    <option value="rotate_right" {{ 'selected' if ch.mode == 'rotate_right' }}>Visto desde arriba, mirando a la derecha (gira hacia el enemigo)</option>
+                    <option value="rotate" {{ 'selected' if ch.mode == 'rotate' }}>Visto desde arriba, mirando hacia arriba (gira hacia el enemigo)</option>
+                </select>
+            </div>
+            {% if ch.image %}
+            <label class="check-label" style="margin-bottom:10px;">
+                <input type="checkbox" name="remove_image" value="on"> Quitar diseño (deja de aparecer para elegir)
+            </label>
+            {% endif %}
+            <div class="form-group" style="margin-bottom:0;">
+                <button type="submit" class="btn-primary">Guardar personaje {{ ch.slot }}</button>
+            </div>
+        </form>
+        {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="admin-card" style="margin-top:16px;">
+    <div class="card-header"><h2>Ranking de esta semana (desde {{ week_key }})</h2></div>
+    <div class="hz-body">
+    {% if ranking %}
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Puesto</th><th>Cuenta</th><th>Cristales</th><th></th></tr></thead>
+            <tbody>
+                {% for uid, total in ranking %}
+                {% set w = who.get(uid) %}
+                <tr>
+                    <td>#{{ loop.index }}</td>
+                    <td>{{ who_cell(w) }}</td>
+                    <td><strong>{{ total }}</strong></td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin_hordas_bp.ban') }}" style="margin:0;"
+                              onsubmit="return confirm({{ ('¿Bloquear a @' ~ (w.handle if w else uid) ~ ' en Hordas? No podrá jugar y saldrá del ranking.')|jsattr }});">
+                            <input type="hidden" name="user_id" value="{{ uid }}">
+                            <input type="hidden" name="reason" value="Trampa (desde el ranking)">
+                            <button type="submit" class="btn-sm btn-danger">🚫 Bloquear</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="form-hint">Todavía nadie ha jugado esta semana.</p>
+    {% endif %}
+    </div>
+</div>
+
+<div class="admin-card" style="margin-top:16px;">
+    <div class="card-header"><h2>🚫 Cuentas bloqueadas</h2></div>
+    <div class="hz-body">
+    <p class="form-hint" style="margin:0 0 10px;">Una cuenta bloqueada no puede jugar Hordas, no aparece en el ranking y no recibe premio.</p>
+    <form method="POST" action="{{ url_for('admin_hordas_bp.ban') }}" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-bottom:12px;">
+        <div class="form-group" style="margin:0; flex:1; min-width:180px;">
+            <label>Nombre de usuario</label>
+            <input type="text" name="username" required maxlength="60" placeholder="Ej: @pedro123">
+        </div>
+        <div class="form-group" style="margin:0; flex:2; min-width:220px;">
+            <label>Motivo (solo lo ves tú)</label>
+            <input type="text" name="reason" maxlength="200" placeholder="Ej: repetición no coincide">
+        </div>
+        <button type="submit" class="btn-danger-solid">🚫 Bloquear cuenta</button>
+    </form>
+    {% if bans %}
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Cuenta</th><th>Motivo</th><th>Desde</th><th></th></tr></thead>
+            <tbody>
+                {% for ban in bans %}
+                <tr>
+                    <td>{{ who_cell(who.get(ban.user_id)) }}</td>
+                    <td>{{ ban.reason or '—' }}</td>
+                    <td>{{ ban.created_at|datetime_ve }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin_hordas_bp.unban', ban_id=ban.id) }}" style="margin:0;"
+                              onsubmit="return confirm('¿Desbloquear esta cuenta?');">
+                            <button type="submit" class="btn-secondary" style="padding:4px 10px; font-size:12px;">Desbloquear</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="form-hint">No hay cuentas bloqueadas.</p>
+    {% endif %}
+    </div>
+</div>
+
+{% if recent_winners %}
+<div class="admin-card" style="margin-top:16px;">
+    <div class="card-header"><h2>Ganadores anteriores</h2></div>
+    <div class="hz-body">
+    <div class="table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Semana</th><th>Puesto</th><th>Cuenta</th><th>Cristales</th><th>Puntos</th><th>Estado</th></tr></thead>
+            <tbody>
+                {% for w in recent_winners %}
+                <tr>
+                    <td>{{ w.week_key }}</td>
+                    <td>#{{ w.place }}</td>
+                    <td>{{ who_cell(who.get(w.user_id)) }}</td>
+                    <td>{{ w.diamonds }}</td>
+                    <td>⭐ {{ w.points }}</td>
+                    <td>{% if w.status == 'pending' %}<span style="color:#facc15; font-weight:700;">⏳ Pendiente</span>{% elif w.status == 'approved' %}<span style="color:#4ade80; font-weight:700;">✅ Pagado</span>{% else %}{{ w.status }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Muestra solo los campos de los puestos que reciben premio (el número que pone el dueño).
+(function () {
+    var places = document.getElementById('prizePlaces');
+    var rows = document.querySelectorAll('.hz-prize-row');
+    function sync() {
+        var n = parseInt(places.value, 10) || 0;
+        rows.forEach(function (row) { row.hidden = parseInt(row.getAttribute('data-place'), 10) > n; });
+    }
+    places.addEventListener('input', sync);
+    sync();
+})();
+</script>
+{% endblock %}

@@ -15,8 +15,9 @@ from ..models import AccountPoints, AccountPointsLog, db
 
 MAX_POINTS_PER_MOVE = 1_000_000
 NOTE_MAX = 200
-# De dónde llegó (o a dónde se fue) cada movimiento: 'compra' = una recarga con la sesión abierta, 'tienda' = un canje en /tiendapuntos.
-KINDS = ('ranking', 'admin', 'id', 'compra', 'tienda')
+# De dónde llegó (o a dónde se fue) cada movimiento: 'compra' = una recarga con la sesión abierta, 'tienda' = un canje en /tiendapuntos,
+# 'hordas' = premio de Hordas de Diamantes o partida extra pagada con puntos.
+KINDS = ('ranking', 'admin', 'id', 'compra', 'tienda', 'hordas')
 
 
 def insert_ignore(model, values):

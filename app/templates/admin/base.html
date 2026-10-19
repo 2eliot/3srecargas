@@ -129,7 +129,7 @@
                     </a>
                 </div></div>
             </div>
-            {% set dinamicas_active = request.endpoint and ('points' in request.endpoint or 'gift' in request.endpoint or 'minigame' in request.endpoint or 'ranking' in request.endpoint or 'tournament' in request.endpoint) %}
+            {% set dinamicas_active = request.endpoint and ('points' in request.endpoint or 'gift' in request.endpoint or 'minigame' in request.endpoint or 'ranking' in request.endpoint or 'tournament' in request.endpoint or 'hordas' in request.endpoint) %}
             <div class="nav-group {% if dinamicas_active %}open active{% endif %}">
                 <button type="button" class="nav-item nav-group-toggle" onclick="toggleNavGroup(this)">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -176,6 +176,13 @@
                             <circle cx="12" cy="15" r="2"/>
                         </svg>
                         <span class="nav-label">Mini Juegos</span>
+                    </a>
+                    <a href="{{ url_for('admin_hordas_bp.index') }}"
+                       class="nav-item nav-subitem {% if request.endpoint and 'hordas' in request.endpoint %}active{% endif %}">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6 3h12l4 6-10 13L2 9z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/>
+                        </svg>
+                        <span class="nav-label">Hordas</span>
                     </a>
                     <a href="{{ url_for('admin_tournaments_bp.index') }}"
                        class="nav-item nav-subitem {% if request.endpoint and 'tournament' in request.endpoint %}active{% endif %}">

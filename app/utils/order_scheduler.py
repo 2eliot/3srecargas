@@ -177,6 +177,7 @@ def _run_promos_tick():
     sorteo. Aparte del tick normal de órdenes porque no depende de que
     haya órdenes pendientes: puede no correr nunca si nadie más dispara
     esta revisión."""
+    from . import hordas
     from .promos import cleanup_horde_replays, run_daily_raffle_draws, run_weekly_horde_awards
     from ..models import db
 
@@ -189,8 +190,9 @@ def _run_promos_tick():
         except Exception:
             pass
 
+    # Hordas por cuenta: ganadores de la semana que acaba de cerrar (quedan pendientes hasta que el admin apruebe).
     try:
-        run_weekly_horde_awards()
+        hordas.run_weekly_awards()
     except Exception as exc:
         print(f'[OrderScheduler] Error en premio semanal de Hordas: {exc}')
         try:
@@ -198,15 +200,26 @@ def _run_promos_tick():
         except Exception:
             pass
 
-    # Semana cerrada: solo quedan las repeticiones del top 5.
+    # Solo para cerrar la última semana jugada por ID (12-18/10/2026): ver utils/promos.py.
     try:
-        cleanup_horde_replays()
+        run_weekly_horde_awards()
     except Exception as exc:
-        print(f'[OrderScheduler] Error limpiando repeticiones de Hordas: {exc}')
+        print(f'[OrderScheduler] Error en premio semanal de Hordas (por ID): {exc}')
         try:
             db.session.rollback()
         except Exception:
             pass
+
+    # Semana cerrada: solo quedan las repeticiones del top 5.
+    for cleanup in (hordas.cleanup_replays, cleanup_horde_replays):
+        try:
+            cleanup()
+        except Exception as exc:
+            print(f'[OrderScheduler] Error limpiando repeticiones de Hordas: {exc}')
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
 
     _run_background_housekeeping()
 

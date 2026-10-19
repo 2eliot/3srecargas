@@ -1035,6 +1035,21 @@ def package_delete(pkg_id):
     return redirect(url_for('admin_bp.packages', game_id=pkg.game_id))
 
 
+@admin_bp.route('/packages/<int:pkg_id>/active', methods=['POST'])
+@login_required
+def package_set_active(pkg_id):
+    """Interruptor de la lista de paquetes: enciende o apaga el paquete en la tienda. Recibe el estado que se quiere (`active` = 1 o 0), no "cambiar", así dos
+    pestañas desfasadas no se pisan. Con `X-Requested-With: fetch` responde JSON (la lista no se recarga); sin eso, vuelve a la lista."""
+    pkg = Package.query.get_or_404(pkg_id)
+    values = request.form.getlist('active')
+    pkg.is_active = bool(values) and values[-1] == '1'
+    db.session.commit()
+    if request.headers.get('X-Requested-With') == 'fetch':
+        return jsonify({'ok': True, 'active': bool(pkg.is_active)})
+    flash('Paquete activado.' if pkg.is_active else 'Paquete desactivado.', 'success' if pkg.is_active else 'warning')
+    return redirect(url_for('admin_bp.packages', game_id=pkg.game_id))
+
+
 @admin_bp.route('/packages/<int:pkg_id>/delete-permanent', methods=['POST'])
 @login_required
 def package_delete_permanent(pkg_id):
@@ -1045,7 +1060,7 @@ def package_delete_permanent(pkg_id):
     if order_count > 0:
         flash(
             f'No puedes eliminar "{pkg.name}" porque tiene {order_count} orden(es) asociada(s) '
-            '(se perdería el historial). Usa "Off" para ocultarlo en su lugar.',
+            '(se perdería el historial). Apágalo con el interruptor para ocultarlo en su lugar.',
             'danger',
         )
         return redirect(url_for('admin_bp.packages', game_id=game_id))
@@ -4286,22 +4301,6 @@ def minigames():
                 else:
                     promos_guess_today_slots.append({'slot': slot, 'status': 'pending', 'number': None, 'player_id': None})
 
-        from ..utils.promos import _horde_week_key, get_horde_week_ranking
-        promos_horde_config = PromoHordeConfig.query.filter_by(game_id=promos_selected_game.id).first()
-        promos_horde_week_key = _horde_week_key()
-        promos_horde_ranking = get_horde_week_ranking(promos_selected_game.id, promos_horde_week_key)
-        promos_recent_horde_winners = (
-            PromoHordeWinner.query
-            .filter_by(game_id=promos_selected_game.id)
-            .order_by(PromoHordeWinner.week_key.desc(), PromoHordeWinner.place.asc())
-            .limit(15).all()
-        )
-        from ..models import PromoHordeBan
-        promos_horde_bans = (
-            PromoHordeBan.query.filter_by(game_id=promos_selected_game.id)
-            .order_by(PromoHordeBan.created_at.desc()).all()
-        )
-
         promos_accumulated_sort_order = next(
             (lvl.sort_order for lvl in promos_levels.values() if lvl.sort_order is not None), 100
         )
@@ -4324,14 +4323,6 @@ def minigames():
             guess_today_slots=promos_guess_today_slots,
             guess_recent_attempts=promos_guess_recent_attempts,
             today_key=promos_today_key,
-            horde_config=promos_horde_config,
-            horde_week_key=promos_horde_week_key,
-            horde_ranking=promos_horde_ranking,
-            recent_horde_winners=promos_recent_horde_winners,
-            horde_characters=get_horde_characters(),
-            horde_bans=promos_horde_bans,
-            horde_pending_count=PromoHordeWinner.query.filter_by(
-                game_id=promos_selected_game.id, status='pending').count(),
         )
 
     # Participación diaria de Sorteo Diario y Adivina el Número: cuántas
@@ -4836,41 +4827,6 @@ def promos_guess_save():
     return redirect(url_for('admin_bp.minigames', game_id=game.id))
 
 
-@admin_bp.route('/promos/horde', methods=['POST'])
-@login_required
-def promos_horde_save():
-    game_id = request.form.get('game_id', type=int)
-    game = Game.query.get_or_404(game_id)
-
-    is_active = request.form.get('is_active') == 'on'
-    package_id = request.form.get('package_id', type=int)
-    package_id_2 = request.form.get('package_id_2', type=int) or None
-    package_id_3 = request.form.get('package_id_3', type=int) or None
-    runs_per_day = request.form.get('runs_per_day', type=int)
-    require_verification = request.form.get('require_verification') == 'on'
-    sort_order = request.form.get('sort_order', type=int) or 100
-
-    config = PromoHordeConfig.query.filter_by(game_id=game.id).first()
-    if not config:
-        config = PromoHordeConfig(game_id=game.id)
-        db.session.add(config)
-
-    config.is_active = bool(is_active and package_id)
-    config.package_id = package_id
-    config.package_id_2 = package_id_2
-    config.package_id_3 = package_id_3
-    config.winners_per_week = 1 + bool(package_id_2) + bool(package_id_3)
-    config.runs_per_day = runs_per_day if runs_per_day and runs_per_day > 0 else 5
-    extra_cost = request.form.get('points_per_extra_run', type=int)
-    config.points_per_extra_run = extra_cost if extra_cost and extra_cost > 0 else 0
-    config.require_verification = require_verification
-    config.sort_order = sort_order
-    db.session.commit()
-
-    flash(f'Hordas de Diamantes {"activado" if config.is_active else "guardado (inactivo)"} para {game.name}.', 'success')
-    return redirect(url_for('admin_bp.minigames', game_id=game.id))
-
-
 def _upsert_setting(key, value):
     row = Setting.query.filter_by(key=key).first()
     if row:
@@ -4882,7 +4838,6 @@ def _upsert_setting(key, value):
 @admin_bp.route('/promos/horde/image', methods=['POST'])
 @login_required
 def promos_horde_image_save():
-    game_id = request.form.get('game_id', type=int)
     slot = request.form.get('slot', type=int) or 1
     if not 1 <= slot <= HORDE_CHARACTER_SLOTS:
         slot = 1
@@ -4901,7 +4856,7 @@ def promos_horde_image_save():
         _upsert_setting(keys['image'], '')
         db.session.commit()
         flash(f'Diseño del personaje {slot} eliminado: ya no aparece para elegir.', 'success')
-        return redirect(url_for('admin_bp.minigames', game_id=game_id))
+        return redirect(url_for('admin_hordas_bp.index'))
 
     # Diseño (el que se ve jugando) y portada (la que se ve al elegir).
     # Primero se guardan los archivos nuevos; si alguno no es imagen, no se
@@ -4915,7 +4870,7 @@ def promos_horde_image_save():
                 for path in new_files.values():
                     delete_uploaded_file(path)
                 flash('La imagen debe ser PNG, JPG, GIF o WEBP (mejor PNG con fondo transparente).', 'danger')
-                return redirect(url_for('admin_bp.minigames', game_id=game_id))
+                return redirect(url_for('admin_hordas_bp.index'))
             new_files[key] = new_path
 
     old_files = []
@@ -4932,7 +4887,7 @@ def promos_horde_image_save():
         if path:
             delete_uploaded_file(path)
     flash(f'Personaje {slot} de Hordas de Diamantes actualizado.', 'success')
-    return redirect(url_for('admin_bp.minigames', game_id=game_id))
+    return redirect(url_for('admin_hordas_bp.index'))
 
 
 # ─── Asistente de IA del soporte ──────────────────────────────────────────────
@@ -4944,48 +4899,7 @@ def _horde_back(game_id):
     back = request.form.get('back') or ''
     if back.startswith('/admin/') and not back.startswith('//'):
         return redirect(back)
-    return redirect(url_for('admin_bp.minigames', game_id=game_id))
-
-
-@admin_bp.route('/promos/horde/ban', methods=['POST'])
-@login_required
-def promos_horde_ban():
-    from ..models import PromoHordeBan
-
-    game_id = request.form.get('game_id', type=int)
-    game = Game.query.get_or_404(game_id)
-    from ..utils.promos import canonical_player_id
-    player_id = canonical_player_id(request.form.get('player_id'))[:100]   # el mismo ID canónico con el que juegan: '0123' y '123' son uno
-    reason = (request.form.get('reason') or '').strip()[:200] or 'Trampa'
-    if not player_id:
-        flash('Escribe el ID que quieres bloquear.', 'danger')
-        return _horde_back(game.id)
-    if PromoHordeBan.query.filter_by(game_id=game.id, player_id=player_id).first():
-        flash(f'El ID {player_id} ya estaba bloqueado en Hordas de {game.name}.', 'info')
-        return _horde_back(game.id)
-    db.session.add(PromoHordeBan(game_id=game.id, player_id=player_id, reason=reason))
-    db.session.commit()
-    try:
-        from ..utils.promos import refresh_pending_horde_winners
-        refresh_pending_horde_winners(game.id)   # si ese ID era ganador pendiente, sale y suben los siguientes
-    except Exception:
-        db.session.rollback()
-        current_app.logger.exception('Hordas: no se pudieron rearmar los ganadores tras bloquear un ID')
-    flash(f'ID {player_id} bloqueado en Hordas de {game.name}: ya no puede jugar ni sale en el ranking.', 'success')
-    return _horde_back(game.id)
-
-
-@admin_bp.route('/promos/horde/unban/<int:ban_id>', methods=['POST'])
-@login_required
-def promos_horde_unban(ban_id):
-    from ..models import PromoHordeBan
-
-    ban = PromoHordeBan.query.get_or_404(ban_id)
-    game_id, player_id = ban.game_id, ban.player_id
-    db.session.delete(ban)
-    db.session.commit()
-    flash(f'ID {player_id} desbloqueado: puede volver a jugar y vuelve a salir en el ranking.', 'success')
-    return _horde_back(game_id)
+    return redirect(url_for('admin_hordas_bp.index'))
 
 
 # ─── Aprobación de premios de Hordas ──────────────────────────────────────────
@@ -5163,11 +5077,7 @@ def promos_horde_replay_view(run_id):
         'verdict_url': url_for('admin_bp.promos_horde_replay_verdict', run_id=run.id),
         'player_label': f'{run.player_nick or run.player_id} · {seconds // 60}:{seconds % 60:02d}',
     }
-    game = Game.query.get(run.game_id)
-    return render_template(
-        'promos/hordas.html', games=[game], game=game,
-        verifiable=False, characters=characters, horde_extra_cost=0, replay=replay_data,
-    )
+    return render_template('promos/hordas.html', enabled=True, login_next='', characters=characters, replay=replay_data)
 
 
 @admin_bp.route('/promos/horde/replay/<int:run_id>/verdict', methods=['POST'])

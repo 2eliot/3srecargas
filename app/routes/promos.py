@@ -5,12 +5,12 @@ from flask import Blueprint, abort, current_app, jsonify, make_response, render_
 from flask_login import current_user
 
 from ..models import Tournament, db
+from ..utils import hordas as hordas_service
 from ..utils import tournaments as tournaments_service
 from ..utils.locks import check_rate_limit, client_ip
 from ..utils.promos import (
     get_accumulated_enabled_games, get_accumulated_progress_state,
     get_guess_enabled_games, get_guess_public_state, submit_guess,
-    HORDE_BANNED_MESSAGE, HordeNotEnoughPoints, HordeOutdatedPage, cancel_horde_run, get_horde_config, get_horde_enabled_games, is_horde_banned, get_horde_public_state, start_horde_run, finish_horde_run,
     get_raffle_enabled_games, get_raffle_public_state, get_raffle_replay_state,
     get_raffle_show_state, register_raffle_entry,
 )
@@ -283,14 +283,8 @@ HORDAS_CANCEL_RATE_LIMIT_PER_MINUTE = 20
 
 @promos_bp.route('/hordas')
 def hordas_page():
-    from ..routes.verify import verifiable_game_ids
-
     from ..utils.promos import get_horde_characters
 
-    games = get_horde_enabled_games()
-    game = _selected_game(games, request.args.get('game_id', type=int))
-    verifiable = bool(game) and game.id in verifiable_game_ids()
-    config = get_horde_config(game.id) if game else None
     # Solo los personajes que tienen imagen cargada se pueden elegir.
     characters = [
         {'slot': c['slot'], 'name': c['name'], 'mode': c['mode'],
@@ -299,9 +293,7 @@ def hordas_page():
         for c in get_horde_characters() if c['image']
     ]
     response = make_response(render_template(
-        'promos/hordas.html', games=games, game=game, verifiable=verifiable,
-        characters=characters,
-        horde_extra_cost=int(config.points_per_extra_run or 0) if config else 0,
+        'promos/hordas.html', enabled=hordas_service.is_enabled(), characters=characters, login_next='/promos/hordas',
     ))
     # Sin caché: tras una actualización del juego el navegador debe traer
     # siempre la versión nueva (una vieja jugaría con reglas viejas).
@@ -309,28 +301,19 @@ def hordas_page():
     return response
 
 
+def _account_or_none():
+    """La cuenta con sesión abierta (None si no hay sesión, si es el cliente "por ID" o el administrador)."""
+    return current_user if current_user.is_authenticated else None
+
+
+def _no_store(response):
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @promos_bp.route('/api/hordas/estado')
 def hordas_estado():
-    game_id = request.args.get('game_id', type=int)
-    player_id = (request.args.get('player_id') or '').strip()
-    if not game_id:
-        return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
-    return jsonify({'ok': True, **get_horde_public_state(game_id, player_id)})
-
-
-@promos_bp.route('/api/hordas/posicion')
-def hordas_posicion():
-    from ..utils.promos import get_horde_player_position
-
-    if not check_rate_limit(f'hordas_lookup_ip:{_client_ip()}', 30, 60):
-        return jsonify({'ok': False, 'error': 'Demasiadas búsquedas seguidas. Espera un momento.'}), 429
-    game_id = request.args.get('game_id', type=int)
-    player_id = (request.args.get('player_id') or '').strip()
-    if not game_id or not player_id:
-        return jsonify({'ok': False, 'error': 'Escribe tu ID primero.'}), 400
-    if is_horde_banned(game_id, player_id):
-        return jsonify({'ok': False, 'banned': True, 'error': HORDE_BANNED_MESSAGE}), 403
-    return jsonify({'ok': True, 'position': get_horde_player_position(game_id, player_id)})
+    return _no_store(jsonify({'ok': True, **hordas_service.public_state(_account_or_none())}))
 
 
 @promos_bp.route('/api/hordas/iniciar', methods=['POST'])
@@ -339,19 +322,20 @@ def hordas_iniciar():
     if not check_rate_limit(f'hordas_start_ip:{ip}', HORDAS_START_RATE_LIMIT_PER_MINUTE, 60):
         return jsonify({'ok': False, 'error': 'Demasiados intentos seguidos. Espera un momento.'}), 429
 
+    # Sin force: solo acepta application/json (un formulario de otra página no puede abrir partidas con la sesión del cliente).
     data = request.get_json(silent=True) or {}
-    try:
-        game_id = int(data.get('game_id'))
-    except (TypeError, ValueError):
-        return jsonify({'ok': False, 'error': 'Falta el juego.'}), 400
+    if data.get('mode') != 'cuenta':
+        # Página abierta desde antes del cambio (se jugaba con ID): se recarga para entrar con la cuenta.
+        return jsonify({'ok': False, 'code': 'outdated', 'error': 'Hordas ahora se juega con tu cuenta. Recargando…'}), 409
 
     try:
-        result = start_horde_run(game_id, data.get('player_id'), ip=ip, use_points=bool(data.get('use_points')),
-                                 rules=data.get('rules'))
-    except HordeOutdatedPage as exc:
+        result = hordas_service.start_run(_account_or_none(), ip=ip, use_points=bool(data.get('use_points')), rules=data.get('rules'))
+    except hordas_service.HordeOutdatedPage as exc:
         return jsonify({'ok': False, 'code': 'outdated', 'error': str(exc)}), 409
-    except HordeNotEnoughPoints as exc:
+    except hordas_service.HordeNotEnoughPoints as exc:
         return jsonify({'ok': False, 'code': 'no_points', 'error': str(exc), 'points_balance': exc.balance}), 400
+    except hordas_service.HordeBlocked as exc:
+        return jsonify({'ok': False, 'code': exc.code, 'error': str(exc)}), (401 if exc.code == 'login' else 403)
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
     except Exception:
@@ -359,7 +343,7 @@ def hordas_iniciar():
         db.session.rollback()
         current_app.logger.exception('Hordas: error inesperado al iniciar una partida')
         return jsonify({'ok': False, 'code': 'server', 'error': 'El servidor está ocupado. Intenta de nuevo en unos segundos.'}), 503
-    return jsonify({'ok': True, **result})
+    return _no_store(jsonify({'ok': True, **result}))
 
 
 @promos_bp.route('/api/hordas/terminar', methods=['POST'])
@@ -367,9 +351,11 @@ def hordas_terminar():
     if not check_rate_limit(f'hordas_finish_ip:{_client_ip()}', HORDAS_FINISH_RATE_LIMIT_PER_MINUTE, 60):
         return jsonify({'ok': False, 'error': 'Demasiados intentos seguidos. Espera un momento.'}), 429
 
+    # Se identifica por el token de la partida (secreto), no por la sesión: así una partida terminada se guarda aunque la sesión haya vencido
+    # o se envíe con sendBeacon al cerrar la página.
     data = request.get_json(silent=True, force=True) or {}
     try:
-        result = finish_horde_run(
+        result = hordas_service.finish_run(
             data.get('token'), data.get('diamonds'), data.get('kills'),
             wave=data.get('wave'), final_cleared=bool(data.get('final_cleared')),
             replay=data.get('replay'),
@@ -390,7 +376,7 @@ def hordas_cancelar():
         return jsonify({'ok': False, 'error': 'Demasiados intentos seguidos. Espera un momento.'}), 429
     data = request.get_json(silent=True, force=True) or {}
     try:
-        result = cancel_horde_run(data.get('token'))
+        result = hordas_service.cancel_run(data.get('token'))
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
     except Exception:
