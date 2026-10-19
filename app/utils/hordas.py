@@ -186,9 +186,21 @@ def _eligible_profile_filter():
 
 def identities(user_ids):
     """{user_id: {'name', 'handle', 'avatar'}} de cuentas (lo único que se muestra de ellas: nunca IDs ni compras)."""
+    from flask import url_for
+
     from . import profile_social as PS
     from .profile_shop import effective_avatar_path
     from .profiles import media_url_path
+
+    def avatar_src(profile):
+        # `media_url_path` devuelve 'uploads/...' (el nombre dentro de /static): como `src` suelto la página lo pedía a /promos/uploads/... y la foto salía rota.
+        path = (media_url_path(effective_avatar_path(profile)) or '') if profile else ''
+        if not path:
+            return ''
+        try:
+            return url_for('static', filename=path)
+        except RuntimeError:
+            return '/static/' + path
 
     ids = list({int(i) for i in user_ids if i})
     if not ids:
@@ -197,10 +209,7 @@ def identities(user_ids):
     out = {}
     for user in User.query.filter(User.id.in_(ids)).all():
         profile = profiles.get(user.id)
-        out[user.id] = {
-            'name': PS._shown_name(user, profile), 'handle': user.username,
-            'avatar': (media_url_path(effective_avatar_path(profile)) or '') if profile else '',
-        }
+        out[user.id] = {'name': PS._shown_name(user, profile), 'handle': user.username, 'avatar': avatar_src(profile)}
     return out
 
 
