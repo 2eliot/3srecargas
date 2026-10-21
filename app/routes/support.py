@@ -145,7 +145,7 @@ def page():
         # navegador solo manda el correo que el mini ya había escrito en el
         # formulario de login.
         correo_mini = (request.args.get('correo') or '').strip()
-        lines = ['Soy mini, este es mi correo:']
+        lines = ['Soy creador, este es mi correo:']
         if correo_mini:
             lines.append(correo_mini)
         lines.append('Olvidé mi contraseña.')

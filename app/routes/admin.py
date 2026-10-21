@@ -2596,15 +2596,12 @@ def minis():
 
     program_settings = {
         s.key: s.value for s in Setting.query.filter(
-            Setting.key.in_(['mini_rules_text', 'mini_rules_video_url', 'mini_whatsapp_group_url', 'mini_registration_enabled'])
+            Setting.key.in_(['mini_registration_enabled'])
         ).all()
     }
 
     return render_template(
         'admin/minis.html',
-        mini_rules_text=program_settings.get('mini_rules_text', ''),
-        mini_rules_video_url=program_settings.get('mini_rules_video_url', ''),
-        mini_whatsapp_group_url=program_settings.get('mini_whatsapp_group_url', ''),
         mini_registration_enabled=program_settings.get('mini_registration_enabled', 'true') != 'false',
         mini_payout_methods=mini_payout_methods,
         course_videos=course_videos,
@@ -2624,7 +2621,7 @@ def minis():
 def mini_set_password(aff_id):
     aff = Affiliate.query.get_or_404(aff_id)
     if not aff.is_mini:
-        flash('Ese afiliado no es un mini influencer.', 'danger')
+        flash('Ese afiliado no es un creador.', 'danger')
         return redirect(url_for('admin_bp.minis', section='aprobados'))
 
     new_password = request.form.get('new_password') or ''
@@ -2643,7 +2640,7 @@ def mini_set_password(aff_id):
 def mini_send_note(aff_id):
     aff = Affiliate.query.get_or_404(aff_id)
     if not aff.is_mini:
-        flash('Ese afiliado no es un mini influencer.', 'danger')
+        flash('Ese afiliado no es un creador.', 'danger')
         return redirect(url_for('admin_bp.minis', section='aprobados'))
 
     message = (request.form.get('message') or '').strip()
@@ -2662,13 +2659,9 @@ def mini_send_note(aff_id):
 @admin_bp.route('/minis/program-config', methods=['POST'])
 @login_required
 def mini_program_config_save():
-    """Reglas del programa (texto + video opcional) y link del grupo de
-    WhatsApp que ve el mini en su panel, en 'Ver reglas del programa' y
-    'Únete al grupo de WhatsApp de los minis'."""
+    """Interruptor de registros nuevos de minis. Las reglas del programa y el link del grupo de WhatsApp ya no se muestran (2026-10-21):
+    lo que había guardado en esas claves queda como está y este formulario ya no lo toca."""
     updates = {
-        'mini_rules_text': (request.form.get('mini_rules_text', '') or '').strip(),
-        'mini_rules_video_url': (request.form.get('mini_rules_video_url', '') or '').strip(),
-        'mini_whatsapp_group_url': (request.form.get('mini_whatsapp_group_url', '') or '').strip(),
         'mini_registration_enabled': 'true' if request.form.get('mini_registration_enabled') else 'false',
     }
     for key, value in updates.items():
@@ -2679,7 +2672,7 @@ def mini_program_config_save():
         else:
             setting.value = value
     db.session.commit()
-    flash('Configuración del programa actualizada.', 'success')
+    flash('Registro de nuevos creadores actualizado.', 'success')
     return redirect(url_for('admin_bp.minis', section='config'))
 
 
@@ -2867,7 +2860,7 @@ def mini_rank_delete(rank_id):
 def mini_approve(aff_id):
     aff = Affiliate.query.get_or_404(aff_id)
     if not aff.is_mini:
-        flash('Ese afiliado no es un mini influencer.', 'danger')
+        flash('Ese afiliado no es un creador.', 'danger')
         return redirect(url_for('admin_bp.minis'))
     if aff.status == 'approved':
         flash('Esa solicitud ya estaba aprobada.', 'warning')
@@ -2897,7 +2890,7 @@ def mini_approve(aff_id):
     aff.reviewed_at = datetime.utcnow()
     notify_mini(aff, f'🎉 ¡Tu solicitud fue aprobada! Ya puedes compartir tu código {code} y empezar a ganar.')
     db.session.commit()
-    flash(f'Mini influencer "{aff.name}" aprobado con código {code}.', 'success')
+    flash(f'Creador "{aff.name}" aprobado con código {code}.', 'success')
     return redirect(url_for('admin_bp.minis'))
 
 
@@ -2906,7 +2899,7 @@ def mini_approve(aff_id):
 def mini_reject(aff_id):
     aff = Affiliate.query.get_or_404(aff_id)
     if not aff.is_mini:
-        flash('Ese afiliado no es un mini influencer.', 'danger')
+        flash('Ese afiliado no es un creador.', 'danger')
         return redirect(url_for('admin_bp.minis'))
     if aff.status != 'pending':
         flash('Esa solicitud ya fue procesada.', 'warning')
@@ -2928,7 +2921,7 @@ def mini_reject(aff_id):
 def mini_delete(aff_id):
     aff = Affiliate.query.get_or_404(aff_id)
     if not aff.is_mini:
-        flash('Ese afiliado no es un mini influencer.', 'danger')
+        flash('Ese afiliado no es un creador.', 'danger')
         return redirect(url_for('admin_bp.minis', section='aprobados'))
 
     name = aff.name
@@ -2949,7 +2942,7 @@ def mini_delete(aff_id):
 
     db.session.delete(aff)
     db.session.commit()
-    flash(f'Cuenta mini "{name}" eliminada.', 'success')
+    flash(f'Cuenta de creador "{name}" eliminada.', 'success')
     return redirect(url_for('admin_bp.minis', section='aprobados'))
 
 
@@ -2958,7 +2951,7 @@ def mini_delete(aff_id):
 def mini_rank_award(aff_id):
     aff = Affiliate.query.get_or_404(aff_id)
     if not aff.is_mini:
-        flash('Ese afiliado no es un mini influencer.', 'danger')
+        flash('Ese afiliado no es un creador.', 'danger')
         return redirect(url_for('admin_bp.minis'))
 
     rank_name = (request.form.get('rank_name') or '').strip()
@@ -3015,7 +3008,7 @@ def mini_withdrawal_proof(w_id):
         return back
     if previous and previous != proof_path:
         delete_uploaded_file(previous)
-    flash('Comprobante guardado. El mini ya lo ve en su panel.', 'success')
+    flash('Comprobante guardado. El creador ya lo ve en su panel.', 'success')
     return back
 
 

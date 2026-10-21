@@ -117,7 +117,7 @@ def mini_login_submit():
 @minis_bp.route('/solicitar', methods=['POST'])
 def mini_register_submit():
     if not _registration_enabled():
-        return jsonify({'ok': False, 'message': 'El registro de nuevos minis está cerrado por ahora.'}), 403
+        return jsonify({'ok': False, 'message': 'El registro de nuevos creadores está cerrado por ahora.'}), 403
 
     ip = _client_ip()
     if is_rate_limited(ip):

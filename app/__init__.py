@@ -1767,7 +1767,7 @@ def _init_default_data(app):
                 ('user', 'Cliente frecuente', 'cliente-frecuente', '#00b894', 2),
                 ('user', 'Primera compra', 'primera-compra', '#0984e3', 3),
                 ('user', 'Revendedor', 'revendedor', '#6c5ce7', 4),
-                ('user', 'Mini influencer', 'mini-influencer', '#e84393', 5),
+                ('user', 'Código de creador', 'mini-influencer', '#e84393', 5),
                 ('user', 'Reincidente', 'reincidente', '#d63031', 6),
                 ('error', 'Pago no verificado', 'pago-no-verificado', '#e17055', 1),
                 ('error', 'Recarga no llegó', 'recarga-no-llego', '#d63031', 2),

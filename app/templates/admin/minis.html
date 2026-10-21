@@ -1,6 +1,6 @@
 {% extends 'admin/base.html' %}
-{% block title %}Minis{% endblock %}
-{% block page_title %}Mini influencers{% endblock %}
+{% block title %}Código de creador{% endblock %}
+{% block page_title %}Código de creador{% endblock %}
 
 {% block content %}
 <div class="filters-bar">
@@ -75,12 +75,12 @@
 <!-- Modal: aprobar -->
 <div class="modal-overlay" id="approveMiniModal" style="display:none">
     <div class="modal-box">
-        <div class="modal-header"><h3>Aprobar mini influencer</h3><button onclick="closeModal('approveMiniModal')">✕</button></div>
+        <div class="modal-header"><h3>Aprobar creador</h3><button onclick="closeModal('approveMiniModal')">✕</button></div>
         <form method="POST" id="approveMiniForm">
             <div class="form-group">
                 <label>Código *</label>
                 <input type="text" name="code" id="approveMiniCode" required style="text-transform:uppercase" maxlength="20">
-                <p class="form-hint">El mini compartirá: tudominio.com/r/CÓDIGO. Viene precargado con uno provisorio, puedes dejarlo o cambiarlo.</p>
+                <p class="form-hint">El creador compartirá: tudominio.com/r/CÓDIGO. Viene precargado con uno provisorio, puedes dejarlo o cambiarlo.</p>
             </div>
             <div class="form-row-2">
                 <div class="form-group">
@@ -88,9 +88,9 @@
                     <input type="number" name="client_discount_rate" value="3" step="0.5" min="0" max="100">
                 </div>
                 <div class="form-group">
-                    <label>Comisión del mini (%)</label>
+                    <label>Comisión del creador (%)</label>
                     <input type="number" name="commission_rate" value="0" step="0.5" min="0" max="100">
-                    <p class="form-hint">El mini ya no cobra por uso — solo por la escalera de rangos. Déjalo en 0 salvo que quieras darle comisión extra a este en particular.</p>
+                    <p class="form-hint">El creador ya no cobra por uso — solo por la escalera de rangos. Déjalo en 0 salvo que quieras darle comisión extra a este en particular.</p>
                 </div>
             </div>
             <div class="modal-actions">
@@ -121,7 +121,7 @@
 
 {% if section == 'aprobados' %}
 <div class="admin-card">
-    <div class="card-header"><h3>Minis aprobados</h3></div>
+    <div class="card-header"><h3>Creadores aprobados</h3></div>
     <div class="form-group" style="margin:0 0 14px;padding:0 20px;">
         <input type="text" id="miniSearchInput" class="glass-input" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);width:100%;max-width:360px;"
                placeholder="Buscar por correo, nombre, código o teléfono...">
@@ -164,15 +164,15 @@
                                     onclick="openNoteModal({{ aff.id }}, {{ ((aff.name))|jsattr }})">📩 Enviar nota</button>
                             <form method="POST" action="{{ url_for('admin_bp.mini_delete', aff_id=aff.id) }}" style="display:inline">
                                 <button class="btn-sm btn-danger" type="submit"
-                                        onclick="return confirm({{ ('¿Eliminar la cuenta mini de ' ~ (aff.name) ~ '? Esta acción no se puede deshacer.')|jsattr }})">Eliminar</button>
+                                        onclick="return confirm({{ ('¿Eliminar la cuenta de creador de ' ~ (aff.name) ~ '? Esta acción no se puede deshacer.')|jsattr }})">Eliminar</button>
                             </form>
                         </div>
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="9" class="empty-row">Todavía no hay minis aprobados.</td></tr>
+                <tr><td colspan="9" class="empty-row">Todavía no hay creadores aprobados.</td></tr>
                 {% endfor %}
-                <tr id="miniSearchEmptyRow" class="empty-row" hidden><td colspan="9" class="empty-row">Ningún mini coincide con esa búsqueda.</td></tr>
+                <tr id="miniSearchEmptyRow" class="empty-row" hidden><td colspan="9" class="empty-row">Ningún creador coincide con esa búsqueda.</td></tr>
             </tbody>
         </table>
     </div>
@@ -186,7 +186,7 @@
             <div class="form-group">
                 <label>Contraseña nueva</label>
                 <input type="text" name="new_password" minlength="6" required placeholder="Mínimo 6 caracteres">
-                <p class="form-hint">Se la tienes que pasar al mini vos mismo — no se le avisa por correo.</p>
+                <p class="form-hint">Se la tienes que pasar al creador vos mismo — no se le avisa por correo.</p>
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('passwordMiniModal')" class="btn-secondary">Cancelar</button>
@@ -223,7 +223,7 @@
             <input type="checkbox" name="is_active" id="miniCommissionActive" style="display:none">
             <input type="checkbox" name="one_per_player" id="miniCommissionOnePerPlayer" style="display:none">
             <div class="form-group">
-                <label>Comisión del mini (%)</label>
+                <label>Comisión del creador (%)</label>
                 <input type="number" name="commission_rate" id="miniCommissionRate" step="0.5" min="0" max="100" required>
                 <p class="form-hint">Porcentaje que gana por cada venta hecha con su código. Súbelo si se lo ganó — queda aplicado desde la próxima venta.</p>
             </div>
@@ -263,28 +263,15 @@
 {% if section == 'config' %}
 <div class="admin-card">
     <div class="card-header">
-        <h3>Reglas del programa y grupo de WhatsApp</h3>
+        <h3>Registro de nuevos creadores</h3>
     </div>
-    <p class="form-hint" style="padding:0 20px;">Lo que el mini ve en su panel al tocar "Ver reglas del programa" y "Únete al grupo de WhatsApp de los minis". Si dejas el link de WhatsApp vacío, ese botón no se muestra.</p>
     <form method="POST" action="{{ url_for('admin_bp.mini_program_config_save') }}" style="padding:0 20px 20px;">
         <div class="form-group">
             <label class="check-label">
                 <input type="checkbox" name="mini_registration_enabled" value="1" {{ 'checked' if mini_registration_enabled }}>
-                Aceptar registros nuevos de minis
+                Aceptar registros nuevos de creadores
             </label>
-            <p class="form-hint">Si lo apagas, la pestaña "Registrarme" desaparece de /minis y solo queda "Entrar" para los que ya tienen cuenta. Los minis ya activos no se ven afectados.</p>
-        </div>
-        <div class="form-group">
-            <label>Reglas del programa</label>
-            <textarea name="mini_rules_text" rows="8" placeholder="Ej. 1. Los videos deben mencionar el código...&#10;2. No se permite contenido...">{{ mini_rules_text }}</textarea>
-        </div>
-        <div class="form-group">
-            <label>Video de las reglas (opcional)</label>
-            <input type="url" name="mini_rules_video_url" value="{{ mini_rules_video_url }}" placeholder="https://www.youtube.com/watch?v=...">
-        </div>
-        <div class="form-group">
-            <label>Link del grupo de WhatsApp de los minis</label>
-            <input type="url" name="mini_whatsapp_group_url" value="{{ mini_whatsapp_group_url }}" placeholder="https://chat.whatsapp.com/...">
+            <p class="form-hint">Si lo apagas, la pestaña "Registrarme" desaparece de /minis y solo queda "Entrar" para los que ya tienen cuenta. Los creadores ya activos no se ven afectados.</p>
         </div>
         <div class="form-group">
             <button type="submit" class="btn-primary">Guardar</button>
@@ -294,9 +281,9 @@
 
 <div class="admin-card">
     <div class="card-header">
-        <h3>Métodos de pago para retiros de minis</h3>
+        <h3>Métodos de pago para retiros de creadores</h3>
     </div>
-    <p class="form-hint" style="padding:0 20px;">Son propios del programa de minis, separados de los métodos de pago de la tienda — es la tienda pagándole al mini, no al revés.</p>
+    <p class="form-hint" style="padding:0 20px;">Son propios del programa de código de creador, separados de los métodos de pago de la tienda — es la tienda pagándole al creador, no al revés.</p>
     <form method="POST" action="{{ url_for('admin_bp.mini_payout_method_add') }}" class="form-grid-2" style="padding:0 20px 18px;">
         <div class="form-group">
             <label>Nombre</label>
@@ -335,7 +322,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="4" class="empty-row">No hay métodos de pago para minis configurados.</td></tr>
+                <tr><td colspan="4" class="empty-row">No hay métodos de pago para creadores configurados.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -380,7 +367,7 @@
         <h3>Curso de edición (videos de YouTube)</h3>
         <button class="btn-primary btn-sm" onclick="openCourseAddModal()">+ Nuevo video</button>
     </div>
-    <p class="form-hint" style="padding:0 20px;">Lo que el mini ve al tocar "Curso de edición" en su panel: una lista de videos de YouTube, cada uno con su descripción.</p>
+    <p class="form-hint" style="padding:0 20px;">Lo que el creador ve al tocar "Curso de edición" en su panel: una lista de videos de YouTube, cada uno con su descripción.</p>
     <div class="table-wrap">
         <table class="admin-table">
             <thead><tr><th>Título</th><th>Descripción</th><th>Orden</th><th>Acciones</th></tr></thead>
@@ -474,10 +461,10 @@
 {% if section == 'retiros' %}
 <div class="admin-card">
     <div class="card-header"><h3>Pendientes de revisión</h3></div>
-    <p class="form-hint" style="padding:0 18px 10px;margin:0">Al tocar <strong>Aprobar</strong> puedes <strong>adjuntar el comprobante del pago</strong> (foto o captura): el mini lo ve en su panel. Si se te olvida, lo adjuntas después desde el Historial.</p>
+    <p class="form-hint" style="padding:0 18px 10px;margin:0">Al tocar <strong>Aprobar</strong> puedes <strong>adjuntar el comprobante del pago</strong> (foto o captura): el creador lo ve en su panel. Si se te olvida, lo adjuntas después desde el Historial.</p>
     <div class="table-wrap">
         <table class="admin-table">
-            <thead><tr><th>Mini</th><th>Monto</th><th>Método</th><th>Datos de cobro</th><th>Fecha</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Creador</th><th>Monto</th><th>Método</th><th>Datos de cobro</th><th>Fecha</th><th>Acciones</th></tr></thead>
             <tbody>
                 {% for w in pending_withdrawals %}
                 <tr>
@@ -506,7 +493,7 @@
     <div class="card-header"><h3>Historial</h3></div>
     <div class="table-wrap">
         <table class="admin-table">
-            <thead><tr><th>Mini</th><th>Monto</th><th>Estado</th><th>Comprobante</th></tr></thead>
+            <thead><tr><th>Creador</th><th>Monto</th><th>Estado</th><th>Comprobante</th></tr></thead>
             <tbody>
                 {% for w in reviewed_withdrawals %}
                 <tr>
@@ -542,7 +529,7 @@
             <div class="form-group">
                 <label>Adjuntar comprobante del pago (foto o captura)</label>
                 <input type="file" name="payment_proof" accept="image/*">
-                <p class="form-hint">Es opcional. El mini lo ve en su panel, en Retiros, junto a este retiro. Si no lo adjuntas ahora, puedes hacerlo después desde el Historial.</p>
+                <p class="form-hint">Es opcional. El creador lo ve en su panel, en Retiros, junto a este retiro. Si no lo adjuntas ahora, puedes hacerlo después desde el Historial.</p>
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('withdrawalApproveModal')" class="btn-secondary">Cancelar</button>
