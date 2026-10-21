@@ -1,9 +1,9 @@
 """Autoservicio de mini influencers (/minis).
 
-Un solo link: /minis sirve de login + solicitud de alta. Una vez aprobado
-por el admin desde /admin/minis, el mini entra a su panel a subir videos
-como prueba de alcance, ver su progreso de rango y pedir retiro de su
-balance. La sesión usa flask_login igual que clientes/admin (ver
+Un solo link: /minis sirve de login + solicitud de alta. El mini entra a su
+panel a ver su código, su progreso de rango y pedir retiro de su balance.
+Solo cobra por los usos de su código (la escalera de rangos): ya no se
+suben videos (2026-10-21). La sesión usa flask_login igual que clientes/admin (ver
 get_id()='mini:<id>' en Affiliate y las ramas nuevas en
 app/__init__.py::load_user/unauthorized_handler).
 """
@@ -15,17 +15,15 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy.exc import IntegrityError
 
-from ..models import Affiliate, AffiliateWithdrawal, MiniCourseVideo, MiniNotification, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod, Setting, db
+from ..models import Affiliate, AffiliateWithdrawal, MiniNotification, MiniRank, MiniPayoutMethod, Setting, db
 from ..utils.locks import client_ip
 from ..utils.mini_influencers import (
     clear_attempts,
     count_qualifying_uses,
-    detect_platform,
     get_rank_progress,
     is_rate_limited,
     normalize_video_url,
     register_failed_attempt,
-    suggested_reward_for_views,
 )
 
 minis_bp = Blueprint('minis_bp', __name__)
@@ -63,7 +61,7 @@ def minis_access_guard():
     if not current_user.is_authenticated:
         return None
     if not _current_mini_ok():
-        flash('Esta sección es solo para mini influencers.', 'warning')
+        flash('Esta sección es solo para creadores con código.', 'warning')
         return redirect(url_for('main_bp.index'))
     return None
 
@@ -210,40 +208,22 @@ def mini_register_submit():
 def panel():
     affiliate = current_user
     rank_progress = get_rank_progress(affiliate) if affiliate.status == 'approved' else None
-    videos = (
-        MiniVideo.query.filter_by(affiliate_id=affiliate.id).order_by(MiniVideo.created_at.desc()).all()
-        if affiliate.status == 'approved' else []
-    )
     withdrawals = (
         AffiliateWithdrawal.query.filter_by(affiliate_id=affiliate.id).order_by(AffiliateWithdrawal.created_at.desc()).all()
         if affiliate.status == 'approved' else []
     )
-    view_tiers = MiniViewTier.query.order_by(MiniViewTier.sort_order.asc(), MiniViewTier.min_views.asc()).all()
     all_ranks = MiniRank.query.order_by(MiniRank.uses_required.asc()).all()
-    course_videos = MiniCourseVideo.query.order_by(MiniCourseVideo.sort_order.asc(), MiniCourseVideo.id.asc()).all()
     payment_methods = MiniPayoutMethod.query.filter_by(is_active=True).order_by(MiniPayoutMethod.sort_order.asc(), MiniPayoutMethod.name.asc()).all()
     has_pending_withdrawal = any(w.status == 'pending' for w in withdrawals)
-
-    program_settings = {
-        s.key: s.value for s in Setting.query.filter(
-            Setting.key.in_(['mini_rules_text', 'mini_rules_video_url', 'mini_whatsapp_group_url'])
-        ).all()
-    }
 
     return render_template(
         'minis/panel.html',
         affiliate=affiliate,
         rank_progress=rank_progress,
         all_ranks=all_ranks,
-        course_videos=course_videos,
-        videos=videos,
         withdrawals=withdrawals,
-        view_tiers=view_tiers,
         payment_methods=payment_methods,
         has_pending_withdrawal=has_pending_withdrawal,
-        mini_rules_text=program_settings.get('mini_rules_text', ''),
-        mini_rules_video_url=program_settings.get('mini_rules_video_url', ''),
-        mini_whatsapp_group_url=program_settings.get('mini_whatsapp_group_url', ''),
     )
 
 
@@ -281,69 +261,6 @@ def mini_update_code():
         'code': affiliate.code,
         'message': f'Código actualizado. Los links que compartiste con "{old_code}" dejan de funcionar.',
     })
-
-
-@minis_bp.route('/videos', methods=['POST'])
-@login_required
-def mini_video_add():
-    affiliate = current_user
-    if affiliate.status != 'approved' or not affiliate.is_active:
-        return jsonify({'ok': False, 'message': 'Tu perfil todavía no está activo.'}), 403
-
-    data = request.get_json(silent=True) or {}
-    url = normalize_video_url(data.get('url'))
-    if not url:
-        return jsonify({'ok': False, 'message': 'Escribe el link del video.'}), 400
-    if len(url) > 500:
-        return jsonify({'ok': False, 'message': 'Ese link es demasiado largo.'}), 400
-
-    try:
-        views_declared = max(0, int(data.get('views_declared') or 0))
-    except (TypeError, ValueError):
-        return jsonify({'ok': False, 'message': 'Las vistas declaradas deben ser un número.'}), 400
-
-    dupe = MiniVideo.query.filter(
-        MiniVideo.affiliate_id == affiliate.id,
-        db.func.lower(MiniVideo.url) == url.lower(),
-    ).first()
-    if dupe:
-        return jsonify({'ok': False, 'message': 'Ya subiste ese video.'}), 409
-
-    video = MiniVideo(
-        affiliate_id=affiliate.id,
-        url=url,
-        platform=detect_platform(url),
-        views_declared=views_declared,
-    )
-    db.session.add(video)
-    db.session.commit()
-
-    return jsonify({
-        'ok': True,
-        'message': 'Video enviado, en revisión.',
-        'video': {
-            'id': video.id,
-            'url': video.url,
-            'platform': video.platform,
-            'views_declared': video.views_declared,
-            'status': video.status,
-            'suggested_reward': suggested_reward_for_views(views_declared),
-        },
-    })
-
-
-@minis_bp.route('/videos/<int:video_id>/eliminar', methods=['POST'])
-@login_required
-def mini_video_delete(video_id):
-    video = MiniVideo.query.get(video_id)
-    if not video or video.affiliate_id != current_user.id:
-        return jsonify({'ok': False, 'message': 'Video no encontrado.'}), 404
-    if video.status != 'pending':
-        return jsonify({'ok': False, 'message': 'Solo puedes borrar videos pendientes.'}), 400
-
-    db.session.delete(video)
-    db.session.commit()
-    return jsonify({'ok': True})
 
 
 @minis_bp.route('/retiro', methods=['POST'])
@@ -419,5 +336,5 @@ def mini_notifications_mark_read():
 @login_required
 def logout():
     logout_user()
-    flash('Sesión de mini influencer cerrada.', 'info')
+    flash('Sesión cerrada.', 'info')
     return redirect(url_for('minis_bp.login'))

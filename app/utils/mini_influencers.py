@@ -3,18 +3,19 @@
 Un mini influencer es un `Affiliate` con is_mini=True: mismo código, mismo
 descuento al cliente y misma comisión por venta que cualquier afiliado
 (process_affiliate_commission en order_processing.py no cambia). Lo que
-agrega este módulo es la capa de encima: progreso de rango, videos como
-prueba de alcance y retiro de balance — cada una con su propio guard de
-idempotencia porque, a diferencia de las órdenes, no hay un lock de
-aprobación compartido que ya las proteja.
+agrega este módulo es la capa de encima: progreso de rango y retiro de
+balance — cada una con su propio guard de idempotencia porque, a diferencia
+de las órdenes, no hay un lock de aprobación compartido que ya las proteja.
+El mini solo cobra por los usos de su código (escalera de rangos): los videos
+como prueba de alcance se quitaron el 2026-10-21 (las tablas mini_videos y
+mini_view_tiers quedan con su historial, sin uso).
 """
 
 import re
 from datetime import datetime, timedelta
-from urllib.parse import urlparse
 from uuid import uuid4
 
-from ..models import Affiliate, AffiliateWithdrawal, MiniNotification, MiniRank, MiniVideo, MiniViewTier, Order, db
+from ..models import Affiliate, AffiliateWithdrawal, MiniNotification, MiniRank, Order, db
 from .locks import acquire_lock, release_lock
 
 # TTL del lock de aprobación de retiro: alcanza de sobra para una operación
@@ -64,22 +65,7 @@ def is_rate_limited(ip):
     return bool(entry and entry['count'] >= ATTEMPT_LIMIT)
 
 
-# ─── Video: plataforma y código temporal ────────────────────────────────────
-
-def detect_platform(url):
-    host = (urlparse(url).netloc or '').lower()
-    if 'tiktok.' in host:
-        return 'tiktok'
-    if 'youtube.' in host or 'youtu.be' in host:
-        return 'youtube'
-    if 'instagram.' in host:
-        return 'instagram'
-    if 'facebook.' in host or 'fb.watch' in host:
-        return 'facebook'
-    if 'kwai' in host:
-        return 'kwai'
-    return 'otro'
-
+# ─── Links y código temporal ────────────────────────────────────────────────
 
 def normalize_video_url(raw):
     trimmed = (raw or '').strip()
@@ -100,17 +86,6 @@ def generate_temp_code():
     # Colisión 10 veces seguidas es prácticamente imposible; si pasara, un
     # sufijo más largo la resuelve sin más reintentos.
     return f'MINI{uuid4().hex[:16].upper()}'
-
-
-def suggested_reward_for_views(views):
-    tier = (
-        MiniViewTier.query
-        .filter(MiniViewTier.min_views <= views)
-        .filter((MiniViewTier.max_views.is_(None)) | (MiniViewTier.max_views >= views))
-        .order_by(MiniViewTier.min_views.desc())
-        .first()
-    )
-    return float(tier.reward_amount) if tier else 0.0
 
 
 # ─── Rango ───────────────────────────────────────────────────────────────────
@@ -194,43 +169,6 @@ def award_rank_bonus(affiliate, rank_name, bonus_amount=None):
     affiliate.balance = float(affiliate.balance or 0) + amount
     affiliate.total_earned = float(affiliate.total_earned or 0) + amount
     notify_mini(affiliate, f'🏆 ¡Alcanzaste el rango {match.name}! Se te acreditó un premio de ${amount:.2f}.')
-    db.session.commit()
-    return True, None
-
-
-# ─── Videos ──────────────────────────────────────────────────────────────────
-
-def review_mini_video(video, action, reward_amount=None, note=''):
-    """Aprueba (acreditando el monto que confirme el admin) o rechaza un
-    video. Idempotente: un video que ya salió de 'pending' no se puede
-    revisar de nuevo, así un doble clic del admin no acredita dos veces."""
-    if video.status != 'pending':
-        return False, 'Este video ya fue revisado.'
-
-    video.note = (note or '').strip()[:500]
-    video.reviewed_at = datetime.utcnow()
-
-    if action == 'approve':
-        amount = round(float(reward_amount or 0), 2)
-        if amount < 0:
-            return False, 'Monto inválido.'
-        video.status = 'approved'
-        video.reward_amount = amount
-        if amount > 0:
-            affiliate = video.affiliate
-            affiliate.balance = float(affiliate.balance or 0) + amount
-            affiliate.total_earned = float(affiliate.total_earned or 0) + amount
-            notify_mini(affiliate, f'✅ Tu video fue aprobado — se te acreditó un bono de ${amount:.2f}.')
-        else:
-            notify_mini(video.affiliate, '✅ Tu video fue aprobado.')
-    elif action == 'reject':
-        video.status = 'rejected'
-        video.reward_amount = 0
-        reason = f' Motivo: {video.note}' if video.note else ''
-        notify_mini(video.affiliate, f'❌ Tu video fue rechazado.{reason}')
-    else:
-        return False, 'Acción inválida.'
-
     db.session.commit()
     return True, None
 

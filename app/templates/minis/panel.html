@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}Mi panel de mini — 3S Recargas{% endblock %}
+{% block title %}Mi código de creador — 3S Recargas{% endblock %}
 
 {% block page_bg_video %}{{ bg_video_layer(PAGE_BG_FB.drawer_bg_mini.video) }}{% endblock %}
 {% block extra_css %}
@@ -29,10 +29,10 @@ body::before {
             <span class="mn-notif-badge" id="mnNotifBadge" hidden>0</span>
         </button>
         <div class="rdm-head">
-            <span class="rdm-kicker">Mini influencer</span>
+            <span class="rdm-kicker">Código de creador</span>
             <h1 class="rdm-title">Hola, {{ affiliate.name }}</h1>
             {% if affiliate.status == 'approved' %}
-            <p class="rdm-sub">Comparte tu código, sube tus videos y pide tu retiro cuando quieras.</p>
+            <p class="rdm-sub">Comparte tu código y pide tu retiro cuando quieras.</p>
             {% endif %}
         </div>
 
@@ -47,29 +47,6 @@ body::before {
             {% if affiliate.rejection_reason %}<span>Motivo: {{ affiliate.rejection_reason }}</span>{% endif %}
         </div>
         {% else %}
-
-        <!-- Reglas del programa, curso de edición y grupo de WhatsApp -->
-        {% if mini_rules_text or mini_whatsapp_group_url or course_videos %}
-        <div class="mn-section" style="margin-top:0; padding-top:0; border-top:none;">
-            {% if mini_rules_text %}
-            <button type="button" class="rdm-btn red-glow-pill" id="mnRulesBtn" style="margin-bottom:10px;">
-                <span class="rdm-btn-label">Ver reglas del programa</span>
-            </button>
-            {% endif %}
-            {% if course_videos %}
-            <button type="button" class="rdm-btn red-glow-pill" id="mnCourseBtn" style="margin-bottom:10px;">
-                <span class="rdm-btn-label">Curso de edición</span>
-            </button>
-            {% endif %}
-            {% if mini_whatsapp_group_url %}
-            <a href="{{ mini_whatsapp_group_url|safe_href }}" target="_blank" rel="noopener"
-               class="rdm-btn red-glow-pill rdm-btn-link">Únete al grupo de WhatsApp de los minis</a>
-            <p class="rdm-sub" style="margin:8px 0 0; text-align:left; max-width:none;">
-                Ahí mandamos más instrucciones y formación para hacer tus videos.
-            </p>
-            {% endif %}
-        </div>
-        {% endif %}
 
         <!-- Perfil -->
         <div class="mn-section">
@@ -147,65 +124,6 @@ body::before {
         </div>
         {% endif %}
 
-        <!-- Videos -->
-        <details class="mn-section mn-section-collapsible">
-            <summary class="mn-section-head">
-                <span class="mn-section-head-text">
-                    <h3>Videos Pagos (Solo TikTok)</h3>
-                    <p>Sube el link de cada video donde menciones la tienda. Debe tener 1000 vistas o más. Lo revisamos y, según su alcance, te acreditamos un bono.</p>
-                </span>
-                <span class="mn-section-chevron">▾</span>
-            </summary>
-
-            <label class="rdm-label" for="mnVideoUrl">Link del video</label>
-            <input type="url" id="mnVideoUrl" class="glass-input" placeholder="https://www.tiktok.com/@tu/video/..." maxlength="500">
-
-            <label class="rdm-label" for="mnVideoViews">Vistas aproximadas (opcional)</label>
-            <input type="number" id="mnVideoViews" class="glass-input" placeholder="0" min="0" step="1">
-
-            <p class="rdm-feedback" id="mnVideoFeedback" aria-live="polite"></p>
-
-            <button type="button" class="rdm-btn red-glow-pill" id="mnVideoBtn" style="margin-top:6px;">
-                <span class="rdm-btn-label">Enviar video</span>
-            </button>
-
-            {% if view_tiers %}
-            <p class="rdm-sub" style="margin-top:14px; text-align:left; max-width:none;">
-                Tabla de referencia (el monto real lo confirmamos al revisar tu video):
-            </p>
-            <div class="mn-rank-list mn-rank-list-compact" style="margin-top:8px;">
-                {% for tier in view_tiers %}
-                <div class="mn-rank-list-item">
-                    <strong>{{ tier.min_views }}{% if tier.max_views %}–{{ tier.max_views }}{% else %}+{% endif %} vistas</strong>
-                    <span class="is-accent">hasta ${{ '%.2f'|format(tier.reward_amount) }}</span>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-
-            <div class="mn-list" id="mnVideoList">
-                {% for video in videos %}
-                <div class="mn-list-item" data-video-id="{{ video.id }}">
-                    <div class="mn-list-main">
-                        <strong>{{ video.platform|capitalize }} · {{ video.url }}</strong>
-                        <small>
-                            {{ video.views_declared }} vistas declaradas
-                            {% if video.status == 'approved' %}· bono ${{ '%.2f'|format(video.reward_amount or 0) }}{% endif %}
-                        </small>
-                    </div>
-                    <span class="status-{{ video.status }}" style="padding:3px 9px; border-radius:999px; font-size:10px; font-weight:800; text-transform:uppercase;">
-                        {{ {'pending': 'Pendiente', 'approved': 'Aprobado', 'rejected': 'Rechazado'}[video.status] }}
-                    </span>
-                    {% if video.status == 'pending' %}
-                    <button type="button" class="mn-list-del" data-delete-video="{{ video.id }}" title="Eliminar">✕</button>
-                    {% endif %}
-                </div>
-                {% else %}
-                <p class="mn-list-empty">Aún no subiste ningún video.</p>
-                {% endfor %}
-            </div>
-        </details>
-
         <!-- Retiro -->
         <details class="mn-section mn-section-collapsible"{% if has_pending_withdrawal %} open{% endif %}>
             <summary class="mn-section-head">
@@ -272,25 +190,6 @@ body::before {
         </div>
     </section>
 
-    {% if course_videos %}
-    <!-- Curso de edición -->
-    <div class="rdm-modal" id="mnCourseModal" aria-hidden="true" hidden>
-        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="mnCourseTitle">
-            <div class="rdm-modal-head">
-                <h3 id="mnCourseTitle">Curso de edición</h3>
-                <button type="button" class="rdm-modal-close" id="mnCourseCloseBtn" aria-label="Cerrar">✕</button>
-            </div>
-            <div class="mn-course-list">
-                {% for v in course_videos %}
-                <a href="{{ v.youtube_url|safe_href }}" target="_blank" rel="noopener" class="mn-course-item">
-                    <strong>▶ {{ v.title }}</strong>
-                    {% if v.description %}<p>{{ v.description }}</p>{% endif %}
-                </a>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-    {% endif %}
 
     <!-- Notificaciones -->
     <div class="rdm-modal" id="mnNotifModal" aria-hidden="true" hidden>
@@ -348,63 +247,12 @@ body::before {
     </div>
     {% endif %}
 
-    {% if mini_rules_text %}
-    <!-- Reglas del programa -->
-    <div class="rdm-modal" id="mnRulesModal" aria-hidden="true" hidden>
-        <div class="rdm-modal-card" role="dialog" aria-modal="true" aria-labelledby="mnRulesTitle">
-            <div class="rdm-modal-head">
-                <h3 id="mnRulesTitle">Reglas del programa</h3>
-                <button type="button" class="rdm-modal-close" id="mnRulesCloseBtn" aria-label="Cerrar">✕</button>
-            </div>
-            <p class="rdm-sub" style="margin:0; text-align:left; max-width:none; white-space:pre-line;">{{ mini_rules_text }}</p>
-            {% if mini_rules_video_url %}
-            <a href="{{ mini_rules_video_url|safe_href }}" target="_blank" rel="noopener" class="rdm-btn red-glow-pill" style="margin-top:14px;">Ver video de las reglas</a>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 (function () {
-    var rulesBtn = document.getElementById('mnRulesBtn');
-    var rulesModal = document.getElementById('mnRulesModal');
-    var rulesCloseBtn = document.getElementById('mnRulesCloseBtn');
-    if (rulesBtn && rulesModal) {
-        rulesBtn.addEventListener('click', function () {
-            rulesModal.hidden = false;
-            rulesModal.setAttribute('aria-hidden', 'false');
-        });
-        function closeRulesModal() {
-            rulesModal.hidden = true;
-            rulesModal.setAttribute('aria-hidden', 'true');
-        }
-        if (rulesCloseBtn) rulesCloseBtn.addEventListener('click', closeRulesModal);
-        rulesModal.addEventListener('click', function (evt) {
-            if (evt.target === rulesModal) closeRulesModal();
-        });
-    }
-
-    var courseBtn = document.getElementById('mnCourseBtn');
-    var courseModal = document.getElementById('mnCourseModal');
-    var courseCloseBtn = document.getElementById('mnCourseCloseBtn');
-    if (courseBtn && courseModal) {
-        courseBtn.addEventListener('click', function () {
-            courseModal.hidden = false;
-            courseModal.setAttribute('aria-hidden', 'false');
-        });
-        function closeCourseModal() {
-            courseModal.hidden = true;
-            courseModal.setAttribute('aria-hidden', 'true');
-        }
-        if (courseCloseBtn) courseCloseBtn.addEventListener('click', closeCourseModal);
-        courseModal.addEventListener('click', function (evt) {
-            if (evt.target === courseModal) closeCourseModal();
-        });
-    }
-
     var ranksBtn = document.getElementById('mnRanksBtn');
     var ranksModal = document.getElementById('mnRanksModal');
     var ranksCloseBtn = document.getElementById('mnRanksCloseBtn');
@@ -581,33 +429,6 @@ body::before {
                 .finally(function () { setBusy(codeSaveBtn, false); });
         });
     }
-
-    /* Videos */
-    var videoBtn = document.getElementById('mnVideoBtn');
-    if (videoBtn) {
-        videoBtn.addEventListener('click', function () {
-            var feedback = document.getElementById('mnVideoFeedback');
-            var url = document.getElementById('mnVideoUrl').value.trim();
-            var views = document.getElementById('mnVideoViews').value || 0;
-            if (!url) { setFeedback(feedback, 'Escribe el link del video.', 'is-error'); return; }
-            setBusy(videoBtn, true, 'Enviando...');
-            setFeedback(feedback, '');
-            postJson('{{ url_for("minis_bp.mini_video_add") }}', {url: url, views_declared: parseInt(views, 10) || 0})
-                .then(function () { window.location.reload(); })
-                .catch(function (err) { setFeedback(feedback, err.message, 'is-error'); })
-                .finally(function () { setBusy(videoBtn, false); });
-        });
-    }
-
-    document.querySelectorAll('[data-delete-video]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            if (!window.confirm('¿Borrar este video?')) return;
-            var id = btn.getAttribute('data-delete-video');
-            postJson('{{ url_for("minis_bp.mini_video_delete", video_id=0) }}'.replace('/0', '/' + id), {})
-                .then(function () { window.location.reload(); })
-                .catch(function (err) { window.alert(err.message); });
-        });
-    });
 
     /* Retiro */
     var withdrawBtn = document.getElementById('mnWithdrawBtn');

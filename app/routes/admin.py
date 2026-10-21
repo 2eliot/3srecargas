@@ -22,7 +22,7 @@ from ..models import (
     PointsRedeemOption, PointsRedeemLog,
     RevendedoresCatalogItem, RevendedoresItemMapping, RevendedoresMappingItem, GiftCode,
     CentralOneCatalogItem, CentralOneItemMapping, CentralOneMappingItem, PackageDeliveryPlan,
-    AffiliateWithdrawal, MiniCourseVideo, MiniNotification, MiniRank, MiniVideo, MiniViewTier, MiniPayoutMethod,
+    AffiliateWithdrawal, MiniCourseVideo, MiniNotification, MiniRank, MiniVideo, MiniPayoutMethod,
     PromoAccumulatedAward, PromoAccumulatedLevel, PromoAccumulatedOrderLog,
     PromoRaffleConfig, PromoRaffleWinner, PromoRaffleEntry,
     PromoGuessConfig, PromoGuessRound, PromoGuessWinner, PromoGuessAttempt,
@@ -50,8 +50,6 @@ from ..utils.mini_influencers import (
     get_rank_progress,
     notify_mini,
     reject_withdrawal as reject_mini_withdrawal,
-    review_mini_video,
-    suggested_reward_for_views,
 )
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive, today_ve_str
 from ..utils.order_pause import PAUSED_MESSAGE, pause_order, resume_order
@@ -131,7 +129,7 @@ DRAWER_BG_ITEMS = [
     ('drawer_bg_hordas', 'Fondo del acceso "Hordas de Diamantes"', 'Hordas de Diamantes'),
     ('drawer_bg_torneos', 'Fondo del acceso "Torneos"', 'Torneos'),
     ('drawer_bg_canjear', 'Fondo del acceso "Canjear código"', 'Canjear código'),
-    ('drawer_bg_mini', 'Fondo del acceso "Soy mini influencer"', 'Soy mini influencer'),
+    ('drawer_bg_mini', 'Fondo del acceso "Código de creador"', 'Código de creador'),
     ('drawer_bg_login', 'Fondo del acceso "Iniciar sesión"', 'Iniciar sesión'),
 ]
 PROTECTED_CATEGORY_SLUGS = {'juegos', 'tarjetas', 'wallet'}
@@ -2561,6 +2559,8 @@ def affiliate_update_balance(aff_id):
 @login_required
 def minis():
     section = request.args.get('section', 'solicitudes')
+    if section == 'videos':      # los videos ya no existen: un enlace viejo cae en las solicitudes
+        section = 'solicitudes'
 
     pending_applications = (
         Affiliate.query.filter_by(is_mini=True, status='pending')
@@ -2569,12 +2569,6 @@ def minis():
     reviewed_applications = (
         Affiliate.query.filter(Affiliate.is_mini.is_(True), Affiliate.status.in_(['approved', 'rejected']))
         .order_by(Affiliate.created_at.desc()).limit(100).all()
-    )
-
-    pending_videos = MiniVideo.query.filter_by(status='pending').order_by(MiniVideo.created_at.desc()).all()
-    reviewed_videos = (
-        MiniVideo.query.filter(MiniVideo.status.in_(['approved', 'rejected']))
-        .order_by(MiniVideo.created_at.desc()).limit(100).all()
     )
 
     pending_withdrawals = AffiliateWithdrawal.query.filter_by(status='pending').order_by(AffiliateWithdrawal.created_at.desc()).all()
@@ -2586,7 +2580,6 @@ def minis():
     approved_minis = Affiliate.query.filter_by(is_mini=True, status='approved').order_by(Affiliate.name.asc()).all()
     rank_progress_by_id = {a.id: get_rank_progress(a) for a in approved_minis}
     ranks = MiniRank.query.order_by(MiniRank.sort_order.asc(), MiniRank.uses_required.asc()).all()
-    view_tiers = MiniViewTier.query.order_by(MiniViewTier.sort_order.asc(), MiniViewTier.min_views.asc()).all()
     mini_payout_methods = MiniPayoutMethod.query.order_by(MiniPayoutMethod.sort_order.asc(), MiniPayoutMethod.name.asc()).all()
     course_videos = MiniCourseVideo.query.order_by(MiniCourseVideo.sort_order.asc(), MiniCourseVideo.id.asc()).all()
 
@@ -2607,15 +2600,11 @@ def minis():
         section=section,
         pending_applications=pending_applications,
         reviewed_applications=reviewed_applications,
-        pending_videos=pending_videos,
-        reviewed_videos=reviewed_videos,
         pending_withdrawals=pending_withdrawals,
         reviewed_withdrawals=reviewed_withdrawals,
         approved_minis=approved_minis,
         rank_progress_by_id=rank_progress_by_id,
         ranks=ranks,
-        view_tiers=view_tiers,
-        suggested_reward_for_views=suggested_reward_for_views,
     )
 
 
@@ -2722,68 +2711,6 @@ def mini_payout_method_delete(method_id):
     db.session.delete(method)
     db.session.commit()
     flash('Método de pago eliminado.', 'warning')
-    return redirect(url_for('admin_bp.minis', section='config'))
-
-
-@admin_bp.route('/minis/tiers/add', methods=['POST'])
-@login_required
-def mini_tier_add():
-    try:
-        min_views = int(request.form.get('min_views') or 0)
-        max_views_raw = (request.form.get('max_views') or '').strip()
-        max_views = int(max_views_raw) if max_views_raw else None
-        reward_amount = float(request.form.get('reward_amount') or 0)
-        sort_order = int(request.form.get('sort_order') or 100)
-    except ValueError:
-        flash('Revisa los números del tramo.', 'danger')
-        return redirect(url_for('admin_bp.minis', section='config'))
-
-    if min_views < 0 or reward_amount < 0 or (max_views is not None and max_views < min_views):
-        flash('Ese tramo no es válido.', 'danger')
-        return redirect(url_for('admin_bp.minis', section='config'))
-
-    db.session.add(MiniViewTier(
-        min_views=min_views, max_views=max_views, reward_amount=reward_amount, sort_order=sort_order,
-    ))
-    db.session.commit()
-    flash('Tramo agregado.', 'success')
-    return redirect(url_for('admin_bp.minis', section='config'))
-
-
-@admin_bp.route('/minis/tiers/<int:tier_id>/edit', methods=['POST'])
-@login_required
-def mini_tier_edit(tier_id):
-    tier = MiniViewTier.query.get_or_404(tier_id)
-    try:
-        min_views = int(request.form.get('min_views') or 0)
-        max_views_raw = (request.form.get('max_views') or '').strip()
-        max_views = int(max_views_raw) if max_views_raw else None
-        reward_amount = float(request.form.get('reward_amount') or 0)
-        sort_order = int(request.form.get('sort_order') or tier.sort_order or 100)
-    except ValueError:
-        flash('Revisa los números del tramo.', 'danger')
-        return redirect(url_for('admin_bp.minis', section='config'))
-
-    if min_views < 0 or reward_amount < 0 or (max_views is not None and max_views < min_views):
-        flash('Ese tramo no es válido.', 'danger')
-        return redirect(url_for('admin_bp.minis', section='config'))
-
-    tier.min_views = min_views
-    tier.max_views = max_views
-    tier.reward_amount = reward_amount
-    tier.sort_order = sort_order
-    db.session.commit()
-    flash('Tramo actualizado.', 'success')
-    return redirect(url_for('admin_bp.minis', section='config'))
-
-
-@admin_bp.route('/minis/tiers/<int:tier_id>/delete', methods=['POST'])
-@login_required
-def mini_tier_delete(tier_id):
-    tier = MiniViewTier.query.get_or_404(tier_id)
-    db.session.delete(tier)
-    db.session.commit()
-    flash('Tramo eliminado.', 'success')
     return redirect(url_for('admin_bp.minis', section='config'))
 
 
@@ -3015,20 +2942,6 @@ def mini_delete(aff_id):
     return redirect(url_for('admin_bp.minis', section='aprobados'))
 
 
-@admin_bp.route('/minis/videos/<int:video_id>/review', methods=['POST'])
-@login_required
-def mini_video_review(video_id):
-    video = MiniVideo.query.get_or_404(video_id)
-    ok, error = review_mini_video(
-        video,
-        (request.form.get('action') or '').strip(),
-        reward_amount=request.form.get('reward_amount'),
-        note=request.form.get('note') or '',
-    )
-    flash(error if not ok else 'Video revisado.', 'danger' if not ok else 'success')
-    return redirect(url_for('admin_bp.minis', section='videos'))
-
-
 @admin_bp.route('/minis/<int:aff_id>/rank-award', methods=['POST'])
 @login_required
 def mini_rank_award(aff_id):
@@ -3113,7 +3026,6 @@ def _inject_minis_pending_state():
         return {
             'minis_pending_count': (
                 Affiliate.query.filter_by(is_mini=True, status='pending').count()
-                + MiniVideo.query.filter_by(status='pending').count()
                 + AffiliateWithdrawal.query.filter_by(status='pending').count()
             )
         }

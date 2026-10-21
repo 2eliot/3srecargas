@@ -10,10 +10,6 @@
             {% if pending_applications %}<span class="filter-tab-count">{{ pending_applications|length }}</span>{% endif %}
         </a>
         <a href="{{ url_for('admin_bp.minis', section='aprobados') }}" class="filter-tab {% if section == 'aprobados' %}active{% endif %}">Aprobados</a>
-        <a href="{{ url_for('admin_bp.minis', section='videos') }}" class="filter-tab {% if section == 'videos' %}active{% endif %}">
-            Videos
-            {% if pending_videos %}<span class="filter-tab-count">{{ pending_videos|length }}</span>{% endif %}
-        </a>
         <a href="{{ url_for('admin_bp.minis', section='retiros') }}" class="filter-tab {% if section == 'retiros' %}active{% endif %}">
             Retiros
             {% if pending_withdrawals %}<span class="filter-tab-count">{{ pending_withdrawals|length }}</span>{% endif %}
@@ -348,40 +344,6 @@
 
 <div class="admin-card">
     <div class="card-header">
-        <h3>Tramos de vistas → recompensa</h3>
-        <button class="btn-primary btn-sm" onclick="openTierAddModal()">+ Nuevo tramo</button>
-    </div>
-    <p class="form-hint" style="padding:0 20px;">Solo son sugerencia para cuando revisas un video — el monto real siempre lo confirmás vos en ese momento.</p>
-    <div class="table-wrap">
-        <table class="admin-table">
-            <thead><tr><th>Desde</th><th>Hasta</th><th>Recompensa</th><th>Orden</th><th>Acciones</th></tr></thead>
-            <tbody>
-                {% for t in view_tiers %}
-                <tr>
-                    <td>{{ t.min_views }}</td>
-                    <td>{{ t.max_views if t.max_views is not none else 'sin techo' }}</td>
-                    <td>${{ '%.2f'|format(t.reward_amount) }}</td>
-                    <td>{{ t.sort_order }}</td>
-                    <td>
-                        <div class="action-btns">
-                            <button class="btn-sm btn-outline"
-                                    onclick="openTierEditModal({{ t.id }}, {{ t.min_views }}, {{ t.max_views if t.max_views is not none else 'null' }}, {{ t.reward_amount }}, {{ t.sort_order }})">Editar</button>
-                            <form method="POST" action="{{ url_for('admin_bp.mini_tier_delete', tier_id=t.id) }}" style="display:inline">
-                                <button class="btn-sm btn-danger" type="submit" onclick="return confirm('¿Borrar este tramo?')">Borrar</button>
-                            </form>
-                        </div>
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="5" class="empty-row">No hay tramos configurados.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<div class="admin-card">
-    <div class="card-header">
         <h3>Escalera de rangos</h3>
         <button class="btn-primary btn-sm" onclick="openRankAddModal()">+ Nuevo rango</button>
     </div>
@@ -475,39 +437,6 @@
     </div>
 </div>
 
-<!-- Modal: tramo (agregar/editar) -->
-<div class="modal-overlay" id="tierMiniModal" style="display:none">
-    <div class="modal-box">
-        <div class="modal-header"><h3 id="tierMiniTitle">Nuevo tramo</h3><button onclick="closeModal('tierMiniModal')">✕</button></div>
-        <form method="POST" id="tierMiniForm">
-            <div class="form-row-2">
-                <div class="form-group">
-                    <label>Vistas desde *</label>
-                    <input type="number" name="min_views" id="tierMiniMin" min="0" step="1" required>
-                </div>
-                <div class="form-group">
-                    <label>Vistas hasta</label>
-                    <input type="number" name="max_views" id="tierMiniMax" min="0" step="1" placeholder="vacío = sin techo">
-                </div>
-            </div>
-            <div class="form-row-2">
-                <div class="form-group">
-                    <label>Recompensa ($) *</label>
-                    <input type="number" name="reward_amount" id="tierMiniReward" min="0" step="0.01" required>
-                </div>
-                <div class="form-group">
-                    <label>Orden</label>
-                    <input type="number" name="sort_order" id="tierMiniSort" step="1" value="100">
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" onclick="closeModal('tierMiniModal')" class="btn-secondary">Cancelar</button>
-                <button type="submit" class="btn-primary">Guardar</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <!-- Modal: rango (agregar/editar) -->
 <div class="modal-overlay" id="rankConfigModal" style="display:none">
     <div class="modal-box">
@@ -541,78 +470,6 @@
 </div>
 {% endif %}
 
-{% if section == 'videos' %}
-<div class="admin-card">
-    <div class="card-header"><h3>Pendientes de revisión</h3></div>
-    <div class="table-wrap">
-        <table class="admin-table">
-            <thead><tr><th>Mini</th><th>Video</th><th>Vistas declaradas</th><th>Sugerido</th><th>Fecha</th><th>Acciones</th></tr></thead>
-            <tbody>
-                {% for v in pending_videos %}
-                <tr>
-                    <td>{{ v.affiliate.name if v.affiliate else '—' }}</td>
-                    <td><a href="{{ v.url|safe_href }}" target="_blank" rel="noopener">{{ v.platform|capitalize }}</a></td>
-                    <td>{{ v.views_declared }}</td>
-                    <td>${{ '%.2f'|format(suggested_reward_for_views(v.views_declared)) }}</td>
-                    <td>{{ v.created_at.strftime('%d/%m/%Y') if v.created_at else '' }}</td>
-                    <td>
-                        <div class="action-btns">
-                            <button class="btn-sm btn-success" onclick="openVideoModal({{ v.id }}, 'approve', {{ suggested_reward_for_views(v.views_declared) }})">Aprobar</button>
-                            <button class="btn-sm btn-danger" onclick="openVideoModal({{ v.id }}, 'reject')">Rechazar</button>
-                        </div>
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="6" class="empty-row">No hay videos pendientes.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<div class="admin-card">
-    <div class="card-header"><h3>Historial</h3></div>
-    <div class="table-wrap">
-        <table class="admin-table">
-            <thead><tr><th>Mini</th><th>Video</th><th>Estado</th><th>Monto</th></tr></thead>
-            <tbody>
-                {% for v in reviewed_videos %}
-                <tr>
-                    <td>{{ v.affiliate.name if v.affiliate else '—' }}</td>
-                    <td><a href="{{ v.url|safe_href }}" target="_blank" rel="noopener">{{ v.platform|capitalize }}</a></td>
-                    <td><span class="badge {% if v.status == 'approved' %}badge-active{% else %}badge-danger{% endif %}">{{ 'Aprobado' if v.status == 'approved' else 'Rechazado' }}</span></td>
-                    <td>${{ '%.2f'|format(v.reward_amount or 0) }}</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="4" class="empty-row">Sin historial todavía.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Modal: revisar video -->
-<div class="modal-overlay" id="videoMiniModal" style="display:none">
-    <div class="modal-box">
-        <div class="modal-header"><h3 id="videoMiniTitle">Revisar video</h3><button onclick="closeModal('videoMiniModal')">✕</button></div>
-        <form method="POST" id="videoMiniForm">
-            <input type="hidden" name="action" id="videoMiniAction">
-            <div class="form-group" id="videoMiniAmountGroup">
-                <label>Monto a acreditar ($)</label>
-                <input type="number" name="reward_amount" id="videoMiniAmount" step="0.01" min="0" value="0">
-            </div>
-            <div class="form-group">
-                <label>Nota (opcional)</label>
-                <textarea name="note" rows="2"></textarea>
-            </div>
-            <div class="modal-actions">
-                <button type="button" onclick="closeModal('videoMiniModal')" class="btn-secondary">Cancelar</button>
-                <button type="submit" class="btn-primary" id="videoMiniSubmit">Confirmar</button>
-            </div>
-        </form>
-    </div>
-</div>
-{% endif %}
 
 {% if section == 'retiros' %}
 <div class="admin-card">
@@ -737,17 +594,6 @@ function openRankModal(id, rankName, bonusAmount) {
     openModal('rankMiniModal');
 }
 
-function openVideoModal(id, action, suggestedAmount) {
-    document.getElementById('videoMiniForm').action = '/admin/minis/videos/' + id + '/review';
-    document.getElementById('videoMiniAction').value = action;
-    var isApprove = action === 'approve';
-    document.getElementById('videoMiniTitle').textContent = isApprove ? 'Aprobar video' : 'Rechazar video';
-    document.getElementById('videoMiniAmountGroup').style.display = isApprove ? 'block' : 'none';
-    document.getElementById('videoMiniAmount').value = suggestedAmount || 0;
-    document.getElementById('videoMiniSubmit').className = isApprove ? 'btn-primary' : 'btn-danger';
-    openModal('videoMiniModal');
-}
-
 function openWithdrawalApproveModal(id, name, amount) {
     document.getElementById('withdrawalApproveForm').action = '/admin/minis/retiros/' + id + '/approve';
     document.getElementById('withdrawalApproveForm').reset();
@@ -828,24 +674,6 @@ function openCourseEditModal(id, title, youtubeUrl, description, sortOrder) {
     document.getElementById('courseMiniDesc').value = description || '';
     document.getElementById('courseMiniSort').value = sortOrder;
     openModal('courseMiniModal');
-}
-
-function openTierAddModal() {
-    document.getElementById('tierMiniForm').action = '/admin/minis/tiers/add';
-    document.getElementById('tierMiniTitle').textContent = 'Nuevo tramo';
-    document.getElementById('tierMiniForm').reset();
-    document.getElementById('tierMiniSort').value = 100;
-    openModal('tierMiniModal');
-}
-
-function openTierEditModal(id, minViews, maxViews, reward, sortOrder) {
-    document.getElementById('tierMiniForm').action = '/admin/minis/tiers/' + id + '/edit';
-    document.getElementById('tierMiniTitle').textContent = 'Editar tramo';
-    document.getElementById('tierMiniMin').value = minViews;
-    document.getElementById('tierMiniMax').value = maxViews === null ? '' : maxViews;
-    document.getElementById('tierMiniReward').value = reward;
-    document.getElementById('tierMiniSort').value = sortOrder;
-    openModal('tierMiniModal');
 }
 
 function openRankAddModal() {
