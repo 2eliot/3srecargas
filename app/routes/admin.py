@@ -381,6 +381,11 @@ def cleanup_used_pins():
         .filter(Pin.is_used.is_(True))
         .filter(Pin.used_at.isnot(None))
         .filter(Pin.used_at < threshold)
+        # Un PIN que una orden sigue apuntando (orders.pin_id) no se puede
+        # borrar: la clave ajena lo impide y el commit fallido tumbaba TODO
+        # el panel admin con error 500. Además es el registro de qué código
+        # se entregó en esa orden, así que se conserva.
+        .filter(~db.session.query(Order.id).filter(Order.pin_id == Pin.id).exists())
         .all()
     )
     if not old_pins:
@@ -395,9 +400,15 @@ def run_housekeeping_if_needed():
     now = datetime.utcnow()
     if _last_housekeeping_run and (now - _last_housekeeping_run) < timedelta(hours=HOUSEKEEPING_INTERVAL_HOURS):
         return
-    cleanup_old_orders()
-    cleanup_used_pins()
+    # Se marca ANTES de limpiar: si una limpieza falla no se reintenta en cada
+    # visita al panel (antes cada página del admin daba error 500).
     _last_housekeeping_run = now
+    for task in (cleanup_old_orders, cleanup_used_pins):
+        try:
+            task()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception('Limpieza automática del admin falló: %s', task.__name__)
 
 
 def _parse_optional_decimal(raw_value):
