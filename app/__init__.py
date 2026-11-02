@@ -543,6 +543,7 @@ def create_app(config_class=Config):
         _ensure_package_support_fallback_column()
         _ensure_package_bs_price_column()
         _ensure_package_cost_column()
+        _ensure_order_cost_column()
         _ensure_package_section_column()
         _ensure_horde_columns()
         _ensure_minigame_opportunity_columns()
@@ -856,7 +857,15 @@ def _ensure_package_bs_price_column():
 
 def _ensure_package_cost_column():
     try:
-        if _ensure_postgres_columns('packages', ['cost_usd NUMERIC(10, 2)']):
+        if _ensure_postgres_columns('packages', ['cost_usd NUMERIC(12, 4)']):
+            # Los costos de antes eran de 2 decimales; el costo automático sigue el precio del proveedor (4 decimales).
+            scale = db.session.execute(text(
+                "SELECT numeric_scale FROM information_schema.columns "
+                "WHERE table_name = 'packages' AND column_name = 'cost_usd'"
+            )).scalar()
+            if scale is not None and int(scale) < 4:
+                db.session.execute(text('ALTER TABLE packages ALTER COLUMN cost_usd TYPE NUMERIC(12, 4)'))
+                db.session.commit()
             return
 
         if db.engine.dialect.name != 'sqlite':
@@ -865,7 +874,25 @@ def _ensure_package_cost_column():
         rows = db.session.execute(text('PRAGMA table_info(packages)')).fetchall()
         existing = {r[1] for r in rows}
         if 'cost_usd' not in existing:
-            db.session.execute(text('ALTER TABLE packages ADD COLUMN cost_usd NUMERIC(10, 2)'))
+            db.session.execute(text('ALTER TABLE packages ADD COLUMN cost_usd NUMERIC(12, 4)'))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_cost_column():
+    """Costo congelado de cada venta (ver utils/package_costs.py). Las órdenes que ya existían quedan sin valor."""
+    try:
+        if _ensure_postgres_columns('orders', ['cost_usd NUMERIC(12, 4)']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'cost_usd' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN cost_usd NUMERIC(12, 4)'))
             db.session.commit()
     except Exception:
         db.session.rollback()

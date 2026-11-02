@@ -12,6 +12,11 @@
             {% endfor %}
         </select>
     </div>
+    <form method="post" action="{{ url_for('admin_bp.packages_refresh_costs') }}" style="display:inline-block;margin:0 8px 0 0"
+          title="Vuelve a leer los precios de Revendedores y Central One y recalcula el costo de Free Fire, Mobile Legends y Blood Strike. El sistema ya lo hace solo cada 30 minutos.">
+        <input type="hidden" name="return_game_id" value="{{ selected_game_id or '' }}">
+        <button type="submit" class="btn-outline">Actualizar costos ahora</button>
+    </form>
     <button class="btn-primary" onclick="openModal('addPkgModal')">+ Agregar Paquete</button>
 </div>
 
@@ -55,7 +60,7 @@
                             <strong>Base Bs/tasa: ${{ "%.2f"|format(pkg.price) }}</strong>
                             {% if pkg.usd_price is not none %}<small>USD exclusivo: ${{ "%.2f"|format(pkg.usd_price) }}</small>{% endif %}
                             {% if pkg.bs_price is not none %}<small>Bs exclusivo: Bs {{ "%.0f"|format(pkg.bs_price) }}</small>{% endif %}
-                            {% if pkg.cost_usd is not none %}<small>Costo: ${{ "%.2f"|format(pkg.cost_usd) }}</small>{% endif %}
+                            {% if pkg.cost_usd is not none %}<small>Costo: ${{ "%.4f"|format(pkg.cost_usd) }}{% if pkg.game_id in auto_cost_game_ids %} · automático{% endif %}</small>{% endif %}
                             {% if pkg.points_reward is not none %}<small>⭐ {{ pkg.points_reward }} pts fijos</small>{% endif %}
                         </div>
                     </td>
@@ -147,7 +152,7 @@
                 </div>
                 <div class="form-group">
                     <label>Costo del paquete (USD)</label>
-                    <input type="number" name="cost_usd" step="0.01" min="0" placeholder="Opcional: 0.70">
+                    <input type="number" name="cost_usd" step="any" min="0" placeholder="Opcional: 0.70">
                     <small class="form-hint">Lo que te cuesta a ti conseguirlo. Solo se usa para calcular ganancia en Estadísticas, el cliente nunca lo ve.</small>
                 </div>
                 <div class="form-group form-span-2">
@@ -237,8 +242,9 @@
                 </div>
                 <div class="form-group">
                     <label>Costo del paquete (USD)</label>
-                    <input type="number" name="cost_usd" id="editPkgCostUsd" step="0.01" min="0" placeholder="Opcional: 0.70">
+                    <input type="number" name="cost_usd" id="editPkgCostUsd" step="any" min="0" placeholder="Opcional: 0.70">
                     <small class="form-hint">Lo que te cuesta a ti conseguirlo. Solo se usa para calcular ganancia en Estadísticas, el cliente nunca lo ve.</small>
+                    <small class="form-hint" id="editPkgCostAutoNote" style="display:none">Este paquete es de Free Fire, Mobile Legends o Blood Strike: su costo lo pone solo el sistema con el precio que cobra el proveedor principal según el mapeo (suma todos los pasos). Aquí no se cambia.</small>
                 </div>
                 <div class="form-group">
                     <label>Nueva Imagen (opcional)</label>
@@ -316,6 +322,7 @@
 
 {% block extra_js %}
 <script>
+var AUTO_COST_PKG_IDS = [{% for p in packages if p.game_id in auto_cost_game_ids %}{{ p.id }}{% if not loop.last %},{% endif %}{% endfor %}];
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
@@ -358,6 +365,10 @@ function openEditPkg(id, name, price, usdPrice, desc, order, isAuto, isActive, h
     document.getElementById('editPkgUsdPrice').value = usdPrice || '';
     document.getElementById('editPkgBsPrice').value = bsPrice || '';
     document.getElementById('editPkgCostUsd').value = costUsd || '';
+    // Free Fire / Mobile Legends / Blood Strike: el costo lo pone el sistema, el campo solo se muestra.
+    var isAutoCost = AUTO_COST_PKG_IDS.indexOf(id) !== -1;
+    document.getElementById('editPkgCostUsd').readOnly = isAutoCost;
+    document.getElementById('editPkgCostAutoNote').style.display = isAutoCost ? '' : 'none';
     document.getElementById('editPkgDesc').value = desc;
     document.getElementById('editPkgOrder').value = order;
     document.getElementById('editPkgAuto').checked = isAuto;

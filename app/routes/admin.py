@@ -75,6 +75,7 @@ from ..utils.central_one import (
 )
 from ..models import PushSubscription, PACKAGE_SECTION_LABELS
 from ..utils.package_sections import create_section, section_labels, valid_section_key
+from ..utils.package_costs import auto_cost_game_ids, refresh_package_costs, sold_order_cost
 from ..utils.push_notifications import is_push_configured, send_push_broadcast, send_push_to_order_subscribers_async
 from ..utils.site_notifications import BODY_MAX, TITLE_MAX, clean_link
 from ..utils.points import (
@@ -876,7 +877,39 @@ def packages():
         games=all_games,
         selected_game_id=game_id,
         package_sections=section_labels(),
+        auto_cost_game_ids=auto_cost_game_ids(),
     )
+
+
+@admin_bp.route('/packages/costs/refresh', methods=['POST'])
+@login_required
+def packages_refresh_costs():
+    """Botón "Actualizar costos ahora": vuelve a leer los precios de los proveedores y recalcula el costo de los paquetes de
+    Free Fire, Mobile Legends y Blood Strike (el sistema ya lo hace solo cada 30 minutos)."""
+    game_id = request.form.get('return_game_id', type=int)
+    try:
+        summary = refresh_package_costs(fetch=True)
+    except Exception:
+        db.session.rollback()
+        flash('No se pudieron actualizar los costos. Intenta de nuevo en un momento.', 'danger')
+        return redirect(url_for('admin_bp.packages', game_id=game_id) if game_id else url_for('admin_bp.packages'))
+
+    providers = summary.get('providers') or {}
+    names = {'revendedores': 'Revendedores', 'centralone': 'Central One'}
+    down = [names[k] for k, ok in providers.items() if not ok]
+    changed = summary['changed']
+    if changed:
+        lines = '; '.join(
+            f"{c['name']}: {c['old'] or 'sin costo'} → {c['new']}" for c in changed[:8]
+        ) + (f' (y {len(changed) - 8} más)' if len(changed) > 8 else '')
+        flash(f'Costos actualizados ({len(changed)}): {lines}', 'success')
+    else:
+        flash(f"Los costos ya estaban al día ({summary['unchanged']} paquetes revisados).", 'info')
+    if down:
+        flash('No se pudo leer el precio de ' + ' ni de '.join(down) + ': esos costos quedaron como estaban.', 'warning')
+    if summary['skipped']:
+        flash('Sin cambio por revisar: ' + '; '.join(f"{s['name']} ({s['reason']})" for s in summary['skipped'][:5]), 'warning')
+    return redirect(url_for('admin_bp.packages', game_id=game_id) if game_id else url_for('admin_bp.packages'))
 
 
 PACKAGE_ANNOUNCEMENT_TYPES = {'', 'one_time_purchase', 'redeem_code'}
@@ -992,7 +1025,10 @@ def package_edit(pkg_id):
         pkg.price = float(price_raw)
         pkg.usd_price = float(usd_price_raw) if str(usd_price_raw).strip() else None
         pkg.bs_price = float(bs_price_raw) if str(bs_price_raw).strip() else None
-        pkg.cost_usd = float(cost_usd_raw) if str(cost_usd_raw).strip() else None
+        # En Free Fire, Mobile Legends y Blood Strike el costo lo pone solo el sistema (precio del proveedor según el mapeo):
+        # lo que llegue del formulario se ignora para no pisarlo con un número redondeado o viejo.
+        if pkg.game_id not in auto_cost_game_ids():
+            pkg.cost_usd = float(cost_usd_raw) if str(cost_usd_raw).strip() else None
     except ValueError:
         flash('Los precios deben ser números válidos.', 'danger')
         return redirect(url_for('admin_bp.packages', game_id=return_game_id))
@@ -5196,6 +5232,12 @@ def revendedores_sync_catalog():
 
     active_count = RevendedoresCatalogItem.query.filter_by(active=True).count()
 
+    # Los precios recién traídos pueden cambiar el costo de los paquetes: se recalcula con lo que ya se leyó.
+    try:
+        refresh_package_costs(fetch=False)
+    except Exception:
+        db.session.rollback()
+
     return jsonify({
         'ok': True,
         'source': 'api',
@@ -5246,6 +5288,10 @@ def centralone_sync_catalog():
     except (CentralOneError, CentralOneUnknown) as exc:
         db.session.rollback()
         return jsonify({'ok': False, 'error': f'No se pudo sincronizar Central One: {_central_one_error_text(exc)}'}), 502
+    try:
+        refresh_package_costs(fetch=False)
+    except Exception:
+        db.session.rollback()
     return jsonify({'ok': True, 'source': 'api', **summary})
 
 
@@ -5566,6 +5612,12 @@ def provider_mapping_save():
         db.session.rollback()
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
+    # Cambió el mapeo o el proveedor principal de este paquete: su costo se recalcula en el momento.
+    try:
+        refresh_package_costs(fetch=False, package_ids=[store_pkg_id])
+    except Exception:
+        db.session.rollback()
+
     return jsonify({'ok': True, 'removed': primary is None})
 
 
@@ -5860,7 +5912,8 @@ def stats():
         coupon_code = _coupon_code_for_order(order)
         has_coupon = bool(coupon_code)
         sold_order = order.status in ('approved', 'completed')
-        package_cost = getattr(order.package, 'cost_usd', None) if order.package else None
+        # El costo de la venta, congelado cuando el costo del paquete cambió solo (si no lo tiene, el del paquete).
+        package_cost = sold_order_cost(order)
         cost_value = float(package_cost) if package_cost is not None else 0.0
 
         day_bucket = daily_stats[day_iso]

@@ -76,6 +76,7 @@ def _loop(app):
                     try:
                         _run_tick(app)
                         _run_promos_tick()
+                        _run_costs_tick()
                     finally:
                         release_lock(_LEADER_LOCK_KEY, holder)
             except Exception as exc:
@@ -170,6 +171,21 @@ def _run_tick(app):
                 db.session.rollback()
             except Exception:
                 pass
+
+
+def _run_costs_tick():
+    """Pone al día el costo de los paquetes de Free Fire / Mobile Legends / Blood Strike con el precio del proveedor.
+    Solo hace trabajo una vez cada 30 minutos (ver utils/package_costs.py); un fallo aquí nunca frena las órdenes."""
+    from ..models import db
+    try:
+        from .package_costs import run_scheduled_refresh
+        run_scheduled_refresh()
+    except Exception as exc:
+        print(f'[OrderScheduler] Error en costos de paquetes: {exc}')
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
 
 def _run_promos_tick():

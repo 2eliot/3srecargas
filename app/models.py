@@ -154,7 +154,7 @@ class Package(db.Model):
     # calcular ganancia en Estadísticas. No tiene nada que ver con lo que se
     # le cobra al cliente (price/usd_price/bs_price) y nunca se expone en la
     # tienda ni en las APIs públicas — solo se usa en el admin.
-    cost_usd = db.Column(db.Numeric(10, 2))
+    cost_usd = db.Column(db.Numeric(12, 4))
     # Apartado de la tienda donde sale el paquete: 'main' = moneda principal del juego, 'pass' = pases, 'card' = tarjetas.
     # Vacío (los paquetes de antes) cuenta como 'main'. Si un juego tiene paquetes de más de un apartado, la tienda muestra el selector.
     section = db.Column(db.String(10))
@@ -265,6 +265,9 @@ class Order(db.Model):
     # diagnosticar un monto o estado raro sin adivinar — antes no se
     # guardaba nada de esto y no había forma de revisar hacia atrás.
     payment_verification_raw_response = db.Column(db.Text)
+    # Lo que costó esta venta a la tienda (USD, 4 decimales), congelado cuando el costo del paquete cambió solo
+    # (utils/package_costs.py). Vacío = la venta usa el costo que tenga el paquete en ese momento.
+    cost_usd = db.Column(db.Numeric(12, 4))
     # ID de la transacción de Binance Pay que saldó esta orden. Es único: una
     # misma transferencia no puede acreditarse a dos órdenes distintas (algo
     # posible antes, cuando el emparejamiento por monto no dejaba rastro).
@@ -1077,6 +1080,19 @@ class PackageDeliveryPlan(db.Model):
     __table_args__ = (
         db.UniqueConstraint('store_package_id', name='uq_delivery_plan_package'),
     )
+
+
+class PackageCostChange(db.Model):
+    """Historial del costo automático de un paquete (utils/package_costs.py): cuándo cambió, de cuánto a cuánto y por qué."""
+    __tablename__ = 'package_cost_changes'
+    id = db.Column(db.Integer, primary_key=True)
+    package_id = db.Column(db.Integer, db.ForeignKey('packages.id'), nullable=False, index=True)
+    old_cost = db.Column(db.Numeric(12, 4))
+    new_cost = db.Column(db.Numeric(12, 4), nullable=False)
+    provider = db.Column(db.String(20), default='')
+    detail = db.Column(db.String(300), default='')
+    frozen_orders = db.Column(db.Integer, default=0)   # ventas anteriores a las que se les conservó el costo viejo
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
 class AdminUser(db.Model, UserMixin):
