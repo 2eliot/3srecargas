@@ -18,11 +18,14 @@ from sqlalchemy.exc import IntegrityError
 from ..models import Affiliate, AffiliateWithdrawal, MiniNotification, MiniRank, MiniPayoutMethod, Setting, db
 from ..utils.locks import client_ip
 from ..utils.mini_influencers import (
+    award_pending_rank_bonuses,
     clear_attempts,
     count_qualifying_uses,
     get_rank_progress,
     is_rate_limited,
     normalize_video_url,
+    ordered_ladder,
+    rank_auto_pay_enabled,
     register_failed_attempt,
 )
 
@@ -75,7 +78,7 @@ def _registration_enabled():
 def login():
     if current_user.is_authenticated and _current_mini_ok():
         return redirect(url_for('minis_bp.panel'))
-    all_ranks = MiniRank.query.order_by(MiniRank.uses_required.asc()).all()
+    all_ranks = ordered_ladder(MiniRank.query.all())
     return render_template('minis/login.html', all_ranks=all_ranks, registration_enabled=_registration_enabled())
 
 
@@ -207,18 +210,25 @@ def mini_register_submit():
 @login_required
 def panel():
     affiliate = current_user
+    if affiliate.status == 'approved':
+        # Si ya llegó a un rango, el bono se le acredita en este momento (sin esperar al proceso de fondo).
+        try:
+            award_pending_rank_bonuses(affiliate)
+        except Exception:
+            db.session.rollback()
     rank_progress = get_rank_progress(affiliate) if affiliate.status == 'approved' else None
     withdrawals = (
         AffiliateWithdrawal.query.filter_by(affiliate_id=affiliate.id).order_by(AffiliateWithdrawal.created_at.desc()).all()
         if affiliate.status == 'approved' else []
     )
-    all_ranks = MiniRank.query.order_by(MiniRank.uses_required.asc()).all()
+    all_ranks = ordered_ladder(MiniRank.query.all())
     payment_methods = MiniPayoutMethod.query.filter_by(is_active=True).order_by(MiniPayoutMethod.sort_order.asc(), MiniPayoutMethod.name.asc()).all()
     has_pending_withdrawal = any(w.status == 'pending' for w in withdrawals)
 
     return render_template(
         'minis/panel.html',
         affiliate=affiliate,
+        rank_auto_pay=rank_auto_pay_enabled(),
         rank_progress=rank_progress,
         all_ranks=all_ranks,
         withdrawals=withdrawals,

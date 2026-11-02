@@ -121,11 +121,24 @@
 
 {% if section == 'aprobados' %}
 <div class="admin-card">
-    <div class="card-header"><h3>Creadores aprobados</h3></div>
-    <div class="form-group" style="margin:0 0 14px;padding:0 20px;">
-        <input type="text" id="miniSearchInput" class="glass-input" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);width:100%;max-width:360px;"
-               placeholder="Buscar por correo, nombre, código o teléfono...">
+    <div class="card-header">
+        <h3>Creadores aprobados</h3>
+        <span>
+            {% if mini_total_pages > 1 %}<span style="opacity:.7;margin-right:10px">Mostrando {{ mini_start }}–{{ mini_end }}</span>{% endif %}
+            {{ mini_total }} {{ 'creador' if mini_total == 1 else 'creadores' }}
+        </span>
     </div>
+    <form method="GET" action="{{ url_for('admin_bp.minis') }}" style="margin:0 0 14px;padding:0 20px;display:flex;flex-direction:row;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-start;">
+        <input type="hidden" name="section" value="aprobados">
+        <input type="text" id="miniSearchInput" name="q" value="{{ mini_search }}" maxlength="100" class="glass-input" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--bg-secondary);color:var(--text-primary);width:100%;max-width:360px;"
+               placeholder="Buscar por correo, nombre, código o teléfono...">
+        <button type="submit" class="btn-sm btn-outline">Buscar</button>
+        {% if mini_search %}<a class="btn-sm btn-outline" href="{{ url_for('admin_bp.minis', section='aprobados') }}">Limpiar</a>{% endif %}
+    </form>
+    <p class="form-hint" style="margin:0 0 12px;padding:0 20px;">
+        {% if mini_rank_auto_pay %}Los bonos de rango se acreditan solos al saldo del creador cuando llega a sus usos (se revisa cada 2 minutos). Tú solo le pagas cuando pida su retiro.
+        {% else %}El pago automático de rangos está apagado (Config): tienes que pagar cada rango a mano con el botón "Pagar".{% endif %}
+    </p>
     <div class="table-wrap">
         <table class="admin-table" id="miniApprovedTable">
             <thead>
@@ -134,7 +147,7 @@
             <tbody>
                 {% for aff in approved_minis %}
                 {% set progress = rank_progress_by_id.get(aff.id) %}
-                <tr data-mini-search="{{ (aff.name ~ ' ' ~ (aff.email or '') ~ ' ' ~ aff.code ~ ' ' ~ (aff.whatsapp_phone or ''))|lower }}">
+                <tr>
                     <td><strong>{{ aff.name }}</strong><br><small>{{ aff.email or '' }}</small></td>
                     <td>{{ aff.whatsapp_phone or '—' }}</td>
                     <td><code class="ref-code">{{ aff.code }}</code></td>
@@ -144,7 +157,9 @@
                     <td>${{ '%.2f'|format(aff.total_earned or 0) }}</td>
                     <td>
                         {{ progress.current.name if progress and progress.current else 'Sin rango' }}
-                        ({{ progress.uses if progress else 0 }} usos)
+                        {% if progress and progress.next %}<br><small>{{ progress.tier_uses }}/{{ progress.tier_required }} → {{ progress.next.name }}</small>
+                        {% elif progress %}<br><small>Rango máximo</small>{% endif %}
+                        <br><small style="opacity:.7">{{ progress.uses if progress else 0 }} usos en total</small>
                     </td>
                     <td>
                         <div class="action-btns">
@@ -170,12 +185,32 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="9" class="empty-row">Todavía no hay creadores aprobados.</td></tr>
+                <tr><td colspan="9" class="empty-row">{{ 'Ningún creador coincide con esa búsqueda.' if mini_search else 'Todavía no hay creadores aprobados.' }}</td></tr>
                 {% endfor %}
-                <tr id="miniSearchEmptyRow" class="empty-row" hidden><td colspan="9" class="empty-row">Ningún creador coincide con esa búsqueda.</td></tr>
             </tbody>
         </table>
     </div>
+
+    {% if mini_total_pages > 1 %}
+    <div class="orders-pagination">
+        <a class="orders-pagination-link {% if mini_page == 1 %}is-disabled{% endif %}"
+           href="{% if mini_page > 1 %}{{ url_for('admin_bp.minis', section='aprobados', q=mini_search or None, page=mini_page - 1) }}{% else %}#{% endif %}">Anterior</a>
+        {% if mini_page_numbers[0] > 1 %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.minis', section='aprobados', q=mini_search or None, page=1) }}">1</a>
+        {% if mini_page_numbers[0] > 2 %}<span class="orders-pagination-ellipsis">...</span>{% endif %}
+        {% endif %}
+        {% for page_number in mini_page_numbers %}
+        <a class="orders-pagination-link {% if page_number == mini_page %}is-active{% endif %}"
+           href="{{ url_for('admin_bp.minis', section='aprobados', q=mini_search or None, page=page_number) }}">{{ page_number }}</a>
+        {% endfor %}
+        {% if mini_page_numbers[-1] < mini_total_pages %}
+        {% if mini_page_numbers[-1] < mini_total_pages - 1 %}<span class="orders-pagination-ellipsis">...</span>{% endif %}
+        <a class="orders-pagination-link" href="{{ url_for('admin_bp.minis', section='aprobados', q=mini_search or None, page=mini_total_pages) }}">{{ mini_total_pages }}</a>
+        {% endif %}
+        <a class="orders-pagination-link {% if mini_page == mini_total_pages %}is-disabled{% endif %}"
+           href="{% if mini_page < mini_total_pages %}{{ url_for('admin_bp.minis', section='aprobados', q=mini_search or None, page=mini_page + 1) }}{% else %}#{% endif %}">Siguiente</a>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Modal: cambiar contraseña -->
@@ -219,7 +254,7 @@
     <div class="modal-box">
         <div class="modal-header"><h3 id="miniCommissionTitle">Editar comisión</h3><button onclick="closeModal('miniCommissionModal')">✕</button></div>
         <form method="POST" id="miniCommissionForm">
-            <input type="hidden" name="redirect_to" value="{{ url_for('admin_bp.minis', section='aprobados') }}">
+            <input type="hidden" name="redirect_to" value="{{ request.full_path.rstrip('?') }}">
             <input type="checkbox" name="is_active" id="miniCommissionActive" style="display:none">
             <input type="checkbox" name="one_per_player" id="miniCommissionOnePerPlayer" style="display:none">
             <div class="form-group">
@@ -263,7 +298,7 @@
 {% if section == 'config' %}
 <div class="admin-card">
     <div class="card-header">
-        <h3>Registro de nuevos creadores</h3>
+        <h3>Ajustes del programa de creadores</h3>
     </div>
     <form method="POST" action="{{ url_for('admin_bp.mini_program_config_save') }}" style="padding:0 20px 20px;">
         <div class="form-group">
@@ -272,6 +307,13 @@
                 Aceptar registros nuevos de creadores
             </label>
             <p class="form-hint">Si lo apagas, la pestaña "Registrarme" desaparece de /minis y solo queda "Entrar" para los que ya tienen cuenta. Los creadores ya activos no se ven afectados.</p>
+        </div>
+        <div class="form-group">
+            <label class="check-label">
+                <input type="checkbox" name="mini_rank_auto_pay" value="1" {{ 'checked' if mini_rank_auto_pay }}>
+                Pagar los rangos automáticamente
+            </label>
+            <p class="form-hint">Cuando un creador llega a los usos de un rango, su bono se acredita solo a su saldo (se revisa cada 2 minutos y cuando abre su panel) y se le avisa en su campana. Tú solo le pagas cuando pida el retiro. Si lo apagas, vuelves a pagar cada rango a mano con el botón "Pagar".</p>
         </div>
         <div class="form-group">
             <button type="submit" class="btn-primary">Guardar</button>
@@ -336,12 +378,13 @@
     </div>
     <div class="table-wrap">
         <table class="admin-table">
-            <thead><tr><th>Rango</th><th>Usos requeridos</th><th>Bono</th><th>Orden</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Rango</th><th>Usos para este rango</th><th>Total acumulado</th><th>Bono</th><th>Orden</th><th>Acciones</th></tr></thead>
             <tbody>
-                {% for r in ranks %}
+                {% for r, total_uses in ranks %}
                 <tr>
                     <td>{{ r.name }}</td>
-                    <td>{{ r.uses_required }}</td>
+                    <td>{{ r.uses_required }}{% if not loop.first %} <small style="opacity:.7">más</small>{% endif %}</td>
+                    <td>{{ total_uses }}</td>
                     <td>${{ '%.2f'|format(r.bonus_amount) }}</td>
                     <td>{{ r.sort_order }}</td>
                     <td>
@@ -355,7 +398,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="5" class="empty-row">No hay rangos configurados.</td></tr>
+                <tr><td colspan="6" class="empty-row">No hay rangos configurados.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -436,8 +479,9 @@
             </div>
             <div class="form-row-2">
                 <div class="form-group">
-                    <label>Usos requeridos *</label>
+                    <label>Usos para este rango *</label>
                     <input type="number" name="uses_required" id="rankConfigUses" min="1" step="1" required>
+                    <p class="form-hint">Se cuentan desde que el creador alcanza el rango anterior: la barra de cada rango arranca en 0 y el sobrante pasa al siguiente. Ej.: Bronce 65 y Plata 120 → Plata se alcanza a los 185 usos en total.</p>
                 </div>
                 <div class="form-group">
                     <label>Bono ($) *</label>
@@ -447,6 +491,7 @@
             <div class="form-group">
                 <label>Orden</label>
                 <input type="number" name="sort_order" id="rankConfigSort" step="1" value="100">
+                <p class="form-hint">Es el orden en que se sube: el rango con el número más bajo es el primero. Si dos tienen el mismo número, va primero el que se creó antes.</p>
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeModal('rankConfigModal')" class="btn-secondary">Cancelar</button>
@@ -621,29 +666,6 @@ function openMiniCommissionModal(id, name, commissionRate, clientDiscountRate, i
     document.getElementById('miniCommissionOnePerPlayer').checked = !!onePerPlayer;
     openModal('miniCommissionModal');
 }
-
-(function () {
-    var searchInput = document.getElementById('miniSearchInput');
-    var table = document.getElementById('miniApprovedTable');
-    if (!searchInput || !table) return;
-
-    var emptyRow = document.getElementById('miniSearchEmptyRow');
-    var rows = Array.prototype.filter.call(
-        table.querySelectorAll('tbody tr'),
-        function (row) { return row.hasAttribute('data-mini-search'); }
-    );
-
-    searchInput.addEventListener('input', function () {
-        var term = searchInput.value.trim().toLowerCase();
-        var visibles = 0;
-        rows.forEach(function (row) {
-            var coincide = !term || row.getAttribute('data-mini-search').indexOf(term) !== -1;
-            row.hidden = !coincide;
-            if (coincide) visibles++;
-        });
-        if (emptyRow) emptyRow.hidden = !(term && visibles === 0);
-    });
-})();
 
 function openCourseAddModal() {
     document.getElementById('courseMiniForm').action = '/admin/minis/course-videos/add';

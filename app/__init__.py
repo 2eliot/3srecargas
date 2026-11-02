@@ -1756,9 +1756,10 @@ def _init_default_data(app):
     try:
         if MiniRank.query.count() == 0:
             for rank in [
+                # Los usos de cada rango se cuentan desde el anterior: 100 / 150 más / 250 más = 100 / 250 / 500 en total.
                 MiniRank(name='Bronce', uses_required=100, bonus_amount=5, sort_order=1),
-                MiniRank(name='Plata', uses_required=250, bonus_amount=12, sort_order=2),
-                MiniRank(name='Oro', uses_required=500, bonus_amount=25, sort_order=3),
+                MiniRank(name='Plata', uses_required=150, bonus_amount=12, sort_order=2),
+                MiniRank(name='Oro', uses_required=250, bonus_amount=25, sort_order=3),
             ]:
                 db.session.add(rank)
             db.session.flush()

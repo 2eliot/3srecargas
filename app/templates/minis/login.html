@@ -51,7 +51,7 @@ body::before {
                 <div class="mn-rank-list-item">
                     <div>
                         <strong>{{ r.name }}</strong>
-                        <small>{{ r.uses_required }} usos con tu código al mes</small>
+                        <small>{% if loop.first %}{{ r.uses_required }} usos con tu código{% else %}{{ r.uses_required }} usos más, desde el rango anterior{% endif %}</small>
                     </div>
                     <span class="is-accent">${{ '%.2f'|format(r.bonus_amount) }}</span>
                 </div>

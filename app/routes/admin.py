@@ -48,8 +48,12 @@ from ..utils.mini_influencers import (
     approve_withdrawal as approve_mini_withdrawal,
     attach_withdrawal_proof,
     get_rank_progress,
+    ladder_with_totals,
     notify_mini,
+    rank_auto_pay_enabled,
+    rank_name_is_safe,
     reject_withdrawal as reject_mini_withdrawal,
+    rename_rank_in_paid,
 )
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive, today_ve_str
 from ..utils.order_pause import PAUSED_MESSAGE, pause_order, resume_order
@@ -2602,6 +2606,9 @@ def affiliate_update_balance(aff_id):
 
 # ─── Mini influencers (/minis) ───────────────────────────────────────────────
 
+MINIS_PAGE_SIZE = 25
+
+
 @admin_bp.route('/minis')
 @login_required
 def minis():
@@ -2624,21 +2631,49 @@ def minis():
         .order_by(AffiliateWithdrawal.created_at.desc()).limit(100).all()
     )
 
-    approved_minis = Affiliate.query.filter_by(is_mini=True, status='approved').order_by(Affiliate.name.asc()).all()
-    rank_progress_by_id = {a.id: get_rank_progress(a) for a in approved_minis}
-    ranks = MiniRank.query.order_by(MiniRank.sort_order.asc(), MiniRank.uses_required.asc()).all()
+    # La lista de creadores aprobados va paginada y con la búsqueda en el servidor; el rango se calcula solo para los de la página
+    # (antes eran ~4 consultas por cada creador, de TODOS, cada vez que se abría cualquier pestaña: por eso tardaba tanto).
+    approved_minis = []
+    rank_progress_by_id = {}
+    mini_search = ''
+    mini_total = 0
+    mini_page = 1
+    mini_total_pages = 1
+    if section == 'aprobados':
+        mini_search = (request.args.get('q') or '').strip()[:100]
+        approved_query = Affiliate.query.filter_by(is_mini=True, status='approved')
+        if mini_search:
+            like = _like_pattern(mini_search)
+            approved_query = approved_query.filter(or_(
+                Affiliate.name.ilike(like, escape='\\'),
+                Affiliate.email.ilike(like, escape='\\'),
+                Affiliate.code.ilike(like, escape='\\'),
+                Affiliate.whatsapp_phone.ilike(like, escape='\\'),
+            ))
+        mini_total = approved_query.count()
+        mini_total_pages = max(1, (mini_total + MINIS_PAGE_SIZE - 1) // MINIS_PAGE_SIZE)
+        mini_page = min(max(request.args.get('page', type=int) or 1, 1), mini_total_pages)
+        approved_minis = (
+            approved_query.order_by(Affiliate.name.asc(), Affiliate.id.asc())
+            .offset((mini_page - 1) * MINIS_PAGE_SIZE).limit(MINIS_PAGE_SIZE).all()
+        )
+        all_ranks = MiniRank.query.all()
+        rank_progress_by_id = {a.id: get_rank_progress(a, ranks=all_ranks) for a in approved_minis}
+    # La escalera con los usos acumulados para llegar a cada rango: [(rango, total), ...]
+    ranks = ladder_with_totals(MiniRank.query.all())
     mini_payout_methods = MiniPayoutMethod.query.order_by(MiniPayoutMethod.sort_order.asc(), MiniPayoutMethod.name.asc()).all()
     course_videos = MiniCourseVideo.query.order_by(MiniCourseVideo.sort_order.asc(), MiniCourseVideo.id.asc()).all()
 
     program_settings = {
         s.key: s.value for s in Setting.query.filter(
-            Setting.key.in_(['mini_registration_enabled'])
+            Setting.key.in_(['mini_registration_enabled', 'mini_rank_auto_pay'])
         ).all()
     }
 
     return render_template(
         'admin/minis.html',
         mini_registration_enabled=program_settings.get('mini_registration_enabled', 'true') != 'false',
+        mini_rank_auto_pay=program_settings.get('mini_rank_auto_pay', 'true') != 'false',
         mini_payout_methods=mini_payout_methods,
         course_videos=course_videos,
         section=section,
@@ -2649,7 +2684,27 @@ def minis():
         approved_minis=approved_minis,
         rank_progress_by_id=rank_progress_by_id,
         ranks=ranks,
+        mini_search=mini_search,
+        mini_total=mini_total,
+        mini_page=mini_page,
+        mini_total_pages=mini_total_pages,
+        mini_page_numbers=list(range(max(1, mini_page - 2), min(mini_total_pages, mini_page + 2) + 1)),
+        mini_start=((mini_page - 1) * MINIS_PAGE_SIZE) + 1 if mini_total else 0,
+        mini_end=min(mini_page * MINIS_PAGE_SIZE, mini_total) if mini_total else 0,
     )
+
+
+def _minis_back(section='aprobados'):
+    """A dónde volver después de una acción sobre un creador: la misma página y búsqueda de la lista de la que se vino (si no se
+    puede saber, a la pestaña indicada). Solo se acepta la propia página de creadores de este sitio, nunca otro destino."""
+    from urllib.parse import urlparse
+    try:
+        parts = urlparse(request.referrer or '')
+        if parts.netloc == request.host and parts.path == url_for('admin_bp.minis'):
+            return parts.path + (f'?{parts.query}' if parts.query else '')
+    except Exception:
+        pass
+    return url_for('admin_bp.minis', section=section)
 
 
 @admin_bp.route('/minis/<int:aff_id>/password', methods=['POST'])
@@ -2658,17 +2713,17 @@ def mini_set_password(aff_id):
     aff = Affiliate.query.get_or_404(aff_id)
     if not aff.is_mini:
         flash('Ese afiliado no es un creador.', 'danger')
-        return redirect(url_for('admin_bp.minis', section='aprobados'))
+        return redirect(_minis_back())
 
     new_password = request.form.get('new_password') or ''
     if len(new_password) < 6:
         flash('La contraseña debe tener al menos 6 caracteres.', 'danger')
-        return redirect(url_for('admin_bp.minis', section='aprobados'))
+        return redirect(_minis_back())
 
     aff.set_password(new_password)
     db.session.commit()
     flash(f'Contraseña de "{aff.name}" actualizada.', 'success')
-    return redirect(url_for('admin_bp.minis', section='aprobados'))
+    return redirect(_minis_back())
 
 
 @admin_bp.route('/minis/<int:aff_id>/nota', methods=['POST'])
@@ -2677,17 +2732,17 @@ def mini_send_note(aff_id):
     aff = Affiliate.query.get_or_404(aff_id)
     if not aff.is_mini:
         flash('Ese afiliado no es un creador.', 'danger')
-        return redirect(url_for('admin_bp.minis', section='aprobados'))
+        return redirect(_minis_back())
 
     message = (request.form.get('message') or '').strip()
     if not message:
         flash('Escribe la nota que le vas a mandar.', 'danger')
-        return redirect(url_for('admin_bp.minis', section='aprobados'))
+        return redirect(_minis_back())
 
     notify_mini(aff, f'📩 {message[:280]}')
     db.session.commit()
     flash(f'Nota enviada a "{aff.name}".', 'success')
-    return redirect(url_for('admin_bp.minis', section='aprobados'))
+    return redirect(_minis_back())
 
 
 # ─── Config: tramos de vistas y rangos ────────────────────────────────────────
@@ -2695,10 +2750,11 @@ def mini_send_note(aff_id):
 @admin_bp.route('/minis/program-config', methods=['POST'])
 @login_required
 def mini_program_config_save():
-    """Interruptor de registros nuevos de minis. Las reglas del programa y el link del grupo de WhatsApp ya no se muestran (2026-10-21):
-    lo que había guardado en esas claves queda como está y este formulario ya no lo toca."""
+    """Interruptores del programa de creadores: registros nuevos y pago automático de los rangos. Las reglas del programa y el link del
+    grupo de WhatsApp ya no se muestran (2026-10-21): lo que había guardado en esas claves queda como está y este formulario ya no lo toca."""
     updates = {
         'mini_registration_enabled': 'true' if request.form.get('mini_registration_enabled') else 'false',
+        'mini_rank_auto_pay': 'true' if request.form.get('mini_rank_auto_pay') else 'false',
     }
     for key, value in updates.items():
         setting = Setting.query.filter_by(key=key).first()
@@ -2708,7 +2764,7 @@ def mini_program_config_save():
         else:
             setting.value = value
     db.session.commit()
-    flash('Registro de nuevos creadores actualizado.', 'success')
+    flash('Ajustes de creadores actualizados.', 'success')
     return redirect(url_for('admin_bp.minis', section='config'))
 
 
@@ -2820,6 +2876,9 @@ def mini_rank_add():
     if not name:
         flash('El rango necesita un nombre.', 'danger')
         return redirect(url_for('admin_bp.minis', section='config'))
+    if not rank_name_is_safe(name):
+        flash('El nombre del rango no puede llevar comas.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
     if MiniRank.query.filter(db.func.lower(MiniRank.name) == name.lower()).first():
         flash('Ya existe un rango con ese nombre.', 'danger')
         return redirect(url_for('admin_bp.minis', section='config'))
@@ -2840,7 +2899,7 @@ def mini_rank_add():
         name=name, uses_required=uses_required, bonus_amount=bonus_amount, sort_order=sort_order,
     ))
     db.session.commit()
-    flash('Rango agregado.', 'success')
+    flash('Rango agregado.' + _rank_auto_pay_warning(), 'success')
     return redirect(url_for('admin_bp.minis', section='config'))
 
 
@@ -2851,6 +2910,9 @@ def mini_rank_edit(rank_id):
     name = (request.form.get('name') or '').strip()[:50]
     if not name:
         flash('El rango necesita un nombre.', 'danger')
+        return redirect(url_for('admin_bp.minis', section='config'))
+    if not rank_name_is_safe(name):
+        flash('El nombre del rango no puede llevar comas.', 'danger')
         return redirect(url_for('admin_bp.minis', section='config'))
     if MiniRank.query.filter(db.func.lower(MiniRank.name) == name.lower(), MiniRank.id != rank.id).first():
         flash('Ya existe un rango con ese nombre.', 'danger')
@@ -2868,16 +2930,17 @@ def mini_rank_edit(rank_id):
         flash('Ese rango no es válido.', 'danger')
         return redirect(url_for('admin_bp.minis', section='config'))
 
-    # Si se renombra un rango ya pagado a alguien, Affiliate.ranks_paid guarda
-    # el nombre viejo: ese mini se vería "sin pagar" bajo el nombre nuevo. No
-    # hay forma de saberlo sin recorrer todos los afiliados, así que queda
-    # como advertencia en el hint del formulario, no como bloqueo aquí.
+    # Affiliate.ranks_paid guarda los NOMBRES de los rangos ya pagados: al renombrar uno se cambia también ahí, en el mismo commit.
+    # Sin eso, el rango renombrado parecería sin pagar y, con el pago automático, se le acreditaría otra vez a todos los creadores
+    # que ya lo cobraron.
+    renamed_for = rename_rank_in_paid(rank.name, name) if rank.name != name else 0
     rank.name = name
     rank.uses_required = uses_required
     rank.bonus_amount = bonus_amount
     rank.sort_order = sort_order
     db.session.commit()
-    flash('Rango actualizado.', 'success')
+    flash('Rango actualizado.' + (f' Se actualizó también el nombre en lo ya pagado a {renamed_for} creador(es).' if renamed_for else '')
+          + _rank_auto_pay_warning(), 'success')
     return redirect(url_for('admin_bp.minis', section='config'))
 
 
@@ -2887,8 +2950,20 @@ def mini_rank_delete(rank_id):
     rank = MiniRank.query.get_or_404(rank_id)
     db.session.delete(rank)
     db.session.commit()
-    flash('Rango eliminado.', 'success')
+    flash('Rango eliminado.' + _rank_auto_pay_warning(), 'success')
     return redirect(url_for('admin_bp.minis', section='config'))
+
+
+def _rank_auto_pay_warning():
+    """Cambiar la escalera mueve lo que cada creador ya alcanzó: con el pago automático encendido, los que pasen a cumplir un
+    rango recibirán su bono en unos minutos. Se avisa para que no sea una sorpresa."""
+    try:
+        if rank_auto_pay_enabled():
+            return (' Ojo: el pago automático está encendido, así que los creadores que con esta escalera ya cumplan un rango '
+                    'recibirán su bono en unos minutos.')
+    except Exception:
+        pass
+    return ''
 
 
 @admin_bp.route('/minis/<int:aff_id>/approve', methods=['POST'])
@@ -2979,7 +3054,7 @@ def mini_delete(aff_id):
     db.session.delete(aff)
     db.session.commit()
     flash(f'Cuenta de creador "{name}" eliminada.', 'success')
-    return redirect(url_for('admin_bp.minis', section='aprobados'))
+    return redirect(_minis_back())
 
 
 @admin_bp.route('/minis/<int:aff_id>/rank-award', methods=['POST'])
@@ -3000,7 +3075,7 @@ def mini_rank_award(aff_id):
 
     ok, error = award_rank_bonus(aff, rank_name, amount)
     flash(error if not ok else f'Bono de rango "{rank_name}" pagado.', 'danger' if not ok else 'success')
-    return redirect(url_for('admin_bp.minis'))
+    return redirect(_minis_back())
 
 
 @admin_bp.route('/minis/retiros/<int:w_id>/approve', methods=['POST'])

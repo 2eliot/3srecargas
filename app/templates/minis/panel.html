@@ -91,14 +91,14 @@ body::before {
         <div class="mn-section mn-rango-box">
             <div class="mn-section-head">
                 <h3>Tu rango</h3>
-                <p class="mn-rango-uses"><strong class="is-accent">{{ rank_progress.uses }}</strong> compras con tu código</p>
+                <p class="mn-rango-uses"><strong class="is-accent">{{ rank_progress.uses }}</strong> compras con tu código en total</p>
             </div>
             <div class="mn-progress-head">
                 <strong>{{ rank_progress.current.name if rank_progress.current else (rank_progress.next.name if rank_progress.next else '') }}</strong>
                 {% if rank_progress.next %}
-                <small class="mn-rango-hint">Faltan <strong>{{ rank_progress.uses_to_next }}</strong> compras
-                    (<span class="is-accent">{{ (100 - rank_progress.progress_percent)|round(1) }}%</span>)
-                    para {{ rank_progress.next.name }}</small>
+                <small class="mn-rango-hint"><strong>{{ rank_progress.tier_uses }}</strong> de <strong>{{ rank_progress.tier_required }}</strong> compras
+                    para {{ rank_progress.next.name }} · faltan <strong>{{ rank_progress.uses_to_next }}</strong>
+                    (<span class="is-accent">{{ (100 - rank_progress.progress_percent)|round(1) }}%</span>)</small>
                 {% else %}
                 <small class="mn-rango-hint">Rango máximo alcanzado</small>
                 {% endif %}
@@ -118,7 +118,8 @@ body::before {
             {% endif %}
             {% if rank_progress.unpaid %}
             <p class="rdm-feedback is-success" style="margin-top:10px;">
-                Tienes {{ rank_progress.unpaid|length }} bono(s) de rango pendiente(s) de pago — te lo acreditamos pronto.
+                Tienes {{ rank_progress.unpaid|length }} bono(s) de rango pendiente(s) de acreditar —
+                {{ 'se acreditan en breve.' if rank_auto_pay else 'te los acreditamos pronto.' }}
             </p>
             {% endif %}
         </div>
@@ -237,7 +238,7 @@ body::before {
                 <div class="mn-rank-list-item{% if rank_progress and rank_progress.current and rank_progress.current.id == r.id %} is-current{% endif %}">
                     <div>
                         <strong>{{ r.name }}</strong>
-                        <small>{{ r.uses_required }} compras con tu código</small>
+                        <small>{% if loop.first %}{{ r.uses_required }} compras con tu código{% else %}{{ r.uses_required }} compras más, contadas desde el rango anterior{% endif %}</small>
                     </div>
                     <span class="is-accent">${{ '%.2f'|format(r.bonus_amount) }}</span>
                 </div>

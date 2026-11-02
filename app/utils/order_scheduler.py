@@ -77,6 +77,7 @@ def _loop(app):
                         _run_tick(app)
                         _run_promos_tick()
                         _run_costs_tick()
+                        _run_rank_bonus_tick()
                     finally:
                         release_lock(_LEADER_LOCK_KEY, holder)
             except Exception as exc:
@@ -182,6 +183,21 @@ def _run_costs_tick():
         run_scheduled_refresh()
     except Exception as exc:
         print(f'[OrderScheduler] Error en costos de paquetes: {exc}')
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+
+def _run_rank_bonus_tick():
+    """Acredita sola la recompensa de rango a los creadores que ya llegaron a los usos de su rango (ver utils/mini_influencers.py).
+    Solo trabaja una vez cada 2 minutos; un fallo aquí nunca frena las órdenes."""
+    from ..models import db
+    try:
+        from .mini_influencers import run_scheduled_rank_sweep
+        run_scheduled_rank_sweep()
+    except Exception as exc:
+        print(f'[OrderScheduler] Error en bonos de rango de creadores: {exc}')
         try:
             db.session.rollback()
         except Exception:
