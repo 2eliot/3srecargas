@@ -970,6 +970,38 @@ details[open] > .settings-section-summary .settings-chevron { transform: rotate(
     text-decoration: none;
 }
 a.status-review:hover { background: rgba(239,68,68,.3); color: #fecaca; }
+/* "Pago ya usado": el rojo más fuerte (relleno sólido) y con un latido de luz, para no confundirlo con "Pago incompleto" ni "Referencia repetida". */
+.status-review-used {
+    background: linear-gradient(135deg, #e11d2e, #8f1018);
+    color: #fff;
+    border: 1px solid #fca5a5;
+    text-shadow: 0 1px 2px rgba(0,0,0,.5);
+    box-shadow: 0 0 0 0 rgba(248,113,113,.75);
+    animation: review-used-pulse 1.4s ease-out infinite;
+}
+a.status-review-used:hover { background: linear-gradient(135deg, #f43f4f, #a3121c); color: #fff; }
+@keyframes review-used-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(248,113,113,.75); }
+    70%  { box-shadow: 0 0 0 9px rgba(248,113,113,0); }
+    100% { box-shadow: 0 0 0 0 rgba(248,113,113,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .status-review-used { animation: none; box-shadow: 0 0 0 2px rgba(248,113,113,.6); }
+}
+/* Línea de nota "Ese pago ya fue usado" con los botones para ir a la otra orden (detalle de la orden). */
+.used-note-line {
+    display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px;
+    background: rgba(225,29,46,.1); border: 1px solid rgba(248,113,113,.55);
+}
+.used-note-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.used-note-hint { font-size: 12px; color: #fca5a5; }
+.btn-used-order {
+    display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 8px; font-size: 12.5px; font-weight: 700;
+    text-decoration: none; background: #dc2626; color: #fff; border: 1px solid #fca5a5; cursor: pointer;
+}
+.btn-used-order:hover { background: #ef4444; color: #fff; }
+.btn-used-order--ghost { background: transparent; color: #fca5a5; border-color: rgba(248,113,113,.6); }
+.btn-used-order--ghost:hover { background: rgba(248,113,113,.15); color: #fff; }
 /* Pago verificado pero recarga manual todavía sin hacer. */
 .status-paid-pending {
     background: rgba(56,189,248,.15);

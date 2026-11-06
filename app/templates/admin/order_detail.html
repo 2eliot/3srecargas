@@ -33,6 +33,14 @@
             <span class="detail-value" style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px">
                 <span class="status-badge {{ order.status_class }}">{{ order.status_label }}</span>
                 {% if order.status == 'pending' and order.is_paused %}<span class="status-badge status-paused">⏸ En pausa</span>{% endif %}
+                {# Etiquetas rojas de pago dudoso (utils/payment_flags.py); las que traen otra orden son un enlace a ella. #}
+                {% for flag in review_flags %}
+                {% if flag.order_id %}
+                <a class="status-badge status-review status-review-{{ flag.code }}" href="{{ url_for('admin_bp.order_detail', order_id=flag.order_id) }}" title="{{ flag.title }}">{{ flag.label }} · #{{ flag.order_number }}</a>
+                {% else %}
+                <span class="status-badge status-review status-review-{{ flag.code }}" title="{{ flag.title }}">{{ flag.label }}</span>
+                {% endif %}
+                {% endfor %}
                 {# Botón de PAUSA de emergencia ARRIBA, junto al estado: a mano sin tener que bajar hasta "Acciones" (ahí también está). #}
                 {% if order.status == 'pending' %}
                 {% if order.is_paused %}
@@ -139,7 +147,24 @@
             <div class="detail-value" style="text-align:left;max-width:70%;display:flex;flex-direction:column;gap:8px">
                 {% for line in order.notes.split('\n') %}
                 {% if line.strip() %}
+                {% if used_flag and 'Ese pago ya fue usado' in line %}
+                {# "Pago ya usado": botón para ir directo a la orden donde el sistema detectó que ya cuenta este pago (sin buscarla a mano). #}
+                <span class="used-note-line">
+                    <span>{{ line }}</span>
+                    <span class="used-note-actions">
+                        {% if used_flag.order_id %}
+                        <a class="btn-used-order" href="{{ url_for('admin_bp.order_detail', order_id=used_flag.order_id) }}" title="Abre la orden donde ya cuenta este pago">➜ Ir a la orden #{{ used_flag.order_number }} ({{ used_flag.order_status }})</a>
+                        {% else %}
+                        <span class="used-note-hint">El sistema no encontró en qué orden quedó ese pago.</span>
+                        {% endif %}
+                        {% if order.payment_reference %}
+                        <a class="btn-used-order btn-used-order--ghost" href="{{ url_for('admin_bp.orders', q=order.payment_reference) }}" title="Busca en Órdenes todas las que tengan esta referencia">🔎 Buscar la referencia</a>
+                        {% endif %}
+                    </span>
+                </span>
+                {% else %}
                 <span>{{ line }}</span>
+                {% endif %}
                 {% endif %}
                 {% endfor %}
             </div>

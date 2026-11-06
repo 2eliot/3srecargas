@@ -1484,9 +1484,14 @@ def order_detail(order_id):
             if not error and expected is not None:
                 repeat_real_missing = (expected - repeat_real_paid).quantize(Decimal('0.01'))
 
+    # Etiquetas rojas de pago dudoso de ESTA orden (utils/payment_flags.py). "Pago ya usado" trae el enlace a la orden donde ya cuenta el pago.
+    review_flags = order_payment_flags([order]).get(order.id, [])
+
     return render_template(
         'admin/order_detail.html',
         order=order,
+        review_flags=review_flags,
+        used_flag=next((flag for flag in review_flags if flag.get('code') == 'used'), None),
         payment_method_config=payment_method_config,
         can_send_delivery_proof=order_supports_delivery_proof(order),
         can_upload_delivery_proof=order.status not in ('rejected', 'refunded'),

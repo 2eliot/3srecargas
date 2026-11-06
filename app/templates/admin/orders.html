@@ -131,9 +131,9 @@
                                 {% endif %}
                                 {% for flag in payment_flags.get(order.id, []) %}
                                 {% if flag.order_id %}
-                                <a class="status-badge status-review" href="{{ url_for('admin_bp.order_detail', order_id=flag.order_id) }}" title="{{ flag.title }}">{{ flag.label }} · #{{ flag.order_number }}</a>
+                                <a class="status-badge status-review status-review-{{ flag.code }}" href="{{ url_for('admin_bp.order_detail', order_id=flag.order_id) }}" title="{{ flag.title }}">{{ flag.label }} · #{{ flag.order_number }}</a>
                                 {% else %}
-                                <span class="status-badge status-review" title="{{ flag.title }}">{{ flag.label }}</span>
+                                <span class="status-badge status-review status-review-{{ flag.code }}" title="{{ flag.title }}">{{ flag.label }}</span>
                                 {% endif %}
                                 {% endfor %}
                             </div>
@@ -401,10 +401,11 @@ function _reviewFlagsHtml(flags) {
     var html = '';
     (flags || []).forEach(function(f) {
         var text = _escapeHtml(f.label) + (f.order_number ? ' · #' + _escapeHtml(f.order_number) : '');
+        var kind = ' status-review-' + _escapeHtml(f.code || '');
         if (f.order_id) {
-            html += ' <a class="status-badge status-review" href="/admin/orders/' + encodeURIComponent(f.order_id) + '" title="' + _escapeHtml(f.title) + '">' + text + '</a>';
+            html += ' <a class="status-badge status-review' + kind + '" href="/admin/orders/' + encodeURIComponent(f.order_id) + '" title="' + _escapeHtml(f.title) + '">' + text + '</a>';
         } else {
-            html += ' <span class="status-badge status-review" title="' + _escapeHtml(f.title) + '">' + text + '</span>';
+            html += ' <span class="status-badge status-review' + kind + '" title="' + _escapeHtml(f.title) + '">' + text + '</span>';
         }
     });
     return html;
