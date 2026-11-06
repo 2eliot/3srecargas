@@ -1,0 +1,26 @@
+{# Píxel(es) de Meta (Facebook/Instagram) de la tienda. UN solo lugar: lo incluyen base.html y _head_common.html (login, perfil, promos y
+   perfiles), así que está en todas las páginas públicas y NO en el panel admin. Para agregar o quitar un píxel, solo se edita esta lista:
+   cada número recibe el PageView, y el script de Meta se descarga una sola vez aunque haya varios. #}
+{% set META_PIXEL_IDS = ['1893616271596771', '1480049273980368'] %}
+<!-- Meta Pixel Code (se carga cuando la página ya terminó de cargar, +2,5 s: son ~280 KB de JavaScript que antes competían con el
+     CSS de la tienda por la conexión en celulares lentos. El PageView igual se envía.) -->
+<script>
+(function(){
+function nxLoadPixel(){
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+{% for pixel_id in META_PIXEL_IDS %}fbq('init', '{{ pixel_id }}');
+{% endfor %}fbq('track', 'PageView');
+}
+if (document.readyState === 'complete') { setTimeout(nxLoadPixel, 2500); }
+else { window.addEventListener('load', function(){ setTimeout(nxLoadPixel, 2500); }); }
+})();
+</script>
+<noscript>{% for pixel_id in META_PIXEL_IDS %}<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id={{ pixel_id }}&ev=PageView&noscript=1" alt="">{% endfor %}</noscript>
+<!-- End Meta Pixel Code -->

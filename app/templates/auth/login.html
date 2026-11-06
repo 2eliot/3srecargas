@@ -130,27 +130,7 @@
         }
     </style>
 
-    <!-- Meta Pixel Code -->
-    <script>
-    (function(){function nxLoadPixel(){
-    !function(f,b,e,v,n,t,s)
-    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-    n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];
-    s.parentNode.insertBefore(t,s)}(window, document,'script',
-    'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '1893616271596771');
-    fbq('track', 'PageView');
-    }
-    if(document.readyState==='complete'){setTimeout(nxLoadPixel,2500);}else{window.addEventListener('load',function(){setTimeout(nxLoadPixel,2500);});}
-    })();
-    </script>
-    <noscript><img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id=1893616271596771&ev=PageView&noscript=1"
-    /></noscript>
-    <!-- End Meta Pixel Code -->
+    {# El píxel de Meta ya viene en _head_common.html (incluido arriba): una sola copia para todas las páginas. #}
 </head>
 <body>
     {{ bg_video_layer(DRAWER_BG_VIDEOS.drawer_bg_login) }}
