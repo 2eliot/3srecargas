@@ -151,6 +151,13 @@
                 {# "Pago ya usado": botón para ir directo a la orden donde el sistema detectó que ya cuenta este pago (sin buscarla a mano). #}
                 <span class="used-note-line">
                     <span>{{ line }}</span>
+                    {# CÓMO se usó ese pago en la otra orden (pago completo, primer pago parcial o pago restante) y de cuánto: así no hay que adivinar. #}
+                    {% if used_flag.detail %}
+                    <span class="used-note-detail">
+                        {% if used_flag.role_label %}<span class="used-role-chip used-role-{{ used_flag.role }}">{{ used_flag.role_label }}</span>{% endif %}
+                        {{ used_flag.detail }}
+                    </span>
+                    {% endif %}
                     <span class="used-note-actions">
                         {% if used_flag.order_id %}
                         <a class="btn-used-order" href="{{ url_for('admin_bp.order_detail', order_id=used_flag.order_id) }}" title="Abre la orden donde ya cuenta este pago">➜ Ir a la orden #{{ used_flag.order_number }} ({{ used_flag.order_status }})</a>

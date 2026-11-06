@@ -7,6 +7,7 @@ Marcan las órdenes cuyo pago conviene mirar antes de aprobar (o que ya se entre
 - "Pago incompleto": lo pagado en Bs no alcanza el precio de la orden.
 """
 import json
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -14,7 +15,13 @@ from sqlalchemy import or_
 
 from ..models import Order, db
 from .order_states import LIVE_PAYMENT_STATUSES
-from .payment_verification import PABILO_MIN_ACCEPTANCE_RATIO, find_reference_conflict, order_payment_ids
+from .payment_verification import (
+    PABILO_MIN_ACCEPTANCE_RATIO,
+    counted_remainder_references,
+    find_reference_conflict,
+    normalize_reference_key,
+    order_payment_ids,
+)
 
 LIVE_STATUSES = ('pending', 'approved', 'completed')
 REPEAT_WINDOW_DAYS = 60
@@ -35,8 +42,9 @@ def _decimal(value):
         return None
 
 
-def _pabilo_payment_ids(order):
-    """Ids de pago de Pabilo que trae la última respuesta guardada de la orden: el pago que Pabilo encontró para su referencia."""
+def _pabilo_payments(order):
+    """Pagos de Pabilo (lo que trae `user_bank_payment`: id, monto, referencia del banco, fecha) en la última respuesta guardada de la orden:
+    el pago que Pabilo encontró para su referencia."""
     raw = order.payment_verification_raw_response
     if not raw:
         return []
@@ -44,7 +52,7 @@ def _pabilo_payment_ids(order):
         data = json.loads(raw)
     except (TypeError, ValueError):
         return []
-    ids = []
+    payments = []
 
     def walk(node, depth=0):
         if depth > 6:
@@ -53,8 +61,8 @@ def _pabilo_payment_ids(order):
             payment = node.get('user_bank_payment')
             if isinstance(payment, dict) and payment.get('id'):
                 payment_id = str(payment['id']).strip()
-                if payment_id and payment_id not in ids:
-                    ids.append(payment_id)
+                if payment_id and all(p['id'] != payment_id for p in payments):
+                    payments.append({**payment, 'id': payment_id})
             for value in node.values():
                 walk(value, depth + 1)
         elif isinstance(node, list):
@@ -62,7 +70,12 @@ def _pabilo_payment_ids(order):
                 walk(value, depth + 1)
 
     walk(data)
-    return ids
+    return payments
+
+
+def _pabilo_payment_ids(order):
+    """Ids de pago de Pabilo que trae la última respuesta guardada de la orden."""
+    return [payment['id'] for payment in _pabilo_payments(order)]
 
 
 def _is_used_candidate(order):
@@ -112,6 +125,71 @@ def find_used_payment_order(order):
     return _lookup_used_payment_orders([order]).get(order.id)
 
 
+def _bs(value):
+    amount = _decimal(value)
+    return f'Bs {amount:.2f}' if amount is not None else ''
+
+
+def _date_es(value):
+    """'2026-11-04T04:00:00Z' -> '04/11/2026' ('' si no se entiende)."""
+    match = re.match(r'^(\d{4})-(\d{2})-(\d{2})', str(value or ''))
+    return f'{match.group(3)}/{match.group(2)}/{match.group(1)}' if match else ''
+
+
+ROLE_LABELS = {
+    'remainder': 'PAGO RESTANTE',
+    'first_full': 'PAGO COMPLETO',
+    'first_partial': 'PRIMER PAGO (PARCIAL)',
+}
+
+
+def describe_used_payment(order, other):
+    """(rol, frase) para el admin: CÓMO cuenta ese pago en la OTRA orden (pago completo, primer pago parcial o pago restante) y de cuánto, para no
+    adivinar si sirvió para pagar la orden entera o solo un resto. El monto, la referencia del banco y la fecha salen de lo que Pabilo devolvió
+    para esta orden; lo demás, de lo guardado en la otra. Rol '' si no se puede saber."""
+    label = f'#{other.order_number} ({other.status_label})'
+    payments = {p['id']: p for p in _pabilo_payments(order)}
+    other_ids = order_payment_ids(other)
+    payment_id = next((pid for pid in payments if pid in other_ids), '')
+    payment = payments.get(payment_id) or {}
+    amount = _decimal(payment.get('amount')) if payment.get('amount') is not None else None
+    if amount is not None and amount <= 0:
+        amount = None
+
+    role = ''
+    if payment_id:
+        role = 'first' if (other.payment_verification_id or '').strip() == payment_id else 'remainder'
+    else:
+        mine = normalize_reference_key(order.payment_reference)
+        if mine and mine == normalize_reference_key(other.payment_reference):
+            role = 'first'
+        elif mine and mine in {normalize_reference_key(ref) for ref in [other.remainder_reference] + counted_remainder_references(other)}:
+            role = 'remainder'
+
+    details = []
+    if payment.get('bank_reference_id'):
+        details.append(f"ref. del banco {payment['bank_reference_id']}")
+    when = _date_es(payment.get('movement_date') or payment.get('created_at'))
+    if when:
+        details.append(f'del {when}')
+    who = f"Ese pago ({', '.join(details)})" if details else 'Ese pago'
+    amount_txt = f' de {_bs(amount)}' if amount is not None else ''
+    expected = _decimal(other.payment_amount) if (other.payment_currency or '').lower() == 'bs' else None
+    total_txt = f' La orden es de {_bs(expected)} en total.' if expected is not None and expected > 0 else ''
+
+    if role == 'remainder':
+        partial = re.search(r'llegó Bs ([\d.]+) de Bs ([\d.]+)', other.notes or '')
+        first_txt = f' Esa orden pagó primero {_bs(partial.group(1))} y este pago fue el resto.' if partial else ''
+        return 'remainder', f'{who} se usó como PAGO RESTANTE{amount_txt} para completar la orden {label}.{first_txt}{total_txt}'
+    if role == 'first':
+        if other.awaiting_payment_completion:
+            return 'first_partial', f'{who} se usó como el PRIMER PAGO (parcial){amount_txt} de la orden {label}, que todavía espera el resto.{total_txt}'
+        if len(other_ids) > 1 or counted_remainder_references(other):
+            return 'first_partial', f'{who} se usó como el PRIMER PAGO (parcial){amount_txt} de la orden {label}, que luego se completó con pagos restantes.{total_txt}'
+        return 'first_full', f'{who} se usó como el PAGO COMPLETO{amount_txt} de la orden {label}.{total_txt}'
+    return '', f'{who} ya cuenta en la orden {label}.{total_txt}'
+
+
 def _used_flag(order, other=None):
     if not _is_used_candidate(order):
         return None
@@ -122,12 +200,16 @@ def _used_flag(order, other=None):
     }
     if other is not None:
         # Con enlace a esa orden (la lista y el detalle lo dibujan igual que el de "Referencia repetida").
+        role, detail = describe_used_payment(order, other)
         flag.update({
             'order_id': other.id,
             'order_number': other.order_number,
             'order_status': other.status_label,
+            'role': role,
+            'role_label': ROLE_LABELS.get(role, ''),
+            'detail': detail,
             'title': (f'Pabilo dijo que el pago de esta referencia ya cuenta en la orden #{other.order_number} ({other.status_label}) y esta orden '
-                      'no quedó verificada. Haz clic para abrir esa orden y comparar antes de aprobar.'),
+                      f'no quedó verificada. {detail} Haz clic para abrir esa orden y comparar antes de aprobar.'),
         })
     return flag
 
