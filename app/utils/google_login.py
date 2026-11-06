@@ -69,12 +69,15 @@ def redirect_uri():
     return f'{scheme}://{request.host}{url_for("auth_bp.google_login_callback")}'
 
 
-def begin(next_url=None):
-    """Prepara state y nonce y devuelve la dirección de Google a la que hay que mandar al cliente."""
+def begin(next_url=None, link_user_id=None):
+    """Prepara state y nonce y devuelve la dirección de Google a la que hay que mandar al cliente.
+
+    `link_user_id` se pone cuando una cuenta que YA tiene sesión quiere vincular su Google (en vez de entrar con él)."""
     config = get_config()
     state = secrets.token_urlsafe(32)
     nonce = secrets.token_urlsafe(24)
-    session[SESSION_KEY] = {'state': state, 'nonce': nonce, 'ts': int(time.time()), 'next': next_url or ''}
+    session[SESSION_KEY] = {'state': state, 'nonce': nonce, 'ts': int(time.time()), 'next': next_url or '',
+                            'link_user_id': int(link_user_id) if link_user_id else 0}
     params = {
         'client_id': config['client_id'],
         'redirect_uri': redirect_uri(),
@@ -177,4 +180,5 @@ def complete(args):
         'name': str(claims.get('name') or '').strip()[:120],
         'sub': str(claims.get('sub') or ''),
         'next': str(pending.get('next') or ''),
+        'link_user_id': int(pending.get('link_user_id') or 0),
     }

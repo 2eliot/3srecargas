@@ -2,14 +2,14 @@ import hashlib
 import hmac
 import os
 import re
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime
 
 from ..models import db, AccountNotice, User, Order, Game
-from ..utils import account_points, google_login
+from ..utils import account_points, google_link, google_login
 from ..utils.auth_accounts import (
     GOOGLE_SCOPE, create_registered_account, find_registered_account,
     find_scoped_customer, get_game_account_meta, get_or_create_scoped_customer, hydrate_scoped_customer_from_orders,
@@ -277,17 +277,46 @@ def google_login_start():
 @auth_bp.route('/login/google/callback')
 def google_login_callback():
     """Google devuelve aquí al cliente: se comprueba todo y se abre su cuenta de cliente (nunca la de administrador)."""
-    blocked = _signed_in_redirect()
-    if blocked:
-        return blocked
+    # Una cuenta con sesión abierta que está VINCULANDO su Google vuelve por aquí con sesión: ese caso no se manda a su perfil.
+    pending = session.get(google_login.SESSION_KEY)
+    linking = bool(isinstance(pending, dict) and pending.get('link_user_id'))
+    if not linking:
+        blocked = _signed_in_redirect()
+        if blocked:
+            return blocked
+    back_on_error = (url_for('auth_bp.account') + '#datos') if linking else url_for('auth_bp.login')
     if not check_rate_limit(f'google_login:{client_ip()}', GOOGLE_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS):
         flash('Demasiados intentos seguidos. Espera unos minutos e intenta de nuevo.', 'danger')
-        return redirect(url_for('auth_bp.login'))
+        return redirect(back_on_error)
     try:
         info = google_login.complete(request.args)
     except google_login.GoogleLoginError as exc:
         flash(str(exc), 'danger')
-        return redirect(url_for('auth_bp.login'))
+        return redirect(back_on_error)
+
+    if info.get('link_user_id'):
+        return _finish_google_link(info)
+
+    # 1) Google ya vinculado a una cuenta con usuario y contraseña: entra a ESA cuenta (la de siempre, con su perfil y sus puntos).
+    link = google_link.link_by_email(info['email'])
+    if link:
+        linked_user = db.session.get(User, link.user_id)
+        # El correo coincide pero es OTRA cuenta de Google (p. ej. un correo de dominio propio que se le dio a otra persona):
+        # Google nunca cambia el "sub" de una cuenta, así que si no es el que se guardó al vincular, no se entra.
+        same_google = not link.google_sub or link.google_sub == info.get('sub')
+        if not linked_user or not linked_user.is_active or not same_google:
+            flash('No se pudo abrir tu cuenta. Entra con tu usuario y contraseña o escríbenos por soporte.', 'danger')
+            return redirect(url_for('auth_bp.login'))
+        login_user(linked_user, remember=True)
+        flash('Sesión iniciada con Google.', 'success')
+        return redirect(_safe_next_url(info.get('next')) or url_for('auth_bp.profile'))
+
+    # 2) Ese correo ya tiene una cuenta con usuario y contraseña que no se vinculó (y no hay cuenta de Google aparte): no se crea
+    #    una cuenta nueva y vacía; se le dice cómo vincular Google desde adentro de su cuenta.
+    if not google_link.google_only_account(info['email']) and google_link.registered_accounts_with_email(info['email']):
+        flash('Ya tienes una cuenta con este correo. Entra con tu usuario y contraseña y, en "Mis datos → Google", vincula tu Google '
+              'para poder entrar también con un toque.', 'warning')
+        return redirect(url_for('auth_bp.login', tab='cuenta'))
 
     user = get_or_create_scoped_customer(
         scope_key=GOOGLE_ACCOUNT_SCOPE,
@@ -303,6 +332,56 @@ def google_login_callback():
     login_user(user, remember=True)
     flash('Sesión iniciada con Google.', 'success')
     return redirect(_safe_next_url(info.get('next')) or url_for('auth_bp.profile'))
+
+
+def _finish_google_link(info):
+    """Termina de vincular: el Google que acaba de comprobar google_login se pega a la cuenta que lo pidió (que debe seguir con sesión)."""
+    back = url_for('auth_bp.account') + '#datos'
+    if (not current_user.is_authenticated or current_user.__class__.__name__ != 'User'
+            or current_user.id != info.get('link_user_id')):
+        flash('La sesión cambió mientras vinculabas Google. Entra a tu cuenta y vuelve a intentarlo.', 'danger')
+        return redirect(url_for('auth_bp.login'))
+    ok, message = google_link.link_google(current_user, info)
+    flash(message, 'success' if ok else 'danger')
+    return redirect(back)
+
+
+@auth_bp.route('/account/google/link', methods=['POST'])
+@login_required
+def google_link_start():
+    """"Vincular con Google" (desde Mis datos): manda a Google a elegir la cuenta; al volver se vincula a ESTA cuenta."""
+    blocked = _account_only()
+    if blocked:
+        return blocked
+    back = url_for('auth_bp.account') + '#datos'
+    if not current_user.is_registered_account:
+        flash('Tu cuenta ya entra con Google: no hay nada que vincular.', 'warning')
+        return redirect(back)
+    if not google_login.get_config()['enabled']:
+        flash('Entrar con Google no está disponible por ahora.', 'warning')
+        return redirect(back)
+    if google_link.link_for_user(current_user.id):
+        flash('Tu cuenta ya tiene un Google vinculado.', 'info')
+        return redirect(back)
+    if not check_rate_limit(f'google_login:{client_ip()}', GOOGLE_MAX_ATTEMPTS, LOGIN_WINDOW_SECONDS):
+        flash('Demasiados intentos seguidos. Espera unos minutos e intenta de nuevo.', 'danger')
+        return redirect(back)
+    return redirect(google_login.begin(back, link_user_id=current_user.id))
+
+
+@auth_bp.route('/account/google/unlink', methods=['POST'])
+@login_required
+def google_unlink():
+    """"Desvincular Google": la cuenta sigue entrando con su usuario y contraseña."""
+    blocked = _account_only()
+    if blocked:
+        return blocked
+    if google_link.unlink_google(current_user):
+        flash('Google desvinculado. Sigues entrando con tu usuario y contraseña.', 'success')
+    else:
+        flash('Tu cuenta no tenía un Google vinculado.', 'info')
+    return redirect(url_for('auth_bp.account') + '#datos')
+
 
 @auth_bp.route('/logout', methods=['GET', 'POST'])
 @login_required
@@ -394,6 +473,8 @@ def account():
         profile_url=public_url,
         profile_status=status,
         points_balance=account_points.balance(current_user.id),
+        google_enabled=google_login.get_config()['enabled'],
+        google_linked_email=(google_link.mask_email(link.google_email) if (link := google_link.link_for_user(current_user.id)) else ''),
     )
 
 

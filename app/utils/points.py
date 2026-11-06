@@ -129,7 +129,7 @@ def order_qualifies_for_points(order):
     puntos, y solo una vez que el pago quedó verificado/completado."""
     if not order:
         return False
-    if order.status == 'rejected':
+    if order.status in ('rejected', 'refunded'):
         return False
     if not (order.status in ('completed', 'approved') or order.payment_verified_at):
         return False

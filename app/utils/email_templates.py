@@ -421,6 +421,75 @@ Si crees que es un error, contáctanos con tu número de orden.
 
 
 # ──────────────────────────────────────────────────────────────────────
+# ORDEN DEVUELTA — se envía al cliente (con el comprobante de la devolución si lo hay)
+# ──────────────────────────────────────────────────────────────────────
+
+def build_order_refunded_email(order, package, game, refund, has_proof=False):
+    """HTML + texto para avisar al cliente que se le devolvió el dinero de su orden."""
+    from app.utils.order_refunds import format_refund_amount
+
+    s = _base_style()
+    brand = _brand_name()
+    game_description = _game_description(game)
+    amount_str = format_refund_amount(refund.amount, refund.currency)
+    reference = (refund.reference or '').strip()
+
+    proof_html = proof_text = ''
+    if has_proof:
+        proof_html = f"""
+<div style="margin-top:20px;padding:16px;border-radius:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);">
+    <p style="margin:0;font-size:14px;color:{s['text']};line-height:1.6;">
+        Adjuntamos en este correo el comprobante de la devolución.
+    </p>
+</div>
+"""
+        proof_text = '\nAdjuntamos en este correo el comprobante de la devolución.\n'
+
+    body = f"""
+<h2 style="margin:0 0 8px 0; font-size:20px; color:{s['white']};">Te devolvimos tu dinero 💸</h2>
+<p style="margin:0 0 20px 0; font-size:15px; color:{s['text']}; line-height:1.6;">
+    Tu orden <strong style="color:{s['accent_light']};">#{order.order_number}</strong> no se pudo completar y te devolvimos
+    el total que pagaste. La recarga no se hizo.
+</p>
+
+{_status_badge('Devuelta', s['warning'])}
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
+{_detail_row('Orden', f'#{order.order_number}')}
+{_detail_row('Juego', game.name if game else 'N/A')}
+{f'{_detail_row("Descripción", game_description)}' if game_description else ''}
+{_detail_row('Paquete', package.name if package else 'N/A')}
+{_detail_row('Total devuelto', amount_str, s['accent_light'])}
+{f'{_detail_row("Referencia de la devolución", reference)}' if reference else ''}
+</table>
+
+{proof_html}
+
+<p style="margin:24px 0 0 0; font-size:14px; color:{s['text']}; line-height:1.5;">
+    Si tienes alguna duda, contáctanos con tu número de orden.
+</p>
+"""
+
+    html = _wrap_html(f'Orden #{order.order_number} devuelta - {brand}', body)
+
+    text = f"""Te devolvimos tu dinero
+
+Tu orden #{order.order_number} no se pudo completar y te devolvimos el total que pagaste. La recarga no se hizo.
+Juego: {game.name if game else 'N/A'}
+{f'Descripción: {game_description}' if game_description else ''}
+Paquete: {package.name if package else 'N/A'}
+Total devuelto: {amount_str}
+{f'Referencia de la devolución: {reference}' if reference else ''}
+{proof_text}
+Si tienes alguna duda, contáctanos con tu número de orden.
+
+— {brand}"""
+
+    subject = f'Orden #{order.order_number} devuelta - {brand}'
+    return subject, html, text
+
+
+# ──────────────────────────────────────────────────────────────────────
 # ADMIN — notificación de nueva orden
 # ──────────────────────────────────────────────────────────────────────
 

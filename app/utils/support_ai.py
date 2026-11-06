@@ -303,6 +303,10 @@ def describe_order(order):
         situation = 'rechazada'
         what = 'La orden fue rechazada.'
         next_step = 'Un agente debe revisar el caso: pasarlo a humano.'
+    elif order.status == 'refunded':
+        situation = 'devuelta'
+        what = 'A esta orden se le devolvió el dinero al cliente (devolución). Ese pago ya no se puede usar en otra orden.'
+        next_step = 'Decirle que se le devolvió su dinero y que puede ver el comprobante en su orden. Si tiene dudas, pasarlo a humano.'
     elif order.status == 'approved':
         if blocked == 'player':
             situation = 'id_invalido'

@@ -10,6 +10,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from ..models import Order, db
+from .order_states import LIVE_PAYMENT_STATUSES
 from .payment_verification import PABILO_MIN_ACCEPTANCE_RATIO
 
 LIVE_STATUSES = ('pending', 'approved', 'completed')
@@ -74,7 +75,8 @@ def _repeat_flags(orders):
         db.session.query(Order.id, Order.order_number, Order.payment_method, Order.payment_reference, Order.created_at)
         .filter(
             Order.payment_reference_last5.in_(tails),
-            Order.status.in_(LIVE_STATUSES),
+            # Las devueltas también cuentan como "orden anterior con esa referencia": ese pago quedó quemado.
+            Order.status.in_(LIVE_PAYMENT_STATUSES),
             Order.payment_method != 'prize',
             Order.created_at >= oldest,
         )

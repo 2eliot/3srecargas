@@ -29,7 +29,7 @@ from ..models import (
     PromoHordeConfig, PromoHordeWinner, SiteNotification, OrderNotification, RankingBoard,
 )
 from ..utils.availability import format_hour, get_manual_schedule
-from ..utils import google_login
+from ..utils import google_link, google_login
 from ..utils.profiles import clean_text, delete_media, get_or_create_profile, get_profile, reset_profile, save_media
 from ..utils import account_points, banner_lite, page_bg
 from ..utils import profile_social
@@ -67,8 +67,12 @@ from ..utils.minigames import (
     DEFAULT_MINIGAME_WIN_INTERVAL,
 )
 from ..utils.notifications import (
-    notify_order_approved, notify_order_completed, notify_order_rejected,
+    notify_order_approved, notify_order_completed, notify_order_refunded, notify_order_rejected,
 )
+from ..utils.order_refunds import (
+    REFUND_REASONS, format_refund_amount, order_refund_total, refund_for_order, refund_order, refund_payment_warning,
+)
+from ..utils.order_states import REFUNDABLE_STATUSES
 from ..utils.order_processing import (
     PROVIDER_LABELS, approve_order, delivery_reset_blocker, force_approve_order_manually, get_revendedores_env,
     process_affiliate_commission, process_order_delivery,
@@ -916,7 +920,7 @@ def packages_refresh_costs():
     return redirect(url_for('admin_bp.packages', game_id=game_id) if game_id else url_for('admin_bp.packages'))
 
 
-PACKAGE_ANNOUNCEMENT_TYPES = {'', 'one_time_purchase', 'redeem_code'}
+PACKAGE_ANNOUNCEMENT_TYPES = {'', 'one_time_purchase', 'redeem_code', 'check_discount'}
 
 
 def _normalize_package_announcement_type(raw_value):
@@ -1485,7 +1489,13 @@ def order_detail(order_id):
         order=order,
         payment_method_config=payment_method_config,
         can_send_delivery_proof=order_supports_delivery_proof(order),
-        can_upload_delivery_proof=order.status != 'rejected',
+        can_upload_delivery_proof=order.status not in ('rejected', 'refunded'),
+        # Botón "Devolución" (utils/order_refunds.py): solo en órdenes pendientes o rechazadas; el aviso sale si el pago no está verificado.
+        can_refund=order.status in REFUNDABLE_STATUSES,
+        refund_total_text=format_refund_amount(*order_refund_total(order)),
+        refund_reasons=REFUND_REASONS,
+        refund_warning=refund_payment_warning(order),
+        refund=refund_for_order(order),
         delivery_info=delivery_info,
         can_fetch_codes=can_fetch_codes,
         order_messages=order.order_notifications[:10],
@@ -1691,6 +1701,10 @@ def order_update_package(order_id):
 
 
 def _run_admin_pabilo_reverification(order, reference=None, force_reference=False):
+    if order.status == 'refunded':
+        # Una orden devuelta tiene su pago quemado: cambiar la referencia o volver a verificarlo lo soltaría para otra orden.
+        flash('Esta orden ya fue devuelta: su pago está quemado y no se puede cambiar ni volver a verificar.', 'warning')
+        return redirect(url_for('admin_bp.order_detail', order_id=order.id))
     try:
         payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
         uses_payer_identity = payment_method_uses_payer_identity_verification(payment_method_config) and not force_reference
@@ -1935,6 +1949,48 @@ def order_reject(order_id):
         pass
     flash(f'Orden #{order.order_number} rechazada.', 'warning')
     return redirect(url_for('admin_bp.orders'))
+
+
+@admin_bp.route('/orders/<int:order_id>/refund', methods=['POST'])
+@login_required
+def order_refund(order_id):
+    """Botón "Devolución": devuelve SIEMPRE el total que pagó el cliente, quema el pago (su referencia no se puede volver a usar), guarda el
+    comprobante opcional y le avisa al cliente. Nunca en una orden completada. Todo el detalle está en utils/order_refunds.py."""
+    order = Order.query.get_or_404(order_id)
+    target = url_for('admin_bp.order_detail', order_id=order.id)
+    proof_path = None
+    proof_file = request.files.get('refund_proof')
+    if proof_file and proof_file.filename:
+        if not allowed_file(proof_file.filename):
+            flash('El comprobante debe ser una imagen PNG, JPG, JPEG, GIF o WEBP.', 'danger')
+            return redirect(target)
+        proof_path = save_image(proof_file, 'refund_proofs')
+    try:
+        result = refund_order(
+            order,
+            reason=request.form.get('reason'),
+            note=request.form.get('note'),
+            reference=request.form.get('refund_reference'),
+            proof_path=proof_path,
+        )
+    except Exception:
+        db.session.rollback()
+        if proof_path:
+            delete_uploaded_file(proof_path)
+        current_app.logger.exception('Error al devolver la orden %s', getattr(order, 'id', None))
+        flash('Ocurrió un error interno al registrar la devolución. Revisa el log del servidor para el detalle.', 'danger')
+        return redirect(target)
+    if not result['ok']:
+        if proof_path:
+            delete_uploaded_file(proof_path)
+        flash(result['message'], result['category'])
+        return redirect(target)
+    try:
+        notify_order_refunded(order, order.package, order.game, result['refund'])
+    except Exception:
+        current_app.logger.exception('No se pudo avisar al cliente de la devolución de la orden %s', order.id)
+    flash(result['message'], result['category'])
+    return redirect(target)
 
 
 @admin_bp.route('/orders/<int:order_id>/add-note', methods=['POST'])
@@ -6265,6 +6321,7 @@ def _render_account_detail(user, temp_password=None, status=200):
     return render_template(
         'admin/account_detail.html',
         account=user,
+        google_link=google_link.link_for_user(user.id),
         orders=linked_orders(user, limit=15),
         temp_password=temp_password,
         profile=get_profile(user),

@@ -245,6 +245,23 @@
                     <button type="submit" class="rdm-btn red-glow-pill"><span class="rdm-btn-label">Cambiar contraseña</span></button>
                 </form>
             </details>
+
+            {% if google_linked_email or google_enabled %}
+            <details class="nx-prof-details">
+                <summary><span>Google</span><small>{{ 'vinculado' if google_linked_email else 'sin vincular' }}</small></summary>
+                {% if google_linked_email %}
+                <form method="POST" action="{{ url_for('auth_bp.google_unlink') }}" class="rdm-step nx-prof-form">
+                    <p class="nx-prof-text">Tu cuenta está vinculada con <strong>{{ google_linked_email }}</strong>. Puedes entrar con Google o con tu usuario y contraseña, como prefieras.</p>
+                    <button type="submit" class="rdm-btn red-glow-pill"><span class="rdm-btn-label">Desvincular Google</span></button>
+                </form>
+                {% else %}
+                <form method="POST" action="{{ url_for('auth_bp.google_link_start') }}" class="rdm-step nx-prof-form">
+                    <p class="nx-prof-text">Vincula tu cuenta de Google para entrar con un toque, sin escribir tu contraseña. Es opcional: tu usuario y contraseña siguen funcionando igual, tengas Gmail o no.</p>
+                    <button type="submit" class="rdm-btn red-glow-pill"><span class="rdm-btn-label">Vincular con Google</span></button>
+                </form>
+                {% endif %}
+            </details>
+            {% endif %}
             {% else %}
             <p class="nx-prof-text" style="margin-top:12px">Tu cuenta entra con Google: tu correo y tu seguridad los maneja Google, por eso no hay contraseña que cambiar aquí.</p>
             {% endif %}

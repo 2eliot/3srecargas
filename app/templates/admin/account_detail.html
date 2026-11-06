@@ -39,6 +39,7 @@
         <span>
             {% if account.is_active %}<span class="badge badge-active">Activa</span>{% else %}<span class="badge badge-danger">Desactivada</span>{% endif %}
             {% if account.is_registered_account %}<span class="badge badge-auto">Correo y contraseña</span>{% else %}<span class="badge badge-warning">Google</span>{% endif %}
+            {% if google_link %}<span class="badge badge-warning" title="Puede entrar también con este Google: {{ google_link.google_email }}">Google vinculado</span>{% endif %}
         </span>
     </div>
     <div style="padding:0 20px 20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;font-size:13px;">

@@ -27,6 +27,8 @@
            class="filter-tab {% if status_filter == 'completed' %}active{% endif %}">Completadas</a>
         <a href="{{ url_for('admin_bp.orders', status='rejected', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab {% if status_filter == 'rejected' %}active{% endif %}">Rechazadas</a>
+        <a href="{{ url_for('admin_bp.orders', status='refunded', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
+           class="filter-tab {% if status_filter == 'refunded' %}active{% endif %}">💸 Devueltas</a>
         {% if paused_count or status_filter == 'paused' %}
         <a href="{{ url_for('admin_bp.orders', status='paused', q=search_query or None, date_from=date_from or None, date_to=date_to or None, package_id=package_id or None, service_id=service_id or None, game_id=game_id or None) }}"
            class="filter-tab filter-tab-paused {% if status_filter == 'paused' %}active{% endif %}">

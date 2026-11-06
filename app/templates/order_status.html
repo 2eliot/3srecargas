@@ -889,11 +889,12 @@
 
         <!-- Barra superior: badge + modo -->
         <div class="nx-order-topbar">
-            <div class="nx-order-badge {% if st == 'pending' and not done_three %}is-waiting{% elif st == 'rejected' %}is-rejected{% endif %}" id="orderStatusBadge">
+            <div class="nx-order-badge {% if st == 'pending' and not done_three %}is-waiting{% elif st == 'rejected' %}is-rejected{% elif st == 'refunded' %}is-refunded{% endif %}" id="orderStatusBadge">
                 <span class="dot"></span>
                 <span id="orderBadgeText">
                     {% if st == 'completed' %}¡ORDEN COMPLETADA #{{ order.order_number }}!
                     {% elif st == 'rejected' %}ORDEN RECHAZADA #{{ order.order_number }}
+                    {% elif st == 'refunded' %}ORDEN DEVUELTA #{{ order.order_number }}
                     {% else %}PROCESANDO ORDEN #{{ order.order_number }}{% endif %}
                 </span>
             </div>
@@ -908,12 +909,39 @@
                 {% else %}¡RECARGA EXITOSA!{% endif %}
             {% elif st == 'approved' %}¡PAGO CONFIRMADO!
             {% elif st == 'rejected' %}ORDEN RECHAZADA
+            {% elif st == 'refunded' %}TE DEVOLVIMOS TU DINERO 💸
             {% else %}¡Tu pedido se está procesando!{% endif %}
         </h2>
 
         {% if st == 'rejected' %}
         <div class="nx-reject-note">
             Tu orden fue rechazada. {{ order.notes or 'Contacta a soporte si crees que es un error.' }}
+        </div>
+        {% endif %}
+
+        {# Devolución (utils/order_refunds.py): lo que ve el cliente. No se le muestran las notas internas ni el motivo del admin. #}
+        {% if st == 'refunded' and refund %}
+        <div class="nx-refund-card" id="orderRefundCard">
+            <h3>Devolución realizada</h3>
+            <p>Tu orden no se pudo completar y te devolvimos el total que pagaste. La recarga no se hizo.</p>
+            <div class="nx-refund-row"><span>Total devuelto</span><span>{{ refund_amount_text }}</span></div>
+            <div class="nx-refund-row"><span>Fecha</span><span>{{ refund.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span></div>
+            {% if refund.reference %}
+            <div class="nx-refund-row"><span>Referencia de la devolución</span><span>{{ refund.reference }}</span></div>
+            {% endif %}
+            {% if refund.proof %}
+            <div class="nx-refund-proof">
+                <a href="{{ url_for('static', filename='uploads/' + refund.proof) }}" target="_blank" rel="noopener">
+                    <img src="{{ url_for('static', filename='uploads/' + refund.proof) }}" alt="Comprobante de la devolución" loading="lazy">
+                </a>
+                <a class="btn-link" href="{{ url_for('static', filename='uploads/' + refund.proof) }}" target="_blank" rel="noopener">Ver comprobante de la devolución</a>
+            </div>
+            {% endif %}
+        </div>
+        {% elif st == 'refunded' %}
+        <div class="nx-refund-card" id="orderRefundCard">
+            <h3>Devolución realizada</h3>
+            <p>Tu orden no se pudo completar y te devolvimos el total que pagaste. Si tienes dudas, escríbenos por soporte.</p>
         </div>
         {% endif %}
 
@@ -1048,7 +1076,7 @@
         {% endif %}
 
         <!-- Resumen jugador / paquete (visible al completar) -->
-        {% if st in ['approved', 'completed'] or (is_manual_order and order.payment_verified_at) %}
+        {% if st != 'refunded' and (st in ['approved', 'completed'] or (is_manual_order and order.payment_verified_at)) %}
         <div class="nx-order-summary">
             <div class="nx-sum-cell glass-subpanel">
                 {% if is_wallet_order or (order.game.category and order.game.category.slug == 'wallet') %}
@@ -1069,7 +1097,8 @@
         </div>
         {% endif %}
 
-        <!-- Estado de la entrega en tiempo real -->
+        {# Estado de la entrega en tiempo real: no aplica a una orden devuelta (no hubo entrega). #}
+        {% if st != 'refunded' %}
         <div>
             <div class="nx-track-title" style="margin-bottom:10px">
                 <span>⚡</span><span>Estado de la entrega en tiempo real</span>
@@ -1114,6 +1143,7 @@
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <div class="order-minigame-card" id="orderMinigameCard" data-order-number="{{ order.order_number }}" style="display:none">
             <div class="order-minigame-shell">

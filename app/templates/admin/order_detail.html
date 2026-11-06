@@ -43,6 +43,10 @@
                 </form>
                 {% endif %}
                 {% endif %}
+                {# Botón de DEVOLUCIÓN también arriba, junto al estado (pendientes y rechazadas): ver utils/order_refunds.py. #}
+                {% if can_refund %}
+                <button type="button" class="btn-refund btn-sm" onclick="document.getElementById('refundModal').style.display='flex'" title="Devolver al cliente el total que pagó: el pago queda quemado y no se puede volver a usar">💸 Devolución</button>
+                {% endif %}
             </span>
         </div>
         {% if delivery_info %}
@@ -355,7 +359,7 @@
         </div>
         {% endif %}
 
-        {% if order.status != 'rejected' %}
+        {% if order.status not in ('rejected', 'refunded') %}
         <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border-color)">
             <h3 style="margin-bottom:12px">Verificación Pabilo</h3>
             {% if order.payment_verification_raw_response %}
@@ -451,6 +455,52 @@
         {% endif %}
     </div>
 
+    {% if refund %}
+    <div class="detail-section" style="grid-column:1/-1">
+        <h3>💸 Devolución</h3>
+        <div class="refund-box">
+            <div class="detail-row">
+                <span class="detail-label">Total devuelto</span>
+                <span class="detail-value" style="color:#38bdf8;font-weight:800">{{ ('$' ~ ('%.2f'|format(refund.amount))) if refund.currency == 'usd' else ('Bs ' ~ ('%.2f'|format(refund.amount))) }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Fecha</span>
+                <span class="detail-value">{{ refund.created_at|datetime_ve('%d/%m/%Y %H:%M') }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Motivo</span>
+                <span class="detail-value">{{ refund_reasons.get(refund.reason, refund.reason) }}</span>
+            </div>
+            {% if refund.reference %}
+            <div class="detail-row">
+                <span class="detail-label">Referencia de la devolución</span>
+                <span class="detail-value">{{ refund.reference }}</span>
+            </div>
+            {% endif %}
+            {% if refund.note %}
+            <div class="detail-row">
+                <span class="detail-label">Nota</span>
+                <span class="detail-value" style="text-align:left;max-width:70%;white-space:pre-line">{{ refund.note }}</span>
+            </div>
+            {% endif %}
+            <div class="detail-row">
+                <span class="detail-label">Pago original</span>
+                <span class="detail-value">Quemado: {{ order.payment_reference }} no se puede usar en otra orden</span>
+            </div>
+            {% if refund.proof %}
+            <div class="detail-row" style="align-items:flex-start">
+                <span class="detail-label">Comprobante</span>
+                <span class="detail-value">
+                    <a href="{{ url_for('static', filename='uploads/' + refund.proof) }}" target="_blank" rel="noopener">
+                        <img src="{{ url_for('static', filename='uploads/' + refund.proof) }}" alt="Comprobante de la devolución" style="display:block;width:100%;max-width:220px;max-height:220px;object-fit:cover;border-radius:12px;border:1px solid var(--border-color);">
+                    </a>
+                </span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     {% if order.pin_delivered %}
     <div class="detail-section" style="grid-column:1/-1">
         <h3>PIN Entregado</h3>
@@ -490,6 +540,7 @@
             <button type="submit" class="btn-pause" title="Detiene todo lo automático de esta orden: no se manda ninguna petición al proveedor hasta que la reanudes">⏸ Pausar orden</button>
         </form>
         {% endif %}
+        <button type="button" class="btn-refund" onclick="document.getElementById('refundModal').style.display='flex'" title="Devolver al cliente el total que pagó: el pago queda quemado y no se puede volver a usar">💸 Devolución</button>
     </div>
     {% if can_send_delivery_proof %}
     <small style="display:block;margin-top:10px;color:var(--text-muted);font-size:11px">📎 Comprobante opcional para el correo de entrega.</small>
@@ -497,6 +548,10 @@
     <small style="display:block;margin-top:10px;color:var(--text-muted);font-size:11px">
         ⏸ <strong>Pausar</strong>: para cuando el cliente puso mal el ID u otro dato y no quieres que el sistema siga mandando peticiones al proveedor.
         En pausa no se procesa nada solo; corriges el dato y tocas <strong>Reanudar</strong>.
+    </small>
+    <small style="display:block;margin-top:8px;color:var(--text-muted);font-size:11px">
+        💸 <strong>Devolución</strong>: le devuelves al cliente el total que pagó. La orden pasa a "Devuelta" y su pago queda quemado (no se puede usar en otra orden).
+        Antes de guardar, el sistema confirma con el proveedor que la recarga NO se entregó.
     </small>
 
     <div style="margin-top:18px;padding-top:16px;border-top:1px dashed var(--border-color)">
@@ -592,6 +647,47 @@
 </div>
 {% endif %}
 
+{% if can_refund %}
+<div class="modal-overlay" id="refundModal" style="display:none">
+    <div class="modal-box">
+        <h3>💸 Devolución del dinero</h3>
+        <p class="form-hint" style="margin-top:10px">
+            Se le devuelve al cliente <strong>siempre el total que pagó</strong>: <strong style="color:#38bdf8">{{ refund_total_text }}</strong>.
+            La orden pasa a «Devuelta» y este pago <strong>queda quemado</strong>: su referencia no se puede volver a usar en otra orden.
+            Antes de guardar, el sistema confirma con el proveedor que la recarga NO se entregó.
+        </p>
+        {% if refund_warning %}<div class="refund-warning">⚠ {{ refund_warning }}</div>{% endif %}
+        <form method="POST" action="{{ url_for('admin_bp.order_refund', order_id=order.id) }}" enctype="multipart/form-data" id="refundForm">
+            <div class="form-group" style="margin-top:16px">
+                <label for="refundReason">Motivo</label>
+                <select name="reason" id="refundReason">
+                    {% for code, label in refund_reasons.items() %}
+                    <option value="{{ code }}"{% if code == 'otro' %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="refundReference">Referencia de la devolución (opcional)</label>
+                <input type="text" name="refund_reference" id="refundReference" maxlength="120" autocomplete="off" placeholder="Referencia de la transferencia con la que le devolviste">
+            </div>
+            <div class="form-group">
+                <label for="refundNote">Nota (opcional)</label>
+                <textarea name="note" id="refundNote" rows="2" maxlength="500" placeholder="Ej: el proveedor se quedó sin saldo y el cliente no quiso esperar..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="refundProof">📎 Comprobante de la devolución (opcional)</label>
+                <input type="file" name="refund_proof" id="refundProof" accept="image/*">
+                <small class="form-hint" style="display:block;margin-top:6px;">Se le manda al cliente por correo y lo ve en su orden.</small>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="document.getElementById('refundModal').style.display='none'" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-refund" id="refundSubmitBtn">💸 Sí, devolver {{ refund_total_text }}</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <div class="modal-overlay" id="whatsAppComposeModal" style="display:none">
     <div class="modal-box">
         <h3>Escribir por WhatsApp</h3>
@@ -617,6 +713,19 @@
 
 {% block extra_js %}
 <script>
+// Devolución: un solo clic. Al confirmar se bloquea el botón (la devolución consulta al proveedor y puede tardar unos segundos).
+(function () {
+    var form = document.getElementById('refundForm');
+    var btn = document.getElementById('refundSubmitBtn');
+    if (!form || !btn) return;
+    form.addEventListener('submit', function () {
+        if (btn.dataset.sending) return;
+        btn.dataset.sending = '1';
+        btn.disabled = true;
+        btn.textContent = '⏳ Revisando con el proveedor…';
+    });
+})();
+
 // Foto del comprobante al forzar la recarga: recuadro con vista previa.
 (function () {
     var input = document.getElementById('forceProofInput');

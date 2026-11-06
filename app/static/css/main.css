@@ -2982,6 +2982,7 @@ body.modal-open {
 .status-approved  { background: rgba(34,197,94,.15);  color: var(--success); }
 .status-completed { background: rgba(244,63,94,.15); color: #fda4af; }
 .status-rejected  { background: rgba(239,68,68,.15);  color: var(--danger); }
+.status-refunded  { background: rgba(56,189,248,.15); color: #38bdf8; }
 
 .pin-reveal {
     background: linear-gradient(135deg, rgba(244,63,94,.1), rgba(251,113,133,.1));

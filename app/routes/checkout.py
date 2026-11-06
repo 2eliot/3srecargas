@@ -32,6 +32,8 @@ from ..utils.points import (
     get_points_enabled_games, get_points_redeem_enabled_games, get_points_redeem_options,
     get_points_spin_cost, redeem_points_for_package, spend_points_and_spin,
 )
+from ..utils.order_refunds import format_refund_amount, refund_for_order
+from ..utils.order_states import LIVE_PAYMENT_STATUSES
 from ..utils.payment_verification import (
     PABILO_MIN_ACCEPTANCE_RATIO,
     apply_underpaid_verification,
@@ -1125,7 +1127,7 @@ def checkout(package_id):
             existing_ref = find_reference_conflict(
                 reference=payment_reference_input,
                 payment_method_code=payment_method,
-                statuses=['pending', 'approved', 'completed'],
+                statuses=list(LIVE_PAYMENT_STATUSES),   # incluye las devueltas: ese pago ya se usó (y se le devolvió al cliente)
             )
             if existing_ref:
                 return _confirm_fail('Esta referencia ya fue registrada en otra orden activa o ya aprobada. Verifica tu pago e intenta nuevamente.', code='reference_in_use')
@@ -1575,9 +1577,15 @@ def order_status(order_number):
             already_paid = Decimal(str(order.paid_amount_bs or 0))
             missing_amount_bs = float((expected_amount - already_paid).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
+    # Devolución del dinero (utils/order_refunds.py): solo existe en órdenes 'refunded'; el cliente ve el total devuelto y el comprobante.
+    refund = refund_for_order(order)
+    refund_amount_text = format_refund_amount(refund.amount, refund.currency) if refund else ''
+
     return render_template(
         'order_status.html',
         order=order,
+        refund=refund,
+        refund_amount_text=refund_amount_text,
         usd_rate=usd_rate,
         display_currency=display_currency,
         display_amount=display_amount,

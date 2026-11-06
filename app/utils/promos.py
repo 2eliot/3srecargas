@@ -152,7 +152,7 @@ def _accumulated_prize_orders_since(since_utc):
         Order.payment_method == 'prize',
         Order.payment_reference.like(f'{ACC_PRIZE_REFERENCE_PREFIX}-%'),
         Order.created_at >= since_utc,
-        Order.status != 'rejected',
+        Order.status.notin_(('rejected', 'refunded')),
     )
 
 

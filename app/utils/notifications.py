@@ -16,6 +16,7 @@ from app.utils.email_templates import (
     build_order_approved_email,
     build_order_completed_pin_email,
     build_order_rejected_email,
+    build_order_refunded_email,
     build_admin_new_order_email,
 )
 from app.utils.push_notifications import (
@@ -113,6 +114,22 @@ def notify_order_rejected(order, package, game, reason=''):
         app, order.id,
         'Hubo un problema con tu orden',
         f'Tu orden #{order.order_number} de {game.name} fue rechazada. Contáctanos si crees que es un error.',
+        url=_order_status_url(order),
+    )
+
+
+def notify_order_refunded(order, package, game, refund):
+    """Avisa al cliente (correo con el comprobante adjunto si lo hay + push) que se le devolvió el dinero de la orden."""
+    app = _app()
+    if order.email:
+        attachment = _resolve_upload_attachment(getattr(refund, 'proof', ''))
+        subject, html, text = build_order_refunded_email(order, package, game, refund, has_proof=bool(attachment))
+        send_email_async(app, order.email, subject, html, text, attachments=[attachment] if attachment else None)
+
+    send_push_to_order_subscribers_async(
+        app, order.id,
+        'Te devolvimos tu dinero 💸',
+        f'Tu orden #{order.order_number} de {game.name} fue devuelta. Abre tu orden para ver el comprobante.',
         url=_order_status_url(order),
     )
 

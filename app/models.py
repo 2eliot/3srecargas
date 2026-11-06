@@ -293,6 +293,7 @@ class Order(db.Model):
         'approved': ('Aprobada', 'status-approved'),
         'completed': ('Completada', 'status-completed'),
         'rejected': ('Rechazada', 'status-rejected'),
+        'refunded': ('Devuelta', 'status-refunded'),
     }
 
     @property
@@ -302,6 +303,23 @@ class Order(db.Model):
     @property
     def status_class(self):
         return self.STATUS_LABELS.get(self.status, (self.status, ''))[1]
+
+
+class OrderRefund(db.Model):
+    """Devolución del dinero de una orden (estado 'refunded'): una por orden. El pago de la orden queda QUEMADO: su referencia y su
+    id de pago de Pabilo siguen contando como usados para siempre (ver utils/order_states.py)."""
+    __tablename__ = 'order_refunds'
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False, unique=True)
+    amount = db.Column(db.Numeric(14, 2), nullable=False)          # el total que pagó el cliente
+    currency = db.Column(db.String(8), nullable=False, default='bs')   # 'bs' o 'usd'
+    reference = db.Column(db.String(120))                          # referencia de la transferencia con la que se le devolvió (la escribe el admin)
+    reason = db.Column(db.String(40), default='otro')
+    note = db.Column(db.String(500))
+    proof = db.Column(db.String(255))                              # comprobante de la devolución (ruta relativa a uploads/)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    order = db.relationship('Order', backref=db.backref('refund', uselist=False))
 
 
 class MiniGameCounter(db.Model):
@@ -781,6 +799,17 @@ class UserLinkedId(db.Model):
     __table_args__ = (
         db.UniqueConstraint('user_id', 'game_id', 'identifier_normalized', name='uq_user_linked_id'),
     )
+
+
+class UserGoogleLink(db.Model):
+    """Google vinculado a una cuenta con usuario y contraseña: con ese Google entra a ESA cuenta (y puede seguir entrando con su
+    usuario y contraseña). Una cuenta tiene como máximo un Google, y un Google solo puede estar en una cuenta."""
+    __tablename__ = 'user_google_links'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True)
+    google_email = db.Column(db.String(255), nullable=False, unique=True)     # en minúsculas
+    google_sub = db.Column(db.String(64))                                      # identificador estable de Google
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class AccountNotice(db.Model):

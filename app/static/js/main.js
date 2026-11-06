@@ -115,6 +115,8 @@ window.nxDebug = function () {};
     var gameSelectionPopupCloseBtn = document.getElementById('gameSelectionPopupCloseBtn');
     var pkgOneTimePopup = document.getElementById('pkgOneTimePopup');
     var pkgOneTimeCloseBtn = document.getElementById('pkgOneTimeCloseBtn');
+    var pkgDiscountCheckPopup = document.getElementById('pkgDiscountCheckPopup');
+    var pkgDiscountCheckCloseBtn = document.getElementById('pkgDiscountCheckCloseBtn');
     var pkgAnnouncementShown = {};
     var communityPopup = document.getElementById('communityPopup');
     var communityPopupCloseX = document.getElementById('communityPopupCloseX');
@@ -3387,6 +3389,15 @@ window.nxDebug = function () {};
         });
     }
 
+    if (pkgDiscountCheckCloseBtn && pkgDiscountCheckPopup) {
+        pkgDiscountCheckCloseBtn.addEventListener('click', closePkgDiscountCheckPopup);
+        pkgDiscountCheckPopup.addEventListener('click', function (evt) {
+            if (evt.target === pkgDiscountCheckPopup) {
+                closePkgDiscountCheckPopup();
+            }
+        });
+    }
+
     if (rankingModalOpenBtn) {
         rankingModalOpenBtn.addEventListener('click', openRankingModal);
     }
@@ -3661,6 +3672,18 @@ window.nxDebug = function () {};
         pkgOneTimePopup.setAttribute('aria-hidden', 'true');
     }
 
+    function openPkgDiscountCheckPopup() {
+        if (!pkgDiscountCheckPopup) return;
+        pkgDiscountCheckPopup.style.display = 'flex';
+        pkgDiscountCheckPopup.setAttribute('aria-hidden', 'false');
+    }
+
+    function closePkgDiscountCheckPopup() {
+        if (!pkgDiscountCheckPopup) return;
+        pkgDiscountCheckPopup.style.display = 'none';
+        pkgDiscountCheckPopup.setAttribute('aria-hidden', 'true');
+    }
+
     /* ── Popup "Únete a nuestra comunidad" (recurrente) ─────────
        Reaparece cada N horas (configurable en el admin) mientras el
        cliente navega, salvo que marque "No mostrar más por hoy". */
@@ -3867,6 +3890,8 @@ window.nxDebug = function () {};
             openPkgOneTimePopup();
         } else if (pkg.announcement_type === 'redeem_code') {
             openGameSelectionPopup();
+        } else if (pkg.announcement_type === 'check_discount') {
+            openPkgDiscountCheckPopup();
         }
     }
 

@@ -143,8 +143,8 @@ def order_qualifies_for_minigame(order):
     if (order.payment_method or '') == 'prize':
         return False
     if is_minigame_dev_mode():
-        return bool(order.status != 'rejected')
-    if order.status == 'rejected':
+        return bool(order.status not in ('rejected', 'refunded'))
+    if order.status in ('rejected', 'refunded'):
         return False
     if not (order.status == 'completed' or order.payment_verified_at):
         return False
@@ -458,6 +458,8 @@ def get_order_minigame_state(order, create_if_needed=True):
     if create_if_needed and not opportunity:
         opportunity = ensure_minigame_opportunity(order)
     opportunity = migrate_retired_minigame_key(opportunity)
+    if order is not None and order.status == 'refunded':
+        opportunity = None   # a una orden devuelta no le queda giro por jugar
 
     return {
         'eligible': bool(opportunity),

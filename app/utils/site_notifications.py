@@ -90,6 +90,10 @@ def order_status_item(order):
         return item('rejected', 'danger', 'Tu orden fue rechazada',
                     f'Tu orden #{number} ({what}) no se pudo procesar. Escríbenos por soporte si crees que es un error.',
                     order.updated_at)
+    if order.status == 'refunded':
+        return item('refunded', 'info', 'Te devolvimos tu dinero 💸',
+                    f'Tu orden #{number} ({what}) fue devuelta. Abre tu orden para ver el comprobante de la devolución.',
+                    order.updated_at)
     if order.awaiting_payment_completion:
         missing = _missing_bs(order)
         body = (f'A tu orden #{number} le faltan Bs {missing}. Entra a tu orden y sube el pago restante para completarla.'
@@ -177,7 +181,7 @@ def build_feed(raw_order_numbers, support_token=''):
         cutoff = now - timedelta(days=RECENT_ORDER_DAYS)
         for order in orders:
             status_item = order_status_item(order)
-            still_open = order.status not in ('completed', 'rejected')
+            still_open = order.status not in ('completed', 'rejected', 'refunded')
             if still_open or (status_item['moment'] and status_item['moment'] >= cutoff):
                 entries.append(status_item)
 

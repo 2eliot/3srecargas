@@ -6,6 +6,7 @@ from flask import current_app
 from sqlalchemy import or_
 
 from ..models import Order, PaymentMethod, Setting
+from .order_states import LIVE_PAYMENT_STATUSES
 
 
 AUTO_VERIFY_SETTING_KEY = 'auto_verify_payments'
@@ -120,7 +121,8 @@ def find_reference_conflict(reference, payment_method_code, exclude_order_id=Non
     if not reference_key and not reference_last5:
         return None
 
-    statuses = statuses or ['pending', 'approved', 'completed']
+    # 'refunded' (devuelta) también cuenta: el pago de una orden devuelta queda quemado y no se puede usar en otra.
+    statuses = statuses or list(LIVE_PAYMENT_STATUSES)
     query = Order.query.filter(
         Order.payment_method == payment_method_code,
         Order.status.in_(statuses),
@@ -1087,7 +1089,7 @@ def find_order_using_payment_id(verification_id, exclude_order_id):
         return None
     candidates = Order.query.filter(
         Order.id != exclude_order_id,
-        Order.status.in_(['pending', 'approved', 'completed']),
+        Order.status.in_(list(LIVE_PAYMENT_STATUSES)),
         or_(
             Order.payment_verification_id == verification_id,
             Order.remainder_verification_ids.contains(verification_id),
