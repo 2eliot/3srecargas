@@ -17,6 +17,7 @@ from ..models import PointsShopItem, PointsShopOrder, SHOP_KINDS, User, UserShop
 from . import account_points
 from .locks import acquire_lock, release_lock
 from .player_field import clean_value, display_label, field_kind, stores_in_email, validate_value
+from .zone_rules import clean_zone, zone_digits, zone_problem
 
 # Cada cuánto se vuelve a poder canjear el mismo artículo (ventana corrida hacia atrás desde ahora).
 LIMIT_PERIODS = {'always': None, 'day': 1, 'week': 7, 'month': 30}
@@ -155,6 +156,7 @@ def item_dict(item, user_id=None, now=None):
             data['id_kind'] = field_kind(game)
             data['requires_zone'] = bool(game.requires_zone_id)
             data['zone_label'] = game.zone_id_label or 'Zone ID'
+            data['zone_digits'] = zone_digits(game)      # Mobile Legends: 4 (solo números)
         else:
             data['delivery'] = 'email'
     return data
@@ -186,9 +188,12 @@ def catalog(user_id=None, kind=None):
 def _clean_zone(game, zone_id):
     if not game.requires_zone_id:
         return None
-    zone = ''.join(str(zone_id or '').split())
+    zone = ''.join(clean_zone(game, zone_id).split())
     if not zone:
         raise ShopError(f'Escribe tu {game.zone_id_label or "Zone ID"}.')
+    problem = zone_problem(game, zone)          # Mobile Legends: solo números, máximo 4
+    if problem:
+        raise ShopError(problem)
     if len(zone) > MAX_ZONE_LENGTH or not zone.replace('-', '').replace('_', '').isalnum():
         raise ShopError(f'Revisa tu {game.zone_id_label or "Zone ID"}: no parece válido.')
     return zone

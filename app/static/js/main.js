@@ -2587,6 +2587,31 @@ window.nxDebug = function () {};
         return 'Por favor ingresa tu ' + getZoneLabel(game) + ': sin ese dato no se puede hacer la recarga.';
     }
 
+    // Mobile Legends: la zona son SOLO números, máximo 4 (los que salen al lado del ID, entre paréntesis). El máximo lo manda el
+    // servidor en game.zone_digits (utils/zone_rules.py); 0 = la zona de ese juego no tiene esa regla.
+    function getZoneDigits(game) {
+        var n = parseInt(game && game.zone_digits, 10);
+        return n > 0 ? n : 0;
+    }
+
+    // Otro juego: la zona vuelve a ser un campo de texto normal.
+    function clearZoneDigitsRule(input) {
+        delete input.dataset.zoneDigits;
+        input.removeAttribute('inputmode');
+        input.removeAttribute('pattern');
+    }
+
+    // "Tu Zone ID son los 4 números que salen al lado de tu ID, entre paréntesis: 12345678 (1234)", con el (1234) resaltado.
+    function setZoneDigitsHint(el, label, digits) {
+        el.textContent = '';
+        el.appendChild(document.createTextNode('Tu ' + label + ' son los ' + digits + ' números que salen al lado de tu ID, entre paréntesis: 12345678 '));
+        var mark = document.createElement('strong');
+        mark.className = 'nx-zone-example';
+        mark.textContent = '(' + '1234567890'.slice(0, digits) + ')';
+        el.appendChild(mark);
+        el.appendChild(document.createTextNode('. Escribe solo esos números (los dos datos son obligatorios).'));
+    }
+
     /* ── Aviso de orden con pago incompleto (cualquier juego) ──────────── */
     var pendingCompletionState = { lastChecked: '', timer: null };
 
@@ -2730,10 +2755,22 @@ window.nxDebug = function () {};
         return (v.charAt(0) === '+' ? '+' : '') + v.replace(/\+/g, '');
     }
 
+    // Zona de solo números (Mobile Legends: máximo 4). Si pega "12345678 (1234)" se queda con lo de los paréntesis.
+    function cleanZoneDigits(value, max) {
+        var v = String(value || '');
+        var inParens = v.match(/\((\d+)\)/);
+        if (inParens) v = inParens[1];
+        return v.replace(/\D+/g, '').slice(0, max);
+    }
+
     // La función que limpia ese campo, o null si el campo no se limpia.
     function liveCleanerFor(el) {
         if (!el || el.tagName !== 'INPUT') return null;
         if (el.id === 'email') return removeSpaces;
+        if (el.id === 'zoneId') {
+            var zoneMax = parseInt(el.dataset.zoneDigits || '', 10);
+            return zoneMax > 0 ? function (v) { return cleanZoneDigits(v, zoneMax); } : null;
+        }
         if (el.id !== 'playerId') return null;
         var kind = el.dataset.playerInputType;
         if (kind === 'username' || kind === 'email') return removeSpaces;
@@ -2882,19 +2919,35 @@ window.nxDebug = function () {};
 
             if (!isWallet && game.requires_zone_id) {
                 var zoneLabelText = getZoneLabel(game);
+                var zoneDigits = getZoneDigits(game);
                 if (zoneGroup) zoneGroup.style.display = 'block';
                 // Obligatoria: se marca con * y la ayuda lo dice, para que nadie la deje en blanco creyendo que es opcional.
                 if (zoneIdLabel) zoneIdLabel.textContent = zoneLabelText + ' *';
                 if (zoneInput) {
-                    zoneInput.placeholder = 'Ingresa tu ' + zoneLabelText;
                     zoneInput.setAttribute('aria-required', 'true');
+                    if (zoneDigits) {
+                        // Mobile Legends: solo deja escribir números, máximo 4 (la limpieza en vivo está en liveCleanerFor).
+                        zoneInput.placeholder = 'Ej: ' + '1234567890'.slice(0, zoneDigits);
+                        zoneInput.dataset.zoneDigits = String(zoneDigits);
+                        zoneInput.inputMode = 'numeric';
+                        zoneInput.setAttribute('pattern', '[0-9]*');
+                        zoneInput.setAttribute('autocomplete', 'off');
+                        zoneInput.value = cleanZoneDigits(zoneInput.value, zoneDigits);
+                    } else {
+                        zoneInput.placeholder = 'Ingresa tu ' + zoneLabelText;
+                        clearZoneDigitsRule(zoneInput);
+                    }
                 }
-                if (playerHint) playerHint.textContent = 'Ingresa correctamente tu ' + fieldLabel + ' y tu ' + zoneLabelText + ' (los dos son obligatorios) para evitar errores en la recarga.';
+                if (playerHint) {
+                    if (zoneDigits) setZoneDigitsHint(playerHint, zoneLabelText, zoneDigits);
+                    else playerHint.textContent = 'Ingresa correctamente tu ' + fieldLabel + ' y tu ' + zoneLabelText + ' (los dos son obligatorios) para evitar errores en la recarga.';
+                }
             } else {
                 if (zoneGroup) zoneGroup.style.display = 'none';
                 if (zoneInput) {
                     zoneInput.placeholder = 'Zona / Región';
                     zoneInput.removeAttribute('aria-required');
+                    clearZoneDigitsRule(zoneInput);
                 }
             }
         }

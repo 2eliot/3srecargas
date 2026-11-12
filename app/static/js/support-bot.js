@@ -223,6 +223,15 @@
                 if (field.value !== limpio) field.value = limpio;
             });
         }
+        if (opts.digits) {
+            // Solo números y como máximo opts.digits (la zona de Mobile Legends: 4). Si pega "12345678 (1234)" queda lo de los paréntesis.
+            field.setAttribute('inputmode', 'numeric');
+            field.addEventListener('input', function () {
+                var parens = field.value.match(/\((\d+)\)/);
+                var limpio = (parens ? parens[1] : field.value).replace(/\D+/g, '').slice(0, opts.digits);
+                if (field.value !== limpio) field.value = limpio;
+            });
+        }
         if (opts.noSpaces) {
             // El correo y el nombre de usuario no llevan espacios: no se pueden escribir ni pegar.
             field.addEventListener('keydown', function (evt) { if (evt.key === ' ') evt.preventDefault(); });

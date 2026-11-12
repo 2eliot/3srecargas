@@ -365,6 +365,22 @@
         return { wrap: wrap, input: input };
     }
 
+    // Mobile Legends: la zona son solo números, máximo 4 (los que salen al lado del ID, entre paréntesis).
+    // Si pega "12345678 (1234)" se queda con lo de los paréntesis.
+    function limitZoneDigits(zoneField, digits, label) {
+        var example = '1234567890'.slice(0, digits);
+        var input = zoneField.input;
+        input.placeholder = 'Ej: ' + example;
+        input.setAttribute('pattern', '[0-9]*');
+        input.addEventListener('input', function () {
+            var parens = input.value.match(/\((\d+)\)/);
+            var limpio = (parens ? parens[1] : input.value).replace(/\D+/g, '').slice(0, digits);
+            if (input.value !== limpio) input.value = limpio;
+        });
+        zoneField.wrap.appendChild(el('p', 'tp-field-hint',
+            'Tu ' + label + ' son los ' + digits + ' números que salen al lado de tu ID, entre paréntesis. Ej: 12345678 (' + example + ') → tu ' + label + ' es ' + example + '.'));
+    }
+
     function openRedeem(item) {
         state.current = item;
         modalBody.textContent = '';
@@ -381,6 +397,7 @@
             modalBody.appendChild(idField.wrap);
             if (item.requires_zone) {
                 zoneField = field(item.zone_label || 'Zone ID', 'tpZoneId', 'numeric');
+                if (item.zone_digits) limitZoneDigits(zoneField, item.zone_digits, item.zone_label || 'Zone ID');
                 modalBody.appendChild(zoneField.wrap);
             }
         }

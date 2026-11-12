@@ -10,6 +10,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request
 from ..models import Game, Setting
 from ..utils.timezone import format_ve
 from ..utils.locks import client_ip
+from ..utils.zone_rules import clean_zone, zone_digits, zone_problem
 from ..utils.order_access import remember_own_order
 from ..utils.gift_codes import (
     clear_attempts,
@@ -53,6 +54,7 @@ def _game_payload(game):
         'player_field_label': display_label(game),
         'player_field_kind': field_kind(game),
         'zone_id_label': game.zone_id_label or 'Zone ID',
+        'zone_digits': zone_digits(game),        # Mobile Legends: 4 (solo números)
         'player_id_input_type': (game.player_id_input_type or 'numeric'),
         'category_slug': (game.category.slug if game.category else ''),
     }
@@ -192,11 +194,16 @@ def redeem():
             problema_dato = validate_value(kind, player_id)
             if problema_dato:
                 return jsonify({'ok': False, 'message': problema_dato}), 400
+    if game and game.requires_zone_id:
+        zone_id = clean_zone(game, zone_id)
     if game and game.requires_zone_id and not zone_id:
         return jsonify({
             'ok': False,
             'message': f'Escribe tu {game.zone_id_label or "Zone ID"}.',
         }), 400
+    problema_zona = zone_problem(game, zone_id) if game else None   # Mobile Legends: solo números, máximo 4
+    if problema_zona:
+        return jsonify({'ok': False, 'message': problema_zona}), 400
 
     ok, mensaje, order = redeem_code(
         gift, player_id, zone_id=zone_id, nickname=nickname

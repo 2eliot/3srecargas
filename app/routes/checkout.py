@@ -60,6 +60,7 @@ from ..utils.binance_pay import (
 from ..utils.timezone import now_ve_naive
 from ..utils.notifications import notify_order_created
 from ..utils.player_field import clean_value, field_kind, stores_in_email, validate_value
+from ..utils.zone_rules import clean_zone, zone_problem
 from ..utils.locks import acquire_lock, check_rate_limit, client_ip, release_lock
 from ..utils.order_access import is_own_order, reference_tail_matches, remember_own_order
 
@@ -885,8 +886,13 @@ def checkout(package_id):
                 if not player_id:
                     return _init_error(f'{game.player_label} es obligatorio.')
                 # La zona es obligatoria en los juegos que la piden (Zone ID / Servidor): sin ella el proveedor no puede recargar y la orden se queda trabada.
+                zone_id = clean_zone(game, zone_id)
                 if game.requires_zone_id and not zone_id:
                     return _init_error(f'Debes ingresar tu {(game.zone_id_label or "").strip() or "Zone ID"}: sin ese dato no se puede hacer la recarga.')
+                # Mobile Legends: la zona son solo números, máximo 4 (los que salen al lado del ID, entre paréntesis).
+                _zone_problem = zone_problem(game, zone_id)
+                if _zone_problem:
+                    return _init_error(_zone_problem)
                 # Solo se recarga a IDs verificados en los juegos con verificador. El nick
                 # del formulario no cuenta como prueba: se confirma aquí, en el servidor.
                 from .verify import require_verified_player, VERIFIED_PLAYER_ERRORS
@@ -1003,6 +1009,11 @@ def checkout(package_id):
                 f'Debes ingresar tu {(game.zone_id_label or "").strip() or "Zone ID"}: sin ese dato no se puede hacer la recarga. Vuelve a la tienda y complétalo.',
                 code='zone_required',
             )
+        # Y el formato (Mobile Legends: solo números, máximo 4), por si el paso 1 se hizo antes de esta regla.
+        if not is_wallet and (data.get('player_id') or '').strip():
+            _zone_problem = zone_problem(game, (data.get('zone_id') or '').strip())
+            if _zone_problem:
+                return _confirm_fail(_zone_problem + ' Vuelve a la tienda y corrígela.', code='zone_required')
         # Segunda barrera antes de crear la orden (usa la caché del paso 1, no reconsulta).
         if not is_wallet and (data.get('player_id') or '').strip():
             from .verify import require_verified_player, VERIFIED_PLAYER_ERRORS

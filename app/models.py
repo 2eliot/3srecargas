@@ -66,6 +66,11 @@ class Game(db.Model):
             'player_data_in_email': stores_in_email(self),
         }
 
+    def _zone_digits(self):
+        """Máximo de dígitos de la zona (Mobile Legends: 4, solo números) o None. La regla vive en utils/zone_rules.py."""
+        from .utils.zone_rules import zone_digits
+        return zone_digits(self)
+
     def get_bs_rate(self, fallback_rate=0.0):
         if self.bs_rate_override is not None:
             return float(self.bs_rate_override)
@@ -84,6 +89,7 @@ class Game(db.Model):
             'player_id_label': self.player_id_label,
             'player_id_input_type': self.player_id_input_type,
             'zone_id_label': self.zone_id_label,
+            'zone_digits': self._zone_digits(),
             **self._player_field_info(),
             'bs_rate_override': str(self.bs_rate_override) if self.bs_rate_override is not None else None,
             'is_automated': self.is_automated,

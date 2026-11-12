@@ -104,6 +104,7 @@
 .tp-field { margin-bottom: 12px; }
 .tp-field label { display: block; font-size: 11.5px; font-weight: 800; color: #d4d4d4; margin-bottom: 6px; font-family: var(--nx-font-display); }
 .tp-field input { width: 100%; padding: 12px 14px; font-size: 14px; }
+.tp-field-hint { font-size: 11.5px; color: rgba(255,255,255,.6); margin: 6px 0 0; line-height: 1.4; }
 .tp-nick { margin: -4px 0 12px; padding: 9px 12px; border-radius: 12px; background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.4); color: #a7f3d0; font-size: 12.5px; }
 .tp-modal-error { margin: 0 0 12px; padding: 9px 12px; border-radius: 12px; background: rgba(255,0,0,.1); border: 1px solid rgba(255,0,0,.4); color: #fecaca; font-size: 12.5px; }
 .tp-modal-actions { display: flex; gap: 10px; margin-top: 6px; }

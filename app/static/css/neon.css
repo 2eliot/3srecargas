@@ -1326,6 +1326,8 @@ body.drawer-open { overflow: hidden; }
     margin-bottom: 5px;
 }
 .nx-zone-group input { width: 100%; padding: 10px 14px; }
+/* Ayuda de la zona de Mobile Legends: el "(1234)" del ejemplo resaltado, para que se vea cuál número es la zona. */
+.form-hint .nx-zone-example { color: #fff; font-weight: 900; background: rgba(239, 68, 68, .22); border-radius: 4px; padding: 0 3px; }
 
 /* Código de descuento */
 .nx-discount-row { display: flex; gap: 8px; }
@@ -4038,6 +4040,9 @@ a.rk-pod-avatar:focus-visible, a.rk-row-avatar:focus-visible { outline: 2px soli
     margin: 0 auto;
     max-width: 34ch;
 }
+
+.rdm-zone-hint { font-size: 11.5px; color: rgba(255,255,255,.6); line-height: 1.4; margin: 6px 0 0; }
+.rdm-zone-hint[hidden] { display: none; }
 
 .rdm-step { display: flex; flex-direction: column; gap: 10px; }
 .rdm-step[hidden] { display: none; }

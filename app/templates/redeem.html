@@ -68,6 +68,7 @@ body::before {
                 <label class="rdm-label" for="rdmZoneId" id="rdmZoneLabel">Zone ID</label>
                 <input type="text" id="rdmZoneId" class="glass-input"
                        placeholder="Ingresa tu Zone ID" autocomplete="off" maxlength="30">
+                <p class="rdm-zone-hint" id="rdmZoneHint" hidden></p>
             </div>
 
             <p class="rdm-feedback" id="rdmPlayerFeedback" aria-live="polite"></p>
@@ -151,6 +152,34 @@ body::before {
     var zoneWrap = document.getElementById('rdmZoneWrap');
     var zoneInput = document.getElementById('rdmZoneId');
     var zoneLabel = document.getElementById('rdmZoneLabel');
+    var zoneHint = document.getElementById('rdmZoneHint');
+    // Mobile Legends: la zona son solo números, máximo 4 (los que salen al lado del ID, entre paréntesis). 0 = sin esa regla.
+    var zoneDigits = 0;
+    function limpiarZona(valor) {
+        valor = String(valor || '');
+        if (!zoneDigits) return valor;
+        var parens = valor.match(/\((\d+)\)/);      // pegó "12345678 (1234)": la zona es lo de los paréntesis
+        return (parens ? parens[1] : valor).replace(/\D+/g, '').slice(0, zoneDigits);
+    }
+    function configurarZona(nombre, digitos) {
+        zoneDigits = digitos;
+        if (digitos) {
+            var ejemplo = '1234567890'.slice(0, digitos);
+            zoneInput.placeholder = 'Ej: ' + ejemplo;
+            zoneInput.inputMode = 'numeric';
+            zoneInput.value = limpiarZona(zoneInput.value);
+            zoneHint.textContent = 'Tu ' + nombre + ' son los ' + digitos + ' números que salen al lado de tu ID, entre paréntesis. Ej: 12345678 (' + ejemplo + ') → tu ' + nombre + ' es ' + ejemplo + '.';
+            zoneHint.hidden = false;
+        } else {
+            zoneInput.placeholder = 'Ingresa tu ' + (nombre || 'Zone ID');
+            zoneInput.removeAttribute('inputmode');
+            zoneHint.hidden = true;
+        }
+    }
+    zoneInput.addEventListener('input', function () {
+        var limpio = limpiarZona(zoneInput.value);
+        if (zoneInput.value !== limpio) zoneInput.value = limpio;
+    });
     var nickEl = document.getElementById('rdmNick');
     var verifyBtn = document.getElementById('rdmVerifyBtn');
     var redeemBtn = document.getElementById('rdmRedeemBtn');
@@ -291,8 +320,10 @@ body::before {
                 if (juego.requires_zone_id) {
                     zoneWrap.hidden = false;
                     zoneLabel.textContent = juego.zone_id_label || 'Zone ID';
+                    configurarZona(juego.zone_id_label || 'Zone ID', parseInt(juego.zone_digits, 10) || 0);
                 } else {
                     zoneWrap.hidden = true;
+                    configurarZona('', 0);
                 }
 
                 configurarVerificacion(data);

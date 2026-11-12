@@ -19,6 +19,7 @@ from werkzeug.exceptions import NotFound
 
 from ..models import Category, Game, Order, PaymentMethod, Setting, db
 from .support_ai import describe_order, _missing_amount_bs
+from .zone_rules import zone_digits
 
 # ─── Ajustes (admin → Soporte → Asistente) ──────────────────────────────────
 
@@ -133,6 +134,7 @@ def list_games():
             'requires_zone': bool(game.requires_zone_id),
             'player_id_label': game.player_label,
             'zone_id_label': game.zone_id_label or 'Zona',
+            'zone_digits': zone_digits(game),            # Mobile Legends: 4 (solo números)
             'player_id_numeric': _player_kind(game) == 'numeric',
             'player_kind': _player_kind(game),
             'id_kind': _id_kind(game),
@@ -193,6 +195,7 @@ def game_packages(game_id):
             'requires_zone': bool(game.get('requires_zone_id')),
             'player_id_label': game.get('player_field_label') or game.get('player_id_label') or 'Player ID',
             'zone_id_label': game.get('zone_id_label') or 'Zona',
+            'zone_digits': game.get('zone_digits'),       # Mobile Legends: 4 (solo números)
             'player_id_numeric': player_kind == 'numeric',
             'player_kind': player_kind,
             'id_kind': 'none' if player_kind == 'none' else ('email' if game.get('player_data_in_email') else 'player'),

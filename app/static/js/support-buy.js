@@ -357,11 +357,18 @@
     function askZone(P) {
         var token = B.nextFlow();
         var label = P.game.zone_id_label;
-        var bubble = botSays('Ahora escribe tu ' + label + ':');
+        // Mobile Legends: la zona son solo números, máximo 4 (los que salen al lado del ID, entre paréntesis).
+        var digits = parseInt(P.game.zone_digits, 10) || 0;
+        var example = '1234567890'.slice(0, digits);
+        var bubble = botSays(digits
+            ? 'Ahora escribe tu ' + label + ': son los ' + digits + ' números que salen al lado de tu ID, entre paréntesis. Ej: 12345678 (' + example + ') → tu ' + label + ' es ' + example + '.'
+            : 'Ahora escribe tu ' + label + ':');
         B.askValue(bubble, {
-            placeholder: label,
+            placeholder: digits ? 'Ej: ' + example : label,
+            digits: digits,
             validate: function (value) {
                 if (!value) return 'Escribe tu ' + label + '.';
+                if (digits) return /^[0-9]+$/.test(value) && value.length <= digits ? '' : 'Tu ' + label + ' lleva solo números (máximo ' + digits + ').';
                 return /^[A-Za-z0-9_.@+-]{1,30}$/.test(value) ? '' : 'Revisa tu ' + label + '.';
             },
             onDone: function (value) {
