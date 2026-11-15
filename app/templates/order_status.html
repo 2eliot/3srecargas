@@ -915,7 +915,8 @@
 
         {% if st == 'rejected' %}
         <div class="nx-reject-note">
-            Tu orden fue rechazada. {{ order.notes or 'Contacta a soporte si crees que es un error.' }}
+            {# Solo el motivo que escribió el admin al rechazar; las notas internas (Pabilo, proveedores, costos) nunca se muestran. #}
+            Tu orden fue rechazada. {{ order.reject_reason or 'Contacta a soporte si crees que es un error.' }}
         </div>
         {% endif %}
 

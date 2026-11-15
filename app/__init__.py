@@ -569,6 +569,7 @@ def create_app(config_class=Config):
         _ensure_order_payment_verification_raw_response_column()
         _ensure_order_idempotency_column()
         _ensure_order_pause_column()
+        _ensure_order_reject_reason_column()
         _ensure_ranking_archive_columns()
         _ensure_ranking_board_columns()
         _ensure_revendedores_mapping_columns()
@@ -1298,6 +1299,24 @@ def _ensure_order_pause_column():
         existing = {r[1] for r in rows}
         if 'is_paused' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN is_paused BOOLEAN DEFAULT 0'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_reject_reason_column():
+    """Motivo del rechazo que ve el cliente (orders.reject_reason); las notas internas nunca se le muestran."""
+    try:
+        if _ensure_postgres_columns('orders', ['reject_reason TEXT']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'reject_reason' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN reject_reason TEXT'))
         db.session.commit()
     except Exception:
         db.session.rollback()

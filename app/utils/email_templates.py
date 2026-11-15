@@ -363,7 +363,8 @@ def build_order_rejected_email(order, package, game, reason=None):
     s = _base_style()
     brand = _brand_name()
     amount_str = _format_order_amount(order)
-    reason_text = reason or order.notes or ''
+    # Solo el motivo que escribió el admin; nunca las notas internas de la orden.
+    reason_text = reason or getattr(order, 'reject_reason', None) or ''
     game_description = _game_description(game)
 
     reason_html = ''

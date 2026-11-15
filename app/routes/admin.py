@@ -1941,8 +1941,10 @@ def order_reject(order_id):
         # una ya entregada dejaba ese mismo pago libre para cobrar otra orden.
         flash('Esta orden ya fue completada (entregada): no se puede rechazar.', 'warning')
         return redirect(url_for('admin_bp.order_detail', order_id=order.id))
-    notes = request.form.get('notes', '').strip()
+    notes = request.form.get('notes', '').strip()[:1000]
     order.status = 'rejected'
+    # Lo que escribe el admin es lo ÚNICO que ve el cliente (página de la orden y correo); vacío = mensaje general.
+    order.reject_reason = notes or None
     if notes:
         existing_notes = order.notes or ''
         order.notes = (existing_notes + '\n' + notes).strip()
