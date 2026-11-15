@@ -7,6 +7,7 @@ con el signo de verificado y la etiqueta "ADMIN" junto al nombre. El dueño la e
   sigue siendo la oficial.
 - No entra a los tops (`in_rankings` apagado); el dueño lo puede cambiar en "Editar perfil".
 """
+import hmac
 import secrets
 import time
 
@@ -17,6 +18,7 @@ from werkzeug.security import generate_password_hash
 
 from ..models import AdminUser, Setting, User, UserProfile, db
 from .auth_accounts import ACCOUNT_KINDS, ACCOUNT_SCOPE
+from .locks import _admin_password_fingerprint
 
 OFFICIAL_USERNAME = '3srecargas'
 OFFICIAL_DISPLAY_NAME = '3srecargas'
@@ -129,7 +131,8 @@ ADMIN_RETURN_MAX_AGE = 12 * 3600
 
 
 def remember_admin_return(admin_user):
-    session[ADMIN_RETURN_KEY] = {'id': admin_user.get_id(), 'at': int(time.time())}
+    # 'p' = huella de la clave del admin de ese momento: si el dueño cambia la clave, ya no se puede volver al panel con esta marca.
+    session[ADMIN_RETURN_KEY] = {'id': admin_user.get_id(), 'at': int(time.time()), 'p': _admin_password_fingerprint()}
 
 
 def clear_admin_return():
@@ -148,6 +151,8 @@ def admin_return_user(current):
     now = time.time()
     if now - at > ADMIN_RETURN_MAX_AGE or at > now + 60:
         return None
+    if not hmac.compare_digest(str(data.get('p') or ''), _admin_password_fingerprint()):
+        return None          # la clave del admin cambió después de entrar al perfil: hay que entrar de nuevo con la clave nueva
     kind, _, pk = str(data.get('id') or '').partition(':')
     if kind != 'admin' or not pk.isdigit():
         return None

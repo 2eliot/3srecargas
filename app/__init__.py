@@ -160,6 +160,17 @@ def create_app(config_class=Config):
             return None
         return user
 
+    # La sesión del panel solo vale si se abrió con la clave de admin que hay AHORA: cambiar ADMIN_PASSWORD saca a todos los que
+    # estaban dentro, en cualquier equipo. Al entrar, la señal user_logged_in anota la huella (utils/locks.py).
+    from flask_login import user_logged_in
+    from .utils.locks import admin_session_current, stamp_admin_session
+    user_logged_in.connect(stamp_admin_session, app, weak=False)
+
+    def _admin_if_current(admin):
+        if admin is not None and not admin_session_current():
+            return None
+        return admin
+
     @login_manager.user_loader
     def load_user(user_id):
         raw_id = str(user_id or '').strip()
@@ -175,7 +186,7 @@ def create_app(config_class=Config):
             if user_type == 'user':
                 return _only_if_enabled(User.query.get(user_pk))
             if user_type == 'admin':
-                return AdminUser.query.get(user_pk)
+                return _admin_if_current(AdminUser.query.get(user_pk))
             if user_type == 'mini':
                 return Affiliate.query.get(user_pk)
             return None
@@ -187,7 +198,7 @@ def create_app(config_class=Config):
         user = User.query.get(user_id_int)
         if user:
             return _only_if_enabled(user)
-        return AdminUser.query.get(user_id_int)
+        return _admin_if_current(AdminUser.query.get(user_id_int))
 
     @login_manager.unauthorized_handler
     def handle_unauthorized():

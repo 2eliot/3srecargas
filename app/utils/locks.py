@@ -166,9 +166,39 @@ def _admin_device_serializer():
 
 
 def _admin_password_fingerprint():
+    """Huella de ADMIN_PASSWORD, firmada con la clave secreta de la web: las cookies la llevan legible, pero sin la clave secreta no
+    sirve para adivinar la clave del admin. Cambia cuando cambia la clave, y con eso dejan de valer la marca del navegador del dueño
+    y TODAS las sesiones del panel abiertas antes (ver admin_session_current)."""
     import hashlib
+    import hmac
+    from flask import current_app
     password = (os.environ.get('ADMIN_PASSWORD') or '').strip()
-    return hashlib.sha256(('admin-device:' + password).encode('utf-8')).hexdigest()[:24]
+    key = str(current_app.secret_key or '').encode('utf-8')
+    return hmac.new(key, ('admin-password:' + password).encode('utf-8'), hashlib.sha256).hexdigest()[:32]
+
+
+# Sesión del panel: al entrar se anota la huella de la clave de ese momento; si el dueño cambia ADMIN_PASSWORD, toda sesión abierta
+# antes (en cualquier celular o computadora) deja de valer y pide la clave nueva.
+ADMIN_SESSION_KEY = 'admin_pw'
+
+
+def stamp_admin_session(sender=None, user=None, **_extra):
+    """Se llama al iniciar sesión (señal user_logged_in de Flask-Login): si quien entra es el admin, anota la huella de la clave actual."""
+    from flask import has_request_context, session
+    from ..models import AdminUser
+    if not isinstance(user, AdminUser) or not has_request_context():
+        return
+    session[ADMIN_SESSION_KEY] = _admin_password_fingerprint()
+
+
+def admin_session_current():
+    """True si la sesión del panel se abrió con la clave de admin que hay AHORA."""
+    import hmac
+    from flask import has_request_context, session
+    if not has_request_context():
+        return False
+    stamp = session.get(ADMIN_SESSION_KEY)
+    return isinstance(stamp, str) and hmac.compare_digest(stamp, _admin_password_fingerprint())
 
 
 def remember_admin_device(response):
