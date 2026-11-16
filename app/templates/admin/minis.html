@@ -504,67 +504,156 @@
 
 
 {% if section == 'retiros' %}
-<div class="admin-card">
-    <div class="card-header"><h3>Pendientes de revisión</h3></div>
-    <p class="form-hint" style="padding:0 18px 10px;margin:0">Al tocar <strong>Aprobar</strong> puedes <strong>adjuntar el comprobante del pago</strong> (foto o captura): el creador lo ve en su panel. Si se te olvida, lo adjuntas después desde el Historial.</p>
-    <div class="table-wrap">
-        <table class="admin-table">
-            <thead><tr><th>Creador</th><th>Monto</th><th>Método</th><th>Datos de cobro</th><th>Fecha</th><th>Acciones</th></tr></thead>
-            <tbody>
-                {% for w in pending_withdrawals %}
-                <tr>
-                    <td>{{ w.affiliate.name if w.affiliate else '—' }}</td>
-                    <td>${{ '%.2f'|format(w.amount) }}</td>
-                    <td>{{ w.method }}</td>
-                    <td style="max-width:220px;">{{ w.payout_details }}</td>
-                    <td>{{ w.created_at.strftime('%d/%m/%Y') if w.created_at else '' }}</td>
-                    <td>
-                        <div class="action-btns">
-                            <button class="btn-sm btn-success" type="button"
-                                    onclick="openWithdrawalApproveModal({{ w.id }}, {{ ((w.affiliate.name if w.affiliate else ''))|jsattr }}, {{ '%.2f'|format(w.amount) }})">Aprobar</button>
-                            <button class="btn-sm btn-danger" onclick="openWithdrawalRejectModal({{ w.id }})">Rechazar</button>
-                        </div>
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="6" class="empty-row">No hay retiros pendientes.</td></tr>
+{# Una tarjeta por retiro (mismo estilo que la lista de Órdenes): quién, cuánto, CÓMO quiere cobrar (lo que el creador envió, con botón para copiarlo),
+   fechas y el comprobante. `pending` agrega los botones Aprobar/Rechazar y el saldo del creador. #}
+{% macro wd_card(w, pending) %}
+{% set aff = w.affiliate %}
+<article class="wd-card wd-card--{{ w.status }}" id="retiro-{{ w.id }}">
+    <div class="wd-card__top">
+        <div class="wd-card__who">
+            <span class="wd-avatar" aria-hidden="true">{{ ((aff.name if aff else '?')[:1])|upper }}</span>
+            <div class="wd-card__ident">
+                <span class="wd-card__name">{{ aff.name if aff else '—' }}</span>
+                {% if aff and aff.code %}<span class="wd-card__code">{{ aff.code }}</span>{% endif %}
+            </div>
+            {% if pending %}<span class="badge badge-warning">Pendiente</span>
+            {% elif w.status == 'approved' %}<span class="badge badge-active">Aprobado</span>
+            {% else %}<span class="badge badge-danger">Rechazado</span>{% endif %}
+        </div>
+        <div class="wd-card__amount-wrap">
+            <span class="wd-label">Monto</span>
+            <strong class="wd-card__amount">${{ '%.2f'|format(w.amount) }}</strong>
+        </div>
+    </div>
+
+    <div class="wd-card__grid">
+        <div class="wd-field wd-field--wide">
+            <span class="wd-label">Cómo quiere cobrar</span>
+            <strong class="wd-method">{{ w.method or '—' }}</strong>
+            {% if w.payout_details %}
+            {# Zinli y Binance se cobran con un CORREO: se busca en lo que escribió el creador y sale en su propia fila con su botón "Copiar correo". #}
+            {% set mail = namespace(value='') %}
+            {% if 'zinli' in (w.method or '')|lower or 'binance' in (w.method or '')|lower %}
+                {% for token in (w.payout_details or '').replace(',', ' ').replace(';', ' ').replace('\n', ' ').split() %}
+                    {% set clean = token.strip('.:()<>[]"\'') %}
+                    {% if not mail.value and '@' in clean and '.' in clean.split('@')[-1] and clean.split('@')[0] and clean|length <= 120 %}{% set mail.value = clean %}{% endif %}
                 {% endfor %}
-            </tbody>
-        </table>
+            {% endif %}
+            {% if mail.value %}
+            <div class="wd-email-row">
+                <span class="wd-label">Correo</span>
+                <span class="wd-email">{{ mail.value }}</span>
+                <button type="button" class="wd-copy" data-copy="{{ mail.value }}" title="Copiar el correo">Copiar correo</button>
+            </div>
+            {% endif %}
+            {% if not mail.value or (w.payout_details|trim) != mail.value %}
+            <div class="wd-data">
+                <span class="wd-text">{{ w.payout_details }}</span>
+                <button type="button" class="wd-copy" title="Copiar todo lo que escribió el creador">{{ 'Copiar todo' if mail.value else 'Copiar' }}</button>
+            </div>
+            {% endif %}
+            {% else %}
+            <span class="wd-empty">El creador no escribió datos de cobro.</span>
+            {% endif %}
+        </div>
+
+        <div class="wd-field">
+            <span class="wd-label">Fechas</span>
+            <span class="wd-date"><small>Pidió</small> {{ w.created_at|datetime_ve('%d/%m/%Y %H:%M') if w.created_at else '—' }}</span>
+            {% if not pending %}
+            <span class="wd-date"><small>{{ 'Pagado' if w.status == 'approved' else 'Rechazado' }}</small> {{ w.reviewed_at|datetime_ve('%d/%m/%Y %H:%M') if w.reviewed_at else '—' }}</span>
+            {% endif %}
+        </div>
+
+        {% if pending %}
+        <div class="wd-field">
+            <span class="wd-label">Saldo del creador</span>
+            <span class="wd-date">${{ '%.2f'|format(aff.balance or 0) if aff else '—' }}</span>
+        </div>
+        {% elif w.status == 'approved' %}
+        <div class="wd-field">
+            <span class="wd-label">Comprobante</span>
+            {% if w.payment_proof %}
+            <a href="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" target="_blank" rel="noopener" title="Abrir el comprobante en grande">
+                <img class="wd-proof-thumb" src="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" alt="Comprobante del retiro" loading="lazy">
+            </a>
+            <div class="wd-proof-actions">
+                <a href="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" target="_blank" rel="noopener">Ver comprobante</a>
+            {% else %}
+            <span class="wd-empty">Todavía no adjuntaste el comprobante.</span>
+            <div class="wd-proof-actions">
+            {% endif %}
+                <form method="POST" action="{{ url_for('admin_bp.mini_withdrawal_proof', w_id=w.id) }}" enctype="multipart/form-data">
+                    <label class="btn-sm btn-secondary" style="cursor:pointer">{{ 'Cambiar' if w.payment_proof else 'Adjuntar comprobante' }}
+                        <input type="file" name="payment_proof" accept="image/*" hidden onchange="this.form.submit()">
+                    </label>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if w.status == 'rejected' and w.rejection_reason %}
+    <div class="wd-reason"><span class="wd-label">Motivo del rechazo</span> <span class="wd-text">{{ w.rejection_reason }}</span></div>
+    {% endif %}
+
+    {% if pending %}
+    <div class="wd-card__actions">
+        <button class="btn-sm btn-success" type="button"
+                onclick="openWithdrawalApproveModal({{ w.id }}, {{ ((aff.name if aff else ''))|jsattr }}, {{ '%.2f'|format(w.amount) }})">Aprobar</button>
+        <button class="btn-sm btn-danger" type="button" onclick="openWithdrawalRejectModal({{ w.id }})">Rechazar</button>
+    </div>
+    {% endif %}
+</article>
+{% endmacro %}
+
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Pendientes de revisión</h3>
+        {% if pending_withdrawals %}<span class="wd-total">{{ pending_withdrawals|length }} · Total a pagar <strong>${{ '%.2f'|format(pending_withdrawals|sum(attribute='amount')) }}</strong></span>{% endif %}
+    </div>
+    <p class="form-hint" style="padding:0 18px 10px;margin:0">Al tocar <strong>Aprobar</strong> puedes <strong>adjuntar el comprobante del pago</strong> (foto o captura): el creador lo ve en su panel. Si se te olvida, lo adjuntas después desde el Historial.</p>
+    <div class="wd-feed">
+        {% for w in pending_withdrawals %}{{ wd_card(w, true) }}
+        {% else %}<div class="empty-row">No hay retiros pendientes.</div>
+        {% endfor %}
     </div>
 </div>
 
 <div class="admin-card">
     <div class="card-header"><h3>Historial</h3></div>
-    <div class="table-wrap">
-        <table class="admin-table">
-            <thead><tr><th>Creador</th><th>Monto</th><th>Estado</th><th>Comprobante</th></tr></thead>
-            <tbody>
-                {% for w in reviewed_withdrawals %}
-                <tr>
-                    <td>{{ w.affiliate.name if w.affiliate else '—' }}</td>
-                    <td>${{ '%.2f'|format(w.amount) }}</td>
-                    <td><span class="badge {% if w.status == 'approved' %}badge-active{% else %}badge-danger{% endif %}">{{ 'Aprobado' if w.status == 'approved' else 'Rechazado' }}</span></td>
-                    <td>
-                        {% if w.payment_proof %}
-                        <a href="{{ url_for('static', filename='uploads/' + w.payment_proof) }}" target="_blank" rel="noopener">Ver comprobante</a>
-                        {% elif w.status != 'approved' %}—{% endif %}
-                        {% if w.status == 'approved' %}
-                        <form method="POST" action="{{ url_for('admin_bp.mini_withdrawal_proof', w_id=w.id) }}" enctype="multipart/form-data" style="display:inline-block;margin-left:{{ '8px' if w.payment_proof else '0' }}">
-                            <label class="btn-sm btn-secondary" style="cursor:pointer">{{ 'Cambiar' if w.payment_proof else 'Adjuntar comprobante' }}
-                                <input type="file" name="payment_proof" accept="image/*" hidden onchange="this.form.submit()">
-                            </label>
-                        </form>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="4" class="empty-row">Sin historial todavía.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="wd-feed">
+        {% for w in reviewed_withdrawals %}{{ wd_card(w, false) }}
+        {% else %}<div class="empty-row">Sin historial todavía.</div>
+        {% endfor %}
     </div>
 </div>
+
+<script>
+// Botón "Copiar" de los datos de cobro que envió el creador (para pegarlos en tu app del banco).
+document.addEventListener('click', function (event) {
+    var button = event.target.closest('.wd-copy');
+    if (!button) return;
+    var holder = button.closest('.wd-data');
+    var text = button.getAttribute('data-copy') || (holder ? (holder.querySelector('.wd-text') || {}).textContent : '');
+    text = String(text || '').trim();
+    if (!text) return;
+    function done() {
+        var before = button.textContent;
+        button.textContent = '✓ Copiado';
+        button.classList.add('is-done');
+        setTimeout(function () { button.textContent = before; button.classList.remove('is-done'); }, 1400);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () {});
+    } else {
+        var area = document.createElement('textarea');
+        area.value = text; document.body.appendChild(area); area.select();
+        try { document.execCommand('copy'); done(); } catch (_) {}
+        document.body.removeChild(area);
+    }
+});
+</script>
 
 <!-- Modal: aprobar retiro -->
 <div class="modal-overlay" id="withdrawalApproveModal" style="display:none">

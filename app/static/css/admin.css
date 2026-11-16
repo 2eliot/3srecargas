@@ -988,6 +988,70 @@ a.status-review-used:hover { background: linear-gradient(135deg, #f43f4f, #a3121
 @media (prefers-reduced-motion: reduce) {
     .status-review-used { animation: none; box-shadow: 0 0 0 2px rgba(248,113,113,.6); }
 }
+/* Retiros de creadores (Admin → Creadores → Retiros): una tarjeta por retiro con lo que el creador envió para cobrar (con botón Copiar), las fechas y el
+   comprobante. Mismo estilo que las tarjetas de Órdenes; lo que escribe el creador respeta sus saltos de línea y no se sale de la tarjeta. */
+.wd-feed { display: grid; gap: 14px; padding: 16px; }
+.wd-feed > .empty-row { padding: 18px; text-align: center; color: var(--text-muted); }
+.wd-total { margin-left: auto; font-size: 13px; color: var(--text-muted); }
+.wd-total strong { color: var(--success); font-size: 15px; }
+.wd-card {
+    display: grid; gap: 14px; padding: 16px 18px; border-radius: var(--radius-md);
+    background: linear-gradient(180deg, rgba(18, 26, 44, 0.96), rgba(15, 22, 37, 0.98));
+    border: 1px solid var(--border); border-left: 4px solid var(--border);
+}
+.wd-card--pending  { border-left-color: #f59e0b; }
+.wd-card--approved { border-left-color: var(--success); }
+.wd-card--rejected { border-left-color: var(--danger); }
+.wd-card__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.wd-card__who { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.wd-avatar {
+    flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg, #7c3aed, #4f46e5);
+}
+.wd-card__ident { display: grid; gap: 2px; min-width: 0; }
+.wd-card__name { font-size: 17px; font-weight: 800; overflow-wrap: anywhere; }
+.wd-card__code { font-size: 12px; font-weight: 700; letter-spacing: .05em; color: var(--text-muted); }
+.wd-card__amount-wrap { display: grid; justify-items: end; gap: 2px; text-align: right; }
+.wd-card__amount { font-size: 26px; line-height: 1; font-weight: 800; color: var(--success); }
+.wd-label { color: var(--text-muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.wd-card__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.wd-field {
+    min-width: 0; display: grid; gap: 6px; align-content: start; padding: 12px 14px; border-radius: var(--radius-sm);
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06);
+}
+.wd-field--wide { grid-column: span 2; }
+.wd-method { font-size: 15px; }
+.wd-data { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.wd-text { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; white-space: pre-wrap; word-break: break-word; }
+.wd-email-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-radius: 10px;
+    background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.35);
+}
+.wd-email { flex: 1; min-width: 0; font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
+.wd-copy {
+    flex: none; padding: 5px 11px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;
+    background: rgba(124,58,237,.16); color: #c4b5fd; border: 1px solid rgba(124,58,237,.5);
+}
+.wd-copy:hover { background: rgba(124,58,237,.3); color: #fff; }
+.wd-copy.is-done { background: rgba(34,197,94,.18); color: #86efac; border-color: rgba(34,197,94,.55); }
+.wd-date { font-weight: 700; font-size: 14px; white-space: nowrap; }
+.wd-date small { display: inline-block; min-width: 72px; font-weight: 600; color: var(--text-muted); }
+.wd-empty { font-size: 12.5px; color: var(--text-muted); }
+.wd-proof-thumb { display: block; width: 100%; max-width: 170px; max-height: 130px; object-fit: cover; border-radius: 10px; border: 1px solid rgba(255,255,255,.14); }
+.wd-proof-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wd-proof-actions form { margin: 0; display: inline-flex; }
+.wd-reason {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; padding: 10px 14px; border-radius: var(--radius-sm);
+    background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.35);
+}
+.wd-reason .wd-text { font-size: 14px; font-weight: 600; }
+.wd-card__actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+@media (max-width: 1100px) { .wd-card__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+    .wd-card__grid { grid-template-columns: 1fr; }
+    .wd-field--wide { grid-column: auto; }
+    .wd-card__amount-wrap { justify-items: start; text-align: left; }
+}
 /* Línea de nota "Ese pago ya fue usado" con los botones para ir a la otra orden (detalle de la orden). */
 .used-note-line {
     display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px;
