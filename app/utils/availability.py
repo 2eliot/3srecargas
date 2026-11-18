@@ -193,6 +193,12 @@ def get_purchase_block_reason(package, auto_mapped_ids=None, is_tarjetas=None, s
     """Mensaje para el cliente cuando no se puede comprar, o '' si sí se puede."""
     if not package or not package.is_active:
         return 'Este paquete ya no está disponible.'
+    # Desactivar el JUEGO también tiene que cerrar sus paquetes: antes solo se
+    # miraba el paquete, así que un enlace directo a /checkout/<id> seguía
+    # vendiendo un juego que el dueño había apagado.
+    game = getattr(package, 'game', None)
+    if not game or not game.is_active:
+        return 'Este producto ya no está disponible.'
     if package_is_out_of_stock(
         package, auto_mapped_ids=auto_mapped_ids, is_tarjetas=is_tarjetas
     ):
