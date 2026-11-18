@@ -302,6 +302,12 @@
             <span class="detail-label">IP</span>
             <span class="detail-value"><code>{{ order.client_ip }}</code></span>
         </div>
+        {% if ip_geo and ip_geo.label %}
+        <div class="detail-row">
+            <span class="detail-label">Ubicación</span>
+            <span class="detail-value">{% if ip_geo.flag %}{{ ip_geo.flag }} {% endif %}{{ ip_geo.label }}</span>
+        </div>
+        {% endif %}
         {% endif %}
         {% if order.user_agent %}
         <div class="detail-row">

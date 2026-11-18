@@ -83,11 +83,15 @@
     {% if order_blocks %}
     <div class="table-wrap" style="margin-top:10px">
         <table class="admin-table">
-            <thead><tr><th>IP</th><th>Hasta</th><th>Motivo</th><th></th></tr></thead>
+            <thead><tr><th>IP</th><th>Ubicación</th><th>Hasta</th><th>Motivo</th><th></th></tr></thead>
             <tbody>
             {% for block in order_blocks %}
             <tr>
                 <td><code>{{ block.ip }}</code></td>
+                <td>
+                    {% set geo = geo_by_ip.get(block.ip) if geo_by_ip else None %}
+                    {% if geo %}{% if geo.flag %}{{ geo.flag }} {% endif %}{{ geo.label }}{% else %}—{% endif %}
+                </td>
                 <td>{{ block.blocked_until|datetime_ve('%d/%m/%Y %H:%M') }}</td>
                 <td>{{ block.reason or '—' }}</td>
                 <td>
@@ -120,12 +124,16 @@
     {% if admin_blocks %}
     <div class="table-wrap" style="margin-top:10px">
         <table class="admin-table">
-            <thead><tr><th>Tipo</th><th>IP</th><th>Fallos</th><th>Bloqueada hasta</th><th></th></tr></thead>
+            <thead><tr><th>Tipo</th><th>IP</th><th>Ubicación</th><th>Fallos</th><th>Bloqueada hasta</th><th></th></tr></thead>
             <tbody>
             {% for row in admin_blocks %}
             <tr>
                 <td>{{ 'Código 2FA' if row.kind == '2fa' else 'Clave' }}</td>
                 <td><code>{{ row.ip }}</code></td>
+                <td>
+                    {% set geo = geo_by_ip.get(row.ip) if geo_by_ip else None %}
+                    {% if geo %}{% if geo.flag %}{{ geo.flag }} {% endif %}{{ geo.label }}{% else %}—{% endif %}
+                </td>
                 <td>{{ row.failures }}</td>
                 <td>{{ row.blocked_until|datetime_ve('%d/%m/%Y %H:%M') }}</td>
                 <td>

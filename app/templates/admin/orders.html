@@ -184,6 +184,18 @@
                             <span class="admin-order-card__label">Referencia</span>
                             <code class="ref-code">{{ order.payment_reference }}</code>
                         </div>
+                        <div class="admin-order-card__item">
+                            <span class="admin-order-card__label">IP</span>
+                            {% if order.client_ip %}
+                            <code class="ref-code">{{ order.client_ip }}</code>
+                            {% set order_geo = (geo_by_ip.get(order.client_ip) if geo_by_ip else None) %}
+                            {% if order_geo and order_geo.label %}
+                            <small style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px">{% if order_geo.flag %}{{ order_geo.flag }} {% endif %}{{ order_geo.label }}</small>
+                            {% endif %}
+                            {% else %}
+                            <span>—</span>
+                            {% endif %}
+                        </div>
                         <div class="admin-order-card__item admin-order-card__item--wide">
                             <span class="admin-order-card__label">Afiliado</span>
                             {% if order.affiliate %}<span class="aff-badge">{{ order.affiliate.code }}</span>{% else %}<span>—</span>{% endif %}
@@ -652,6 +664,11 @@ function _renderOrderRow(o) {
     if (o.email && !o.player_id) playerBits += '<span>' + _escapeHtml(o.email) + '</span>';
 
     var aff = o.affiliate_code ? '<span class="aff-badge">' + _escapeHtml(o.affiliate_code) + '</span>' : '—';
+    var ipBits = o.client_ip ? '<code class="ref-code">' + _escapeHtml(o.client_ip) + '</code>' : '<span>—</span>';
+    if (o.ip_geo) {
+        var geoText = (o.ip_geo_flag ? o.ip_geo_flag + ' ' : '') + o.ip_geo;
+        ipBits += '<small style="display:block;font-size:11px;color:var(--text-muted);margin-top:3px">' + _escapeHtml(geoText) + '</small>';
+    }
     var actions = '—';
     if (o.status === 'pending') {
         actions = '<div class="action-btns" id="actions-' + o.id + '" data-order-id="' + o.id + '" data-auto-resp="' + _escapeHtml(o.automation_response || '') + '">' +
@@ -703,6 +720,7 @@ function _renderOrderRow(o) {
     html += '<div class="admin-order-card__item admin-order-card__item--wide"><span class="admin-order-card__label">Jugador</span><div class="cell-stack">' + playerBits + '</div></div>';
     html += '<div class="admin-order-card__item"><span class="admin-order-card__label">Pago</span><strong>' + _escapeHtml(o.payment_method) + '</strong></div>';
     html += '<div class="admin-order-card__item"><span class="admin-order-card__label">Referencia</span><code class="ref-code">' + _escapeHtml(o.payment_reference) + '</code></div>';
+    html += '<div class="admin-order-card__item"><span class="admin-order-card__label">IP</span>' + ipBits + '</div>';
     html += '<div class="admin-order-card__item admin-order-card__item--wide"><span class="admin-order-card__label">Afiliado</span>' + (o.affiliate_code ? aff : '<span>—</span>') + '</div>';
     html += '</div>';
     html += '<div class="admin-order-card__actions">' + actions + '</div>';

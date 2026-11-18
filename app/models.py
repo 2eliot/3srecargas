@@ -1200,6 +1200,24 @@ class AdminLoginAttempt(db.Model):
     )
 
 
+class IpGeoCache(db.Model):
+    """Ubicación aproximada de una IP (país, ciudad y proveedor), para mostrarla
+    en el detalle de la orden y en las IPs bloqueadas. Se consulta una vez y se
+    guarda aquí; ver utils/ip_geo.py."""
+    __tablename__ = 'ip_geolocations'
+    id = db.Column(db.Integer, primary_key=True)
+    ip = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    status = db.Column(db.String(20), default='')
+    country = db.Column(db.String(100))
+    country_code = db.Column(db.String(5))
+    region = db.Column(db.String(100))
+    city = db.Column(db.String(100))
+    isp = db.Column(db.String(200))
+    org = db.Column(db.String(200))
+    asn = db.Column(db.String(100))
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class ProcessLock(db.Model):
     """Bloqueo distribuido respaldado por la BD.
 

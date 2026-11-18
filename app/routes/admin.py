@@ -77,6 +77,7 @@ from ..utils.admin_login_guard import (
     unblock as unblock_admin_login_ip,
 )
 from ..utils.email_domains import domains_text, parse_domains_text
+from ..utils.ip_geo import get_cached_geo_many, get_geo, get_geo_many
 from ..utils.minigames import (
     get_minigame_slot_defs,
     get_minigame_slots_config,
@@ -875,12 +876,20 @@ def security():
             flash('Acción de seguridad no válida.', 'danger')
         return redirect(url_for('admin_bp.security'))
 
+    order_blocks = active_order_blocks()
+    admin_blocks = active_admin_login_blocks()
+    geo_by_ip = get_geo_many(
+        [block.ip for block in order_blocks] + [row.ip for row in admin_blocks],
+        allow_remote=True,
+        budget=3.5,
+    )
     return render_template(
         'admin/security.html',
         totp_enabled=bool(current_user.totp_enabled),
         email_domains=domains_text(),
-        order_blocks=active_order_blocks(),
-        admin_blocks=active_admin_login_blocks(),
+        order_blocks=order_blocks,
+        admin_blocks=admin_blocks,
+        geo_by_ip=geo_by_ip,
         order_strike_limit=ORDER_STRIKE_LIMIT,
         order_block_hours=ORDER_BLOCK_HOURS,
         order_block_enabled=order_ip_block_enabled(),
@@ -1630,6 +1639,9 @@ def orders():
         .limit(page_size)
         .all()
     )
+    # Solo lo que ya está en la caché: la lista no debe esperar a una API
+    # externa por cada pedido. El detalle sí consulta y guarda la ubicación.
+    geo_by_ip = get_cached_geo_many([o.client_ip for o in all_orders if o.client_ip])
     page_window_start = max(1, page - 2)
     page_window_end = min(total_pages, page + 2)
     page_numbers = list(range(page_window_start, page_window_end + 1))
@@ -1668,6 +1680,7 @@ def orders():
         to_deliver_count=count_orders_to_deliver(),
         pending_count=Order.query.filter(Order.status == 'pending').count(),
         paused_count=Order.query.filter(Order.status == 'pending', Order.is_paused.is_(True)).count(),
+        geo_by_ip=geo_by_ip,
     )
 
 
@@ -1705,10 +1718,13 @@ def orders_latest():
     newest.reverse()
 
     flags = order_payment_flags(newest)
-    return jsonify({'ok': True, 'orders': [_order_row_payload(o, flags) for o in newest]})
+    geo_by_ip = get_cached_geo_many([o.client_ip for o in newest if o.client_ip])
+    return jsonify({'ok': True, 'orders': [_order_row_payload(o, flags, geo_by_ip) for o in newest]})
 
 
-def _order_row_payload(o, flags=None):
+def _order_row_payload(o, flags=None, geo_by_ip=None):
+    ip = o.client_ip or ''
+    geo = (geo_by_ip or {}).get(ip) or {}
     return {
         'id': o.id,
         'order_number': o.order_number,
@@ -1734,6 +1750,9 @@ def _order_row_payload(o, flags=None):
         # En pausa no se consulta al proveedor: sin esto la lista seguiría preguntando por la recarga cada pocos segundos.
         'automation_response': '' if (o.is_paused and o.status == 'pending') else (o.automation_response or ''),
         'pin_delivered': o.pin_delivered or '',
+        'client_ip': ip,
+        'ip_geo': geo.get('label') or '',
+        'ip_geo_flag': geo.get('flag') or '',
         'can_send_delivery_proof': order_supports_delivery_proof(o),
     }
 
@@ -1758,7 +1777,8 @@ def orders_refresh():
 
     rows = Order.query.filter(Order.id.in_(ids)).all()
     flags = order_payment_flags(rows)
-    return jsonify({'ok': True, 'orders': [_order_row_payload(o, flags) for o in rows]})
+    geo_by_ip = get_cached_geo_many([o.client_ip for o in rows if o.client_ip])
+    return jsonify({'ok': True, 'orders': [_order_row_payload(o, flags, geo_by_ip) for o in rows]})
 
 
 @admin_bp.route('/orders/<int:order_id>')
@@ -1767,6 +1787,9 @@ def order_detail(order_id):
     from .verify import verifiable_game_ids
 
     order = Order.query.get_or_404(order_id)
+    # Ubicación de la IP (país/ciudad/proveedor) para la sección "Conexión".
+    # Se cachea en `ip_geolocations`; si la API falla, el detalle sigue igual.
+    ip_geo = get_geo(order.client_ip) if order.client_ip else None
     payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
     same_game_packages = Package.query.filter_by(
         game_id=order.game_id, is_active=True
@@ -1855,6 +1878,7 @@ def order_detail(order_id):
         repeat_real_missing=repeat_real_missing,
         same_game_packages=same_game_packages,
         can_verify_player=order.game_id in verifiable_game_ids(),
+        ip_geo=ip_geo,
     )
 
 
