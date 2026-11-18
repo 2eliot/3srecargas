@@ -63,6 +63,32 @@
     </form>
 </div>
 
+<!-- Códigos descifrados (Google Authenticator) -->
+<div class="admin-card">
+    <div class="card-header">
+        <h3>Códigos descifrados</h3>
+        <span>{% if codes_unlocked %}<span class="badge badge-active">Visibles 15 min</span>{% else %}<span class="badge badge-inactive">Bloqueados</span>{% endif %}</span>
+    </div>
+    <div style="padding:0 20px 20px">
+        {% if codes_unlocked %}
+        <p class="card-subtext">Los códigos de esta página se ven descifrados. Se vuelven a ocultar solos a los 15 minutos.</p>
+        <form method="POST" action="{{ url_for('admin_bp.lock_codes') }}">
+            <button type="submit" class="btn-sm btn-secondary">Bloquear ahora</button>
+        </form>
+        {% else %}
+        <p class="card-subtext">Para ver los códigos descifrados, escribe el código de 6 dígitos de <strong>Google Authenticator</strong>.</p>
+        {% set next_pins = url_for('admin_bp.pins', package_id=selected_package.id) if selected_package else url_for('admin_bp.pins') %}
+        <form method="POST" action="{{ url_for('admin_bp.unlock_codes') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+            <input type="hidden" name="next" value="{{ next_pins }}">
+            <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                   placeholder="000000" autocomplete="one-time-code" required
+                   style="max-width:180px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:rgba(0,0,0,.2);color:inherit">
+            <button type="submit" class="btn-primary">Ver códigos</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
 <!-- PIN List -->
 <div class="admin-card">
     <div class="card-header">
@@ -89,7 +115,7 @@
                 {% for pin in pins_list %}
                 <tr class="{{ 'row-used' if pin.is_used }}">
                     <td>{{ pin.id }}</td>
-                    <td><code class="pin-code-cell">{{ pin.code }}</code></td>
+                    <td><code class="pin-code-cell">{% if codes_unlocked %}{{ pin_codes.get(pin.id, '') }}{% else %}••••••••{% endif %}</code></td>
                     <td>
                         {% if pin.is_used %}
                         <span class="badge badge-inactive">Usado</span>

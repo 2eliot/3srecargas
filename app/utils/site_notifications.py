@@ -86,6 +86,12 @@ def order_status_item(order):
                         f'Tu orden #{number} ({what}) se completó, pero el código no está disponible por seguridad. Escríbenos por soporte para revisarlo.',
                         order.updated_at)
         if order.pin_delivered and _is_code_section(order):
+            from .code_crypto import customer_code_for_order
+            _code, code_available, _msg = customer_code_for_order(order)
+            if not code_available:
+                return item('completed', 'warning', 'Orden completada',
+                            f'Tu orden #{number} ({what}) se completó, pero el código está cifrado porque el juego está desactivado. Se mostrará cuando vuelva a estar activo.',
+                            order.updated_at)
             return item('completed', 'success', '¡Tu código está listo!',
                         f'Tu orden #{number} ({what}) está lista. Ábrela para ver tu código.', order.updated_at)
         return item('completed', 'success', '¡Tu recarga está lista! 🎉',

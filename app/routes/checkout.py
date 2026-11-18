@@ -1622,6 +1622,8 @@ def order_status(order_number):
     is_pin_order = bool(order.game and order.game.category and order.game.category.slug == 'tarjetas')
     pin_unlocked = (not is_pin_order) or is_own_order(order.order_number)
     pin_unlock_error = session.pop('pin_unlock_error', None)
+    from ..utils.code_crypto import customer_code_for_order
+    customer_code, customer_code_available, customer_code_message = customer_code_for_order(order)
 
     missing_amount_bs = None
     if order.awaiting_payment_completion:
@@ -1653,6 +1655,9 @@ def order_status(order_number):
         payment_method_details=method,
         pin_unlocked=pin_unlocked,
         pin_unlock_error=pin_unlock_error,
+        customer_code=customer_code,
+        customer_code_available=customer_code_available,
+        customer_code_message=customer_code_message,
         # La campana del header solo sigue las órdenes hechas en este navegador.
         is_own_order=is_own_order(order.order_number),
     )

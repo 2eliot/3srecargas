@@ -77,6 +77,10 @@ from ..utils.admin_login_guard import (
     unblock as unblock_admin_login_ip,
 )
 from ..utils.email_domains import domains_text, parse_domains_text
+from ..utils.code_crypto import (
+    admin_code_for_order, codes_unlocked, decrypt_code, encrypt_code,
+    lock_codes as lock_codes_session, mark_codes_unlocked,
+)
 from ..utils.ip_geo import get_cached_geo_many, get_geo, get_geo_many
 from ..utils.prize_labels import order_prize_label, order_prize_labels
 from ..utils.minigames import (
@@ -897,6 +901,44 @@ def security():
     )
 
 
+@admin_bp.route('/codes/unlock', methods=['POST'])
+@login_required
+def unlock_codes():
+    """Pide el código de Google Authenticator para descifrar los códigos."""
+    if current_user.__class__.__name__ != 'AdminUser':
+        return redirect(url_for('main_bp.index'))
+    next_url = (request.form.get('next') or '').strip()
+    if not next_url.startswith('/admin'):
+        next_url = url_for('admin_bp.pins')
+    if not current_user.totp_enabled:
+        flash('Activa Google Authenticator para poder ver los códigos.', 'warning')
+        return redirect(url_for('admin_bp.totp_setup'))
+    if not check_rate_limit(f'codes_unlock:{client_ip()}', 10, 5 * 60):
+        flash('Demasiados intentos. Espera unos minutos.', 'danger')
+        return redirect(next_url)
+    code = (request.form.get('code') or '').strip()
+    ok, counter = totp_utils.verify_code(
+        current_user.totp_secret, code, current_user.totp_last_counter or 0
+    )
+    if not ok:
+        flash('Código incorrecto o ya usado. Inténtalo de nuevo.', 'danger')
+        return redirect(next_url)
+    current_user.totp_last_counter = counter
+    db.session.commit()
+    mark_codes_unlocked()
+    flash('Códigos desbloqueados por 15 minutos.', 'success')
+    return redirect(next_url)
+
+
+@admin_bp.route('/codes/lock', methods=['POST'])
+@login_required
+def lock_codes():
+    """Vuelve a ocultar los códigos sin esperar a que caduque."""
+    lock_codes_session()
+    flash('Códigos bloqueados.', 'info')
+    return redirect(request.referrer or url_for('admin_bp.pins'))
+
+
 @admin_bp.route('/logout', methods=['POST', 'GET'])
 @login_required
 def logout():
@@ -1644,6 +1686,11 @@ def orders():
     # externa por cada pedido. El detalle sí consulta y guarda la ubicación.
     geo_by_ip = get_cached_geo_many([o.client_ip for o in all_orders if o.client_ip])
     prize_labels = order_prize_labels(all_orders)
+    codes_are_unlocked = codes_unlocked()
+    decrypted_pins = (
+        {o.id: decrypt_code(o.pin_delivered) for o in all_orders if o.pin_delivered}
+        if codes_are_unlocked else {}
+    )
     page_window_start = max(1, page - 2)
     page_window_end = min(total_pages, page + 2)
     page_numbers = list(range(page_window_start, page_window_end + 1))
@@ -1684,6 +1731,8 @@ def orders():
         paused_count=Order.query.filter(Order.status == 'pending', Order.is_paused.is_(True)).count(),
         geo_by_ip=geo_by_ip,
         prize_labels=prize_labels,
+        codes_unlocked=codes_are_unlocked,
+        decrypted_pins=decrypted_pins,
     )
 
 
@@ -1723,12 +1772,16 @@ def orders_latest():
     flags = order_payment_flags(newest)
     geo_by_ip = get_cached_geo_many([o.client_ip for o in newest if o.client_ip])
     prize_labels = order_prize_labels(newest)
+    decrypted_pins = (
+        {o.id: decrypt_code(o.pin_delivered) for o in newest if o.pin_delivered}
+        if codes_unlocked() else {}
+    )
     return jsonify({'ok': True, 'orders': [
-        _order_row_payload(o, flags, geo_by_ip, prize_labels) for o in newest
+        _order_row_payload(o, flags, geo_by_ip, prize_labels, decrypted_pins) for o in newest
     ]})
 
 
-def _order_row_payload(o, flags=None, geo_by_ip=None, prize_labels=None):
+def _order_row_payload(o, flags=None, geo_by_ip=None, prize_labels=None, decrypted_pins=None):
     ip = o.client_ip or ''
     geo = (geo_by_ip or {}).get(ip) or {}
     return {
@@ -1755,7 +1808,7 @@ def _order_row_payload(o, flags=None, geo_by_ip=None, prize_labels=None):
         'created_at': format_ve(o.created_at, '%d/%m/%Y %H:%M'),
         # En pausa no se consulta al proveedor: sin esto la lista seguiría preguntando por la recarga cada pocos segundos.
         'automation_response': '' if (o.is_paused and o.status == 'pending') else (o.automation_response or ''),
-        'pin_delivered': o.pin_delivered or '',
+        'pin_delivered': (decrypted_pins or {}).get(o.id, ''),
         'client_ip': ip,
         'ip_geo': geo.get('label') or '',
         'ip_geo_flag': geo.get('flag') or '',
@@ -1786,8 +1839,12 @@ def orders_refresh():
     flags = order_payment_flags(rows)
     geo_by_ip = get_cached_geo_many([o.client_ip for o in rows if o.client_ip])
     prize_labels = order_prize_labels(rows)
+    decrypted_pins = (
+        {o.id: decrypt_code(o.pin_delivered) for o in rows if o.pin_delivered}
+        if codes_unlocked() else {}
+    )
     return jsonify({'ok': True, 'orders': [
-        _order_row_payload(o, flags, geo_by_ip, prize_labels) for o in rows
+        _order_row_payload(o, flags, geo_by_ip, prize_labels, decrypted_pins) for o in rows
     ]})
 
 
@@ -1801,6 +1858,8 @@ def order_detail(order_id):
     # Se cachea en `ip_geolocations`; si la API falla, el detalle sigue igual.
     ip_geo = get_geo(order.client_ip) if order.client_ip else None
     prize_label = order_prize_label(order)
+    codes_are_unlocked = codes_unlocked()
+    admin_code = admin_code_for_order(order)
     payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
     same_game_packages = Package.query.filter_by(
         game_id=order.game_id, is_active=True
@@ -1891,6 +1950,8 @@ def order_detail(order_id):
         can_verify_player=order.game_id in verifiable_game_ids(),
         ip_geo=ip_geo,
         prize_label=prize_label,
+        codes_unlocked=codes_are_unlocked,
+        admin_code=admin_code,
     )
 
 
@@ -2584,6 +2645,8 @@ STOCK_PINS_ENDPOINTS = {
     'admin_bp.pin_delete',
     'admin_bp.pins_unlock',
     'admin_bp.pins_lock',
+    'admin_bp.unlock_codes',
+    'admin_bp.lock_codes',
     'admin_bp.gift_codes',
     'admin_bp.gift_codes_generate',
     'admin_bp.gift_codes_export',
@@ -2792,6 +2855,11 @@ def pins():
         game_id = selected_package.game_id
     selected_game_entry = games_map.get(game_id) if game_id else None
 
+    codes_are_unlocked = codes_unlocked()
+    pin_codes = (
+        {pin.id: decrypt_code(pin.code) for pin in pins_list}
+        if codes_are_unlocked else {}
+    )
     return render_template(
         'admin/pins.html',
         automated_packages=pin_enabled_packages,
@@ -2805,6 +2873,8 @@ def pins():
         page_numbers=page_numbers,
         start_index=start_index,
         end_index=end_index,
+        codes_unlocked=codes_are_unlocked,
+        pin_codes=pin_codes,
     )
 
 
@@ -2821,7 +2891,7 @@ def pins_upload(package_id):
     lines = [l.strip() for l in raw.splitlines() if l.strip()]
     added = 0
     for line in lines:
-        pin = Pin(package_id=package.id, code=line)
+        pin = Pin(package_id=package.id, code=encrypt_code(line))
         db.session.add(pin)
         added += 1
 

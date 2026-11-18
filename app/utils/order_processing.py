@@ -10,6 +10,7 @@ from ..models import (
     RevendedoresItemMapping, db,
 )
 from .locks import acquire_lock, release_lock
+from .code_crypto import decrypt_code, encrypt_code
 from .minigames import ensure_minigame_opportunity
 from .notifications import notify_order_approved, notify_order_completed
 from .order_pause import order_paused_now, paused_result
@@ -1347,7 +1348,7 @@ def _resolve_ambiguous_redeem(order, pin, reason):
             resp = requests.post(
                 verify_url,
                 json={
-                    'pin_key': str(pin.code).strip(),
+                    'pin_key': str(decrypt_code(pin.code)).strip(),
                     'player_id': str(order.player_id or '').strip(),
                     'request_id': order.order_number,
                     'verify_only': True,
@@ -1375,7 +1376,7 @@ def _resolve_ambiguous_redeem(order, pin, reason):
         ensure_minigame_opportunity(order)
         award_points_for_order(order)
         order.pin_id = pin.id
-        order.pin_delivered = pin.code
+        order.pin_delivered = encrypt_code(pin.code)
         order.automation_response = json.dumps({
             'success': True,
             'message': f'{reason} Verificado después: el PIN sí fue canjeado.',
@@ -1420,7 +1421,7 @@ def _resolve_ambiguous_redeem(order, pin, reason):
         'ok': False,
         'changed': False,
         'message': (
-            f'{reason} No se pudo confirmar si el PIN {pin.code} se canjeó, así que quedó '
+            f'{reason} No se pudo confirmar si el PIN {decrypt_code(pin.code)} se canjeó, así que quedó '
             f'reservado para la orden #{order.order_number}. Revísalo antes de reintentar.'
         ),
         'category': 'danger',
@@ -1508,7 +1509,7 @@ def _approve_order_locked(order, delivery_proof_path=None):
         vps_timeout = current_app.config.get('VPS_TIMEOUT', 120)
 
         payload = {
-            'pin_key': str(pin.code).strip(),
+            'pin_key': str(decrypt_code(pin.code)).strip(),
             'player_id': str(order.player_id).strip(),
             'full_name': current_app.config.get('VPS_FULL_NAME', 'Usuario Recarga'),
             'birth_date': current_app.config.get('VPS_BIRTH_DATE', '01/01/1995'),
@@ -1561,7 +1562,7 @@ def _approve_order_locked(order, delivery_proof_path=None):
                 ensure_minigame_opportunity(order)
                 award_points_for_order(order)
                 order.pin_id = pin.id
-                order.pin_delivered = pin.code
+                order.pin_delivered = encrypt_code(pin.code)
                 order.automation_response = json.dumps({
                     'success': True,
                     'message': mensaje,
@@ -1627,7 +1628,7 @@ def _approve_order_locked(order, delivery_proof_path=None):
                 'changed': False,
                 'message': (
                     f'Error inesperado al contactar el VPS: {exc}. '
-                    f'El PIN {pin.code} quedó reservado para la orden #{order.order_number}.'
+                    f'El PIN {decrypt_code(pin.code)} quedó reservado para la orden #{order.order_number}.'
                 ),
                 'category': 'danger',
             }
@@ -1640,12 +1641,12 @@ def _approve_order_locked(order, delivery_proof_path=None):
         ensure_minigame_opportunity(order)
         award_points_for_order(order)
         order.pin_id = pin.id
-        order.pin_delivered = pin.code
+        order.pin_delivered = encrypt_code(pin.code)
         order.updated_at = datetime.utcnow()
         process_affiliate_commission(order)
         db.session.commit()
         try:
-            notify_order_completed(order, order.package, order.game, pin_code=pin.code)
+            notify_order_completed(order, order.package, order.game, pin_code=decrypt_code(pin.code))
         except Exception:
             pass
         return {

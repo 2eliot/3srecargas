@@ -36,6 +36,7 @@ from flask import current_app
 
 from ..models import CentralOneCatalogItem, db
 from .locks import acquire_lock, release_lock
+from .code_crypto import decrypt_code, encrypt_code
 from .minigames import ensure_minigame_opportunity
 from .notifications import notify_order_completed
 from .order_pause import order_paused_now, paused_result
@@ -204,11 +205,11 @@ def is_code_section(order):
 
 
 def _append_codes(order, pins):
-    current = [c for c in (order.pin_delivered or '').split('\n') if c.strip()]
+    current = [c for c in decrypt_code(order.pin_delivered or '').split('\n') if c.strip()]
     for pin in pins:
         if pin and pin not in current:
             current.append(pin)
-    order.pin_delivered = '\n'.join(current)
+    order.pin_delivered = encrypt_code('\n'.join(current))
 
 
 # ─── Catálogo ────────────────────────────────────────────────────────────────

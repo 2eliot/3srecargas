@@ -123,6 +123,7 @@
     </div>
     <div class="admin-order-feed admin-order-feed--compact" id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}" data-date-from="{{ date_from or '' }}" data-date-to="{{ date_to or '' }}" data-package-id="{{ package_id or '' }}" data-service-id="{{ service_id or '' }}" data-game-id="{{ game_id or '' }}" data-current-page="{{ current_page }}" data-page-size="{{ page_size }}">
                 {% for order in orders %}
+                {% set pin_plain = decrypted_pins.get(order.id) if (codes_unlocked and decrypted_pins) else '' %}
                 <article class="admin-order-card" data-order-id="{{ order.id }}">
                     <div class="admin-order-card__top">
                         {% if order.status == 'pending' %}
@@ -231,10 +232,15 @@
                             </form>
                             {% endif %}
                         </div>
+                        {% elif order.status == 'completed' and pin_plain %}
+                        <div class="action-btns">
+                            <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Ver detalle</a>
+                            <button class="btn-sm btn-outline" data-pin="{{ pin_plain }}" onclick="showPin(this.dataset.pin)">Ver PIN</button>
+                        </div>
                         {% elif order.status == 'completed' and order.pin_delivered %}
                         <div class="action-btns">
                             <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Ver detalle</a>
-                            <button class="btn-sm btn-outline" data-pin="{{ order.pin_delivered }}" onclick="showPin(this.dataset.pin)">Ver PIN</button>
+                            <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline" title="Desbloquea los códigos con tu Google Authenticator">🔒 Ver código</a>
                         </div>
                         {% else %}
                         <a href="{{ url_for('admin_bp.order_detail', order_id=order.id) }}" class="btn-sm btn-outline">Ver detalle</a>

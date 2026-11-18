@@ -89,14 +89,24 @@ def notify_order_approved(order, package, game, delivery_proof_path=None):
 
 
 def notify_order_completed(order, package, game, pin_code=None):
-    """Avisa al cliente (correo + push) cuando la orden se completa."""
+    """Avisa al cliente (correo + push) cuando la orden se completa.
+
+    El código real solo se incluye si el juego y el paquete están activos; si
+    el juego está apagado se avisa que está cifrado. `pin_code` se mantiene por
+    compatibilidad con los llamadores, pero la decisión la toma la orden.
+    """
     app = _app()
+    from .code_crypto import customer_code_for_order
+    customer_code, code_available, code_message = customer_code_for_order(order)
     codes_hidden = bool(getattr(order, 'codes_hidden', False))
+    code_locked = bool(order.pin_delivered) and not codes_hidden and not code_available
+    email_code = customer_code if (code_available and not codes_hidden) else None
     if order.email:
         subject, html, text = build_order_completed_pin_email(
             order, package, game,
-            None if codes_hidden else pin_code,
+            email_code,
             codes_hidden=codes_hidden,
+            code_locked=code_locked,
         )
         send_email_async(app, order.email, subject, html, text)
 
@@ -105,6 +115,12 @@ def notify_order_completed(order, package, game, pin_code=None):
         push_body = (
             f'Tu orden #{order.order_number} de {game.name} se completó. '
             'El código no está disponible por seguridad; escríbenos por soporte.'
+        )
+    elif code_locked:
+        push_title = 'Orden completada'
+        push_body = (
+            f'Tu orden #{order.order_number} de {game.name} se completó. '
+            'El código está cifrado porque el juego está desactivado; se mostrará cuando vuelva a estar activo.'
         )
     else:
         push_title = '¡Tu recarga está lista! 🎉'

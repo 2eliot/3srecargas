@@ -563,7 +563,31 @@
     {% if order.pin_delivered %}
     <div class="detail-section" style="grid-column:1/-1">
         <h3>PIN Entregado</h3>
-        <div class="pin-code-display">{{ order.pin_delivered }}</div>
+        {% if admin_code %}
+        <div class="pin-code-display">{{ admin_code }}</div>
+        {% if codes_unlocked %}
+        <form method="POST" action="{{ url_for('admin_bp.lock_codes') }}" style="margin-top:8px">
+            <button type="submit" class="btn-sm btn-secondary">Ocultar códigos ahora</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <div class="pin-code-display">••••••••</div>
+        <p class="card-subtext" style="margin-top:8px">
+            Para ver el código, escribe el código de 6 dígitos de <strong>Google Authenticator</strong>.
+        </p>
+        {% if current_user.totp_enabled %}
+        <form method="POST" action="{{ url_for('admin_bp.unlock_codes') }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+            <input type="hidden" name="next" value="{{ url_for('admin_bp.order_detail', order_id=order.id) }}">
+            <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+                   placeholder="000000" autocomplete="one-time-code" required
+                   style="max-width:180px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:rgba(0,0,0,.2);color:inherit">
+            <button type="submit" class="btn-primary">Ver código</button>
+        </form>
+        {% else %}
+        <p class="card-subtext"><a href="{{ url_for('admin_bp.totp_setup') }}">Activa Google Authenticator</a> para ver los códigos.</p>
+        {% endif %}
+        <p class="card-subtext"><a href="{{ url_for('admin_bp.pins') }}">Ir a Stock PINs</a> (también pide el Authenticator).</p>
+        {% endif %}
         {% if order.codes_hidden %}
         <p class="card-subtext" style="color:#fbbf24;margin-top:8px">
             Este código está oculto para el cliente (campanita, correo y página de la orden). Aquí lo ves solo tú.

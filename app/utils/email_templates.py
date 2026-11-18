@@ -290,7 +290,7 @@ Monto: {amount_str}
 # ORDEN COMPLETADA CON PIN/CÓDIGO — se envía al cliente
 # ──────────────────────────────────────────────────────────────────────
 
-def build_order_completed_pin_email(order, package, game, pin_code=None, codes_hidden=False):
+def build_order_completed_pin_email(order, package, game, pin_code=None, codes_hidden=False, code_locked=False):
     """Construye HTML + texto para 'orden completada' con entrega de PIN/código."""
     s = _base_style()
     brand = _brand_name()
@@ -310,6 +310,16 @@ def build_order_completed_pin_email(order, package, game, pin_code=None, codes_h
     </p>
 </div>
 """
+    elif code_locked:
+        code_html = f"""
+<div style="margin:24px 0; padding:18px; background-color:#0b1220; border:1px solid #2563eb; border-radius:10px;">
+    <p style="margin:0 0 6px 0; font-size:14px; font-weight:700; color:#93c5fd;">Código cifrado</p>
+    <p style="margin:0; font-size:13px; color:{s['text']}; line-height:1.6;">
+        El juego de esta orden está desactivado. El código quedó cifrado y no se puede canjear;
+        se mostrará en tu orden cuando el juego vuelva a estar activo.
+    </p>
+</div>
+"""
     elif code:
         code_html = f"""
 <div style="margin:24px 0; padding:20px; background-color:#0f0f0f; border:2px dashed {s['accent']}; border-radius:10px; text-align:center;">
@@ -322,6 +332,8 @@ def build_order_completed_pin_email(order, package, game, pin_code=None, codes_h
     intro = 'Tu recarga ha sido aplicada.'
     if codes_hidden:
         intro = 'Tu orden fue procesada, pero el código está bloqueado por seguridad.'
+    elif code_locked:
+        intro = 'Tu orden fue procesada, pero el código está cifrado porque el juego está desactivado.'
     elif code:
         intro = 'Aquí tienes tu código:'
 
@@ -354,6 +366,10 @@ def build_order_completed_pin_email(order, package, game, pin_code=None, codes_h
 
     if codes_hidden:
         code_text = 'Código: no disponible por seguridad. Escríbenos por soporte.'
+    elif code_locked:
+        code_text = (
+            'Código: cifrado (juego desactivado). Se mostrará cuando el juego vuelva a estar activo.'
+        )
     else:
         code_text = f'Código: {code}' if code else ''
     text = f"""¡Orden completada!
