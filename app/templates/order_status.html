@@ -904,7 +904,8 @@
         <!-- Título -->
         <h2 class="nx-order-heading" id="orderMainHeading">
             {% if st == 'completed' %}
-                {% if is_pin_order and order.pin_delivered %}¡Tu código ya está listo!
+                {% if order.codes_hidden %}ORDEN COMPLETADA
+                {% elif is_pin_order and order.pin_delivered %}¡Tu código ya está listo!
                 {% elif is_manual_order %}¡ORDEN RECIBIDA!
                 {% else %}¡RECARGA EXITOSA!{% endif %}
             {% elif st == 'approved' %}¡PAGO CONFIRMADO!
@@ -1166,7 +1167,7 @@
         </div>
         {% endif %}
 
-        {% if order.pin_delivered and is_pin_order %}
+        {% if order.pin_delivered and is_pin_order and not order.codes_hidden %}
         <div class="nx-pin-section glass-subpanel">
             <div>
                 <div class="nx-pin-label"><span class="k">🔑</span><span>TU PIN / CÓDIGO</span></div>
@@ -1190,6 +1191,15 @@
                 <a class="nx-pin-video-btn" href="https://www.youtube.com/shorts/egsS2oTnDYA" target="_blank" rel="noopener noreferrer">
                     <span class="p">▶</span><span>VER VIDEO</span>
                 </a>
+            </div>
+        </div>
+        {% elif order.pin_delivered and is_pin_order and order.codes_hidden %}
+        <div class="nx-pin-section glass-subpanel">
+            <div>
+                <div class="nx-pin-label"><span class="k">🔒</span><span>CÓDIGO NO DISPONIBLE</span></div>
+                <p style="margin:10px 0 0;font-size:14px;line-height:1.6;">
+                    El código de esta orden fue bloqueado por seguridad. Escríbenos por soporte para revisarlo.
+                </p>
             </div>
         </div>
         {% endif %}

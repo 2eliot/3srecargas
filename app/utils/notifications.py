@@ -91,14 +91,28 @@ def notify_order_approved(order, package, game, delivery_proof_path=None):
 def notify_order_completed(order, package, game, pin_code=None):
     """Avisa al cliente (correo + push) cuando la orden se completa."""
     app = _app()
+    codes_hidden = bool(getattr(order, 'codes_hidden', False))
     if order.email:
-        subject, html, text = build_order_completed_pin_email(order, package, game, pin_code)
+        subject, html, text = build_order_completed_pin_email(
+            order, package, game,
+            None if codes_hidden else pin_code,
+            codes_hidden=codes_hidden,
+        )
         send_email_async(app, order.email, subject, html, text)
 
+    if codes_hidden:
+        push_title = 'Orden completada'
+        push_body = (
+            f'Tu orden #{order.order_number} de {game.name} se completó. '
+            'El código no está disponible por seguridad; escríbenos por soporte.'
+        )
+    else:
+        push_title = '¡Tu recarga está lista! 🎉'
+        push_body = f'Tu orden #{order.order_number} de {game.name} ya se completó.'
     send_push_to_order_subscribers_async(
         app, order.id,
-        '¡Tu recarga está lista! 🎉',
-        f'Tu orden #{order.order_number} de {game.name} ya se completó.',
+        push_title,
+        push_body,
         url=_order_status_url(order),
     )
 

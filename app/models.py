@@ -291,6 +291,9 @@ class Order(db.Model):
     # Momento exacto del rechazo. Se usa para contar los strikes por IP; no
     # se mueve cuando el admin edita una nota de una orden vieja.
     rejected_at = db.Column(db.DateTime)
+    # Código entregado que NO se le muestra al cliente (campanita, correo y
+    # página de la orden) por seguridad. El admin lo sigue viendo en el detalle.
+    codes_hidden = db.Column(db.Boolean, default=False)
     # Origen de la orden, para auditoría y para el bloqueo por strikes. No se
     # muestra al cliente; solo lo ve el admin en el detalle.
     client_ip = db.Column(db.String(64), index=True)

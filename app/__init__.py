@@ -621,6 +621,7 @@ def create_app(config_class=Config):
         _ensure_order_pause_column()
         _ensure_order_reject_reason_column()
         _ensure_order_rejected_at_column()
+        _ensure_order_codes_hidden_column()
         _ensure_order_client_columns()
         _ensure_ranking_archive_columns()
         _ensure_ranking_board_columns()
@@ -1418,6 +1419,24 @@ def _ensure_order_rejected_at_column():
         existing = {r[1] for r in rows}
         if 'rejected_at' not in existing:
             db.session.execute(text('ALTER TABLE orders ADD COLUMN rejected_at DATETIME'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_codes_hidden_column():
+    """Marca para ocultar al cliente el código de una orden (orders.codes_hidden)."""
+    try:
+        if _ensure_postgres_columns('orders', ['codes_hidden BOOLEAN DEFAULT FALSE']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'codes_hidden' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN codes_hidden BOOLEAN DEFAULT 0'))
         db.session.commit()
     except Exception:
         db.session.rollback()

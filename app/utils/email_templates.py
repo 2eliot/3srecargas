@@ -290,7 +290,7 @@ Monto: {amount_str}
 # ORDEN COMPLETADA CON PIN/CÓDIGO — se envía al cliente
 # ──────────────────────────────────────────────────────────────────────
 
-def build_order_completed_pin_email(order, package, game, pin_code=None):
+def build_order_completed_pin_email(order, package, game, pin_code=None, codes_hidden=False):
     """Construye HTML + texto para 'orden completada' con entrega de PIN/código."""
     s = _base_style()
     brand = _brand_name()
@@ -301,7 +301,16 @@ def build_order_completed_pin_email(order, package, game, pin_code=None):
     # Un pedido puede traer varios códigos (uno por línea): se escapan y se separan con salto de línea.
     code_safe = _esc(code).replace('\n', '<br>')
     code_html = ''
-    if code:
+    if codes_hidden:
+        code_html = f"""
+<div style="margin:24px 0; padding:18px; background-color:#1a1205; border:1px solid #b45309; border-radius:10px;">
+    <p style="margin:0 0 6px 0; font-size:14px; font-weight:700; color:#fbbf24;">Código no disponible</p>
+    <p style="margin:0; font-size:13px; color:{s['text']}; line-height:1.6;">
+        El código de esta orden fue bloqueado por seguridad. Escríbenos por soporte para revisarlo.
+    </p>
+</div>
+"""
+    elif code:
         code_html = f"""
 <div style="margin:24px 0; padding:20px; background-color:#0f0f0f; border:2px dashed {s['accent']}; border-radius:10px; text-align:center;">
     <p style="margin:0 0 8px 0; font-size:13px; color:{s['muted']}; text-transform:uppercase; letter-spacing:1px;">Tu código</p>
@@ -310,11 +319,17 @@ def build_order_completed_pin_email(order, package, game, pin_code=None):
 </div>
 """
 
+    intro = 'Tu recarga ha sido aplicada.'
+    if codes_hidden:
+        intro = 'Tu orden fue procesada, pero el código está bloqueado por seguridad.'
+    elif code:
+        intro = 'Aquí tienes tu código:'
+
     body = f"""
 <h2 style="margin:0 0 8px 0; font-size:20px; color:{s['white']};">¡Orden completada! 🎉</h2>
 <p style="margin:0 0 20px 0; font-size:15px; color:{s['text']}; line-height:1.6;">
     Tu orden <strong style="color:{s['accent_light']};">#{order.order_number}</strong> ha sido procesada exitosamente.
-    {('Aquí tienes tu código:' if code else 'Tu recarga ha sido aplicada.')}
+    {intro}
 </p>
 
 {_status_badge('Completada', s['success'])}
@@ -337,6 +352,10 @@ def build_order_completed_pin_email(order, package, game, pin_code=None):
 
     html = _wrap_html(f'Orden #{order.order_number} completada - {brand}', body)
 
+    if codes_hidden:
+        code_text = 'Código: no disponible por seguridad. Escríbenos por soporte.'
+    else:
+        code_text = f'Código: {code}' if code else ''
     text = f"""¡Orden completada!
 
 Tu orden #{order.order_number} ha sido procesada exitosamente.
@@ -344,7 +363,7 @@ Juego: {game.name if game else 'N/A'}
 {f'Descripción: {game_description}' if game_description else ''}
 Paquete: {package.name if package else 'N/A'}
 Monto: {amount_str}
-{f'Código: {code}' if code else ''}
+{code_text}
 
 ¡Gracias por tu compra!
 

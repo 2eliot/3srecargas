@@ -81,6 +81,10 @@ def order_status_item(order):
                 'moment': moment or order.updated_at or order.created_at}
 
     if order.status == 'completed':
+        if getattr(order, 'codes_hidden', False):
+            return item('completed', 'warning', 'Orden completada',
+                        f'Tu orden #{number} ({what}) se completó, pero el código no está disponible por seguridad. Escríbenos por soporte para revisarlo.',
+                        order.updated_at)
         if order.pin_delivered and _is_code_section(order):
             return item('completed', 'success', '¡Tu código está listo!',
                         f'Tu orden #{number} ({what}) está lista. Ábrela para ver tu código.', order.updated_at)

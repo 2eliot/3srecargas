@@ -558,6 +558,11 @@
     <div class="detail-section" style="grid-column:1/-1">
         <h3>PIN Entregado</h3>
         <div class="pin-code-display">{{ order.pin_delivered }}</div>
+        {% if order.codes_hidden %}
+        <p class="card-subtext" style="color:#fbbf24;margin-top:8px">
+            Este código está oculto para el cliente (campanita, correo y página de la orden). Aquí lo ves solo tú.
+        </p>
+        {% endif %}
         {% if order.automation_response %}
         <details style="margin-top:12px">
             <summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">Ver respuesta del servicio de automatización</summary>
