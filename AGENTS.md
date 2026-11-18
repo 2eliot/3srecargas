@@ -14,7 +14,7 @@
 - El dueño es **Sebastián** (`realsebastian28@gmail.com`), habla solo español, no es programador y trabaja con **capturas de pantalla** y pedidos cortos.
 - Producción: **https://3srecargas.com** y **https://3srecargas.net**, en un VPS Hostinger; PostgreSQL en otro servidor por túnel SSH.
 - Repo: **github.com/2eliot/3srecargas**. La rama de trabajo real es **`fix/recarga-acumulada-seguridad`**; en el último estado está igual a `origin/main`.
-- Último commit desplegado: **`340519f`** (18-nov-2026 02:04 UTC): seguridad de órdenes + Google Authenticator + bloqueos por IP.
+- Último commit desplegado: **`2fc43d1`** (18-nov-2026 03:35 UTC): seguridad de órdenes + Google Authenticator + bloqueos por IP, y el arreglo de juegos apagados que seguían vendiendo.
 - **Todo está commiteado y desplegado.** No hay cambios de código pendientes. Falta que el dueño configure el Authenticator en su primer login; fail2ban es opcional (jail desactivado).
 - Desarrollo local en Windows: **puerto 5001**, SQLite `data/app.db`. El puerto 5000 es OTRO proyecto.
 - La web es **mobile-first**: en PC debe verse como un celular, salvo el panel admin.
@@ -92,10 +92,11 @@
 
 ## 4. Estado actual (18-nov-2026)
 
-- **Rama actual:** `fix/recarga-acumulada-seguridad`; el código desplegado es `340519f` (18-nov-2026 02:04 UTC).
-- `origin/main` y `origin/fix/...` están en `340519f`. El puntero local `main` puede estar atrás: no lo uses como referencia sin actualizarlo.
-- **Último despliegue:** 18-nov-2026 02:04 UTC, commit `340519f`, hardening de seguridad. Respaldos `backups-deploy/db-20261118-020317.dump` y `code-20261118-020317.tgz`.
+- **Rama actual:** `fix/recarga-acumulada-seguridad`; el código desplegado es `2fc43d1` (18-nov-2026 03:35 UTC).
+- `origin/main` y `origin/fix/...` están en `2fc43d1` (más el commit de documentación). El puntero local `main` puede estar atrás: no lo uses como referencia sin actualizarlo.
+- **Último despliegue:** 18-nov-2026 03:35 UTC, commit `2fc43d1`, arreglo de juegos apagados. Respaldo de código `backups-deploy/code-20261118-033539.tgz` (el respaldo de base de esta tanda es `db-20261118-020317.dump`, no hubo cambios de esquema después).
 - **Seguridad 18-nov (desplegado):** límites **3/min y 30/h** por IP; **Google Authenticator** para el admin (el dueño debe configurarlo en su primer login); 3 intentos de clave y luego 1/5 min; 10 fallos → IP 24 h; **5 rechazadas/24 h → IP 24 h solo para comprar** (soporte sigue abierto, con interruptor en Admin → Seguridad); IP/user-agent en órdenes; correos de proveedores reconocidos; fail2ban opcional con jail desactivado. `qrcode==8.2` instalado y agregado a `requirements.migracion.txt`. Columnas nuevas: `orders.client_ip`, `orders.user_agent`, `orders.rejected_at`; TOTP en `admin_users`; tablas `ip_order_blocks` y `admin_login_attempts`; índice `ix_orders_client_ip_status`.
+- **Incidente 18-nov (juego apagado que seguía vendiendo):** Roblox estaba `is_active=False`, pero 6 de sus 7 paquetes seguían activos y `/checkout/<id>` solo miraba `Package.is_active`; el atacante entró por enlace directo. Corregido en `2fc43d1`: `get_purchase_block_reason` ahora exige que **el juego** esté activo. Se bloquearon 24 h la IP `185.244.149.103` (visible en Admin → Seguridad). Órdenes completadas del ataque para revisar con Pabilo: `573457055827` (Roblox, código ya entregado) y `910538630268` (Free Fire); también hay una rechazada y una pendiente de la misma IP. Otros juegos apagados con paquetes activos (TikTok, Telegram, Discord Nitro, PlayStation, Xbox) ya quedan bloqueados por el mismo fix.
 - **Central One (incluido en `5ea3a90`):** distingue una recarga directa (`requires_target`) de un código de tarjeta, así no deja 23 órdenes esperando al admin. Prueba local `test_co_direct_topup.py` 11/11. **Ojo:** no volver a mezclarlo sin querer en commits de otros temas; ya está desplegado.
 - **Verificación de ID de Free Fire:** `ff_verify_enabled = 1` (ENCENDIDA) al 15-nov. No la apagues ni la enciendas sin que él lo pida.
 - **Binance:** método activo; verificación por referencia con ID completo y ventana de 48 h antes de la orden. En el `.env` del servidor se comentó `BINANCE_PROXY` el 15-nov porque el proxy estaba muerto; Binance va directo. En el `.env` local la variable todavía aparece: si pruebas Binance local y falla por proxy, coméntala también.
@@ -236,6 +237,7 @@ cd C:\Users\reals\Desktop\3srecargas
 21. **Strikes por IP:** **5 órdenes rechazadas en 24 h** bloquean esa IP **24 h solo para crear órdenes**; navegar, ver órdenes y soporte siguen abiertos. Se cuenta por `orders.rejected_at` (no por `updated_at`) y solo órdenes con `client_ip`. Se libera o se apaga en **Admin → Seguridad**. No bloquear el canje de códigos de regalo.
 22. **IP y user-agent:** se guardan en cada orden nueva (`orders.client_ip`, `orders.user_agent`) y solo los ve el admin en el detalle. No mostrarlos al cliente ni meterlos en correos.
 23. **fail2ban:** el jail viene **desactivado** y es una capa extra; la app ya bloquea sola. Activarlo requiere root, el ID de zona y un token de Cloudflare con permiso de Firewall/WAF. Validar con `fail2ban-client -t` antes de reiniciar; no tumbar los jails de SSH.
+24. **Juego apagado = paquetes cerrados:** `get_purchase_block_reason` debe exigir `package.game.is_active`, no solo `package.is_active`. El enlace directo `/checkout/<id>` no puede vender un juego que el dueño apagó. Si se agrega otra puerta de compra, debe usar la misma regla.
 
 ---
 
