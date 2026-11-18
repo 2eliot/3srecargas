@@ -47,6 +47,14 @@ def format_code(code):
     return '-'.join(code[i:i + CODE_BLOCK] for i in range(0, len(code), CODE_BLOCK))
 
 
+def mask_code(code):
+    """Código enmascarado para vistas públicas: ••••-••••-JKMN (solo el último bloque)."""
+    blocks = format_code(code).split('-')
+    if len(blocks) <= 1:
+        return '••••'
+    return '-'.join(['••••'] * (len(blocks) - 1) + [blocks[-1]])
+
+
 def generate_code():
     return ''.join(
         secrets.choice(CODE_ALPHABET) for _ in range(CODE_BLOCK * CODE_BLOCKS)
@@ -276,7 +284,10 @@ def serialize_redemption(gift):
     game = package.game if package else None
     order = gift.order
     return {
-        'code': format_code(gift.code),
+        # Seguridad (2026-11-18): el historial se consulta solo con el ID del jugador,
+        # sin sesión; se muestra solo el último bloque para que nadie saque códigos
+        # completos poniendo el ID de otro.
+        'code': mask_code(gift.code),
         'game': game.name if game else '—',
         'package': package.name if package else '—',
         'date': gift.used_at.strftime('%d/%m/%Y %H:%M') if gift.used_at else '',
