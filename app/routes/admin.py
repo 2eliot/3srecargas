@@ -908,7 +908,7 @@ def unlock_codes():
     if current_user.__class__.__name__ != 'AdminUser':
         return redirect(url_for('main_bp.index'))
     next_url = (request.form.get('next') or '').strip()
-    if not next_url.startswith('/admin'):
+    if not (next_url == '/admin' or next_url.startswith('/admin/')):
         next_url = url_for('admin_bp.pins')
     if not current_user.totp_enabled:
         flash('Activa Google Authenticator para poder ver los códigos.', 'warning')
