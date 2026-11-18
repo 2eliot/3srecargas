@@ -807,9 +807,24 @@ def _remote_outcome(remote):
     return 'pending'
 
 
+def _is_direct_topup(step):
+    """¿El producto de este paso es una RECARGA DIRECTA a la cuenta del jugador? (Central One lo pide con el ID: `requires_target`;
+    Mobile Legends, Blood Strike, Free Fire, Telegram…). Cuando Central One la marca entregada, la recarga YA está hecha: el "código"
+    que devuelve en esos pedidos (p. ej. "MLO…") es solo su comprobante, no algo que el cliente tenga que canjear. Las tarjetas
+    (gift_card) no piden ID y sí entregan un código."""
+    catalog_id = step.get('catalog_id')
+    item = db.session.get(CentralOneCatalogItem, catalog_id) if catalog_id else None
+    return bool(item is not None and item.requires_target)
+
+
 def _poll_step(order, auto_resp, steps, step_index, step, force, label):
     """Consulta el pedido de Central One de este paso. Devuelve None si ya se
     entregó (se sigue con el siguiente paso) o el resultado que detiene la cola."""
+    if step.get('awaiting_codes') and not step.get('codes_saved') and _is_direct_topup(step) and not is_code_section(order):
+        # Pasos guardados antes de este arreglo: era una recarga directa YA entregada, no hay código que esperar.
+        step.update({'success': True, 'pending_verification': False, 'awaiting_codes': False, 'blocked_cause': '', 'error': ''})
+        _persist(order, auto_resp, steps)
+        return None
     if step.get('awaiting_codes') and not step.get('codes_saved'):
         # Ya entregado: solo falta traer el código.
         return _collect_codes(order, auto_resp, steps, step_index, step, force, label)
@@ -862,7 +877,10 @@ def _poll_step(order, auto_resp, steps, step_index, step, force, label):
         lines = remote.get('items') if isinstance(remote.get('items'), list) else []
         delivered_codes = int((lines[0] or {}).get('delivered_count') or 0) if lines and isinstance(lines[0], dict) else 0
 
-        if delivered_codes or is_code_section(order):
+        # Recarga directa (el producto pide el ID del jugador): entregada = hecha, aunque Central One cuente "1 entregado" y mande su
+        # comprobante. Antes eso se tomaba como un código para canjear y la orden se quedaba esperando al admin (23 órdenes de Mobile
+        # Legends / Blood Strike entre el 23-oct y el 15-nov se completaron a mano por esto).
+        if is_code_section(order) or (delivered_codes and not _is_direct_topup(step)):
             # Producto de CÓDIGO: la orden no se completa hasta traer el código.
             # (En la sección de códigos se intenta aunque Central One no cuente
             # ninguno, para no dar por entregada una orden sin código.)
