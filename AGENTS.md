@@ -14,8 +14,8 @@
 - El dueño es **Sebastián** (`realsebastian28@gmail.com`), habla solo español, no es programador y trabaja con **capturas de pantalla** y pedidos cortos.
 - Producción: **https://3srecargas.com** y **https://3srecargas.net**, en un VPS Hostinger; PostgreSQL en otro servidor por túnel SSH.
 - Repo: **github.com/2eliot/3srecargas**. La rama de trabajo real es **`fix/recarga-acumulada-seguridad`**; en el último estado está igual a `origin/main`.
-- Último commit desplegado: **`5ea3a90`** (18-nov-2026): acciones masivas de órdenes + arreglo de Central One + contexto para agentes.
-- **Todo está commiteado y desplegado.** `central_one.py` quedó incluido en `5ea3a90`; no hay cambios de código pendientes.
+- Último commit desplegado: **`340519f`** (18-nov-2026 02:04 UTC): seguridad de órdenes + Google Authenticator + bloqueos por IP.
+- **Todo está commiteado y desplegado.** No hay cambios de código pendientes. Falta que el dueño configure el Authenticator en su primer login; fail2ban es opcional (jail desactivado).
 - Desarrollo local en Windows: **puerto 5001**, SQLite `data/app.db`. El puerto 5000 es OTRO proyecto.
 - La web es **mobile-first**: en PC debe verse como un celular, salvo el panel admin.
 - Regla de oro: **no tocar otros proyectos** del dueño (3sticket, 3srevendedores, etc.) ni mezclar sus reglas.
@@ -92,9 +92,10 @@
 
 ## 4. Estado actual (18-nov-2026)
 
-- **Rama actual:** `fix/recarga-acumulada-seguridad`; el código desplegado es `5ea3a90` (este archivo puede ir un commit de documentación después).
-- `origin/main` y `origin/fix/...` deben estar iguales; el último deploy de **código** es `5ea3a90`. Este archivo se actualiza con un commit de documentación aparte. El puntero local `main` suele estar atrás: no lo uses como referencia sin actualizarlo.
-- **Último despliegue:** 18-nov-2026 00:05 UTC, commit `5ea3a90`, acciones masivas + Central One. Respaldos `backups-deploy/db-2026-11-18-0003.dump` y `code-2026-11-18-0003.tgz`.
+- **Rama actual:** `fix/recarga-acumulada-seguridad`; el código desplegado es `340519f` (18-nov-2026 02:04 UTC).
+- `origin/main` y `origin/fix/...` están en `340519f`. El puntero local `main` puede estar atrás: no lo uses como referencia sin actualizarlo.
+- **Último despliegue:** 18-nov-2026 02:04 UTC, commit `340519f`, hardening de seguridad. Respaldos `backups-deploy/db-20261118-020317.dump` y `code-20261118-020317.tgz`.
+- **Seguridad 18-nov (desplegado):** límites **3/min y 30/h** por IP; **Google Authenticator** para el admin (el dueño debe configurarlo en su primer login); 3 intentos de clave y luego 1/5 min; 10 fallos → IP 24 h; **5 rechazadas/24 h → IP 24 h solo para comprar** (soporte sigue abierto, con interruptor en Admin → Seguridad); IP/user-agent en órdenes; correos de proveedores reconocidos; fail2ban opcional con jail desactivado. `qrcode==8.2` instalado y agregado a `requirements.migracion.txt`. Columnas nuevas: `orders.client_ip`, `orders.user_agent`, `orders.rejected_at`; TOTP en `admin_users`; tablas `ip_order_blocks` y `admin_login_attempts`; índice `ix_orders_client_ip_status`.
 - **Central One (incluido en `5ea3a90`):** distingue una recarga directa (`requires_target`) de un código de tarjeta, así no deja 23 órdenes esperando al admin. Prueba local `test_co_direct_topup.py` 11/11. **Ojo:** no volver a mezclarlo sin querer en commits de otros temas; ya está desplegado.
 - **Verificación de ID de Free Fire:** `ff_verify_enabled = 1` (ENCENDIDA) al 15-nov. No la apagues ni la enciendas sin que él lo pida.
 - **Binance:** método activo; verificación por referencia con ID completo y ventana de 48 h antes de la orden. En el `.env` del servidor se comentó `BINANCE_PROXY` el 15-nov porque el proxy estaba muerto; Binance va directo. En el `.env` local la variable todavía aparece: si pruebas Binance local y falla por proxy, coméntala también.
