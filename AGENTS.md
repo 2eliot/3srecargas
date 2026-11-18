@@ -14,8 +14,8 @@
 - El dueño es **Sebastián** (`realsebastian28@gmail.com`), habla solo español, no es programador y trabaja con **capturas de pantalla** y pedidos cortos.
 - Producción: **https://3srecargas.com** y **https://3srecargas.net**, en un VPS Hostinger; PostgreSQL en otro servidor por túnel SSH.
 - Repo: **github.com/2eliot/3srecargas**. La rama de trabajo real es **`fix/recarga-acumulada-seguridad`**; en el último estado está igual a `origin/main`.
-- Último commit desplegado: **`ac6c525`** (16-nov-2026): retiros de creadores como tarjetas con datos de cobro y comprobante.
-- Hay **un cambio sin commitear**: `app/utils/central_one.py` (arreglo de recargas directas tratadas como códigos). Está probado (11/11) y espera que el dueño diga “sube todo”.
+- Último commit desplegado: **`5ea3a90`** (18-nov-2026): acciones masivas de órdenes + arreglo de Central One + contexto para agentes.
+- **Todo está commiteado y desplegado.** `central_one.py` quedó incluido en `5ea3a90`; no hay cambios de código pendientes.
 - Desarrollo local en Windows: **puerto 5001**, SQLite `data/app.db`. El puerto 5000 es OTRO proyecto.
 - La web es **mobile-first**: en PC debe verse como un celular, salvo el panel admin.
 - Regla de oro: **no tocar otros proyectos** del dueño (3sticket, 3srevendedores, etc.) ni mezclar sus reglas.
@@ -90,18 +90,18 @@
 
 ---
 
-## 4. Estado actual (17-nov-2026)
+## 4. Estado actual (18-nov-2026)
 
-- **Rama actual:** `fix/recarga-acumulada-seguridad` en `ac6c525`.
-- `origin/main` y `origin/fix/...` están en `ac6c525` (0 diferencia). El puntero local `main` está 46 commits atrás: es solo un puntero viejo; no lo uses como referencia sin actualizarlo.
-- **Último despliegue:** 16-nov-2026 22:16 UTC, commit `ac6c525`, retiros de creadores en tarjetas. Respaldos `backups-deploy/*2026-11-16-2216*`.
-- **Sin commitear:** `app/utils/central_one.py` (+19/−1). Arregla que Central One marca una recarga directa como “Entregada” y la web la trataba como entrega de código, dejando 23 órdenes (Mobile Legends/Blood Strike, 23-oct → 15-nov) esperando al admin. Prueba local `test_co_direct_topup.py` 11/11. **No lo incluyas en commits de otros temas.** Espera “sube todo”.
+- **Rama actual:** `fix/recarga-acumulada-seguridad`; el código desplegado es `5ea3a90` (este archivo puede ir un commit de documentación después).
+- `origin/main` y `origin/fix/...` deben estar iguales; el último deploy de **código** es `5ea3a90`. Este archivo se actualiza con un commit de documentación aparte. El puntero local `main` suele estar atrás: no lo uses como referencia sin actualizarlo.
+- **Último despliegue:** 18-nov-2026 00:05 UTC, commit `5ea3a90`, acciones masivas + Central One. Respaldos `backups-deploy/db-2026-11-18-0003.dump` y `code-2026-11-18-0003.tgz`.
+- **Central One (incluido en `5ea3a90`):** distingue una recarga directa (`requires_target`) de un código de tarjeta, así no deja 23 órdenes esperando al admin. Prueba local `test_co_direct_topup.py` 11/11. **Ojo:** no volver a mezclarlo sin querer en commits de otros temas; ya está desplegado.
 - **Verificación de ID de Free Fire:** `ff_verify_enabled = 1` (ENCENDIDA) al 15-nov. No la apagues ni la enciendas sin que él lo pida.
 - **Binance:** método activo; verificación por referencia con ID completo y ventana de 48 h antes de la orden. En el `.env` del servidor se comentó `BINANCE_PROXY` el 15-nov porque el proxy estaba muerto; Binance va directo. En el `.env` local la variable todavía aparece: si pruebas Binance local y falla por proxy, coméntala también.
 - **Asistente de IA de soporte:** construido y con frenos de gasto, pero **APAGADO** en producción (sin proveedor/instrucciones activas). No lo enciendas sin que él lo pida.
 - **Clave del admin:** cambiada el 15-nov (16 caracteres generados en el servidor, entregados en el chat). No está guardada en ningún archivo; no la inventes ni la repitas.
 - **Meta Pixel:** dos IDs activos (`1893616271596771` y `1480049273980368`) en páginas públicas. Solo PageView; el evento Purchase **no** está implementado (se le ofreció y no respondió).
-- **17-nov-2026 (LOCAL, sin commit):** acciones masivas en Admin → Órdenes: seleccionar varias pendientes y aprobar (máx. 10 por lote) o rechazar (hasta 50) con un motivo común. La selección no se pierde con el polling y pausa el auto-refresco de 45 s. Ver §7 y §9.
+- **17/18-nov-2026 (DEPLOYED `5ea3a90`):** acciones masivas en Admin → Órdenes: seleccionar varias pendientes y aprobar (máx. 10 por lote) o rechazar (hasta 50) con un motivo común. La selección no se pierde con el polling y pausa el auto-refresco de 45 s. Ver §7 y §9.
 
 ---
 
@@ -252,7 +252,7 @@ cd C:\Users\reals\Desktop\3srecargas
 
 > Casi todas esperan una decisión o un “sí” del dueño. No las construyas por iniciativa propia.
 
-1. **`central_one.py`:** arreglo listo y probado, sin commit ni deploy. Espera “sube todo”.
+1. **Central One:** el arreglo ya está desplegado en `5ea3a90`; no queda pendiente.
 2. **Free Fire “No encontramos ese ID” al comprar:** diagnóstico hecho; propuesta de recordar la verificación en la sesión y tratar “200 sin ok” como reintento. **No construida.**
 3. **Pedidos manuales → chat de soporte:** falta que él responda 4 preguntas (verificación previa, quién escribe el mensaje, texto/datos, si aplica a compras dentro del chat). **No construido.**
 4. **Aviso de margen bajo en costos automáticos:** el costo ya se actualiza solo en Free Fire/Mobile Legends/Blood Strike; falta el aviso y el botón de aplicar precio. **No construido** (no eligió monto mínimo).
@@ -295,6 +295,7 @@ cd C:\Users\reals\Desktop\3srecargas
 - 12-nov: Zone ID de Mobile Legends solo 4 dígitos (`d504ce1`).
 - 15-nov: cambio de clave del admin que cierra todas las sesiones (`4efff28`), rechazo muestra solo el motivo (`944d275`), Central One directo diagnosticado, Binance sin proxy.
 - 16-nov: retiros de creadores como tarjetas con comprobante y copiar correo (`ac6c525`).
+- 17/18-nov: acciones masivas de aprobar/rechazar órdenes (`e84f4cb`), arreglo de recargas directas de Central One (`0e25f04`) y contexto operativo (`5ea3a90`), desplegados juntos.
 
 ---
 
