@@ -257,6 +257,12 @@
             <span class="detail-value">{{ order.payer_phone }}</span>
         </div>
         {% endif %}
+        {% if prize_label %}
+        <div class="detail-row">
+            <span class="detail-label">Tipo de canje</span>
+            <span class="detail-value">{{ prize_label }}</span>
+        </div>
+        {% endif %}
         {% if order.payment_reference %}
         <div class="detail-row">
             <span class="detail-label">Referencia</span>

@@ -78,6 +78,7 @@ from ..utils.admin_login_guard import (
 )
 from ..utils.email_domains import domains_text, parse_domains_text
 from ..utils.ip_geo import get_cached_geo_many, get_geo, get_geo_many
+from ..utils.prize_labels import order_prize_label, order_prize_labels
 from ..utils.minigames import (
     get_minigame_slot_defs,
     get_minigame_slots_config,
@@ -1642,6 +1643,7 @@ def orders():
     # Solo lo que ya está en la caché: la lista no debe esperar a una API
     # externa por cada pedido. El detalle sí consulta y guarda la ubicación.
     geo_by_ip = get_cached_geo_many([o.client_ip for o in all_orders if o.client_ip])
+    prize_labels = order_prize_labels(all_orders)
     page_window_start = max(1, page - 2)
     page_window_end = min(total_pages, page + 2)
     page_numbers = list(range(page_window_start, page_window_end + 1))
@@ -1681,6 +1683,7 @@ def orders():
         pending_count=Order.query.filter(Order.status == 'pending').count(),
         paused_count=Order.query.filter(Order.status == 'pending', Order.is_paused.is_(True)).count(),
         geo_by_ip=geo_by_ip,
+        prize_labels=prize_labels,
     )
 
 
@@ -1719,10 +1722,13 @@ def orders_latest():
 
     flags = order_payment_flags(newest)
     geo_by_ip = get_cached_geo_many([o.client_ip for o in newest if o.client_ip])
-    return jsonify({'ok': True, 'orders': [_order_row_payload(o, flags, geo_by_ip) for o in newest]})
+    prize_labels = order_prize_labels(newest)
+    return jsonify({'ok': True, 'orders': [
+        _order_row_payload(o, flags, geo_by_ip, prize_labels) for o in newest
+    ]})
 
 
-def _order_row_payload(o, flags=None, geo_by_ip=None):
+def _order_row_payload(o, flags=None, geo_by_ip=None, prize_labels=None):
     ip = o.client_ip or ''
     geo = (geo_by_ip or {}).get(ip) or {}
     return {
@@ -1753,6 +1759,7 @@ def _order_row_payload(o, flags=None, geo_by_ip=None):
         'client_ip': ip,
         'ip_geo': geo.get('label') or '',
         'ip_geo_flag': geo.get('flag') or '',
+        'reference_label': (prize_labels or {}).get(o.id, ''),
         'can_send_delivery_proof': order_supports_delivery_proof(o),
     }
 
@@ -1778,7 +1785,10 @@ def orders_refresh():
     rows = Order.query.filter(Order.id.in_(ids)).all()
     flags = order_payment_flags(rows)
     geo_by_ip = get_cached_geo_many([o.client_ip for o in rows if o.client_ip])
-    return jsonify({'ok': True, 'orders': [_order_row_payload(o, flags, geo_by_ip) for o in rows]})
+    prize_labels = order_prize_labels(rows)
+    return jsonify({'ok': True, 'orders': [
+        _order_row_payload(o, flags, geo_by_ip, prize_labels) for o in rows
+    ]})
 
 
 @admin_bp.route('/orders/<int:order_id>')
@@ -1790,6 +1800,7 @@ def order_detail(order_id):
     # Ubicación de la IP (país/ciudad/proveedor) para la sección "Conexión".
     # Se cachea en `ip_geolocations`; si la API falla, el detalle sigue igual.
     ip_geo = get_geo(order.client_ip) if order.client_ip else None
+    prize_label = order_prize_label(order)
     payment_method_config = PaymentMethod.query.filter_by(code=(order.payment_method or '').strip().lower()).first()
     same_game_packages = Package.query.filter_by(
         game_id=order.game_id, is_active=True
@@ -1879,6 +1890,7 @@ def order_detail(order_id):
         same_game_packages=same_game_packages,
         can_verify_player=order.game_id in verifiable_game_ids(),
         ip_geo=ip_geo,
+        prize_label=prize_label,
     )
 
 

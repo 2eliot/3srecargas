@@ -181,7 +181,8 @@
                             <strong>{{ order.payment_method | title }}</strong>
                         </div>
                         <div class="admin-order-card__item">
-                            <span class="admin-order-card__label">Referencia</span>
+                            {% set prize_label = (prize_labels.get(order.id) if prize_labels else '') %}
+                            <span class="admin-order-card__label">{{ prize_label or 'Referencia' }}</span>
                             <code class="ref-code">{{ order.payment_reference }}</code>
                         </div>
                         <div class="admin-order-card__item">
@@ -719,7 +720,8 @@ function _renderOrderRow(o) {
     html += '<div class="admin-order-card__grid">';
     html += '<div class="admin-order-card__item admin-order-card__item--wide"><span class="admin-order-card__label">Jugador</span><div class="cell-stack">' + playerBits + '</div></div>';
     html += '<div class="admin-order-card__item"><span class="admin-order-card__label">Pago</span><strong>' + _escapeHtml(o.payment_method) + '</strong></div>';
-    html += '<div class="admin-order-card__item"><span class="admin-order-card__label">Referencia</span><code class="ref-code">' + _escapeHtml(o.payment_reference) + '</code></div>';
+    var refLabel = o.reference_label || 'Referencia';
+    html += '<div class="admin-order-card__item"><span class="admin-order-card__label">' + _escapeHtml(refLabel) + '</span><code class="ref-code">' + _escapeHtml(o.payment_reference) + '</code></div>';
     html += '<div class="admin-order-card__item"><span class="admin-order-card__label">IP</span>' + ipBits + '</div>';
     html += '<div class="admin-order-card__item admin-order-card__item--wide"><span class="admin-order-card__label">Afiliado</span>' + (o.affiliate_code ? aff : '<span>—</span>') + '</div>';
     html += '</div>';
