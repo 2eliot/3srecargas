@@ -188,7 +188,7 @@ cd C:\Users\reals\Desktop\3srecargas
 - **Soporte:** `support.py`, `support_bot.py`, `support_ai.py`, `site_notifications.py`, `notifications.py`, `push_notifications.py`.
 - **Juegos:** `hordas.py`, `promos.py`, `minigames.py`, `tournaments.py`.
 - **Contenido/UI:** `package_sections.py`, `player_field.py`, `zone_rules.py`, `page_bg.py`, `banner_lite.py`, `image_optimize.py`, `web_perf.py`.
-- **Seguridad:** `upload_guard.py`, `contact_filter.py`, `locks.py`, `order_access.py`.
+- **Seguridad:** `upload_guard.py`, `contact_filter.py`, `locks.py`, `order_access.py`, `totp.py` (Google Authenticator), `admin_login_guard.py` (3 intentos + 1/5 min), `order_blocks.py` (strikes por IP), `email_domains.py` (correos permitidos).
 - **Creadores:** `mini_influencers.py`.
 
 ### Modelos principales (`app/models.py`)
@@ -229,6 +229,12 @@ cd C:\Users\reals\Desktop\3srecargas
 15. **No correr auditorías/agentes** hasta que diga “terminamos” o lo pida.
 16. **No mezclar “prueba” con producción:** los tests no deben escribir en `data/app.db` real ni en la base de producción.
 17. **Acciones masivas de órdenes:** solo aplican a órdenes `pending`; una completada/devuelta/rechazada se omite. Aprobar va en lotes de máximo 10 (cada aprobación puede consultar al proveedor); rechazar hasta 50. No quitar esas validaciones del servidor aunque el JS se vea bien.
+18. **Crear órdenes:** máximo **3 por minuto y 30 por hora por IP** (`ORDERS_PER_IP_PER_MINUTE` / `ORDERS_PER_IP_PER_HOUR` en `routes/checkout.py`). No subirlos sin que él lo pida. El tope se cuenta al confirmar la orden, después de validar correo/zona/ID.
+19. **Admin con Google Authenticator:** si `totp_enabled` está activo, **siempre** se pide el código; `ADMIN_TOTP_REQUIRED=0` solo evita la inscripción obligatoria. No borrar `totp_secret`, `totp_recovery_hashes` ni el sello `admin_2fa_at` de la sesión. Teléfono perdido: `scripts/reset_admin_totp.py` en el servidor. El panel (incluidos soporte, torneos, hordas y puntos) queda cerrado hasta configurarlo.
+20. **Correos de clientes:** solo proveedores reconocidos (Gmail, Outlook/Hotmail, Yahoo, iCloud, etc.) y los dominios que el admin agregue en **Admin → Seguridad**. `example.com`, los de prueba y los temporales **nunca** se aceptan, ni siquiera agregándolos. Aplica a compras y canje de códigos.
+21. **Strikes por IP:** **5 órdenes rechazadas en 24 h** bloquean esa IP **24 h solo para crear órdenes**; navegar, ver órdenes y soporte siguen abiertos. Se cuenta por `orders.rejected_at` (no por `updated_at`) y solo órdenes con `client_ip`. Se libera o se apaga en **Admin → Seguridad**. No bloquear el canje de códigos de regalo.
+22. **IP y user-agent:** se guardan en cada orden nueva (`orders.client_ip`, `orders.user_agent`) y solo los ve el admin en el detalle. No mostrarlos al cliente ni meterlos en correos.
+23. **fail2ban:** el jail viene **desactivado** y es una capa extra; la app ya bloquea sola. Activarlo requiere root, el ID de zona y un token de Cloudflare con permiso de Firewall/WAF. Validar con `fail2ban-client -t` antes de reiniciar; no tumbar los jails de SSH.
 
 ---
 
@@ -245,6 +251,9 @@ cd C:\Users\reals\Desktop\3srecargas
 - **XSS:** en plantillas usa `|jsattr` dentro de `onclick/onsubmit`, `|safe_href` para links de usuarios/settings, y `textContent`/escape antes de `innerHTML`. `|tojson` solo en atributos entre comillas simples o `<script>`.
 - **IDs hostiles:** `_reject_hostile_ids` bloquea comillas, `<>`, backticks, barras invertidas y controles en IDs. No lo desactives.
 - **CSRF:** no hay tokens; la app se apoya en `SameSite=Lax`. No agregues formularios cross-site.
+- **2FA del admin en pruebas:** el secreto TOTP vive en `admin_users.totp_secret` (no en la cookie). Genera el código con `app.utils.totp.generate_code(secret)` y usa `session_stamp_valid`/`stamp_session` para el sello `admin_2fa_at`. `qrcode[pil]==8.2` debe estar instalado; sin él el QR sale vacío pero la clave manual funciona.
+- **Scripts de mantenimiento:** `scripts/reset_admin_totp.py` pone `DISABLE_SCHEDULER=1` para no quedarse con el liderazgo del scheduler. Si corres `create_app()` a mano en el servidor para migrar, usa también `DISABLE_SCHEDULER=1`.
+- **Columnas/tablas nuevas de esta tanda:** `orders.rejected_at`, `orders.client_ip`, `orders.user_agent`, columnas TOTP en `admin_users`, tablas `ip_order_blocks` y `admin_login_attempts`, índice `ix_orders_client_ip_status (client_ip, status, rejected_at)`. La migración corre en `create_app()`; en producción hay que ejecutarla **una vez antes** de reiniciar.
 
 ---
 
@@ -269,6 +278,10 @@ cd C:\Users\reals\Desktop\3srecargas
 15. **Renombrar/borrar/reordenar apartados propios de paquetes:** no hay UI; para quitar uno hay que reasignar sus paquetes.
 16. **Botón “Cambiar clave” en el admin:** no construido; hoy se cambia en el `.env` del servidor con script y reinicio.
 17. **Optimizaciones de imágenes/Cloudflare:** ideas ofrecidas (redimensionar imágenes de paquetes, cachear solo uploads públicos). **No hechas.**
+18. **Activar el jail de fail2ban:** los archivos están en `deploy/fail2ban/`, pero el jail viene **desactivado**. Para activarlo hace falta root, el ID de zona y un token de Cloudflare con permiso de Firewall/WAF. La app ya bloquea por sí sola; no es urgente.
+19. **Revisar los correos permitidos después de unos días:** la lista incluye Gmail, Outlook/Hotmail, Yahoo, iCloud, Cantv y otros ISP; si un cliente legítimo con correo de empresa queda fuera, el dueño debe agregar el dominio en **Admin → Seguridad**. No abrir `example.com` ni temporales.
+20. **PII pendiente de otra sesión:** `/redimir/historial` y `/order/pending-completion` muestran datos que conviene revisar, y quedaron huecos de validación de subidas. **No forman parte de esta tanda**; no mezclarlos sin pedido.
+21. **Comprobar `orders.client_ip` tras el despliegue:** el nginx de 3srecargas restaura la IP real desde Cloudflare (`CF-Connecting-IP`) y manda `X-Forwarded-For $remote_addr`, así que debería guardar la IP del cliente y no la de Cloudflare. Si aparecen rangos `172.6x/172.7x`, revisar nginx antes de confiar en los strikes.
 
 ---
 

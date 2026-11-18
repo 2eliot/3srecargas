@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Código de seguridad — 3S Recargas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body class="login-body">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-logo">3S<span>Admin</span></div>
+                <p>Verificación en dos pasos</p>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <p style="font-size:13px;color:#94a3b8;line-height:1.5;margin-bottom:14px">
+                Abre Google Authenticator y escribe el código de 6 dígitos de la cuenta
+                <strong>{{ username }}</strong>.
+            </p>
+
+            <form method="POST" action="{{ url_for('admin_bp.login_2fa') }}">
+                <div class="form-group">
+                    <label for="code">Código de 6 dígitos</label>
+                    <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]{6}"
+                           maxlength="6" placeholder="000000" autocomplete="one-time-code" autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="recovery_code">O un código de recuperación</label>
+                    <input type="text" id="recovery_code" name="recovery_code"
+                           placeholder="ABCD-EFGH" autocomplete="off">
+                </div>
+                <button type="submit" class="submit-btn">Verificar</button>
+            </form>
+
+            <a href="{{ url_for('admin_bp.login') }}" class="back-link">← Volver al login</a>
+        </div>
+    </div>
+</body>
+</html>

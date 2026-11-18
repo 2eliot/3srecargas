@@ -63,6 +63,8 @@ from ..utils.player_field import clean_value, field_kind, stores_in_email, valid
 from ..utils.zone_rules import clean_zone, zone_problem
 from ..utils.locks import acquire_lock, check_rate_limit, client_ip, release_lock
 from ..utils.order_access import is_own_order, reference_tail_matches, remember_own_order
+from ..utils.email_domains import email_domain_problem
+from ..utils.order_blocks import active_block as active_order_block
 
 
 def _digits_only(value):
@@ -102,10 +104,10 @@ DELIVERY_RETRY_SECONDS = 5 * 60
 CUSTOMER_VERIFY_MIN_INTERVAL_SECONDS = 20
 CUSTOMER_VERIFY_MAX_ATTEMPTS = 120
 
-# Topes por IP. Son amplios a propósito (varios clientes comparten una misma IP en los datos móviles): sirven para que
-# nadie llene la cola de órdenes pendientes, el disco de comprobantes ni los límites propios de Pabilo con un programa.
-ORDERS_PER_IP_PER_MINUTE = 10
-ORDERS_PER_IP_PER_HOUR = 60
+# Topes por IP. El dueño pidió 3 por minuto y 30 por hora: bajan el flood sin
+# castigar a un cliente normal (varios clientes comparten IP en datos móviles).
+ORDERS_PER_IP_PER_MINUTE = 3
+ORDERS_PER_IP_PER_HOUR = 30
 COMPLETE_PAYMENT_PER_ORDER_PER_HOUR = 12
 COMPLETE_PAYMENT_PER_IP_PER_HOUR = 40
 AUTO_VERIFY_PER_IP_PER_MINUTE = 120
@@ -791,6 +793,11 @@ def checkout(package_id):
 
         # Paso 1: viene desde index y solo guarda datos en sesión
         if stage != 'confirm':
+            if active_order_block(client_ip()):
+                return _init_error(
+                    'Por seguridad, esta conexión no puede crear órdenes nuevas por ahora. '
+                    'Puedes entrar a la web y hablar con soporte si crees que es un error.'
+                )
             player_id = request.form.get('player_id', '').strip()
             player_nickname = request.form.get('player_nickname', '').strip()
             zone_id = request.form.get('zone_id', '').strip()[:30]
@@ -798,6 +805,15 @@ def checkout(package_id):
             email = re.sub(r'[\s<>"\'`\\,;]', '', request.form.get('email', ''))[:120]
             phone = re.sub(r'[^0-9+\-\s().]', '', request.form.get('phone', '')).strip()[:30]
             payment_method = request.form.get('payment_method', '').strip()
+
+            if email:
+                _email_problem = email_domain_problem(email)
+                if _email_problem:
+                    return _init_error(_email_problem)
+            if player_id and _get_game_player_input_type(game) == 'email':
+                _email_problem = email_domain_problem(player_id)
+                if _email_problem:
+                    return _init_error(_email_problem)
             aff_code = request.form.get('affiliate_code', '').strip()
             if not aff_code:
                 aff_code = _get_active_session_affiliate_code()
@@ -991,10 +1007,12 @@ def checkout(package_id):
                 checkout_confirm_tokens.pop(pkg_key, None)
                 session['checkout_confirm_tokens'] = checkout_confirm_tokens
                 return _confirm_fail('La confirmación anterior ya fue usada para otra orden. Recarga la página y confirma nuevamente para generar una orden nueva.', 'warning')
-        if not _already_created and (
-                not check_rate_limit(f'order_create:{_order_ip}', ORDERS_PER_IP_PER_MINUTE, 60)
-                or not check_rate_limit(f'order_create_h:{_order_ip}', ORDERS_PER_IP_PER_HOUR, 3600)):
-            return _confirm_fail('Demasiadas órdenes seguidas desde tu conexión. Espera un momento e inténtalo de nuevo.', 'warning', code='rate_limited')
+        if not _already_created and active_order_block(_order_ip):
+            return _confirm_fail(
+                'Por seguridad, esta conexión no puede crear órdenes nuevas por ahora. '
+                'Puedes entrar a la web y hablar con soporte si crees que es un error.',
+                'warning', code='ip_blocked',
+            )
 
         data = checkout_data.get(pkg_key) or {}
         payment_method = (data.get('payment_method') or '').strip()
@@ -1003,6 +1021,14 @@ def checkout(package_id):
                 return _confirm_fail('Tu sesión expiró. Por favor repite el proceso desde la tienda.', code='session_expired')
             flash('Tu sesión expiró. Por favor repite el proceso desde la tienda.', 'danger')
             return redirect(url_for('main_bp.index'))
+
+        _email_problem = email_domain_problem((data.get('email') or '').strip())
+        if _email_problem:
+            return _confirm_fail(_email_problem, 'danger', code='email_domain')
+        if _get_game_player_input_type(game) == 'email':
+            _email_problem = email_domain_problem((data.get('player_id') or '').strip())
+            if _email_problem:
+                return _confirm_fail(_email_problem, 'danger', code='email_domain')
         # La zona también se exige al confirmar: un paso 1 hecho antes de esta regla (pestaña vieja) no puede crear una orden sin zona.
         if not is_wallet and game.requires_zone_id and (data.get('player_id') or '').strip() and not (data.get('zone_id') or '').strip():
             return _confirm_fail(
@@ -1022,6 +1048,20 @@ def checkout(package_id):
                 return _confirm_fail(VERIFIED_PLAYER_ERRORS[_ver_estado], 'danger')
             if _ver_estado == 'ok':
                 data['player_nickname'] = _ver_nick
+
+        # Tope de creación: se cuenta aquí, después de validar correo, zona e ID
+        # (así un cliente que corrige un dato no gasta cupo) y antes de guardar
+        # el comprobante, para que un flood no llene el disco.
+        if not check_rate_limit(f'order_create:{_order_ip}', ORDERS_PER_IP_PER_MINUTE, 60):
+            return _confirm_fail(
+                'Demasiadas órdenes seguidas desde tu conexión. Espera un momento e inténtalo de nuevo.',
+                'warning', code='rate_limited',
+            )
+        if not check_rate_limit(f'order_create_h:{_order_ip}', ORDERS_PER_IP_PER_HOUR, 3600):
+            return _confirm_fail(
+                'Llegaste al máximo de órdenes por hora desde tu conexión. Espera un rato e inténtalo de nuevo.',
+                'warning', code='rate_limited',
+            )
 
         method_config = PaymentMethod.query.filter_by(code=payment_method.lower()).first()
         uses_payer_identity_verification = payment_method_uses_payer_identity_verification(method_config)
@@ -1278,6 +1318,8 @@ def checkout(package_id):
             idempotency_key=submitted_confirm_token,
             status='pending',
             notes=((data.get('stale_note') or '').strip() or None),
+            client_ip=_order_ip or None,
+            user_agent=((request.user_agent.string or '')[:512] or None),
         )
         db.session.add(order)
         try:

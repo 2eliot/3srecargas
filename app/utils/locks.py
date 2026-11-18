@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
 
-from ..models import ApiRateLimitHit, ProcessLock, db
+from ..models import AdminLoginAttempt, ApiRateLimitHit, IpOrderBlock, ProcessLock, db
 
 
 def acquire_lock(key, ttl_seconds, holder):
@@ -129,6 +129,14 @@ def purge_stale_counters():
             .filter(ProcessLock.expires_at < datetime.utcnow() - timedelta(days=LOCK_RETENTION_DAYS))
             .delete(synchronize_session=False)
         )
+        # Intentos viejos del admin y bloqueos de IP ya vencidos: se guardan
+        # unos días para auditoría y luego se limpian.
+        db.session.query(AdminLoginAttempt).filter(
+            AdminLoginAttempt.updated_at < datetime.utcnow() - timedelta(days=30)
+        ).delete(synchronize_session=False)
+        db.session.query(IpOrderBlock).filter(
+            IpOrderBlock.blocked_until < datetime.utcnow() - timedelta(days=30)
+        ).delete(synchronize_session=False)
         db.session.commit()
         removed = (counters or 0, locks or 0)
     except Exception:
@@ -204,12 +212,12 @@ def admin_session_current():
 def remember_admin_device(response):
     """Marca ESTE navegador como el del dueño (cookie firmada, 30 días) después de un acceso correcto. Así el freno general de claves
     equivocadas nunca deja al dueño afuera aunque otra persona haya fallado 60 veces; si cambia ADMIN_PASSWORD la marca deja de valer."""
-    from flask import request
+    from flask import current_app, request
     try:
         token = _admin_device_serializer().dumps({'p': _admin_password_fingerprint()})
         response.set_cookie(
             ADMIN_DEVICE_COOKIE, token, max_age=ADMIN_DEVICE_MAX_AGE, httponly=True, samesite='Lax',
-            secure=request.is_secure,
+            secure=bool(current_app.config.get('SESSION_COOKIE_SECURE')) or request.is_secure,
         )
     except Exception:
         pass

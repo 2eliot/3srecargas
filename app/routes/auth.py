@@ -1,6 +1,4 @@
 import hashlib
-import hmac
-import os
 import re
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
@@ -13,10 +11,10 @@ from ..utils import account_points, google_link, google_login
 from ..utils.auth_accounts import (
     GOOGLE_SCOPE, create_registered_account, find_registered_account,
     find_scoped_customer, get_game_account_meta, get_or_create_scoped_customer, hydrate_scoped_customer_from_orders,
-    id_customer_orders, is_account_user, linked_orders, sync_env_admin_user, validate_email_address,
+    id_customer_orders, is_account_user, linked_orders, validate_email_address,
     validate_new_password, validate_username,
 )
-from ..utils.locks import admin_login_locked, check_rate_limit, client_ip, register_admin_login_failure, remember_admin_device
+from ..utils.locks import check_rate_limit, client_ip
 from ..utils.profiles import get_profile
 from .verify import verifiable_game_ids
 
@@ -188,10 +186,6 @@ def login():
     if blocked:
         return blocked
 
-    env_admin_username = (os.environ.get('ADMIN_USERNAME') or '').strip()
-    env_admin_password = (os.environ.get('ADMIN_PASSWORD') or '').strip()
-    env_admin_email = (os.environ.get('ADMIN_EMAIL') or '').strip()
-
     def render_login(status=200, admin_prompt=False):
         values = {'identifier': request.form.get('identifier', '').strip()[:150]} if admin_prompt else None
         return _render_login_page('id', status, values=values, admin_prompt=admin_prompt)
@@ -203,36 +197,13 @@ def login():
 
         identifier = request.form.get('identifier', '').strip()
         service_id_raw = request.form.get('service_id', '').strip()
-        admin_password = request.form.get('admin_password', '').strip()
 
         if not identifier:
             flash('Ingresa tu ID, correo o cuenta del servicio.', 'danger')
             return render_login()
 
-        if env_admin_email and identifier.lower() == env_admin_email.lower():
-            if not admin_password:
-                # Sin clave todavía: la página abre la ventana de la clave de administrador.
-                return render_login(admin_prompt=True)
-            if admin_login_locked():
-                flash('Demasiados intentos fallidos con la clave del administrador. Espera 15 minutos.', 'danger')
-                return render_login(429)
-            # (admin_login_locked() deja pasar al navegador que el dueño ya usó antes; ver utils/locks.py)
-            if not env_admin_password or not hmac.compare_digest(admin_password.encode('utf-8'), env_admin_password.encode('utf-8')):
-                register_admin_login_failure()
-                flash('Clave de administrador incorrecta.', 'danger')
-                return render_login(admin_prompt=True)
-
-            try:
-                admin = sync_env_admin_user(env_admin_username, env_admin_email, env_admin_password)
-            except Exception as exc:
-                db.session.rollback()
-                flash(f'No se pudo sincronizar la cuenta admin. {exc}', 'danger')
-                return render_login()
-
-            login_user(admin)
-            flash('Sesión de administrador iniciada.', 'success')
-            return remember_admin_device(redirect(url_for('admin_bp.dashboard')))
-
+        # El acceso de administrador vive SOLO en /admin/login (con Google
+        # Authenticator). No se permite por esta puerta de clientes.
         if not service_id_raw.isdigit():
             flash('Selecciona el juego o servicio para ubicar tu historial.', 'danger')
             return render_login()

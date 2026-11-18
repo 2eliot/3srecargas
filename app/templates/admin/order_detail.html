@@ -295,6 +295,21 @@
             <span class="detail-value">{{ order.payment_verification_id }}</span>
         </div>
         {% endif %}
+        {% if order.client_ip or order.user_agent %}
+        <h3 style="margin-top:18px">Conexión</h3>
+        {% if order.client_ip %}
+        <div class="detail-row">
+            <span class="detail-label">IP</span>
+            <span class="detail-value"><code>{{ order.client_ip }}</code></span>
+        </div>
+        {% endif %}
+        {% if order.user_agent %}
+        <div class="detail-row">
+            <span class="detail-label">Navegador</span>
+            <span class="detail-value" style="word-break:break-word">{{ order.user_agent }}</span>
+        </div>
+        {% endif %}
+        {% endif %}
         {% if order.payment_capture %}
         <div class="detail-row">
             <span class="detail-label">Comprobante</span>

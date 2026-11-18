@@ -203,7 +203,7 @@ def release_code(gift):
         db.session.rollback()
 
 
-def redeem_code(gift, player_id, zone_id=None, nickname=''):
+def redeem_code(gift, player_id, zone_id=None, nickname='', client_ip=None, user_agent=None):
     """Canjea un código ya validado y entrega la recarga.
 
     Devuelve (ok, mensaje, order).
@@ -231,6 +231,8 @@ def redeem_code(gift, player_id, zone_id=None, nickname=''):
         zone_id=zone_id,
         note=f'Canje del código de regalo {format_code(gift.code)}.',
         reference_prefix='CANJE',
+        client_ip=client_ip,
+        user_agent=user_agent,
     )
 
     if not order:

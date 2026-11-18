@@ -1,0 +1,63 @@
+{% extends 'admin/base.html' %}
+{% block title %}Google Authenticator{% endblock %}
+{% block page_title %}Google Authenticator{% endblock %}
+
+{% block content %}
+<div class="admin-card" style="max-width:760px;margin:0 auto">
+    <div class="card-header-inline">
+        <div>
+            <h3>Verificación en dos pasos</h3>
+            <p class="card-subtext">Protege el panel con un código temporal además de la clave.</p>
+        </div>
+    </div>
+
+    {% if recovery_codes %}
+        <div class="flash flash-success" style="margin:14px 0">
+            Google Authenticator quedó activado. Guarda estos códigos de recuperación
+            en un lugar seguro: cada uno sirve UNA sola vez y no se vuelven a mostrar.
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:16px 0">
+            {% for code in recovery_codes %}
+            <code style="font-size:17px;font-weight:800;letter-spacing:.08em;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.04);text-align:center">{{ code }}</code>
+            {% endfor %}
+        </div>
+        <p class="card-subtext">Si pierdes el teléfono, usa uno de estos códigos en el login. Después de usarlo se borra.</p>
+        <div class="modal-actions">
+            <a href="{{ url_for('admin_bp.dashboard') }}" class="btn-primary">Ya los guardé, ir al panel</a>
+        </div>
+    {% else %}
+        <div class="form-grid-2" style="align-items:start;margin-top:14px">
+            <div>
+                <p style="font-size:13px;line-height:1.6;color:var(--text-muted)">
+                    1. Instala <strong>Google Authenticator</strong> en tu teléfono.<br>
+                    2. Escanea el código QR o escribe la clave manualmente.<br>
+                    3. Escribe abajo el código de 6 dígitos que aparece.
+                </p>
+                {% if qr_data_uri %}
+                <div style="background:#fff;padding:12px;border-radius:12px;display:inline-block;margin:10px 0">
+                    <img src="{{ qr_data_uri }}" alt="Código QR para Google Authenticator" style="width:220px;height:220px;display:block">
+                </div>
+                {% endif %}
+                <p class="card-subtext">Clave manual:</p>
+                <code style="display:block;word-break:break-all;font-size:15px;font-weight:800;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.04);margin-bottom:10px">{{ secret }}</code>
+                <p class="card-subtext" style="word-break:break-all">Si no puedes escanear, usa esta dirección en la app: <span style="color:var(--text-primary)">{{ otpauth_uri }}</span></p>
+            </div>
+            <div>
+                <form method="POST" action="{{ url_for('admin_bp.totp_setup') }}">
+                    <div class="form-group">
+                        <label for="code">Código de 6 dígitos</label>
+                        <input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]{6}"
+                               maxlength="6" placeholder="000000" autocomplete="one-time-code" required autofocus>
+                    </div>
+                    <button type="submit" class="btn-primary" style="width:100%">Activar Google Authenticator</button>
+                </form>
+                <p class="card-subtext" style="margin-top:12px">
+                    Después de activarlo, cada inicio de sesión del admin pedirá este código.
+                    Si pierdes el teléfono, usa un código de recuperación o pide que ejecuten
+                    <code>scripts/reset_admin_totp.py</code> en el servidor.
+                </p>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

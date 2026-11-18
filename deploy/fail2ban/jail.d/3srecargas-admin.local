@@ -1,0 +1,32 @@
+# Fail2ban para el login del admin de 3S Recargas.
+#
+# IMPORTANTE: la web está detrás de Cloudflare. Un `iptables` normal en el
+# origen NO corta al cliente (los paquetes llegan desde Cloudflare). Para que
+# el bloqueo sea real, usa la acción `cloudflare-token` con un token de API
+# que tenga permiso de Firewall/WAF, o crea la regla equivalente en Cloudflare.
+#
+# La app ya bloquea por sí sola la IP después de 10 fallos (24 h) y a las 3
+# claves malas obliga a esperar 5 min. Este jail es una capa extra.
+#
+# Instalación (root):
+#   1. cp filter.d/3srecargas-admin.conf /etc/fail2ban/filter.d/
+#   2. cp jail.d/3srecargas-admin.local /etc/fail2ban/jail.d/
+#   3. Edita el archivo del paso 2: pon el ID de zona y el token de Cloudflare.
+#   4. systemctl restart fail2ban
+#   5. fail2ban-client status 3srecargas-admin
+#
+# El token necesita permiso de Firewall/WAF en esa zona. El ID de zona sale
+# en el panel de Cloudflare, en la página de resumen del dominio.
+#
+# Si NO tienes token de Cloudflare, deja `enabled = false`; el bloqueo de la
+# app sigue funcionando igual.
+
+[3srecargas-admin]
+enabled = false
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=web-c-3srecargas.service
+filter = 3srecargas-admin
+maxretry = 5
+findtime = 10m
+bantime = 24h
+action = cloudflare-token[cfzone="PON_TU_ZONE_ID_DE_CLOUDFLARE", cftoken="PON_TU_TOKEN_DE_CLOUDFLARE"]

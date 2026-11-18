@@ -1,0 +1,147 @@
+{% extends 'admin/base.html' %}
+{% block title %}Seguridad{% endblock %}
+{% block page_title %}Seguridad{% endblock %}
+
+{% block content %}
+<div class="admin-card" style="max-width:980px;margin:0 auto 16px">
+    <div class="card-header-inline">
+        <div>
+            <h3>Google Authenticator</h3>
+            <p class="card-subtext">Código temporal obligatorio al iniciar sesión como administrador.</p>
+        </div>
+        <div>
+            {% if totp_enabled %}
+            <span class="status-badge status-completed">Activo</span>
+            {% else %}
+            <span class="status-badge status-rejected">Sin activar</span>
+            {% endif %}
+        </div>
+    </div>
+    {% if totp_enabled %}
+    <p class="card-subtext" style="margin-top:10px">
+        Ya está activo. Cada inicio de sesión pedirá el código de 6 dígitos.
+        Los códigos de recuperación se muestran una sola vez al configurarlo; si los perdiste,
+        pide que ejecuten <code>scripts/reset_admin_totp.py</code> en el servidor.
+    </p>
+    {% else %}
+    <p class="card-subtext" style="margin-top:10px">
+        Todavía no está activo. El panel queda cerrado hasta que lo configures.
+    </p>
+    <a href="{{ url_for('admin_bp.totp_setup') }}" class="btn-primary" style="margin-top:10px">Configurar Google Authenticator</a>
+    {% endif %}
+</div>
+
+<div class="admin-card" style="max-width:980px;margin:0 auto 16px">
+    <div class="card-header-inline">
+        <div>
+            <h3>Correos permitidos</h3>
+            <p class="card-subtext">
+                Solo se aceptan Gmail, Outlook, Hotmail, Yahoo, iCloud y proveedores reconocidos.
+                Agrega aquí dominios de empresas que sí quieras aceptar (separados por coma).
+            </p>
+        </div>
+    </div>
+    <form method="POST" action="{{ url_for('admin_bp.security') }}" style="margin-top:10px">
+        <input type="hidden" name="action" value="email_domains">
+        <div class="form-group">
+            <label for="allowed_email_domains">Dominios extra permitidos</label>
+            <textarea id="allowed_email_domains" name="allowed_email_domains" rows="3"
+                      placeholder="miempresa.com, otraempresa.com">{{ email_domains }}</textarea>
+            <p class="form-hint">Los correos de ejemplo/temporales nunca se aceptan, aunque los escribas aquí.</p>
+        </div>
+        <button type="submit" class="btn-primary">Guardar dominios</button>
+    </form>
+</div>
+
+<div class="admin-card" style="max-width:980px;margin:0 auto 16px">
+    <div class="card-header-inline">
+        <div>
+            <h3>IPs bloqueadas para crear órdenes</h3>
+            <p class="card-subtext">
+                Se bloquean 24 h al acumular {{ order_strike_limit }} órdenes rechazadas en 24 h.
+                No se bloquea el resto de la web ni el chat de soporte.
+            </p>
+        </div>
+        <div>
+            {% if order_block_enabled %}
+            <span class="status-badge status-completed">Activo</span>
+            {% else %}
+            <span class="status-badge status-rejected">Apagado</span>
+            {% endif %}
+        </div>
+    </div>
+    <form method="POST" action="{{ url_for('admin_bp.security') }}" style="margin:12px 0">
+        <input type="hidden" name="action" value="order_block_toggle">
+        <input type="hidden" name="enabled" value="{{ '0' if order_block_enabled else '1' }}">
+        <button type="submit" class="btn-sm btn-secondary">
+            {{ 'Desactivar bloqueo por rechazos' if order_block_enabled else 'Activar bloqueo por rechazos' }}
+        </button>
+        <span class="card-subtext" style="margin-left:8px">
+            Si el proveedor se queda sin saldo y hay que rechazar muchas órdenes legítimas, se puede apagar.
+        </span>
+    </form>
+    {% if order_blocks %}
+    <div class="table-wrap" style="margin-top:10px">
+        <table class="admin-table">
+            <thead><tr><th>IP</th><th>Hasta</th><th>Motivo</th><th></th></tr></thead>
+            <tbody>
+            {% for block in order_blocks %}
+            <tr>
+                <td><code>{{ block.ip }}</code></td>
+                <td>{{ block.blocked_until|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                <td>{{ block.reason or '—' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin_bp.security') }}" style="display:inline">
+                        <input type="hidden" name="action" value="unblock_order_ip">
+                        <input type="hidden" name="ip" value="{{ block.ip }}">
+                        <button type="submit" class="btn-sm btn-secondary">Desbloquear</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="card-subtext" style="margin-top:10px">No hay IPs bloqueadas para órdenes.</p>
+    {% endif %}
+</div>
+
+<div class="admin-card" style="max-width:980px;margin:0 auto 16px">
+    <div class="card-header-inline">
+        <div>
+            <h3>IPs bloqueadas en el login del admin</h3>
+            <p class="card-subtext">
+                Primeros 3 intentos permitidos; después, 1 cada 5 minutos. A los 10 fallos, 24 h de bloqueo
+                (salvo un navegador de confianza del dueño).
+            </p>
+        </div>
+    </div>
+    {% if admin_blocks %}
+    <div class="table-wrap" style="margin-top:10px">
+        <table class="admin-table">
+            <thead><tr><th>Tipo</th><th>IP</th><th>Fallos</th><th>Bloqueada hasta</th><th></th></tr></thead>
+            <tbody>
+            {% for row in admin_blocks %}
+            <tr>
+                <td>{{ 'Código 2FA' if row.kind == '2fa' else 'Clave' }}</td>
+                <td><code>{{ row.ip }}</code></td>
+                <td>{{ row.failures }}</td>
+                <td>{{ row.blocked_until|datetime_ve('%d/%m/%Y %H:%M') }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin_bp.security') }}" style="display:inline">
+                        <input type="hidden" name="action" value="unblock_admin_ip">
+                        <input type="hidden" name="ip" value="{{ row.ip }}">
+                        <button type="submit" class="btn-sm btn-secondary">Desbloquear</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="card-subtext" style="margin-top:10px">No hay IPs bloqueadas en el login del admin.</p>
+    {% endif %}
+</div>
+{% endblock %}

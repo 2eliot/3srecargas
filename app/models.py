@@ -288,6 +288,13 @@ class Order(db.Model):
     # Motivo del rechazo que escribe el admin al rechazar: es LO ÚNICO que ve el cliente de una orden rechazada (página y correo).
     # Las notas internas (`notes`: Pabilo, proveedores, costos) nunca se le muestran.
     reject_reason = db.Column(db.Text)
+    # Momento exacto del rechazo. Se usa para contar los strikes por IP; no
+    # se mueve cuando el admin edita una nota de una orden vieja.
+    rejected_at = db.Column(db.DateTime)
+    # Origen de la orden, para auditoría y para el bloqueo por strikes. No se
+    # muestra al cliente; solo lo ve el admin en el detalle.
+    client_ip = db.Column(db.String(64), index=True)
+    user_agent = db.Column(db.String(512))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -1140,6 +1147,14 @@ class AdminUser(db.Model, UserMixin):
     email = db.Column(db.String(255), unique=True)
     password_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
+    # Google Authenticator (TOTP). El secreto se guarda en la base; sin la
+    # clave del admin no sirve para entrar, y los códigos de recuperación se
+    # guardan solo como hash.
+    totp_secret = db.Column(db.String(64))
+    totp_enabled = db.Column(db.Boolean, default=False)
+    totp_recovery_hashes = db.Column(db.Text)
+    totp_last_counter = db.Column(db.Integer, default=0)
+    totp_confirmed_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_id(self):
@@ -1150,6 +1165,39 @@ class AdminUser(db.Model, UserMixin):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class IpOrderBlock(db.Model):
+    """IP bloqueada temporalmente para CREAR órdenes (no para navegar ni para
+    hablar con soporte). Se activa al acumular órdenes rechazadas; ver
+    utils/order_blocks.py."""
+    __tablename__ = 'ip_order_blocks'
+    id = db.Column(db.Integer, primary_key=True)
+    ip = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    blocked_until = db.Column(db.DateTime, nullable=False, index=True)
+    reason = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AdminLoginAttempt(db.Model):
+    """Intentos fallidos de la clave de admin o del código 2FA, por IP.
+
+    Regla: los primeros 3 intentos pasan; después, uno cada 5 minutos. Al
+    llegar a 10 fallos se bloquea la IP 24 h (salvo que sea un dispositivo
+    ya reconocido del dueño). Ver utils/admin_login_guard.py."""
+    __tablename__ = 'admin_login_attempts'
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(12), nullable=False, default='password')
+    ip = db.Column(db.String(64), nullable=False, index=True)
+    failures = db.Column(db.Integer, default=0)
+    last_failure_at = db.Column(db.DateTime)
+    blocked_until = db.Column(db.DateTime, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    __table_args__ = (
+        db.UniqueConstraint('kind', 'ip', name='uq_admin_login_attempt_kind_ip'),
+    )
 
 
 class ProcessLock(db.Model):

@@ -37,7 +37,15 @@ _start_guard = threading.Lock()
 
 
 def start_order_recovery_scheduler(app):
-    """Arranca el hilo de recuperación una sola vez por proceso."""
+    """Arranca el hilo de recuperación una sola vez por proceso.
+
+    `DISABLE_SCHEDULER=1` lo apaga: lo usan los scripts de mantenimiento (por
+    ejemplo, resetear el 2FA) para no quedarse con el liderazgo del scheduler
+    ni correr un tick en paralelo con los workers de gunicorn.
+    """
+    import os
+    if str(os.environ.get('DISABLE_SCHEDULER') or '').strip().lower() in {'1', 'true', 'yes', 'on'}:
+        return
     global _scheduler_started
     with _start_guard:
         if _scheduler_started:

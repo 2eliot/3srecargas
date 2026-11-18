@@ -361,6 +361,55 @@ def create_app(config_class=Config):
                 return jsonify({'ok': False, 'message': message, 'error': message}), 400
         return None
 
+    @app.before_request
+    def _admin_totp_gate():
+        """Cierra TODO /admin (incluidos soporte, torneos, hordas y puntos) hasta
+        que la sesión haya pasado Google Authenticator.
+
+        No basta con mirar `totp_enabled`: una sesión abierta antes de activarlo
+        seguiría dentro. Por eso se sella la sesión al confirmar el código y se
+        compara con la fecha de activación.
+        """
+        from flask import request, session, flash, redirect, url_for
+        from flask_login import logout_user
+        from .utils import totp as totp_utils
+
+        path = request.path or ''
+        if path != '/admin' and not path.startswith('/admin/'):
+            return None
+        allowed = {
+            'admin_bp.login',
+            'admin_bp.login_2fa',
+            'admin_bp.totp_setup',
+            'admin_bp.logout',
+        }
+        if (request.endpoint or '') in allowed:
+            return None
+        if not current_user.is_authenticated or not isinstance(current_user, AdminUser):
+            return None
+
+        if not current_user.totp_enabled:
+            if totp_utils.totp_required():
+                flash('Configura Google Authenticator para entrar al panel.', 'warning')
+                return redirect(url_for('admin_bp.totp_setup'))
+            return None
+
+        if not totp_utils.session_stamp_valid(session, current_user.totp_confirmed_at):
+            try:
+                from .utils.locks import client_ip
+                safe_user = re.sub(r'[\r\n\t\x00-\x1f\x7f]+', ' ', str(current_user.username or ''))[:80]
+                app.logger.warning(
+                    'ADMIN_2FA_SESSION_INVALID user=%s ip=%s',
+                    safe_user, client_ip(),
+                )
+            except Exception:
+                pass
+            logout_user()
+            session.clear()
+            flash('Tu sesión no pasó la verificación en dos pasos. Entra de nuevo.', 'warning')
+            return redirect(url_for('admin_bp.login'))
+        return None
+
     @app.errorhandler(413)
     def _request_too_large(exc):
         """Subir varias imágenes grandes a la vez pasa del tope de 16 MB de una petición: antes salía una página en inglés
@@ -543,6 +592,7 @@ def create_app(config_class=Config):
         db.create_all()
         _ensure_payment_method_columns()
         _ensure_user_columns()
+        _ensure_admin_totp_columns()
         _ensure_discount_columns()
         _ensure_order_nickname_column()
         _ensure_order_delivery_proof_column()
@@ -570,6 +620,8 @@ def create_app(config_class=Config):
         _ensure_order_idempotency_column()
         _ensure_order_pause_column()
         _ensure_order_reject_reason_column()
+        _ensure_order_rejected_at_column()
+        _ensure_order_client_columns()
         _ensure_ranking_archive_columns()
         _ensure_ranking_board_columns()
         _ensure_revendedores_mapping_columns()
@@ -692,6 +744,37 @@ def _ensure_user_columns():
             text('CREATE UNIQUE INDEX IF NOT EXISTS uq_users_scope_identifier ON users(account_scope, account_identifier_normalized)')
         )
         
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_admin_totp_columns():
+    """Columnas del autenticador de Google del admin (ver utils/totp.py)."""
+    try:
+        if _ensure_postgres_columns('admin_users', [
+            'totp_secret VARCHAR(64)',
+            'totp_enabled BOOLEAN DEFAULT FALSE',
+            'totp_recovery_hashes TEXT',
+            'totp_last_counter INTEGER DEFAULT 0',
+            'totp_confirmed_at TIMESTAMP',
+        ]):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(admin_users)')).fetchall()
+        existing = {r[1] for r in rows}
+        for column, ddl in (
+            ('totp_secret', 'ALTER TABLE admin_users ADD COLUMN totp_secret VARCHAR(64)'),
+            ('totp_enabled', 'ALTER TABLE admin_users ADD COLUMN totp_enabled BOOLEAN DEFAULT 0'),
+            ('totp_recovery_hashes', 'ALTER TABLE admin_users ADD COLUMN totp_recovery_hashes TEXT'),
+            ('totp_last_counter', 'ALTER TABLE admin_users ADD COLUMN totp_last_counter INTEGER DEFAULT 0'),
+            ('totp_confirmed_at', 'ALTER TABLE admin_users ADD COLUMN totp_confirmed_at DATETIME'),
+        ):
+            if column not in existing:
+                db.session.execute(text(ddl))
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -1322,6 +1405,47 @@ def _ensure_order_reject_reason_column():
         db.session.rollback()
 
 
+def _ensure_order_rejected_at_column():
+    """Momento del rechazo (orders.rejected_at), para que los strikes no se muevan al editar una orden vieja."""
+    try:
+        if _ensure_postgres_columns('orders', ['rejected_at TIMESTAMP']):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'rejected_at' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN rejected_at DATETIME'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_order_client_columns():
+    """IP y navegador que crearon la orden (auditoría y strikes por IP)."""
+    try:
+        if _ensure_postgres_columns('orders', [
+            'client_ip VARCHAR(64)',
+            'user_agent VARCHAR(512)',
+        ]):
+            return
+
+        if db.engine.dialect.name != 'sqlite':
+            return
+
+        rows = db.session.execute(text('PRAGMA table_info(orders)')).fetchall()
+        existing = {r[1] for r in rows}
+        if 'client_ip' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN client_ip VARCHAR(64)'))
+        if 'user_agent' not in existing:
+            db.session.execute(text('ALTER TABLE orders ADD COLUMN user_agent VARCHAR(512)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 def _ensure_order_idempotency_column():
     try:
         if _ensure_postgres_columns('orders', [
@@ -1623,6 +1747,7 @@ PERFORMANCE_INDEXES = (
     ('ix_orders_payment_reference_last5', 'orders', '(payment_reference_last5)'),
     ('ix_orders_remainder_reference', 'orders', '(remainder_reference)'),
     ('ix_orders_created_at', 'orders', '(created_at)'),
+    ('ix_orders_client_ip_status', 'orders', '(client_ip, status, rejected_at)'),
     ('ix_orders_game_lower_email', 'orders', '(game_id, lower(email))'),
     ('ix_orders_game_lower_player', 'orders', '(game_id, lower(player_id))'),
     ('ix_pins_package_used', 'pins', '(package_id, is_used)'),

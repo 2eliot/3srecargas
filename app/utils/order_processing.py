@@ -1225,7 +1225,8 @@ def force_approve_order_manually(order, admin_note=''):
         release_lock(lock_key, lock_holder)
 
 
-def deliver_prize_to_player(game, package, player_id, zone_id=None, note='', reference_prefix='PREMIO', email=None):
+def deliver_prize_to_player(game, package, player_id, zone_id=None, note='', reference_prefix='PREMIO', email=None,
+                            client_ip=None, user_agent=None):
     """Entrega un premio (minijuego ganado o canje de puntos) a un ID real.
 
     `email`: el correo al que llega el premio. Se guarda en la orden (el de un Wallet de correo, y el de una TARJETA de regalo, que no tiene ID: su
@@ -1271,6 +1272,8 @@ def deliver_prize_to_player(game, package, player_id, zone_id=None, note='', ref
         discount_amount=0,
         status='pending',
         notes=note or 'Premio entregado automáticamente.',
+        client_ip=(str(client_ip or '').strip()[:64] or None),
+        user_agent=(str(user_agent or '').strip()[:512] or None),
     )
     db.session.add(order)
     db.session.commit()

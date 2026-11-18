@@ -12,6 +12,7 @@ from ..utils.timezone import format_ve
 from ..utils.locks import client_ip
 from ..utils.zone_rules import clean_zone, zone_digits, zone_problem
 from ..utils.order_access import remember_own_order
+from ..utils.email_domains import email_domain_problem
 from ..utils.gift_codes import (
     clear_attempts,
     describe_code_problem,
@@ -194,6 +195,10 @@ def redeem():
             problema_dato = validate_value(kind, player_id)
             if problema_dato:
                 return jsonify({'ok': False, 'message': problema_dato}), 400
+            if kind == 'email':
+                problema_correo = email_domain_problem(player_id)
+                if problema_correo:
+                    return jsonify({'ok': False, 'message': problema_correo}), 400
     if game and game.requires_zone_id:
         zone_id = clean_zone(game, zone_id)
     if game and game.requires_zone_id and not zone_id:
@@ -206,7 +211,8 @@ def redeem():
         return jsonify({'ok': False, 'message': problema_zona}), 400
 
     ok, mensaje, order = redeem_code(
-        gift, player_id, zone_id=zone_id, nickname=nickname
+        gift, player_id, zone_id=zone_id, nickname=nickname,
+        client_ip=ip, user_agent=(request.user_agent.string or '')[:512],
     )
     if not ok:
         return jsonify({'ok': False, 'message': mensaje}), 409

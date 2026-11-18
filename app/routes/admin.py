@@ -2,13 +2,14 @@ import hmac
 import os
 import json
 import re
+import time
 import requests
 from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import wraps
 from flask import (
-    Blueprint, render_template, request, redirect, Response,
+    Blueprint, render_template, request, redirect, Response, make_response,
     url_for, flash, session, current_app, jsonify, abort
 )
 from flask_login import login_user, logout_user, login_required, current_user
@@ -35,7 +36,10 @@ from ..utils import account_points, banner_lite, page_bg
 from ..utils import profile_social
 from ..utils import profile_xp
 from ..utils.player_field import PLAYER_INPUT_TYPES, clean_value, field_kind
-from ..utils.locks import admin_login_locked, check_rate_limit, client_ip, register_admin_login_failure, remember_admin_device
+from ..utils.locks import (
+    admin_device_trusted, admin_login_locked, check_rate_limit, client_ip,
+    register_admin_login_failure, remember_admin_device,
+)
 from ..utils.promos import (
     ACC_DEFAULT_MAX_PRIZES_PER_DAY, ACC_DEFAULT_MAX_PRIZES_PER_ID_PER_DAY, ACC_ENABLED_KEY,
     ACC_MAX_PRIZES_PER_DAY_KEY, ACC_MAX_PRIZES_PER_ID_PER_DAY_KEY,
@@ -57,6 +61,22 @@ from ..utils.mini_influencers import (
 )
 from ..utils.timezone import format_ve, now_ve, now_ve_naive, to_ve, ve_day_start_utc_naive, today_ve_str
 from ..utils.order_pause import PAUSED_MESSAGE, pause_order, resume_order
+from ..utils.order_blocks import (
+    ORDER_BLOCK_HOURS, ORDER_STRIKE_LIMIT,
+    active_blocks as active_order_blocks,
+    is_enabled as order_ip_block_enabled,
+    register_rejected_order as register_order_rejection_strike,
+    unblock as unblock_order_ip,
+)
+from ..utils import totp as totp_utils
+from ..utils.admin_login_guard import (
+    active_blocks as active_admin_login_blocks,
+    check as admin_login_check,
+    register_failure as register_admin_ip_failure,
+    reset as reset_admin_ip_failures,
+    unblock as unblock_admin_login_ip,
+)
+from ..utils.email_domains import domains_text, parse_domains_text
 from ..utils.minigames import (
     get_minigame_slot_defs,
     get_minigame_slots_config,
@@ -119,6 +139,14 @@ from ..utils.payment_verification import (
 )
 
 admin_bp = Blueprint('admin_bp', __name__)
+
+
+def _safe_log_value(value, limit=200):
+    """Texto para el journal: sin saltos de línea ni controles (evita inyectar
+    líneas falsas que fail2ban pueda confundir con una IP real)."""
+    text = re.sub(r'[\r\n\t\x00-\x1f\x7f]+', ' ', str(value or ''))
+    return text.strip()[:int(limit)]
+
 
 HOUSEKEEPING_ORDER_RETENTION_DAYS = 60  # ~2 months
 HOUSEKEEPING_PIN_RETENTION_DAYS = 30
@@ -473,11 +501,13 @@ def admin_housekeeping_hook():
 
 @admin_bp.before_request
 def admin_access_guard():
-    if request.endpoint in {'admin_bp.login'}:
+    if request.endpoint in {'admin_bp.login', 'admin_bp.login_2fa'}:
         return None
     # Red de seguridad para TODO el panel: aunque alguna ruta se agregue sin
     # @login_required, aquí se exige sesión antes de ejecutar la vista. Sin
     # sesión -> al login; con sesión que no es de admin (ej. un cliente) -> fuera.
+    # El 2FA lo vigila `_admin_totp_gate` en create_app, que también cubre los
+    # blueprints de soporte, torneos, hordas y puntos.
     if not current_user.is_authenticated:
         return redirect(url_for('admin_bp.login', next=request.url))
     if current_user.__class__.__name__ != 'AdminUser':
@@ -490,14 +520,53 @@ def admin_access_guard():
 
 ADMIN_LOGIN_MAX_ATTEMPTS = 10
 ADMIN_LOGIN_WINDOW_SECONDS = 15 * 60
+ADMIN_2FA_PENDING_SECONDS = 10 * 60
+
+
+def _admin_login_wait_message(reason, seconds):
+    if reason == 'blocked':
+        return (
+            'Demasiados intentos fallidos. Esta conexión quedó bloqueada 24 horas para el acceso de administrador. '
+            'Si eres el dueño, entra desde tu navegador de confianza o restablece el acceso en el servidor.'
+        )
+    minutes = max(1, (int(seconds or 0) + 59) // 60)
+    return f'Demasiados intentos seguidos. Espera {minutes} minuto(s) antes de volver a intentar.'
+
+
+def _admin_pending_2fa():
+    """Devuelve el AdminUser pendiente de código 2FA, o None si expiró."""
+    raw_id = session.get('admin_2fa_pending')
+    started = int(session.get('admin_2fa_pending_at') or 0)
+    if not raw_id or not started or (time.time() - started) > ADMIN_2FA_PENDING_SECONDS:
+        session.pop('admin_2fa_pending', None)
+        session.pop('admin_2fa_pending_at', None)
+        return None
+    try:
+        admin = db.session.get(AdminUser, int(raw_id))
+    except (TypeError, ValueError):
+        return None
+    if not admin or not admin.is_active or not admin.totp_enabled:
+        return None
+    return admin
 
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
         if current_user.__class__.__name__ == 'AdminUser':
-            return redirect(url_for('admin_bp.dashboard'))
-        return redirect(url_for('main_bp.index'))
+            # Una sesión abierta antes de activar el 2FA (o con el sello viejo)
+            # no puede seguir dentro: se cierra y se pide entrar de nuevo.
+            if current_user.totp_enabled and not totp_utils.session_stamp_valid(
+                session, current_user.totp_confirmed_at
+            ):
+                logout_user()
+                session.clear()
+            else:
+                if not current_user.totp_enabled and totp_utils.totp_required():
+                    return redirect(url_for('admin_bp.totp_setup'))
+                return redirect(url_for('admin_bp.dashboard'))
+        else:
+            return redirect(url_for('main_bp.index'))
 
     env_admin_username = (os.environ.get('ADMIN_USERNAME') or '').strip()
     env_admin_password = (os.environ.get('ADMIN_PASSWORD') or '').strip()
@@ -508,8 +577,11 @@ def login():
             flash('Acceso admin no disponible: faltan ADMIN_USERNAME/ADMIN_PASSWORD en entorno.', 'danger')
             return render_template('admin/login.html')
 
-        if not check_rate_limit(f'admin_login:{client_ip()}', ADMIN_LOGIN_MAX_ATTEMPTS, ADMIN_LOGIN_WINDOW_SECONDS):
-            flash('Demasiados intentos. Espera 15 minutos antes de volver a intentar.', 'danger')
+        ip = client_ip()
+        trusted = admin_device_trusted()
+        allowed, reason, retry_after = admin_login_check(ip, 'password', trusted=trusted)
+        if not allowed:
+            flash(_admin_login_wait_message(reason, retry_after), 'danger')
             return render_template('admin/login.html'), 429
 
         identifier = request.form.get('identifier', '').strip()
@@ -529,6 +601,25 @@ def login():
         if not is_admin_identifier or not password_ok:
             if is_admin_identifier:
                 register_admin_login_failure()
+            row = register_admin_ip_failure(ip, 'password', trusted=trusted)
+            try:
+                current_app.logger.warning(
+                    'ADMIN_LOGIN_FAIL ip=%s identifier_matches=%s ua=%s',
+                    ip, int(is_admin_identifier), _safe_log_value(request.user_agent.string),
+                )
+            except Exception:
+                pass
+            if row and row.blocked_until and row.blocked_until > datetime.utcnow():
+                try:
+                    current_app.logger.warning(
+                        'ADMIN_LOGIN_BLOCK ip=%s failures=%s until=%s ua=%s',
+                        ip, row.failures, row.blocked_until.isoformat(timespec='seconds'),
+                        _safe_log_value(request.user_agent.string),
+                    )
+                except Exception:
+                    pass
+                flash(_admin_login_wait_message('blocked', 0), 'danger')
+                return render_template('admin/login.html'), 429
             flash('Correo/usuario admin o contraseña incorrectos.', 'danger')
             return render_template('admin/login.html')
 
@@ -539,19 +630,271 @@ def login():
             flash(f'No se pudo sincronizar la cuenta de administrador. {exc}', 'danger')
             return render_template('admin/login.html')
 
-        if user:
-            login_user(user)
-            return remember_admin_device(redirect(url_for('admin_bp.dashboard')))
+        if not user:
+            flash('No se pudo iniciar sesión de administrador.', 'danger')
+            return render_template('admin/login.html')
 
-        flash('No se pudo iniciar sesión de administrador.', 'danger')
+        # La clave ya es correcta: los fallos de clave de esta IP no deben
+        # seguir contando. El código 2FA tiene su propio contador.
+        reset_admin_ip_failures(ip, 'password')
+
+        # Si ya activó Google Authenticator, SIEMPRE se pide el código. La
+        # variable ADMIN_TOTP_REQUIRED=0 solo evita la inscripción obligatoria;
+        # para un teléfono perdido está scripts/reset_admin_totp.py.
+        if user.totp_enabled:
+            session['admin_2fa_pending'] = int(user.id)
+            session['admin_2fa_pending_at'] = int(time.time())
+            flash('Escribe el código de 6 dígitos de Google Authenticator.', 'info')
+            return redirect(url_for('admin_bp.login_2fa'))
+
+        login_user(user)
+        if totp_utils.totp_required():
+            return redirect(url_for('admin_bp.totp_setup'))
+        reset_admin_ip_failures(ip, 'password')
+        return remember_admin_device(redirect(url_for('admin_bp.dashboard')))
+
     return render_template('admin/login.html')
 
 
-@admin_bp.route('/logout')
+@admin_bp.route('/login/2fa', methods=['GET', 'POST'])
+def login_2fa():
+    admin = _admin_pending_2fa()
+    if not admin:
+        flash('El acceso expiró. Escribe tu clave de nuevo.', 'warning')
+        return redirect(url_for('admin_bp.login'))
+
+    if request.method == 'POST':
+        ip = client_ip()
+        trusted = admin_device_trusted()
+        # El freno del código es para todos, también para el navegador de
+        # confianza: si roban esa cookie y la clave, no pueden probar códigos
+        # sin límite. El dispositivo de confianza solo evita el bloqueo de 24 h.
+        allowed, reason, retry_after = admin_login_check(
+            ip, '2fa', trusted=trusted, trusted_skips_wait=False
+        )
+        if not allowed:
+            flash(_admin_login_wait_message(reason, retry_after), 'danger')
+            return render_template('admin/login_2fa.html', username=admin.username), 429
+
+        code = (request.form.get('code') or '').strip()
+        recovery = (request.form.get('recovery_code') or '').strip()
+
+        # Un candado por admin: dos peticiones con el mismo código no pueden
+        # pasar las dos antes de que se guarde el contador.
+        try:
+            db.session.expire_all()
+            locked_admin = (
+                db.session.query(AdminUser)
+                .filter_by(id=admin.id)
+                .with_for_update()
+                .first()
+            )
+            if locked_admin:
+                admin = locked_admin
+        except Exception:
+            db.session.rollback()
+
+        ok = False
+        used_recovery = False
+        if recovery:
+            ok = totp_utils.verify_recovery_code(admin, recovery)
+            used_recovery = ok
+        else:
+            ok, counter = totp_utils.verify_code(admin.totp_secret, code, admin.totp_last_counter or 0)
+            if ok:
+                admin.totp_last_counter = counter
+
+        if not ok:
+            register_admin_ip_failure(ip, '2fa', trusted=trusted)
+            try:
+                current_app.logger.warning(
+                    'ADMIN_2FA_FAIL ip=%s user=%s ua=%s',
+                    ip, _safe_log_value(admin.username, 80), _safe_log_value(request.user_agent.string),
+                )
+            except Exception:
+                pass
+            flash('Código incorrecto o ya usado. Inténtalo de nuevo.', 'danger')
+            return render_template('admin/login_2fa.html', username=admin.username)
+
+        session.pop('admin_2fa_pending', None)
+        session.pop('admin_2fa_pending_at', None)
+        db.session.commit()
+        login_user(admin)
+        totp_utils.stamp_session(session)
+        reset_admin_ip_failures(ip, 'password')
+        reset_admin_ip_failures(ip, '2fa')
+        try:
+            current_app.logger.info(
+                'ADMIN_LOGIN_OK ip=%s user=%s recovery=%s ua=%s',
+                ip, _safe_log_value(admin.username, 80), int(used_recovery),
+                _safe_log_value(request.user_agent.string),
+            )
+        except Exception:
+            pass
+        return remember_admin_device(redirect(url_for('admin_bp.dashboard')))
+
+    return render_template('admin/login_2fa.html', username=admin.username)
+
+
+@admin_bp.route('/2fa/setup', methods=['GET', 'POST'])
+@login_required
+def totp_setup():
+    if current_user.__class__.__name__ != 'AdminUser':
+        return redirect(url_for('main_bp.index'))
+    if current_user.totp_enabled:
+        flash('Google Authenticator ya está activo en esta cuenta.', 'info')
+        return redirect(url_for('admin_bp.security'))
+
+    secret = (current_user.totp_secret or '').strip()
+    # Compatibilidad con una inscripción empezada antes de este cambio: el
+    # secreto pendiente vivía en la cookie de sesión. Se pasa a la base y se
+    # borra de la cookie.
+    legacy_secret = (session.pop('admin_totp_pending_secret', '') or '').strip()
+    if not secret and legacy_secret:
+        secret = legacy_secret
+    if secret:
+        try:
+            totp_utils.generate_code(secret)
+        except Exception:
+            secret = ''
+    if not secret:
+        secret = totp_utils.generate_secret()
+    if current_user.totp_secret != secret:
+        current_user.totp_secret = secret
+        db.session.commit()
+    uri = totp_utils.provisioning_uri(secret, account_name=current_user.username or 'admin')
+    qr = totp_utils.qr_data_uri(uri)
+    recovery_codes = None
+
+    if request.method == 'POST':
+        code = (request.form.get('code') or '').strip()
+        ok, counter = totp_utils.verify_code(secret, code, 0)
+        if not ok:
+            flash('Código incorrecto. Revisa la hora del teléfono e inténtalo otra vez.', 'danger')
+        else:
+            codes = totp_utils.generate_recovery_codes()
+            current_user.totp_secret = secret
+            current_user.totp_enabled = True
+            current_user.totp_last_counter = counter
+            current_user.totp_confirmed_at = datetime.utcnow()
+            current_user.totp_recovery_hashes = json.dumps([
+                totp_utils.hash_recovery_code(code) for code in codes
+            ])
+            db.session.commit()
+            totp_utils.stamp_session(session)
+            reset_admin_ip_failures(client_ip(), 'password')
+            reset_admin_ip_failures(client_ip(), '2fa')
+            try:
+                current_app.logger.info(
+                    'ADMIN_2FA_ENABLED ip=%s user=%s',
+                    client_ip(), _safe_log_value(current_user.username, 80),
+                )
+            except Exception:
+                pass
+            recovery_codes = codes
+
+    response = make_response(render_template(
+        'admin/totp_setup.html',
+        secret=secret,
+        otpauth_uri=uri,
+        qr_data_uri=qr,
+        recovery_codes=recovery_codes,
+    ))
+    if recovery_codes:
+        remember_admin_device(response)
+    return response
+
+
+@admin_bp.route('/security', methods=['GET', 'POST'])
+@login_required
+def security():
+    """Seguridad: Authenticator, dominios de correo permitidos e IPs bloqueadas."""
+    if request.method == 'POST':
+        action = (request.form.get('action') or '').strip()
+        if action == 'email_domains':
+            domains = parse_domains_text(request.form.get('allowed_email_domains'))
+            row = Setting.query.filter_by(key='allowed_email_domains').first()
+            value = ', '.join(domains)
+            if row:
+                row.value = value
+            else:
+                db.session.add(Setting(
+                    key='allowed_email_domains',
+                    value=value,
+                    description='Dominios de correo extra permitidos para clientes.',
+                ))
+            db.session.commit()
+            flash(
+                f'Dominios guardados ({len(domains)}). Los proveedores reconocidos siguen permitidos.',
+                'success',
+            )
+        elif action == 'order_block_toggle':
+            enabled = (request.form.get('enabled') or '').strip() == '1'
+            row = Setting.query.filter_by(key='order_ip_block_enabled').first()
+            value = '1' if enabled else '0'
+            if row:
+                row.value = value
+            else:
+                db.session.add(Setting(
+                    key='order_ip_block_enabled',
+                    value=value,
+                    description='Bloqueo de IP al acumular órdenes rechazadas.',
+                ))
+            db.session.commit()
+            flash(
+                'Bloqueo por rechazos activado: a las 5 rechazadas en 24 h se bloquea la IP 24 h.'
+                if enabled else
+                'Bloqueo por rechazos desactivado: las órdenes rechazadas ya no bloquean IPs.',
+                'success',
+            )
+        elif action == 'unblock_order_ip':
+            ip = (request.form.get('ip') or '').strip()[:64]
+            if unblock_order_ip(ip):
+                try:
+                    current_app.logger.info(
+                        'ADMIN_SECURITY_UNBLOCK_ORDER_IP admin=%s ip=%s',
+                        _safe_log_value(current_user.username, 80), _safe_log_value(ip, 64),
+                    )
+                except Exception:
+                    pass
+                flash(f'IP {ip} desbloqueada para crear órdenes.', 'success')
+            else:
+                flash('No encontré ese bloqueo de órdenes.', 'warning')
+        elif action == 'unblock_admin_ip':
+            ip = (request.form.get('ip') or '').strip()[:64]
+            unblock_admin_login_ip(ip)
+            try:
+                current_app.logger.info(
+                    'ADMIN_SECURITY_UNBLOCK_LOGIN_IP admin=%s ip=%s',
+                    _safe_log_value(current_user.username, 80), _safe_log_value(ip, 64),
+                )
+            except Exception:
+                pass
+            flash(f'Intentos y bloqueo del login liberados para {ip}.', 'success')
+        else:
+            flash('Acción de seguridad no válida.', 'danger')
+        return redirect(url_for('admin_bp.security'))
+
+    return render_template(
+        'admin/security.html',
+        totp_enabled=bool(current_user.totp_enabled),
+        email_domains=domains_text(),
+        order_blocks=active_order_blocks(),
+        admin_blocks=active_admin_login_blocks(),
+        order_strike_limit=ORDER_STRIKE_LIMIT,
+        order_block_hours=ORDER_BLOCK_HOURS,
+        order_block_enabled=order_ip_block_enabled(),
+    )
+
+
+@admin_bp.route('/logout', methods=['POST', 'GET'])
 @login_required
 def logout():
     from ..utils.official_profile import clear_admin_return
     clear_admin_return()
+    session.pop('admin_2fa_pending', None)
+    session.pop('admin_2fa_pending_at', None)
+    session.pop('admin_totp_pending_secret', None)
     logout_user()
     return redirect(url_for('admin_bp.login'))
 
@@ -1941,15 +2284,23 @@ def order_reject(order_id):
         # una ya entregada dejaba ese mismo pago libre para cobrar otra orden.
         flash('Esta orden ya fue completada (entregada): no se puede rechazar.', 'warning')
         return redirect(url_for('admin_bp.order_detail', order_id=order.id))
+    if order.status == 'rejected':
+        flash('Esta orden ya estaba rechazada.', 'info')
+        return redirect(url_for('admin_bp.order_detail', order_id=order.id))
     notes = request.form.get('notes', '').strip()[:1000]
     order.status = 'rejected'
     # Lo que escribe el admin es lo ÚNICO que ve el cliente (página de la orden y correo); vacío = mensaje general.
     order.reject_reason = notes or None
+    order.rejected_at = datetime.utcnow()
     if notes:
         existing_notes = order.notes or ''
         order.notes = (existing_notes + '\n' + notes).strip()
     order.updated_at = datetime.utcnow()
     db.session.commit()
+    try:
+        register_order_rejection_strike(order)
+    except Exception:
+        current_app.logger.exception('No se pudo contar el rechazo para el bloqueo por IP de la orden %s', order.id)
     try:
         notify_order_rejected(order, order.package, order.game, reason=notes)
     except Exception:
@@ -2052,6 +2403,7 @@ def orders_bulk():
         try:
             order.status = 'rejected'
             order.reject_reason = notes or None
+            order.rejected_at = datetime.utcnow()
             if notes:
                 existing_notes = order.notes or ''
                 order.notes = (existing_notes + '\n' + notes).strip()
@@ -2063,6 +2415,10 @@ def orders_bulk():
             current_app.logger.exception('Error al rechazar en lote la orden %s', order_id)
             failed.append(f'#{order.order_number} error interno')
             continue
+        try:
+            register_order_rejection_strike(order)
+        except Exception:
+            current_app.logger.exception('No se pudo contar el rechazo en lote de la orden %s', order_id)
         try:
             notify_order_rejected(order, order.package, order.game, reason=notes)
         except Exception:
