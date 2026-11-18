@@ -111,14 +111,27 @@
                 {% endif %}
             </p>
         </div>
-        {% if total_pages > 1 %}
-        <div class="orders-page-chip">Página {{ current_page }} de {{ total_pages }}</div>
-        {% endif %}
+        <div class="orders-card-header-tools">
+            <label class="orders-select-all" for="ordersSelectAll" title="Seleccionar las órdenes pendientes que se ven en esta página">
+                <input type="checkbox" id="ordersSelectAll">
+                <span>Seleccionar visibles</span>
+            </label>
+            {% if total_pages > 1 %}
+            <div class="orders-page-chip">Página {{ current_page }} de {{ total_pages }}</div>
+            {% endif %}
+        </div>
     </div>
     <div class="admin-order-feed admin-order-feed--compact" id="ordersTbody" data-status-filter="{{ status_filter or '' }}" data-search-query="{{ search_query or '' }}" data-date-from="{{ date_from or '' }}" data-date-to="{{ date_to or '' }}" data-package-id="{{ package_id or '' }}" data-service-id="{{ service_id or '' }}" data-game-id="{{ game_id or '' }}" data-current-page="{{ current_page }}" data-page-size="{{ page_size }}">
                 {% for order in orders %}
                 <article class="admin-order-card" data-order-id="{{ order.id }}">
                     <div class="admin-order-card__top">
+                        {% if order.status == 'pending' %}
+                        <label class="admin-order-select" title="Seleccionar la orden #{{ order.order_number }}">
+                            <input type="checkbox" class="order-select-checkbox" value="{{ order.id }}" data-order-id="{{ order.id }}" aria-label="Seleccionar la orden #{{ order.order_number }}">
+                        </label>
+                        {% else %}
+                        <span class="admin-order-select admin-order-select--empty" aria-hidden="true"></span>
+                        {% endif %}
                         <div class="admin-order-card__identity">
                             <div class="admin-order-card__title-row">
                                 <span class="admin-order-card__game">{{ order.game.name }}</span>
@@ -250,6 +263,39 @@
     {% endif %}
 </div>
 
+<!-- Acción masiva: aparece solo cuando hay órdenes seleccionadas -->
+<div class="orders-bulk-bar" id="ordersBulkBar" hidden>
+    <div class="orders-bulk-info">
+        <strong><span id="ordersBulkCount">0</span> <span id="ordersBulkCountLabel">seleccionadas</span></strong>
+        <span class="orders-bulk-hint" id="ordersBulkHint"></span>
+    </div>
+    <div class="orders-bulk-actions">
+        <button type="button" class="btn-sm btn-success" id="ordersBulkApprove">✓ Aprobar</button>
+        <button type="button" class="btn-sm btn-danger-solid" id="ordersBulkReject">✕ Rechazar</button>
+        <button type="button" class="btn-sm btn-secondary" id="ordersBulkClear">Limpiar</button>
+    </div>
+</div>
+
+<!-- Modales -->
+<div class="modal-overlay" id="bulkActionModal" style="display:none">
+    <div class="modal-box">
+        <h3 id="bulkActionTitle">Acción masiva</h3>
+        <p class="orders-bulk-modal-text" id="bulkActionText"></p>
+        <form method="POST" action="{{ url_for('admin_bp.orders_bulk') }}" id="bulkActionForm">
+            <input type="hidden" name="bulk_action" id="bulkActionType" value="">
+            <div id="bulkActionIds"></div>
+            <div class="form-group" id="bulkActionNotesGroup" hidden>
+                <label for="bulkActionNotes">Motivo (opcional, se muestra al cliente)</label>
+                <textarea name="notes" id="bulkActionNotes" rows="3" placeholder="Ej: Pago no verificado, referencia incorrecta..."></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" onclick="closeBulkActionModal()" class="btn-sm btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-sm btn-success" id="bulkActionConfirm">Aprobar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Reject Modal -->
 <div class="modal-overlay" id="rejectModal" style="display:none">
     <div class="modal-box">
@@ -333,6 +379,191 @@ function openRejectModal(orderId) {
 function closeRejectModal() {
     document.getElementById('rejectModal').style.display = 'none';
 }
+
+/* ── Selección múltiple y acciones masivas ─────────────────────────────
+   Solo se pueden seleccionar órdenes pendientes. La selección vive en un
+   Set por ID (no en el DOM), así el polling que agrega/redibuja filas no
+   la pierde. Aprobar va en lotes de máximo 10 porque cada aprobación puede
+   consultar al proveedor; rechazar acepta hasta 50 (una página). */
+(function () {
+    var selected = new Set();
+    var APPROVE_LIMIT = 10;
+
+    var bar = document.getElementById('ordersBulkBar');
+    var countEl = document.getElementById('ordersBulkCount');
+    var countLabelEl = document.getElementById('ordersBulkCountLabel');
+    var hintEl = document.getElementById('ordersBulkHint');
+    var approveBtn = document.getElementById('ordersBulkApprove');
+    var rejectBtn = document.getElementById('ordersBulkReject');
+    var clearBtn = document.getElementById('ordersBulkClear');
+    var selectAll = document.getElementById('ordersSelectAll');
+    var modal = document.getElementById('bulkActionModal');
+    var form = document.getElementById('bulkActionForm');
+    var idsBox = document.getElementById('bulkActionIds');
+    var actionInput = document.getElementById('bulkActionType');
+    var titleEl = document.getElementById('bulkActionTitle');
+    var textEl = document.getElementById('bulkActionText');
+    var notesGroup = document.getElementById('bulkActionNotesGroup');
+    var notesInput = document.getElementById('bulkActionNotes');
+    var confirmBtn = document.getElementById('bulkActionConfirm');
+    if (!bar || !modal || !form || !idsBox || !actionInput || !confirmBtn) return;
+
+    function checkboxes() {
+        return Array.prototype.slice.call(document.querySelectorAll('.order-select-checkbox'));
+    }
+
+    function markCard(cb) {
+        var card = cb.closest('.admin-order-card');
+        if (card) card.classList.toggle('is-selected', !!cb.checked);
+    }
+
+    // Vuelve a pintar los checkboxes según el Set. El polling puede
+    // redibujar una fila y dejar su checkbox sin marcar aunque siga elegida.
+    function paintSelection() {
+        checkboxes().forEach(function (cb) {
+            var on = selected.has(cb.getAttribute('data-order-id'));
+            if (cb.checked !== on) cb.checked = on;
+            markCard(cb);
+        });
+    }
+
+    function refreshBulkUi() {
+        paintSelection();
+        var count = selected.size;
+        countEl.textContent = String(count);
+        if (countLabelEl) countLabelEl.textContent = count === 1 ? 'seleccionada' : 'seleccionadas';
+        bar.hidden = count === 0;
+        document.body.classList.toggle('orders-bulk-active', count > 0);
+
+        if (hintEl) {
+            hintEl.textContent = count > APPROVE_LIMIT
+                ? 'Para aprobar, máximo ' + APPROVE_LIMIT + '. Para rechazar no hay problema.'
+                : '';
+        }
+        if (approveBtn) {
+            approveBtn.disabled = count === 0 || count > APPROVE_LIMIT;
+            approveBtn.title = count > APPROVE_LIMIT
+                ? 'Máximo ' + APPROVE_LIMIT + ' órdenes por vez para aprobar'
+                : 'Aprobar las órdenes seleccionadas';
+        }
+
+        var all = checkboxes();
+        var checked = all.filter(function (cb) { return cb.checked; }).length;
+        if (selectAll) {
+            selectAll.disabled = all.length === 0;
+            selectAll.checked = all.length > 0 && checked === all.length;
+            selectAll.indeterminate = checked > 0 && checked < all.length;
+        }
+    }
+
+    // Para el polling: quita de la selección las filas que ya no existen o
+    // dejaron de ser pendientes (el servidor las redibujó sin checkbox).
+    function syncWithDom() {
+        var present = new Set();
+        checkboxes().forEach(function (cb) {
+            present.add(cb.getAttribute('data-order-id'));
+        });
+        Array.from(selected).forEach(function (id) {
+            if (!present.has(id)) selected.delete(id);
+        });
+        refreshBulkUi();
+    }
+
+    window.nxOrdersBulkRefresh = refreshBulkUi;
+    window.nxOrdersBulkSync = syncWithDom;
+    window.nxOrdersBulkHasSelection = function () { return selected.size > 0; };
+
+    document.addEventListener('change', function (evt) {
+        var cb = evt.target;
+        if (!cb || !cb.classList || !cb.classList.contains('order-select-checkbox')) return;
+        var id = cb.getAttribute('data-order-id');
+        if (!id) return;
+        if (cb.checked) selected.add(id); else selected.delete(id);
+        markCard(cb);
+        refreshBulkUi();
+    });
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            checkboxes().forEach(function (cb) {
+                cb.checked = selectAll.checked;
+                var id = cb.getAttribute('data-order-id');
+                if (selectAll.checked) selected.add(id); else selected.delete(id);
+                markCard(cb);
+            });
+            refreshBulkUi();
+        });
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function () {
+            selected.clear();
+            checkboxes().forEach(function (cb) {
+                cb.checked = false;
+                markCard(cb);
+            });
+            refreshBulkUi();
+        });
+    }
+
+    function openBulkModal(action) {
+        var count = selected.size;
+        if (!count) return;
+        if (action === 'approve' && count > APPROVE_LIMIT) {
+            refreshBulkUi();
+            return;
+        }
+
+        actionInput.value = action;
+        idsBox.innerHTML = '';
+        selected.forEach(function (id) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'order_ids';
+            input.value = id;
+            idsBox.appendChild(input);
+        });
+
+        if (action === 'approve') {
+            titleEl.textContent = 'Aprobar ' + count + (count === 1 ? ' orden' : ' órdenes');
+            textEl.textContent = 'Se aprobarán las órdenes seleccionadas (máximo 10 por lote). Las que estén en pausa o ya no estén pendientes se omitirán.';
+            notesGroup.hidden = true;
+            if (notesInput) { notesInput.value = ''; notesInput.disabled = true; }
+            confirmBtn.className = 'btn-sm btn-success';
+            confirmBtn.textContent = 'Aprobar';
+        } else {
+            titleEl.textContent = 'Rechazar ' + count + (count === 1 ? ' orden' : ' órdenes');
+            textEl.textContent = 'Se rechazarán las órdenes seleccionadas. El motivo se mostrará al cliente y esta acción no se puede deshacer.';
+            notesGroup.hidden = false;
+            if (notesInput) notesInput.disabled = false;
+            confirmBtn.className = 'btn-sm btn-danger-solid';
+            confirmBtn.textContent = 'Rechazar';
+        }
+        modal.style.display = 'flex';
+    }
+
+    if (approveBtn) approveBtn.addEventListener('click', function () { openBulkModal('approve'); });
+    if (rejectBtn) rejectBtn.addEventListener('click', function () { openBulkModal('reject'); });
+
+    window.closeBulkActionModal = function () {
+        modal.style.display = 'none';
+        confirmBtn.disabled = false;
+    };
+
+    modal.addEventListener('click', function (evt) {
+        if (evt.target === modal) window.closeBulkActionModal();
+    });
+    document.addEventListener('keydown', function (evt) {
+        if (evt.key === 'Escape' && modal.style.display === 'flex') window.closeBulkActionModal();
+    });
+
+    form.addEventListener('submit', function () {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Procesando…';
+    });
+
+    refreshBulkUi();
+})();
 
 document.addEventListener('click', function(evt) {
     var rejectButton = evt.target.closest('.reject-order-btn');
@@ -452,9 +683,18 @@ function _renderOrderRow(o) {
     }
     statusHtml += _reviewFlagsHtml(o.review_flags);
 
+    var selectBox = '';
+    if (o.status === 'pending') {
+        selectBox = '<label class="admin-order-select" title="Seleccionar la orden #' + _escapeHtml(o.order_number) + '">' +
+            '<input type="checkbox" class="order-select-checkbox" value="' + o.id + '" data-order-id="' + o.id + '" aria-label="Seleccionar la orden #' + _escapeHtml(o.order_number) + '">' +
+            '</label>';
+    } else {
+        selectBox = '<span class="admin-order-select admin-order-select--empty" aria-hidden="true"></span>';
+    }
+
     var html = '';
     html += '<article class="admin-order-card" data-order-id="' + o.id + '">';
-    html += '<div class="admin-order-card__top"><div class="admin-order-card__identity">';
+    html += '<div class="admin-order-card__top">' + selectBox + '<div class="admin-order-card__identity">';
     html += '<div class="admin-order-card__title-row"><span class="admin-order-card__game">' + _escapeHtml(o.game) + '</span>' + statusHtml + '</div>';
     html += '<div class="admin-order-card__package">' + _escapeHtml(o.package) + '</div>';
     html += '<div class="admin-order-card__meta"><span class="order-num">#' + _escapeHtml(o.order_number) + '</span><span>ID ' + _escapeHtml(o.id) + '</span><span class="admin-order-card__date">' + _escapeHtml(o.created_at) + '</span></div>';
@@ -620,6 +860,7 @@ function _kickAutoVerification(scopeEl) {
                     }
                     tr.outerHTML = _renderOrderRow(o);
                 });
+                if (window.nxOrdersBulkSync) window.nxOrdersBulkSync();
                 _rebindApproveSubmitHandlers(tbody);
             })
             .catch(function() {});
@@ -656,6 +897,7 @@ function _kickAutoVerification(scopeEl) {
                 for (var index = rows.length - 1; index >= pageSize; index -= 1) {
                     rows[index].remove();
                 }
+                if (window.nxOrdersBulkSync) window.nxOrdersBulkSync();
                 _rebindApproveSubmitHandlers(tbody);
                 _kickAutoVerification(tbody);
             })
@@ -758,6 +1000,9 @@ function _kickAutoVerification(scopeEl) {
         var a = document.activeElement;
         if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
         if (document.querySelector('.modal[style*="block"], dialog[open]')) return true;
+        // No recargar la página entera mientras hay órdenes seleccionadas:
+        // se perdería la selección a mitad de la acción masiva.
+        if (window.nxOrdersBulkHasSelection && window.nxOrdersBulkHasSelection()) return true;
         return (window.scrollY || 0) > 240;
     }
     var restantes = SEGUNDOS;

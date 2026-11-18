@@ -1958,6 +1958,140 @@ def order_reject(order_id):
     return redirect(url_for('admin_bp.orders'))
 
 
+BULK_APPROVE_LIMIT = 10
+BULK_REJECT_LIMIT = 50
+
+
+def _bulk_orders_back_url():
+    """Vuelve a la lista tal como estaba (filtros/página); solo dentro de este sitio."""
+    referrer = request.referrer or ''
+    if referrer.startswith(request.host_url):
+        return referrer
+    return url_for('admin_bp.orders')
+
+
+@admin_bp.route('/orders/bulk', methods=['POST'])
+@login_required
+def orders_bulk():
+    """Acción masiva sobre órdenes PENDIENTES: aprobar o rechazar varias a la vez.
+
+    Se procesa una por una con la misma lógica de los botones individuales
+    (approve_order / rechazo con motivo), así una que falle no detiene a las
+    demás. Solo se tocan órdenes pendientes: una completada, devuelta o ya
+    rechazada se omite y se informa. Aprobar tiene un tope más bajo porque
+    cada aprobación puede consultar al proveedor y tardar.
+    """
+    action = (request.form.get('bulk_action') or '').strip().lower()
+    back_url = _bulk_orders_back_url()
+
+    if action not in ('approve', 'reject'):
+        flash('Acción masiva no válida.', 'danger')
+        return redirect(back_url)
+
+    ids = []
+    seen = set()
+    for raw in request.form.getlist('order_ids')[:BULK_REJECT_LIMIT + 10]:
+        for part in str(raw).split(','):
+            part = part.strip()
+            if not part.isdigit():
+                continue
+            order_id = int(part)
+            if order_id in seen:
+                continue
+            seen.add(order_id)
+            ids.append(order_id)
+
+    if not ids:
+        flash('Selecciona al menos una orden.', 'warning')
+        return redirect(back_url)
+
+    limit = BULK_APPROVE_LIMIT if action == 'approve' else BULK_REJECT_LIMIT
+    if len(ids) > limit:
+        if action == 'approve':
+            flash(f'Para aprobar, selecciona máximo {BULK_APPROVE_LIMIT} órdenes a la vez.', 'warning')
+        else:
+            flash(f'Para rechazar, selecciona máximo {BULK_REJECT_LIMIT} órdenes a la vez.', 'warning')
+        return redirect(back_url)
+
+    orders_by_id = {
+        order.id: order
+        for order in Order.query.filter(Order.id.in_(ids)).all()
+    }
+    notes = (request.form.get('notes') or '').strip()[:1000]
+    done = 0
+    skipped = []
+    failed = []
+
+    for order_id in ids:
+        order = orders_by_id.get(order_id)
+        if order is None:
+            skipped.append(f'#{order_id} no existe')
+            continue
+        if order.status != 'pending':
+            skipped.append(f'#{order.order_number} ya no está pendiente')
+            continue
+
+        if action == 'approve':
+            if order.is_paused:
+                skipped.append(f'#{order.order_number} está en pausa')
+                continue
+            try:
+                result = approve_order(order)
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception('Error al aprobar en lote la orden %s', order_id)
+                failed.append(f'#{order.order_number} error interno')
+                continue
+            if result.get('ok'):
+                done += 1
+            else:
+                skipped.append(f"#{order.order_number}: {result.get('message') or 'no se pudo aprobar'}")
+            continue
+
+        # Rechazo: mismo efecto que el botón individual, pero solo en pendientes.
+        try:
+            order.status = 'rejected'
+            order.reject_reason = notes or None
+            if notes:
+                existing_notes = order.notes or ''
+                order.notes = (existing_notes + '\n' + notes).strip()
+            order.updated_at = datetime.utcnow()
+            db.session.commit()
+            done += 1
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception('Error al rechazar en lote la orden %s', order_id)
+            failed.append(f'#{order.order_number} error interno')
+            continue
+        try:
+            notify_order_rejected(order, order.package, order.game, reason=notes)
+        except Exception:
+            current_app.logger.exception('No se pudo avisar del rechazo en lote de la orden %s', order_id)
+
+    action_label = 'aprobada' if action == 'approve' else 'rechazada'
+    order_word = 'orden' if done == 1 else 'órdenes'
+    summary = f"{done} {order_word} {action_label}{'' if done == 1 else 's'}."
+    if skipped:
+        summary += f" {len(skipped)} omitida{'s' if len(skipped) != 1 else ''}."
+    if failed:
+        summary += f" {len(failed)} con error."
+
+    flash(summary, 'success' if done and not failed else ('warning' if done else 'danger'))
+
+    if skipped:
+        detail = '; '.join(skipped[:5])
+        if len(skipped) > 5:
+            detail += '…'
+        flash('Omitidas: ' + detail, 'warning')
+    if failed:
+        detail = '; '.join(failed[:5])
+        if len(failed) > 5:
+            detail += '…'
+        flash('Con error: ' + detail, 'danger')
+
+    return redirect(back_url)
+
+
 @admin_bp.route('/orders/<int:order_id>/refund', methods=['POST'])
 @login_required
 def order_refund(order_id):
