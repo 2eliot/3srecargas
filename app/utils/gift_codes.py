@@ -70,6 +70,19 @@ def mask_code(code):
     return '-'.join(['••••'] * (len(blocks) - 1) + [blocks[-1]])
 
 
+def public_redeemer_id(value):
+    """ID para el aviso público de 'código ya canjeado'.
+
+    Los IDs de juego se muestran completos (prueba social). Si el dato es un
+    correo, se enmascara para no publicar la dirección completa.
+    """
+    text = str(value or '').strip()
+    if '@' in text:
+        local, _, domain = text.partition('@')
+        return f'{local[:1]}***@{domain}' if local else f'***@{domain}'
+    return text
+
+
 def generate_code():
     return CODE_PREFIX + ''.join(
         secrets.choice(CODE_ALPHABET) for _ in range(CODE_BLOCK * CODE_BLOCKS)

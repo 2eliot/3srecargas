@@ -5,11 +5,14 @@ pide el ID del jugador. La entrega es automática, por el mismo camino que
 una compra normal.
 """
 
+import hmac
+import os
+
 from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..models import Game, Setting
-from ..utils.timezone import format_ve
-from ..utils.locks import client_ip
+from ..utils.timezone import format_ve, to_ve
+from ..utils.locks import check_rate_limit, client_ip
 from ..utils.zone_rules import clean_zone, zone_digits, zone_problem
 from ..utils.order_access import remember_own_order
 from ..utils.email_domains import email_domain_problem
@@ -21,6 +24,7 @@ from ..utils.gift_codes import (
     get_redemption_history,
     is_rate_limited,
     normalize_code,
+    public_redeemer_id,
     redeem_code,
     register_failed_attempt,
     serialize_redemption,
@@ -118,12 +122,23 @@ def validate():
         if gift and gift.is_used and gift.used_at:
             fecha = format_ve(gift.used_at, '%d/%m/%Y')
             hora = format_ve(gift.used_at, '%H:%M:%S')
+            nickname = (gift.used_nickname or '').strip() or '—'
+            player_id = public_redeemer_id(gift.used_player_id) or '—'
             payload['message'] = (
-                f'Ese código ya fue canjeado el {fecha} a las {hora}.'
+                f'Ese código ya fue canjeado por:\n'
+                f'{nickname}\n'
+                f'ID: {player_id}\n'
+                f'Fecha: {fecha}\n'
+                f'Hora: {hora}'
             )
-            # Sin ID ni nick de la otra persona: el código es público y no
-            # debe revelar quién lo canjeó.
-            payload['already_used'] = {'fecha': fecha, 'hora': hora}
+            # Prueba social para la comunidad: se ve el nick y el ID del que
+            # lo canjeó (si el dato es un correo, va enmascarado).
+            payload['already_used'] = {
+                'nickname': nickname,
+                'player_id': player_id,
+                'fecha': fecha,
+                'hora': hora,
+            }
         return jsonify(payload), 404
 
     package = gift.package
@@ -244,3 +259,58 @@ def history():
         'player_id': player_id,
         'items': [serialize_redemption(g) for g in canjes],
     })
+
+
+@redeem_bp.route('/api/sorteo/codigo', methods=['GET'])
+def live_code_status():
+    """Estado de UN código para el programa del live.
+
+    Requiere `Authorization: Bearer <LIVE_CODE_API_KEY>`. Devuelve si el
+    código ya se canjeó, quién lo canjeó y la fecha en hora de Venezuela.
+    """
+    expected = (os.environ.get('LIVE_CODE_API_KEY') or '').strip()
+    if not expected:
+        return jsonify({'ok': False, 'error': 'API no configurada.'}), 503
+
+    auth = (request.headers.get('Authorization') or '').strip()
+    scheme, _, token = auth.partition(' ')
+    if scheme.lower() != 'bearer' or not token or not hmac.compare_digest(token.strip(), expected):
+        return jsonify({'ok': False, 'error': 'No autorizado.'}), 401
+
+    if not check_rate_limit(f'live_code_api:{client_ip()}', 120, 60):
+        return jsonify({'ok': False, 'error': 'Demasiadas consultas. Espera un momento.'}), 429
+
+    code = normalize_code(request.args.get('codigo'))
+    if not code:
+        return jsonify({'ok': False, 'error': 'Falta el código.'}), 400
+
+    gift = find_code(code)
+    if not gift:
+        payload = {
+            'ok': True,
+            'existe': False,
+            'canjeado': False,
+            'codigo': code,
+            'juego': None,
+            'canjeado_por': None,
+            'fecha': None,
+        }
+    else:
+        game = gift.package.game if gift.package else None
+        used = bool(gift.is_used)
+        redeemer = ''
+        if used:
+            redeemer = (gift.used_nickname or public_redeemer_id(gift.used_player_id) or '')
+        payload = {
+            'ok': True,
+            'existe': True,
+            'canjeado': used,
+            'codigo': format_code(gift.code),
+            'juego': game.name if game else None,
+            'canjeado_por': redeemer or None,
+            'fecha': to_ve(gift.used_at).isoformat(timespec='seconds') if used and gift.used_at else None,
+        }
+
+    response = jsonify(payload)
+    response.headers['Cache-Control'] = 'no-store, max-age=0'
+    return response

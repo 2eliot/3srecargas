@@ -202,7 +202,8 @@ body::before {
         if (msg && kind) el.classList.add(kind);
     }
 
-    /* Código ya canjeado: sin datos de la otra persona, solo fecha y hora. */
+    /* Código ya canjeado: se muestra el nick y el ID como prueba social
+       (el correo, si lo hay, ya viene enmascarado del servidor). */
     function setUsedFeedback(el, usado) {
         if (!el) return;
         el.textContent = '';
@@ -213,10 +214,12 @@ body::before {
 
         var linea = document.createElement('span');
         linea.className = 'rdm-used-line';
-        linea.textContent = 'Ese código ya fue canjeado.';
+        linea.textContent = 'Ese código ya fue canjeado por:';
         el.appendChild(linea);
 
         var detalles = [];
+        if (usado.nickname) detalles.push(usado.nickname);
+        if (usado.player_id) detalles.push('ID: ' + usado.player_id);
         if (usado.fecha) detalles.push('Fecha: ' + usado.fecha);
         if (usado.hora) detalles.push('Hora: ' + usado.hora);
 
