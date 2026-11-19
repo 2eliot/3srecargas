@@ -936,7 +936,7 @@ def lock_codes():
     """Vuelve a ocultar los códigos sin esperar a que caduque."""
     lock_codes_session()
     flash('Códigos bloqueados.', 'info')
-    return redirect(request.referrer or url_for('admin_bp.pins'))
+    return redirect(url_for('admin_bp.pins'))
 
 
 @admin_bp.route('/logout', methods=['POST', 'GET'])
@@ -947,6 +947,7 @@ def logout():
     session.pop('admin_2fa_pending', None)
     session.pop('admin_2fa_pending_at', None)
     session.pop('admin_totp_pending_secret', None)
+    lock_codes_session()
     logout_user()
     return redirect(url_for('admin_bp.login'))
 
@@ -961,6 +962,7 @@ def official_profile_enter():
         flash('No se pudo abrir el perfil oficial: la cuenta no existe o está desactivada (Admin → Cuentas).', 'danger')
         return redirect(url_for('admin_bp.dashboard'))
     session.pop(STOCK_PINS_SESSION_KEY, None)
+    lock_codes_session()
     remember_admin_return(current_user)
     if not login_user(user):
         clear_admin_return()

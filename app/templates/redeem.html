@@ -202,8 +202,7 @@ body::before {
         if (msg && kind) el.classList.add(kind);
     }
 
-    /* Código ya canjeado: primera línea en rojo, el resto (nombre, ID,
-       fecha, hora) en blanco opaco, cada dato en su propia línea. */
+    /* Código ya canjeado: sin datos de la otra persona, solo fecha y hora. */
     function setUsedFeedback(el, usado) {
         if (!el) return;
         el.textContent = '';
@@ -214,12 +213,10 @@ body::before {
 
         var linea = document.createElement('span');
         linea.className = 'rdm-used-line';
-        linea.textContent = 'Ese código ya fue canjeado por:';
+        linea.textContent = 'Ese código ya fue canjeado.';
         el.appendChild(linea);
 
         var detalles = [];
-        if (usado.nickname) detalles.push(usado.nickname);
-        if (usado.player_id) detalles.push('ID: ' + usado.player_id);
         if (usado.fecha) detalles.push('Fecha: ' + usado.fecha);
         if (usado.hora) detalles.push('Hora: ' + usado.hora);
 

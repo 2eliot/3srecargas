@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 
 from ..models import GiftCode, Order, Package, db
 from .locks import acquire_lock, release_lock
+from .player_field import field_kind, identity_key
 
 # Sin 0/O/1/I/L para que nadie se equivoque al copiar un código de un video.
 CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
@@ -84,25 +85,35 @@ def player_redeem_cooldown_seconds(game, player_id):
     """
     if not game or not player_id:
         return 0
+    from .player_field import field_kind, identity_key
+    kind = field_kind(game)
+    key = identity_key(kind, player_id)
+    if not key:
+        return 0
     now = datetime.utcnow()
     cutoff = now - timedelta(minutes=PLAYER_COOLDOWN_MINUTES)
     try:
-        last = (
+        recientes = (
             GiftCode.query
             .join(Package, GiftCode.package_id == Package.id)
             .filter(
                 GiftCode.is_used.is_(True),
-                GiftCode.used_player_id == str(player_id).strip(),
                 GiftCode.used_at.isnot(None),
                 GiftCode.used_at >= cutoff,
                 Package.game_id == game.id,
             )
             .order_by(GiftCode.used_at.desc())
-            .first()
+            .limit(200)
+            .all()
         )
     except Exception:
         db.session.rollback()
         return 0
+    last = next(
+        (gift for gift in recientes
+         if identity_key(kind, gift.used_player_id) == key),
+        None,
+    )
     if not last or not last.used_at:
         return 0
     return max(1, int((last.used_at + timedelta(minutes=PLAYER_COOLDOWN_MINUTES) - now).total_seconds()))
@@ -282,14 +293,14 @@ def redeem_code(gift, player_id, zone_id=None, nickname='', client_ip=None, user
         # Los juegos que piden un ID de jugador (número, usuario o teléfono)
         # no pueden canjear sin un verificador real. Los productos de correo
         # (Roblox, TikTok, etc.) se validan por el correo de entrega.
-        from .player_field import field_kind
         if field_kind(game) in ('numeric', 'username', 'phone'):
             return False, (
                 'Este juego no tiene verificación de ID disponible. '
                 'No se puede canjear el código; escríbenos por soporte.'
             ), None
 
-    lock_key = f'gift_player:{game.id}:{str(player_id).strip()}'[:100]
+    _identity = identity_key(field_kind(game), player_id) or str(player_id).strip()
+    lock_key = f'gift_player:{game.id}:{_identity}'[:100]
     lock_holder = secrets.token_hex(8)
     if not acquire_lock(lock_key, 30, lock_holder):
         return False, 'Tu canje anterior se está procesando. Espera unos segundos e inténtalo de nuevo.', None

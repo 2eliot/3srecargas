@@ -24,15 +24,24 @@ _FERNET_CACHE = {}
 
 
 def _fernet():
+    from flask import current_app, has_app_context
+
     key_env = (os.environ.get('CODE_ENCRYPTION_KEY') or '').strip()
     if key_env:
         raw_key = key_env.encode('ascii', 'ignore')
     else:
-        from flask import current_app, has_app_context
         secret = ''
         if has_app_context():
             secret = str(current_app.config.get('SECRET_KEY') or '')
         secret = secret or os.environ.get('SECRET_KEY') or '3s-recargas'
+        if secret in {'3s-recargas', 'dev-secret-key-change-in-production'}:
+            try:
+                if has_app_context():
+                    current_app.logger.warning(
+                        'SECRET_KEY vacío o de fábrica: los códigos cifrados no están protegidos por una clave propia.'
+                    )
+            except Exception:
+                pass
         digest = hashlib.sha256(('3s-code-encryption-v1:' + secret).encode('utf-8')).digest()
         raw_key = base64.urlsafe_b64encode(digest)
     cached = _FERNET_CACHE.get(raw_key)
@@ -40,13 +49,20 @@ def _fernet():
         return cached
     try:
         fernet = Fernet(raw_key)
-    except Exception:
-        # Una clave de entorno mal escrita no debe dejar la tienda sin códigos:
-        # se cae a la derivada de SECRET_KEY.
-        digest = hashlib.sha256(
-            ('3s-code-encryption-v1:' + str(os.environ.get('SECRET_KEY') or '3s-recargas')).encode('utf-8')
-        ).digest()
-        fernet = Fernet(base64.urlsafe_b64encode(digest))
+    except Exception as exc:
+        # Si la clave de entorno está mal escrita, NO se cae a otra clave en
+        # silencio: eso dejaría códigos escritos con una clave distinta y los
+        # ya entregados quedarían ilegibles sin aviso.
+        try:
+            if has_app_context():
+                current_app.logger.error(
+                    'CODE_ENCRYPTION_KEY inválida: corrige la clave o quítala del entorno.'
+                )
+        except Exception:
+            pass
+        raise RuntimeError(
+            'CODE_ENCRYPTION_KEY inválida. Corrige la clave o quítala del entorno; no se cifran códigos con otra clave.'
+        ) from exc
     _FERNET_CACHE[raw_key] = fernet
     return fernet
 
@@ -63,14 +79,22 @@ def encrypt_code(value):
     return PREFIX + token
 
 
-def decrypt_code(value):
+def decrypt_code_checked(value):
+    """(ok, texto). ok=False si el valor está cifrado y no se pudo descifrar."""
     text = str(value or '')
-    if not text or not is_encrypted(text):
-        return text
+    if not text:
+        return True, ''
+    if not is_encrypted(text):
+        return True, text
     try:
-        return _fernet().decrypt(text[len(PREFIX):].encode('ascii')).decode('utf-8')
+        return True, _fernet().decrypt(text[len(PREFIX):].encode('ascii')).decode('utf-8')
     except (InvalidToken, ValueError, TypeError):
-        return ''
+        return False, ''
+
+
+def decrypt_code(value):
+    ok, text = decrypt_code_checked(value)
+    return text if ok else ''
 
 
 def mask_code():
@@ -98,12 +122,14 @@ def codes_unlocked():
     return bool(stamped) and (time.time() - stamped) < CODES_UNLOCK_SECONDS
 
 
-def customer_code_for_order(order):
+def customer_code_for_order(order, allow_code=True):
     """(código, disponible, mensaje) para la página/correo/campanita del cliente.
 
     - `codes_hidden`: bloqueado por seguridad, nunca se muestra.
     - juego o paquete inactivo: no se descifra; se avisa que está cifrado.
-    - juego y paquete activos: se devuelve el código real.
+    - juego y paquete activos: se devuelve el código real si `allow_code`.
+      Para una visita que no es del dueño se llama con `allow_code=False`:
+      así el texto plano no entra en el contexto de una página pública.
     """
     if not order or not getattr(order, 'pin_delivered', ''):
         return '', False, ''
@@ -119,6 +145,8 @@ def customer_code_for_order(order):
             'El código está cifrado porque el juego está desactivado. '
             'Se mostrará cuando el juego vuelva a estar activo; mientras tanto no se puede canjear.'
         )
+    if not allow_code:
+        return '', True, ''
     code = decrypt_code(order.pin_delivered)
     if not code:
         return '', False, 'No se pudo leer el código. Escríbenos por soporte.'

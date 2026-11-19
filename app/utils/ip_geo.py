@@ -210,7 +210,7 @@ def get_geo_many(ips, allow_remote=True, budget=4.0):
             if not isinstance(item, dict):
                 continue
             query_ip = (item.get('query') or '').strip()
-            if not query_ip:
+            if not query_ip or query_ip not in pending:
                 continue
             found[query_ip] = item
     for ip in pending:

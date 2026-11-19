@@ -1421,7 +1421,7 @@ def _resolve_ambiguous_redeem(order, pin, reason):
         'ok': False,
         'changed': False,
         'message': (
-            f'{reason} No se pudo confirmar si el PIN {decrypt_code(pin.code)} se canjeó, así que quedó '
+            f'{reason} No se pudo confirmar si el PIN que termina en {decrypt_code(pin.code)[-4:]} se canjeó, así que quedó '
             f'reservado para la orden #{order.order_number}. Revísalo antes de reintentar.'
         ),
         'category': 'danger',
@@ -1628,7 +1628,7 @@ def _approve_order_locked(order, delivery_proof_path=None):
                 'changed': False,
                 'message': (
                     f'Error inesperado al contactar el VPS: {exc}. '
-                    f'El PIN {decrypt_code(pin.code)} quedó reservado para la orden #{order.order_number}.'
+                    f'El PIN que termina en {decrypt_code(pin.code)[-4:]} quedó reservado para la orden #{order.order_number}.'
                 ),
                 'category': 'danger',
             }

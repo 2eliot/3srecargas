@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
 
-from ..models import AdminLoginAttempt, ApiRateLimitHit, IpOrderBlock, ProcessLock, db
+from ..models import AdminLoginAttempt, ApiRateLimitHit, IpGeoCache, IpOrderBlock, ProcessLock, db
 
 
 def acquire_lock(key, ttl_seconds, holder):
@@ -136,6 +136,10 @@ def purge_stale_counters():
         ).delete(synchronize_session=False)
         db.session.query(IpOrderBlock).filter(
             IpOrderBlock.blocked_until < datetime.utcnow() - timedelta(days=30)
+        ).delete(synchronize_session=False)
+        # Ubicaciones de IPs que ya no se usan: se guardan 90 días.
+        db.session.query(IpGeoCache).filter(
+            IpGeoCache.updated_at < datetime.utcnow() - timedelta(days=90)
         ).delete(synchronize_session=False)
         db.session.commit()
         removed = (counters or 0, locks or 0)

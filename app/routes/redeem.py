@@ -119,18 +119,11 @@ def validate():
             fecha = format_ve(gift.used_at, '%d/%m/%Y')
             hora = format_ve(gift.used_at, '%H:%M:%S')
             payload['message'] = (
-                f'Ese código ya fue canjeado por:\n'
-                f'{gift.used_nickname or "—"}\n'
-                f'ID: {gift.used_player_id}\n'
-                f'Fecha: {fecha}\n'
-                f'Hora: {hora}'
+                f'Ese código ya fue canjeado el {fecha} a las {hora}.'
             )
-            payload['already_used'] = {
-                'nickname': gift.used_nickname or '',
-                'player_id': gift.used_player_id or '',
-                'fecha': fecha,
-                'hora': hora,
-            }
+            # Sin ID ni nick de la otra persona: el código es público y no
+            # debe revelar quién lo canjeó.
+            payload['already_used'] = {'fecha': fecha, 'hora': hora}
         return jsonify(payload), 404
 
     package = gift.package

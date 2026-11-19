@@ -1623,7 +1623,9 @@ def order_status(order_number):
     pin_unlocked = (not is_pin_order) or is_own_order(order.order_number)
     pin_unlock_error = session.pop('pin_unlock_error', None)
     from ..utils.code_crypto import customer_code_for_order
-    customer_code, customer_code_available, customer_code_message = customer_code_for_order(order)
+    customer_code, customer_code_available, customer_code_message = customer_code_for_order(
+        order, allow_code=pin_unlocked
+    )
 
     missing_amount_bs = None
     if order.awaiting_payment_completion:

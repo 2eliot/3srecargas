@@ -92,3 +92,32 @@ def validate_value(kind, value):
     if kind == 'phone' and not PHONE_RE.match(value):
         return 'Revisa el número de teléfono: debe tener entre %d y %d números (puede empezar con +).' % (PHONE_MIN_DIGITS, PHONE_MAX_DIGITS)
     return ''
+
+
+def identity_key(kind, value):
+    """Identidad canónica para límites y bloqueos (no para entregar).
+
+    Un correo con +alias, en mayúsculas o con puntos en Gmail es la misma
+    persona; un ID numérico con ceros a la izquierda es el mismo jugador.
+    """
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    kind = str(kind or '').strip().lower()
+    if kind == 'email':
+        text = text.lower()
+        local, sep, domain = text.rpartition('@')
+        if sep:
+            if '+' in local:
+                local = local.split('+', 1)[0]
+            if domain in ('gmail.com', 'googlemail.com'):
+                local = local.replace('.', '')
+            text = f'{local}@{domain}'
+        return text
+    if kind == 'numeric':
+        return text.lstrip('0') or '0'
+    if kind == 'username':
+        return text.lower()
+    if kind == 'phone':
+        return text.replace(' ', '').replace('-', '')
+    return text

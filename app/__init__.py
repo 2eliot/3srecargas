@@ -469,6 +469,12 @@ def create_app(config_class=Config):
         # Páginas y respuestas JSON: el navegador no debe "adivinar" que un texto es HTML o un script.
         if response.mimetype in ('text/html', 'application/json'):
             response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        # Los JSON del admin (polling de órdenes, etc.) pueden llevar códigos
+        # descifrados: que Cloudflare/navegador no los guarden.
+        if response.mimetype == 'application/json':
+            from flask import request as _request
+            if (_request.path or '').startswith('/admin'):
+                response.headers['Cache-Control'] = 'no-store, max-age=0'
         return response
 
     @app.context_processor

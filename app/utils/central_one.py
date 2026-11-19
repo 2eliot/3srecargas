@@ -36,7 +36,7 @@ from flask import current_app
 
 from ..models import CentralOneCatalogItem, db
 from .locks import acquire_lock, release_lock
-from .code_crypto import decrypt_code, encrypt_code
+from .code_crypto import decrypt_code_checked, encrypt_code
 from .minigames import ensure_minigame_opportunity
 from .notifications import notify_order_completed
 from .order_pause import order_paused_now, paused_result
@@ -205,7 +205,17 @@ def is_code_section(order):
 
 
 def _append_codes(order, pins):
-    current = [c for c in decrypt_code(order.pin_delivered or '').split('\n') if c.strip()]
+    existing = order.pin_delivered or ''
+    ok, plain = decrypt_code_checked(existing)
+    if existing and not ok:
+        # No se pudo descifrar con la clave actual: no se reescribe la orden
+        # para no borrar los códigos que ya tenía.
+        current_app.logger.error(
+            'No se pudo descifrar el código de la orden %s; no se agregan códigos nuevos para no borrar los existentes.',
+            getattr(order, 'id', '?'),
+        )
+        return
+    current = [c for c in plain.split('\n') if c.strip()]
     for pin in pins:
         if pin and pin not in current:
             current.append(pin)
