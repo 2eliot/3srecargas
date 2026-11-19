@@ -120,4 +120,6 @@ def identity_key(kind, value):
         return text.lower()
     if kind == 'phone':
         return text.replace(' ', '').replace('-', '')
-    return text
+    # Tarjetas, texto libre y tipos sin regla propia: mayúsculas/minúsculas
+    # son el mismo dato para el límite (el valor real se guarda igual).
+    return text.lower()
