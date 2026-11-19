@@ -18,6 +18,7 @@ import string
 from datetime import datetime, timedelta
 
 from ..models import GiftCode, Order, Package, db
+from .locks import acquire_lock, release_lock
 
 # Sin 0/O/1/I/L para que nadie se equivoque al copiar un código de un video.
 CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
@@ -29,6 +30,10 @@ MAX_BATCH_SIZE = 500
 # Límite de intentos fallidos por IP antes de cerrar la puerta un rato.
 ATTEMPT_LIMIT = 12
 ATTEMPT_WINDOW_MINUTES = 15
+
+# Un mismo ID (en el mismo juego) no puede canjear dos códigos seguidos:
+# tiene que esperar 30 minutos. Así no ganan siempre las mismas personas.
+PLAYER_COOLDOWN_MINUTES = 30
 
 # Contador de intentos en memoria del proceso. No hace falta que sea
 # perfecto ni compartido entre workers: sirve para frenar a quien esté
@@ -68,6 +73,39 @@ def generate_code():
     return CODE_PREFIX + ''.join(
         secrets.choice(CODE_ALPHABET) for _ in range(CODE_BLOCK * CODE_BLOCKS)
     )
+
+
+def player_redeem_cooldown_seconds(game, player_id):
+    """Segundos que faltan para que ese ID pueda canjear otro código en ese juego.
+
+    0 = puede canjear. Cuenta solo canjes usados de verdad (si el código se
+    liberó porque la entrega falló, no cuenta). El mismo número en otro juego
+    es otro ID.
+    """
+    if not game or not player_id:
+        return 0
+    now = datetime.utcnow()
+    cutoff = now - timedelta(minutes=PLAYER_COOLDOWN_MINUTES)
+    try:
+        last = (
+            GiftCode.query
+            .join(Package, GiftCode.package_id == Package.id)
+            .filter(
+                GiftCode.is_used.is_(True),
+                GiftCode.used_player_id == str(player_id).strip(),
+                GiftCode.used_at.isnot(None),
+                GiftCode.used_at >= cutoff,
+                Package.game_id == game.id,
+            )
+            .order_by(GiftCode.used_at.desc())
+            .first()
+        )
+    except Exception:
+        db.session.rollback()
+        return 0
+    if not last or not last.used_at:
+        return 0
+    return max(1, int((last.used_at + timedelta(minutes=PLAYER_COOLDOWN_MINUTES) - now).total_seconds()))
 
 
 # ─── Límite de intentos ──────────────────────────────────────────────────────
@@ -231,6 +269,8 @@ def redeem_code(gift, player_id, zone_id=None, nickname='', client_ip=None, user
     game = package.game if package else None
     if not game:
         return False, 'El premio de ese código ya no está disponible.', None
+    if not game.is_active or not package.is_active:
+        return False, 'Este juego o su paquete están desactivados; no se puede canjear ahora.', None
     # El premio es una recarga: exige el mismo ID verificado que el checkout.
     from ..routes.verify import require_verified_player, VERIFIED_PLAYER_ERRORS
     _ver_estado, _ver_nick = require_verified_player(game.id, player_id)
@@ -238,8 +278,32 @@ def redeem_code(gift, player_id, zone_id=None, nickname='', client_ip=None, user
         return False, VERIFIED_PLAYER_ERRORS[_ver_estado], None
     if _ver_estado == 'ok':
         nickname = _ver_nick
+    elif _ver_estado == 'skip':
+        # Los juegos que piden un ID de jugador (número, usuario o teléfono)
+        # no pueden canjear sin un verificador real. Los productos de correo
+        # (Roblox, TikTok, etc.) se validan por el correo de entrega.
+        from .player_field import field_kind
+        if field_kind(game) in ('numeric', 'username', 'phone'):
+            return False, (
+                'Este juego no tiene verificación de ID disponible. '
+                'No se puede canjear el código; escríbenos por soporte.'
+            ), None
 
-    reservado = claim_code(gift.id, player_id, zone_id=zone_id, nickname=nickname)
+    lock_key = f'gift_player:{game.id}:{str(player_id).strip()}'[:100]
+    lock_holder = secrets.token_hex(8)
+    if not acquire_lock(lock_key, 30, lock_holder):
+        return False, 'Tu canje anterior se está procesando. Espera unos segundos e inténtalo de nuevo.', None
+    try:
+        wait = player_redeem_cooldown_seconds(game, player_id)
+        if wait:
+            minutes = max(1, (wait + 59) // 60)
+            return False, (
+                f'Este ID ya canjeó un código. '
+                f'Puedes volver a canjear otro código en {minutes} minuto(s).'
+            ), None
+        reservado = claim_code(gift.id, player_id, zone_id=zone_id, nickname=nickname)
+    finally:
+        release_lock(lock_key, lock_holder)
     if not reservado:
         return False, 'Ese código acaba de ser canjeado.', None
 
