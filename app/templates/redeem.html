@@ -37,7 +37,7 @@ body::before {
         <div class="rdm-step" id="rdmStepCode">
             <label class="rdm-label" for="rdmCode">Tu código</label>
             <input type="text" id="rdmCode" class="glass-input rdm-code-input"
-                   placeholder="ABCD-EFGH-JKMN" autocomplete="off"
+                   placeholder="3S-ABCD-EFGH-JKMN" autocomplete="off"
                    spellcheck="false" maxlength="20" inputmode="text">
             <p class="rdm-feedback" id="rdmCodeFeedback" aria-live="polite"></p>
             <button type="button" class="rdm-btn red-glow-pill" id="rdmCheckBtn">
@@ -270,9 +270,16 @@ body::before {
 
     /* Va formateando el código en bloques de 4 mientras se escribe. */
     codeInput.addEventListener('input', function () {
-        var limpio = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
-        var bloques = limpio.match(/.{1,4}/g);
-        codeInput.value = bloques ? bloques.join('-') : '';
+        var limpio = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 14);
+        var salida;
+        if (limpio.indexOf('3S') === 0 && limpio.length > 2) {
+            var resto = limpio.slice(2).match(/.{1,4}/g) || [];
+            salida = '3S-' + resto.join('-');
+        } else {
+            var bloques = limpio.match(/.{1,4}/g);
+            salida = bloques ? bloques.join('-') : '';
+        }
+        codeInput.value = salida;
         setFeedback(codeFeedback, '');
         codeYaCanjeado = false;
     });

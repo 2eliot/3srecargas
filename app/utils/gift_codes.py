@@ -22,7 +22,8 @@ from ..models import GiftCode, Order, Package, db
 # Sin 0/O/1/I/L para que nadie se equivoque al copiar un código de un video.
 CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
 CODE_BLOCK = 4
-CODE_BLOCKS = 3          # 3 bloques de 4 = 12 caracteres útiles
+CODE_BLOCKS = 3          # 3 bloques de 4 = 12 caracteres aleatorios
+CODE_PREFIX = '3S'       # todos los códigos nuevos empiezan con 3S-
 MAX_BATCH_SIZE = 500
 
 # Límite de intentos fallidos por IP antes de cerrar la puerta un rato.
@@ -42,21 +43,29 @@ def normalize_code(raw):
 
 
 def format_code(code):
-    """Presenta el código en bloques de 4: ABCD-EFGH-JKMN."""
+    """Presenta el código en bloques: 3S-ABCD-EFGH-JKMN (nuevos) o ABCD-EFGH-JKMN (viejos)."""
     code = normalize_code(code)
+    if not code:
+        return ''
+    if code.startswith(CODE_PREFIX) and len(code) > len(CODE_PREFIX):
+        rest = code[len(CODE_PREFIX):]
+        blocks = [CODE_PREFIX] + [rest[i:i + CODE_BLOCK] for i in range(0, len(rest), CODE_BLOCK)]
+        return '-'.join(blocks)
     return '-'.join(code[i:i + CODE_BLOCK] for i in range(0, len(code), CODE_BLOCK))
 
 
 def mask_code(code):
-    """Código enmascarado para vistas públicas: ••••-••••-JKMN (solo el último bloque)."""
+    """Código enmascarado para vistas públicas: 3S-••••-••••-JKMN (solo el último bloque)."""
     blocks = format_code(code).split('-')
     if len(blocks) <= 1:
         return '••••'
+    if blocks[0] == CODE_PREFIX and len(blocks) >= 3:
+        return '-'.join([CODE_PREFIX] + ['••••'] * (len(blocks) - 2) + [blocks[-1]])
     return '-'.join(['••••'] * (len(blocks) - 1) + [blocks[-1]])
 
 
 def generate_code():
-    return ''.join(
+    return CODE_PREFIX + ''.join(
         secrets.choice(CODE_ALPHABET) for _ in range(CODE_BLOCK * CODE_BLOCKS)
     )
 
